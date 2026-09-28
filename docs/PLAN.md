@@ -1,5 +1,7 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
+**Status 2026-09-28:** Phase A (474f6b4) and Phase B1–B3 (97ce133, e1e075d, 3689fcc) done, every gate green on the packaged app. Next: Phase 4 (cockpit MCP).
+
 ## Context
 Phases 0–3 are built and proven in this repo (4 commits): the Claude adapter, the Codex app-server adapter, threads + SSE, approvals, Stop, the Claude↔Codex switch with handoff, and 30 unit tests. Today it runs as a local server you open in a browser. Two changes:
 1. **A real desktop app**, not localhost in a browser.
