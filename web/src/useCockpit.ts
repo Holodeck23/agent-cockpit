@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, subscribe, type StoredEvent, type ThreadDetail, type ThreadSummary, type ThreadUpdate } from './api.ts'
 
 export interface Cockpit {
@@ -16,8 +16,17 @@ export interface Cockpit {
 function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): ThreadSummary[] {
   return threads.map((t) => {
     if (t.meta.id !== update.threadId) return t
-    const text = update.event.kind === 'assistant_text' || update.event.kind === 'user_text' ? update.event.text : undefined
-    return { ...t, status: update.status, preview: text ? text.slice(0, 140) : t.preview }
+    const isMessage = update.event.kind === 'assistant_text' || update.event.kind === 'user_text'
+    const text = isMessage && 'text' in update.event ? update.event.text : undefined
+    // Streaming deltas are not persisted server-side, so they don't count as activity either.
+    const lastActivityAt = update.event.kind === 'text_delta' ? t.lastActivityAt : new Date().toISOString()
+    return {
+      ...t,
+      status: update.status,
+      preview: text ? text.slice(0, 140) : t.preview,
+      messageCount: t.messageCount + (isMessage ? 1 : 0),
+      lastActivityAt,
+    }
   })
 }
 
@@ -43,32 +52,45 @@ export function useCockpit(): Cockpit {
     api.thread(selectedId).then(setDetail, (e: unknown) => setError(String(e)))
   }, [selectedId])
 
-  useEffect(
-    () =>
-      subscribe((update) => {
-        setThreads((current) =>
-          current.some((t) => t.meta.id === update.threadId) ? applyToSummaries(current, update) : current,
-        )
-        if (!threads.some((t) => t.meta.id === update.threadId)) refresh()
-        if (update.threadId !== selectedId) return
-        if (update.event.kind === 'text_delta') {
-          const delta = update.event.text
-          setStreaming((s) => s + delta)
-          return
-        }
-        if (update.event.kind === 'agent_switch') {
-          // Settings and session changed server-side: reload the thread and the list.
-          const id = update.threadId
-          api.thread(id).then(setDetail, (e: unknown) => setError(String(e)))
-          refresh()
-          return
-        }
-        if (update.event.kind === 'assistant_text' || update.event.kind === 'result') setStreaming('')
-        const stored: StoredEvent = { ts: new Date().toISOString(), event: update.event }
-        setDetail((d) => (d ? { ...d, status: update.status, events: [...d.events, stored] } : d))
-      }),
-    [selectedId, threads, refresh],
-  )
+  // One subscription for the life of the page. Re-subscribing on every change dropped
+  // events that arrived during the reconnect (SSE doesn't replay), leaving stale
+  // statuses; current values are read through refs instead.
+  const selectedRef = useRef(selectedId)
+  selectedRef.current = selectedId
+  const knownIds = useRef(new Set<string>())
+  knownIds.current = new Set(threads.map((t) => t.meta.id))
+
+  useEffect(() => {
+    const reloadDetail = (id: string): void => {
+      api.thread(id).then(setDetail, (e: unknown) => setError(String(e)))
+    }
+    const onUpdate = (update: ThreadUpdate): void => {
+      const isDelta = update.event.kind === 'text_delta'
+      if (!knownIds.current.has(update.threadId)) refresh()
+      else if (!isDelta) setThreads((current) => applyToSummaries(current, update))
+      if (update.threadId !== selectedRef.current) return
+      if (update.event.kind === 'text_delta') {
+        const delta = update.event.text
+        setStreaming((s) => s + delta)
+        return
+      }
+      if (update.event.kind === 'agent_switch') {
+        // Settings and session changed server-side: reload the thread and the list.
+        reloadDetail(update.threadId)
+        refresh()
+        return
+      }
+      if (update.event.kind === 'assistant_text' || update.event.kind === 'result') setStreaming('')
+      const stored: StoredEvent = { ts: new Date().toISOString(), event: update.event }
+      setDetail((d) => (d && d.meta.id === update.threadId ? { ...d, status: update.status, events: [...d.events, stored] } : d))
+    }
+    // After a (re)connect, anything missed while disconnected is re-read from the server.
+    const onOpen = (): void => {
+      refresh()
+      if (selectedRef.current) reloadDetail(selectedRef.current)
+    }
+    return subscribe(onUpdate, onOpen)
+  }, [refresh])
 
   return {
     threads,

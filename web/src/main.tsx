@@ -4,6 +4,7 @@ import { App } from './App.tsx'
 import { native } from './native.ts'
 import './styles/tokens.css'
 import './styles/chrome.css'
+import './styles/list.css'
 import './styles.css'
 
 const root = document.getElementById('root')

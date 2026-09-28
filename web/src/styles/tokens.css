@@ -49,7 +49,19 @@
   --needs-border: light-dark(#e8bf8e, #70543a);
   --needs-ink: light-dark(#844214, #ffd392);
 
-  /* project colours (letter avatars, tags) */
+  /* status pills + conversation tags */
+  --tint-apricot: light-dark(#ffeacb, #3a3024);
+  --working-ink: light-dark(#9b4a10, #ffd392);
+  --tag-blue-bg: light-dark(#d7e4fb, #6399e926);
+  --tag-blue-ink: light-dark(#24375b, #a3c4f5);
+  --tag-green-bg: light-dark(#c9efe6, #50c4aa26);
+  --tag-green-ink: light-dark(#1d4a41, #9fdccf);
+  --tag-pink-bg: light-dark(#ffe6f1, #3a2530);
+  --tag-pink-ink: light-dark(#b52d67, #f394be);
+  --tag-apricot-bg: light-dark(#ffeacb, #3a3024);
+  --tag-apricot-ink: light-dark(#844214, #ffd392);
+
+  /* project colours (letter avatars) */
   --p-blue: #2878ef;
   --p-pink: light-dark(#b53270, #f394be);
   --p-orange: #f58220;

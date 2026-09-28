@@ -1,10 +1,10 @@
 import { useState } from 'react'
+import { ConversationList } from './components/ConversationList.tsx'
 import { FolderIcon, WorkflowIcon } from './components/icons.tsx'
 import { NewThread } from './components/NewThread.tsx'
 import { Placeholder } from './components/Placeholder.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
-import { ThreadList } from './components/ThreadList.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useCockpit } from './useCockpit.ts'
@@ -41,12 +41,12 @@ export function App() {
       ) : null}
       {section === 'conversations' ? (
         <div className="layout">
-          <ThreadList threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
+          <ConversationList key={`list:${activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
           {selectedId && cockpit.detail ? (
             <ThreadView detail={cockpit.detail} streaming={cockpit.streaming} onError={cockpit.reportError} />
           ) : (
             <NewThread
-              key={activePath ?? 'no-project'}
+              key={`new:${activePath ?? ''}`}
               defaultProject={activePath}
               knownProjects={knownProjects}
               onError={cockpit.reportError}

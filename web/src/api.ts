@@ -40,8 +40,9 @@ export const api = {
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
 }
 
-export function subscribe(onUpdate: (update: ThreadUpdate) => void): () => void {
+export function subscribe(onUpdate: (update: ThreadUpdate) => void, onOpen?: () => void): () => void {
   const source = new EventSource('/api/stream')
+  source.onopen = () => onOpen?.()
   source.onmessage = (message) => onUpdate(JSON.parse(message.data as string) as ThreadUpdate)
   return () => source.close()
 }

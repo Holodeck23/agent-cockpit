@@ -3,7 +3,7 @@ import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
 import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent } from '../agents/types.ts'
-import { deriveStatus, previewOf } from './status.ts'
+import { deriveStatus, messageCountOf, previewOf } from './status.ts'
 import type { ThreadStore } from './store.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
 
@@ -195,14 +195,17 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       return next
     },
     summaries() {
-      return store.list().map((meta) => {
+      const all = store.list().map((meta): ThreadSummary => {
         const events = store.events(meta.id)
         return {
           meta,
           status: deriveStatus(events, live.get(meta.id)?.turnRunning ?? false),
           preview: previewOf(events),
+          messageCount: messageCountOf(events),
+          lastActivityAt: events.at(-1)?.ts ?? meta.updatedAt,
         }
       })
+      return all.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
     },
     status: statusOf,
     subscribe(listener) {

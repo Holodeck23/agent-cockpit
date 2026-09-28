@@ -42,4 +42,8 @@ export interface ThreadSummary {
   readonly meta: ThreadMeta
   readonly status: ThreadStatus
   readonly preview: string
+  /** Messages from you and the agent (not tool calls). */
+  readonly messageCount: number
+  /** Time of the latest event, or the metadata's updatedAt if there are none. */
+  readonly lastActivityAt: string
 }

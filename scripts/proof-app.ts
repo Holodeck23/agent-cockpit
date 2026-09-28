@@ -37,7 +37,7 @@ const nodeLeak = await page.evaluate(() => typeof (window as { require?: unknown
 check('no Node in the page', nodeLeak === 'undefined')
 
 const prompt = 'List three prime numbers, one per line.'
-await page.getByRole('button', { name: 'New thread' }).click()
+await page.getByRole('button', { name: 'New conversation' }).click()
 await page.getByLabel('Project folder').fill(projectDir)
 await page.getByLabel('Model').fill('haiku')
 const box = page.getByPlaceholder('What should the agent do?')
@@ -52,7 +52,7 @@ check('agent replied with primes', /\b(2|3|5|7)\b/.test(reply), reply.replace(/\
 await page.screenshot({ path: join(OUT, 'phase-A-app.png') })
 
 // Quit while a second agent is mid-turn: the case that would orphan a process.
-await page.getByRole('button', { name: 'New thread' }).click()
+await page.getByRole('button', { name: 'New conversation' }).click()
 const longBox = page.getByPlaceholder('What should the agent do?')
 await longBox.fill('Write a 1500 word essay on the history of coffee. Plain text, no tools.')
 await longBox.press('Enter')

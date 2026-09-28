@@ -25,6 +25,10 @@ export function deriveStatus(events: readonly StoredEvent[], turnRunning: boolea
   return 'idle'
 }
 
+export function messageCountOf(events: readonly StoredEvent[]): number {
+  return events.filter(({ event }) => event.kind === 'user_text' || event.kind === 'assistant_text').length
+}
+
 /** Last assistant (or user) text, for the thread list. */
 export function previewOf(events: readonly StoredEvent[]): string {
   for (let i = events.length - 1; i >= 0; i -= 1) {
