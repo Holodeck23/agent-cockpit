@@ -3,7 +3,14 @@
 
 export type AgentId = 'claude' | 'codex'
 
-export type ApprovalBehavior = 'allow' | 'deny'
+/** allow_session also applies the agent's own suggested rule for the rest of the session. */
+export type ApprovalBehavior = 'allow' | 'allow_session' | 'deny'
+
+export interface PendingApproval {
+  readonly requestId: string
+  readonly input: unknown
+  readonly suggestions: readonly unknown[]
+}
 
 export type NormalizedEvent =
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
@@ -22,7 +29,7 @@ export type NormalizedEvent =
     }
   | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior }
   | { kind: 'usage'; limitType: string; status: string; resetsAt?: number }
-  | { kind: 'result'; ok: boolean; text?: string; costUsd?: number; durationMs?: number }
+  | { kind: 'result'; ok: boolean; stopped?: boolean; text?: string; costUsd?: number; durationMs?: number }
   | { kind: 'exit'; code: number | null }
   | { kind: 'error'; message: string }
 
@@ -30,7 +37,7 @@ export interface AgentSession {
   readonly agent: AgentId
   /** Send a user message. Resolves once written to the agent's stdin. */
   send(text: string): void
-  respondApproval(requestId: string, behavior: ApprovalBehavior, input?: unknown): void
+  respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
   interrupt(): void
   /** Graceful shutdown (stdin EOF). */
   close(): void

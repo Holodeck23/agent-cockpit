@@ -44,6 +44,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
 interface Live {
   readonly session: AgentSession
   turnRunning: boolean
+  stopRequested: boolean
   idleTimer?: NodeJS.Timeout
 }
 
@@ -71,12 +72,16 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
     for (const listener of listeners) listener(update)
   }
 
-  const record = (threadId: string, event: NormalizedEvent): void => {
+  const record = (threadId: string, incoming: NormalizedEvent): void => {
+    const entry = live.get(threadId)
+    // A failed result right after the user pressed Stop is a stop, not an error.
+    const event: NormalizedEvent =
+      incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
     // Deltas are for live rendering only; the final assistant_text is persisted.
     if (event.kind !== 'text_delta') store.append(threadId, event)
-    const entry = live.get(threadId)
     if (entry && event.kind === 'result') {
       entry.turnRunning = false
+      entry.stopRequested = false
       entry.idleTimer = setTimeout(() => entry.session.close(), IDLE_CLOSE_MS)
     }
     if (event.kind === 'exit') live.delete(threadId)
@@ -94,7 +99,7 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       },
       (event) => record(meta.id, event),
     )
-    const entry: Live = { session, turnRunning: false }
+    const entry: Live = { session, turnRunning: false, stopRequested: false }
     live.set(meta.id, entry)
     if (!meta.sessionStarted) store.update(meta.id, { sessionStarted: true })
     return entry
@@ -137,10 +142,18 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
     approve(threadId, requestId, behavior) {
       const entry = live.get(threadId)
       if (!entry?.session.alive()) throw new Error('This approval belongs to a session that has ended')
-      entry.session.respondApproval(requestId, behavior)
+      const request = store
+        .events(threadId)
+        .map(({ event }) => event)
+        .find((event) => event.kind === 'approval_request' && event.requestId === requestId)
+      if (request?.kind !== 'approval_request') throw new Error('Unknown approval request')
+      entry.session.respondApproval({ requestId, input: request.input, suggestions: request.suggestions }, behavior)
     },
     interrupt(threadId) {
-      live.get(threadId)?.session.interrupt()
+      const entry = live.get(threadId)
+      if (!entry) return
+      entry.stopRequested = true
+      entry.session.interrupt()
     },
     setCompleted(threadId, completed) {
       requireMeta(threadId)

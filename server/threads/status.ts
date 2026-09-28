@@ -20,7 +20,7 @@ export function deriveStatus(events: readonly StoredEvent[], turnRunning: boolea
   if (turnRunning) return 'working'
   const last = [...events].reverse().find(({ event }) => event.kind === 'result' || event.kind === 'error' || event.kind === 'user_text')
   if (!last) return 'idle'
-  if (last.event.kind === 'result') return last.event.ok ? 'done' : 'error'
+  if (last.event.kind === 'result') return last.event.ok ? 'done' : last.event.stopped ? 'idle' : 'error'
   if (last.event.kind === 'error') return 'error'
   return 'idle'
 }

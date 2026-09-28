@@ -1,7 +1,7 @@
 import type { ThreadStatus } from '../api.ts'
 
 const LABELS: Record<ThreadStatus, string> = {
-  idle: 'Idle',
+  idle: 'Waiting',
   working: 'Working',
   needs_input: 'Needs you',
   done: 'Done',

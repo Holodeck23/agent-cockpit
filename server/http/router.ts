@@ -16,7 +16,7 @@ const createThreadBody = z.object({
   settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
 })
 const messageBody = z.object({ text: z.string().min(1).max(200_000) })
-const approvalBody = z.object({ behavior: z.enum(['allow', 'deny']) })
+const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 const completedBody = z.object({ completed: z.boolean() })
 
 class HttpError extends Error {

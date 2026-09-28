@@ -10,7 +10,7 @@ import { threadSettingsSchema } from '../server/threads/types.ts'
 interface FakeAgent {
   readonly requests: LaunchRequest[]
   emit: EventSink
-  readonly approvals: Array<{ requestId: string; behavior: string }>
+  readonly approvals: Array<{ requestId: string; behavior: string; input: unknown }>
 }
 
 function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
@@ -22,8 +22,8 @@ function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
     const session: AgentSession = {
       agent: 'claude',
       send: (text) => onEvent({ kind: 'user_text', text }),
-      respondApproval: (requestId, behavior) => {
-        agent.approvals.push({ requestId, behavior })
+      respondApproval: ({ requestId, input }, behavior) => {
+        agent.approvals.push({ requestId, behavior, input })
         onEvent({ kind: 'approval_resolved', requestId, behavior })
       },
       interrupt: () => undefined,
@@ -61,10 +61,12 @@ describe('thread manager', () => {
     const { manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'write a file' })
     expect(manager.status(meta.id)).toBe('working')
-    agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'Write', input: {}, suggestions: [] })
+    const input = { file_path: '/tmp/a.txt', content: 'hi' }
+    agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'Write', input, suggestions: [] })
     expect(manager.status(meta.id)).toBe('needs_input')
     manager.approve(meta.id, 'r1', 'allow')
-    expect(agent.approvals).toEqual([{ requestId: 'r1', behavior: 'allow' }])
+    // The original tool input must be echoed back, never replaced.
+    expect(agent.approvals).toEqual([{ requestId: 'r1', behavior: 'allow', input }])
     expect(manager.status(meta.id)).toBe('working')
     agent.emit({ kind: 'result', ok: true })
     expect(manager.status(meta.id)).toBe('done')
@@ -80,6 +82,14 @@ describe('thread manager', () => {
     const [summary] = restarted.summaries()
     expect(summary).toMatchObject({ status: 'done', preview: 'hello' })
     expect(store.events(meta.id).some((e) => e.event.kind === 'text_delta')).toBe(false)
+  })
+
+  it('treats a failed result after Stop as stopped, not an error', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'long job' })
+    manager.interrupt(meta.id)
+    agent.emit({ kind: 'result', ok: false })
+    expect(manager.status(meta.id)).toBe('idle')
   })
 
   it('broadcasts every event with the current status', () => {

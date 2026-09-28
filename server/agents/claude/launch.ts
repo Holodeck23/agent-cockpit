@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
-import type { AgentSession, ApprovalBehavior, EventSink } from '../types.ts'
+import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
 
@@ -57,13 +57,18 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
       onEvent({ kind: 'user_text', text })
       write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } })
     },
-    respondApproval(requestId: string, behavior: ApprovalBehavior, updatedInput?: unknown) {
+    respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {
+      // updatedInput must echo the original input: an empty object would replace it.
       const response =
-        behavior === 'allow'
-          ? { behavior, updatedInput: updatedInput ?? {} }
-          : { behavior, message: 'Denied from Agent Cockpit' }
-      write({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response } })
-      onEvent({ kind: 'approval_resolved', requestId, behavior })
+        behavior === 'deny'
+          ? { behavior: 'deny', message: 'Denied from Agent Cockpit' }
+          : {
+              behavior: 'allow',
+              updatedInput: approval.input,
+              ...(behavior === 'allow_session' ? { updatedPermissions: approval.suggestions } : {}),
+            }
+      write({ type: 'control_response', response: { subtype: 'success', request_id: approval.requestId, response } })
+      onEvent({ kind: 'approval_resolved', requestId: approval.requestId, behavior })
     },
     interrupt() {
       write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })

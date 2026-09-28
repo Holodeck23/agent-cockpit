@@ -52,6 +52,35 @@ if (mode === 'parallel') {
   await page.waitForSelector('.bubble.agent')
   console.log('opened thread shows', await page.locator('.bubble').count(), 'messages')
   await page.screenshot({ path: `${OUT}phase-1-after-restart.png` })
+} else if (mode === 'approvals') {
+  if (!projectDir) throw new Error('usage: proof-ui.ts approvals <projectDir>')
+  await startThread(
+    page,
+    projectDir,
+    'Use the Write tool to create allowed.txt containing yes. Then use the Write tool to create denied.txt containing no. Do not ask questions.',
+  )
+  const openCard = page.locator('.approval.open')
+  await openCard.waitFor({ timeout: 60_000 })
+  console.log('first approval:', await openCard.locator('code').textContent())
+  await page.screenshot({ path: `${OUT}phase-2-approval.png` })
+  await openCard.getByRole('button', { name: 'Allow', exact: true }).click()
+  await page.waitForFunction(() => document.querySelectorAll('.approval').length >= 2, undefined, { timeout: 60_000 })
+  await openCard.waitFor({ timeout: 60_000 })
+  console.log('second approval:', await openCard.locator('code').textContent())
+  await openCard.getByRole('button', { name: 'Deny' }).click()
+  await page.locator('.thread-head .chip', { hasText: /Done|Error/ }).waitFor({ timeout: 90_000 })
+  await page.screenshot({ path: `${OUT}phase-2-approvals-done.png` })
+  console.log('resolutions:', await page.locator('.meta-line').allTextContents())
+} else if (mode === 'interrupt') {
+  if (!projectDir) throw new Error('usage: proof-ui.ts interrupt <projectDir>')
+  await startThread(page, projectDir, 'Write a 1500 word essay on the history of coffee. Plain text, no tools.')
+  await page.locator('.bubble.streaming').waitFor({ timeout: 60_000 })
+  const started = Date.now()
+  await page.getByRole('button', { name: 'Stop' }).click()
+  await page.locator('.thread-head .chip', { hasText: /Done|Error|Waiting/ }).waitFor({ timeout: 30_000 })
+  const status = await page.locator('.thread-head .chip').textContent()
+  console.log(`stopped in ${((Date.now() - started) / 1000).toFixed(1)}s, status now: ${status}`)
+  await page.screenshot({ path: `${OUT}phase-2-interrupt.png` })
 } else {
   throw new Error(`unknown mode ${mode}`)
 }

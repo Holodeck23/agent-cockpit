@@ -8,6 +8,12 @@ interface EventItemProps {
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
 }
 
+const RESOLVED_LABEL: Record<ApprovalBehavior, string> = {
+  allow: 'Allowed',
+  allow_session: 'Allowed for this session',
+  deny: 'Denied',
+}
+
 function summarizeInput(input: unknown): string {
   if (typeof input !== 'object' || input === null) return ''
   const record = input as Record<string, unknown>
@@ -42,6 +48,11 @@ export function EventItem({ stored, openApprovals, onApprove }: EventItemProps) 
               <button type="button" className="primary" onClick={() => onApprove(event.requestId, 'allow')}>
                 Allow
               </button>
+              {event.suggestions.length > 0 ? (
+                <button type="button" onClick={() => onApprove(event.requestId, 'allow_session')}>
+                  Allow for this session
+                </button>
+              ) : null}
               <button type="button" onClick={() => onApprove(event.requestId, 'deny')}>
                 Deny
               </button>
@@ -51,11 +62,11 @@ export function EventItem({ stored, openApprovals, onApprove }: EventItemProps) 
       )
     }
     case 'approval_resolved':
-      return <div className="meta-line">{event.behavior === 'allow' ? 'Allowed' : 'Denied'}</div>
+      return <div className="meta-line">{RESOLVED_LABEL[event.behavior]}</div>
     case 'result':
       return (
         <div className="meta-line">
-          {event.ok ? 'Turn finished' : 'Turn failed'}
+          {event.ok ? 'Turn finished' : event.stopped ? 'Stopped' : 'Turn failed'}
           {event.durationMs ? ` · ${(event.durationMs / 1000).toFixed(1)}s` : ''}
         </div>
       )
