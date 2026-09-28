@@ -7,6 +7,8 @@ const cockpit = {
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:pick-folder') as Promise<string | undefined>,
   /** Native chrome (traffic lights, menus) follows the page's theme choice. */
   setTheme: (mode: 'system' | 'light' | 'dark'): void => ipcRenderer.send('cockpit:set-theme', mode),
+  /** Shows a thread's transcript in Finder. Only paths inside the cockpit's own thread folder are honoured. */
+  revealTranscript: (path: string): void => ipcRenderer.send('cockpit:reveal-transcript', path),
 }
 
 contextBridge.exposeInMainWorld('cockpit', cockpit)

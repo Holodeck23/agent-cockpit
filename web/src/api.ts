@@ -9,6 +9,10 @@ export interface ThreadDetail {
   readonly meta: ThreadMeta
   readonly status: ThreadStatus
   readonly events: StoredEvent[]
+  /** messages.md on disk: the human-readable transcript. */
+  readonly transcriptPath: string
+  /** The agent message being streamed right now, if any. */
+  readonly streaming: string
 }
 
 async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { native } from '../native.ts'
 import type { Projects } from '../useProjects.ts'
+import { usePopover } from '../usePopover.ts'
 import { ChevronDownIcon, FolderIcon, PinIcon, PlusIcon } from './icons.tsx'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 
@@ -9,25 +10,8 @@ interface ProjectsMenuProps {
 }
 
 export function ProjectsMenu({ projects }: ProjectsMenuProps) {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, ref: rootRef } = usePopover<HTMLDivElement>()
   const [typedPath, setTypedPath] = useState('')
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onPointer = (event: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
-    }
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onPointer)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onPointer)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
 
   const openPath = (path: string): void => {
     setOpen(false)

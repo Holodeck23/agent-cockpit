@@ -1,12 +1,17 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { ArrowUpIcon, PlusIcon } from './icons.tsx'
 
 interface ComposerProps {
-  /** Drafts are kept per thread in localStorage and survive reloads. */
+  /** Drafts are kept per conversation in localStorage and survive reloads. */
   draftKey: string
   placeholder: string
   disabled?: boolean
+  /** The agent picker, shown in the bottom row. */
+  picker: ReactNode
   onSubmit: (text: string) => Promise<void>
 }
+
+const MAX_HEIGHT = 220
 
 function loadDraft(key: string): string {
   try {
@@ -25,13 +30,22 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
-export function Composer({ draftKey, placeholder, disabled, onSubmit }: ComposerProps) {
+export function Composer({ draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
+  const box = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setText(loadDraft(draftKey))
   }, [draftKey])
+
+  // Grow with the text, up to a limit, then scroll.
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`
+  }, [text])
 
   const update = (value: string): void => {
     setText(value)
@@ -41,7 +55,7 @@ export function Composer({ draftKey, placeholder, disabled, onSubmit }: Composer
   const submit = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault()
     const trimmed = text.trim()
-    if (!trimmed || sending) return
+    if (!trimmed || sending || disabled) return
     setSending(true)
     try {
       await onSubmit(trimmed)
@@ -52,22 +66,38 @@ export function Composer({ draftKey, placeholder, disabled, onSubmit }: Composer
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === 'Enter' && !event.shiftKey) void submit(event)
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event)
   }
 
   return (
     <form className="composer" onSubmit={(e) => void submit(e)}>
-      <textarea
-        value={text}
-        placeholder={placeholder}
-        rows={3}
-        disabled={disabled}
-        onChange={(e) => update(e.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      <button type="submit" className="primary" disabled={disabled || sending || !text.trim()}>
-        Send
-      </button>
+      <div className="composer-card">
+        <div className="composer-top">
+          <textarea
+            ref={box}
+            value={text}
+            placeholder={placeholder}
+            aria-label="Message"
+            rows={1}
+            disabled={disabled}
+            onChange={(e) => update(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          <span className="chip-soon" title="Mention files and workflows: arrives with the Files and Workflows tabs">
+            @ Files and workflows
+          </span>
+        </div>
+        <div className="composer-foot">
+          <button type="button" className="icon-button" disabled title="Attachments arrive with the Files tab" aria-label="Attach">
+            <PlusIcon />
+          </button>
+          {picker}
+          <span className="composer-spacer" />
+          <button type="submit" className="send" aria-label="Send" disabled={disabled || sending || !text.trim()}>
+            <ArrowUpIcon />
+          </button>
+        </div>
+      </div>
     </form>
   )
 }

@@ -73,6 +73,19 @@ describe('thread manager', () => {
     expect(manager.status(meta.id)).toBe('done')
   })
 
+  it('keeps the message being streamed for viewers who open the thread mid-turn', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hi' })
+    agent.emit({ kind: 'text_delta', text: 'Hel' })
+    agent.emit({ kind: 'text_delta', text: 'lo, wor' })
+    expect(manager.partialText(meta.id)).toBe('Hello, wor')
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'Hello, world' })
+    expect(manager.partialText(meta.id)).toBe('')
+    agent.emit({ kind: 'text_delta', text: 'More' })
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.partialText(meta.id)).toBe('')
+  })
+
   it('persists deltas only as the final text, and survives a new manager (restart)', () => {
     const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'hi' })

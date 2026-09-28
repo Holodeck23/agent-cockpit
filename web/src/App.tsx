@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
 import { FolderIcon, WorkflowIcon } from './components/icons.tsx'
-import { NewThread } from './components/NewThread.tsx'
+import { NewConversation } from './components/NewConversation.tsx'
 import { Placeholder } from './components/Placeholder.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
@@ -19,7 +19,6 @@ export function App() {
   const activePath = projects.active?.path
   const visible = activePath ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
-  const knownProjects = projects.all.map((p) => p.path)
 
   return (
     <div className="app">
@@ -45,10 +44,10 @@ export function App() {
           {selectedId && cockpit.detail ? (
             <ThreadView detail={cockpit.detail} streaming={cockpit.streaming} onError={cockpit.reportError} />
           ) : (
-            <NewThread
+            <NewConversation
               key={`new:${activePath ?? ''}`}
-              defaultProject={activePath}
-              knownProjects={knownProjects}
+              project={projects.active}
+              onOpenProject={projects.open}
               onError={cockpit.reportError}
               onCreated={(meta) => {
                 cockpit.refresh()

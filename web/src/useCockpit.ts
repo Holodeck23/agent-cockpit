@@ -49,7 +49,13 @@ export function useCockpit(): Cockpit {
       setDetail(undefined)
       return
     }
-    api.thread(selectedId).then(setDetail, (e: unknown) => setError(String(e)))
+    api.thread(selectedId).then(
+      (loaded) => {
+        setDetail(loaded)
+        setStreaming(loaded.streaming)
+      },
+      (e: unknown) => setError(String(e)),
+    )
   }, [selectedId])
 
   // One subscription for the life of the page. Re-subscribing on every change dropped

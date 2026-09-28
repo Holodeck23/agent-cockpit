@@ -1,13 +1,15 @@
 // Phase B gates, run against the PACKAGED app (npm run package first).
 //   tsx scripts/proof-b.ts b1   project tab bar, sub-nav, Projects menu, dark mode
 //   tsx scripts/proof-b.ts b2   conversation list: filters + counts, search, unread, show completed
+//   tsx scripts/proof-b.ts b3   thread + composer: empty state, steps, approvals, picker, stop, dark
 // Real Haiku threads supply the live states: two working, one waiting on an approval.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR } from './lib/launch-app.ts'
+import { apiPost, chooseAgent, headStatus, messageBox } from './lib/ui.ts'
 
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
@@ -21,17 +23,6 @@ function folder(name: string): string {
   mkdirSync(dir)
   writeFileSync(join(dir, 'README.md'), `# ${name}\n`)
   return dir
-}
-
-/** Same-origin API calls from inside the page, so they pass the loopback guard like the UI does. */
-async function apiPost(page: Page, path: string, body: unknown): Promise<unknown> {
-  return page.evaluate(
-    async ([p, b]) => {
-      const res = await fetch(p as string, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })
-      return res.json() as Promise<unknown>
-    },
-    [path, body] as const,
-  )
 }
 
 async function startThread(page: Page, projectPath: string, text: string): Promise<void> {
@@ -189,8 +180,80 @@ async function b2(): Promise<void> {
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B2-empty.png') })
 }
 
+async function b3(): Promise<void> {
+  const READ = 'Use the Read tool on README.md, then reply with only its first line.'
+  await startThread(page, bakery, READ)
+  await waitUntil(page, 'the Read thread to finish', (all) => all.some((t) => t.meta.title.startsWith('Use the Read tool') && t.status === 'done'))
+
+  // Empty state in Sprout (the active project at setup).
+  check('empty state asks what you are working on', await page.getByRole('heading', { name: 'What are you working on?' }).isVisible())
+  check('three suggestion cards', (await page.locator('.suggestion').count()) === 3)
+  check('composer placeholder for a new conversation', (await messageBox(page).getAttribute('placeholder')) === 'Describe what you want…')
+  await chooseAgent(page, { model: 'haiku' })
+  check('agent picker shows agent, model and effort', (await page.locator('.picker-button').textContent()) === 'Claude CodeHaiku · Default effort')
+  await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-empty.png') })
+
+  // A finished turn with a tool call, in Bakery.
+  await page.getByRole('tab', { name: /Bakery website/ }).click()
+  await page.locator('.card').filter({ hasText: 'Read tool' }).click()
+  const step = (await page.locator('.step').first().textContent()) ?? ''
+  check('tool call collapses into a timed activity line', /^Reading README\.md· \d:\d\d$/.test(step), step)
+  const authors = await page.locator('.author-name').allTextContents()
+  check('author rows for you and the agent', authors.includes('You') && authors.includes('Claude Code'), authors.join(', '))
+  check('header status reads Done', (await headStatus(page).textContent()) === 'Done')
+  check('header shows the transcript path', /…\/threads\/[0-9a-f]{8}\/messages\.md/.test((await page.locator('.transcript-link').textContent()) ?? ''))
+
+  // A running turn.
+  await page.locator('.card').filter({ hasText: 'essay' }).click()
+  await page.getByRole('heading', { level: 1, name: /3000 word essay/ }).waitFor()
+  const working = await headStatus(page).filter({ hasText: 'Working' }).waitFor({ timeout: 10_000 }).then(() => true, () => false)
+  check('header status reads Working', working, (await headStatus(page).textContent()) ?? '')
+  const essayId = (await threads(page)).find((t) => t.meta.title.includes('3000 word essay') && t.meta.projectPath === bakery)?.meta.id ?? ''
+  await page.locator('.bubble.streaming').waitFor({ timeout: 30_000 })
+  const shown = (await page.locator('.bubble.streaming').textContent()) ?? ''
+  const serverStart = await page.evaluate(async (id) => ((await (await fetch(`/api/threads/${id}/events`)).json()) as { data: { streaming: string } }).data.streaming.slice(0, 40), essayId)
+  check('opening mid-turn shows the whole message so far, not a fragment', shown.length > 40 && shown.startsWith(serverStart), shown.slice(0, 40))
+  check('follow-up placeholder while running', (await messageBox(page).getAttribute('placeholder')) === 'Add to the current turn…')
+  await page.getByRole('button', { name: 'Agent settings' }).click()
+  const locked = page.getByRole('dialog', { name: 'Agent settings' })
+  check('agent switch is locked mid-turn', (await locked.getByRole('button', { name: 'Switch' }).isDisabled()) && (await locked.textContent())?.includes('Stop the current turn before switching.') === true)
+  await page.keyboard.press('Escape')
+  await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-working.png') })
+
+  // An approval, answered inline.
+  await page.locator('.card').filter({ hasText: 'Use the Write tool' }).click()
+  const card = page.locator('.approval.open')
+  await card.waitFor({ timeout: 15_000 })
+  check('approval card names agent and tool', ((await card.locator('.approval-title').textContent()) ?? '') === 'Claude Code wants to use Write')
+  await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-approval.png') })
+  await card.getByRole('button', { name: 'Allow', exact: true }).click()
+  await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 90_000 })
+  const notes = join(bakery, 'notes.txt')
+  check('allowing it let the agent write the file', existsSync(notes) && readFileSync(notes, 'utf8').includes('hello'))
+  check('answered approval folds into a note', (await page.locator('.note', { hasText: 'Allowed: Write' }).count()) === 1)
+
+  // Dark mode on the running turn.
+  const themeButton = page.locator('.subnav-tools .icon-button')
+  while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
+  await page.locator('.card').filter({ hasText: 'essay' }).click()
+  await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-dark.png') })
+  await themeButton.click()
+
+  // Stop.
+  await page.getByRole('button', { name: 'Stop' }).click()
+  await page.locator('.note', { hasText: 'Stopped' }).waitFor({ timeout: 30_000 })
+  check('Stop ends the turn with a Stopped note', (await headStatus(page).textContent()) !== 'Working')
+
+  // A suggestion starts a conversation in one click.
+  await page.getByRole('tab', { name: /Sprout/ }).click()
+  await page.locator('.suggestion').first().click()
+  await page.getByRole('heading', { level: 1, name: 'Explain how this project is put together' }).waitFor({ timeout: 15_000 })
+  check('suggestion started a conversation in Sprout', (await page.locator('.card').count()) === 1)
+}
+
 if (mode === 'b1') await b1()
 else if (mode === 'b2') await b2()
+else if (mode === 'b3') await b3()
 else throw new Error(`unknown mode ${mode}`)
 
 await app.close()

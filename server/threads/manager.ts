@@ -59,6 +59,8 @@ interface Live {
   readonly session: AgentSession
   turnRunning: boolean
   stopRequested: boolean
+  /** Text streamed so far for the message in progress, so a late viewer sees all of it. */
+  partial: string
   idleTimer?: NodeJS.Timeout
 }
 
@@ -72,6 +74,8 @@ export interface ThreadManager {
   switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
   summaries(): ThreadSummary[]
   status(threadId: string): ThreadStatus
+  /** The agent message currently being streamed, or '' between messages. */
+  partialText(threadId: string): string
   subscribe(listener: UpdateListener): () => void
   /** Stops every live agent session; resolves once all have exited. */
   shutdown(): Promise<void>
@@ -96,6 +100,8 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
     // Deltas are for live rendering only; the final assistant_text is persisted.
     if (event.kind !== 'text_delta') store.append(threadId, event)
+    if (entry && event.kind === 'text_delta') entry.partial += event.text
+    if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
     // Codex assigns its own thread id; remember it so the next process resumes it.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
@@ -122,7 +128,7 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       },
       (event) => record(meta.id, event),
     )
-    const entry: Live = { session, turnRunning: false, stopRequested: false }
+    const entry: Live = { session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     if (!meta.sessionStarted) store.update(meta.id, { sessionStarted: true, handoff: undefined })
     return entry
@@ -208,6 +214,7 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       return all.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
     },
     status: statusOf,
+    partialText: (threadId) => live.get(threadId)?.partial ?? '',
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)

@@ -123,7 +123,15 @@ export function createApiHandler(
       const action = parts[3]
 
       if (method === 'GET' && action === 'events') {
-        sendJson(res, 200, { data: { meta: store.get(threadId), status: manager.status(threadId), events: store.events(threadId) } })
+        sendJson(res, 200, {
+          data: {
+            meta: store.get(threadId),
+            status: manager.status(threadId),
+            events: store.events(threadId),
+            transcriptPath: store.transcriptPath(threadId),
+            streaming: manager.partialText(threadId),
+          },
+        })
       } else if (method === 'POST' && action === 'messages') {
         manager.send(threadId, parseBody(messageBody, await readJson(req)).text)
         sendJson(res, 202, { data: { status: manager.status(threadId) } })

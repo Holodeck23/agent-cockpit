@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { resolveAppPath } from './shell-path.ts'
 
@@ -35,7 +36,7 @@ if (!app.requestSingleInstanceLock()) {
 async function boot(): Promise<void> {
   running = await startServer({ port: 0, webDist: join(app.getAppPath(), 'dist') })
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
-  registerIpc(running.url)
+  registerIpc(running.url, join(running.store.root, 'threads'))
   mainWindow = createWindow(running.url)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
@@ -85,11 +86,18 @@ function createWindow(url: string): BrowserWindow {
   return win
 }
 
-function registerIpc(url: string): void {
+function registerIpc(url: string, threadsDir: string): void {
   const origin = new URL(url).origin
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
+  })
+  ipcMain.on('cockpit:reveal-transcript', (event, path: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || typeof path !== 'string') return
+    const target = resolve(path)
+    if (target.startsWith(`${resolve(threadsDir)}${sep}`) && target.endsWith(`${sep}messages.md`) && existsSync(target)) {
+      shell.showItemInFolder(target)
+    }
   })
   ipcMain.handle('cockpit:pick-folder', async (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined

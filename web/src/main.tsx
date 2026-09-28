@@ -5,6 +5,7 @@ import { native } from './native.ts'
 import './styles/tokens.css'
 import './styles/chrome.css'
 import './styles/list.css'
+import './styles/thread.css'
 import './styles.css'
 
 const root = document.getElementById('root')

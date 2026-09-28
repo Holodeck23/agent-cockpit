@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { checker, LAUNCHD_PATH, launchPackagedApp, PROOF_DIR as OUT } from './lib/launch-app.ts'
+import { chooseAgent, headStatus, openProject, startConversation } from './lib/ui.ts'
 
 mkdirSync(OUT, { recursive: true })
 const claudeDir = dirname(execFileSync('which', ['claude'], { encoding: 'utf8' }).trim())
@@ -37,25 +38,18 @@ const nodeLeak = await page.evaluate(() => typeof (window as { require?: unknown
 check('no Node in the page', nodeLeak === 'undefined')
 
 const prompt = 'List three prime numbers, one per line.'
-await page.getByRole('button', { name: 'New conversation' }).click()
-await page.getByLabel('Project folder').fill(projectDir)
-await page.getByLabel('Model').fill('haiku')
-const box = page.getByPlaceholder('What should the agent do?')
-await box.fill(prompt)
-await box.press('Enter')
-const headChip = page.locator('.thread-head .chip')
-await headChip.filter({ hasText: /Done|Error/ }).waitFor({ timeout: 180_000 })
-const status = (await headChip.textContent()) ?? ''
+await openProject(page, projectDir)
+await chooseAgent(page, { model: 'haiku' })
+await startConversation(page, prompt)
+await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 180_000 })
+const status = (await headStatus(page).textContent()) ?? ''
 const reply = (await page.locator('.bubble.agent').allTextContents()).join(' ')
 check('Haiku thread reached Done', status === 'Done', status)
 check('agent replied with primes', /\b(2|3|5|7)\b/.test(reply), reply.replace(/\s+/g, ' ').slice(0, 60))
 await page.screenshot({ path: join(OUT, 'phase-A-app.png') })
 
 // Quit while a second agent is mid-turn: the case that would orphan a process.
-await page.getByRole('button', { name: 'New conversation' }).click()
-const longBox = page.getByPlaceholder('What should the agent do?')
-await longBox.fill('Write a 1500 word essay on the history of coffee. Plain text, no tools.')
-await longBox.press('Enter')
+await startConversation(page, 'Write a 1500 word essay on the history of coffee. Plain text, no tools.')
 await page.locator('.bubble.streaming').waitFor({ timeout: 60_000 })
 
 const agentPids = execFileSync('pgrep', ['-P', String(appPid)], { encoding: 'utf8' })

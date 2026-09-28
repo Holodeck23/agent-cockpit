@@ -31,6 +31,16 @@ Cockpit.app window or browser (React) ──SSE / JSON──► local server (No
 | `npm run package` | build `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.0-arm64.dmg` (ad-hoc signed, personal use) |
 | `npm run proof:app` | Phase A gate: drives the packaged app with a bare launchd PATH, runs a Haiku thread to Done, quits mid-turn, checks no agent survives |
 | `npm run icon` | regenerate `build/icon.icns` from `build/icon.svg` |
+| `tsx scripts/proof-b.ts b1\|b2\|b3` | Phase B gates on the packaged app: chrome, conversation list, thread + composer (real Haiku threads, screenshots in `docs/proof/`) |
+
+## Interface
+
+The layout and visual language follow Enjoy (measured tokens in `web/src/styles/tokens.css`); the name, mark, illustrations, copy and code are our own.
+
+- **Tab bar:** pinned projects (`projects.json`), each with its live working count and a needs-you badge; "Projects ▾" opens a folder or a recent project.
+- **Conversation list:** search, All / Needs you / Working / Unread with live counts, Show completed. "Unread" is tracked per window in localStorage.
+- **Thread:** messages under author rows, each tool call collapsed into one timed activity line, approvals as inline cards, Stop / Complete, and a ⋯ menu (show transcript in Finder, usage). Opening a thread mid-turn shows everything streamed so far.
+- **Composer:** the agent picker (agent, model, effort, permissions) starts new conversations and, on an existing one, switches agent with the transcript handed over. Files and Workflows are placeholders until Phase 5.
 
 ## Desktop app
 
