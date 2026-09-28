@@ -1,91 +1,99 @@
-# Agent Cockpit
+# Cockpit
 
-A local cockpit for the coding-agent CLIs you already pay for. It runs several Claude Code and Codex conversations in parallel, shows which ones need you, lets you answer approvals from the browser, and keeps every thread on your own disk.
+**A desktop cockpit for the coding agents you already pay for.** Run several Claude Code and Codex conversations side by side, see at a glance which ones are working and which ones need you, answer their approvals inline, and switch a conversation from one agent to the other when a usage limit hits. Agents can start your dev server, read its logs and open the preview on their own.
 
-It does no AI inference of its own. It drives the official CLIs headless, and usage counts against your own subscriptions.
+Cockpit does no AI inference itself. It drives the official `claude` and `codex` CLIs headless, so usage counts against your own subscriptions, and every conversation stays on your own disk as plain files.
+
+![A Cockpit conversation: the agent started the dev server, read its log and opened the preview; the running process shows under the title](docs/proof/phase-4-thread.png)
+
+## Features
+
+- **Parallel conversations, grouped by project.** A tab per pinned project, each showing how many agents are working and how many need you. The list filters by All, Needs you, Working and Unread, with live counts and search.
+- **Approvals where you are.** When an agent asks to run a command or edit a file, the request appears as a card in the conversation: Allow, Allow for this session, or Deny.
+- **Two agents, one thread.** Pick Claude Code or Codex, the model, effort and permission mode per conversation. Switch agent mid-thread and the transcript is handed over to the new one.
+- **Dev servers the agent can see.** Every agent session gets a built-in `cockpit` MCP server. The agent starts long-running commands through it, reads their output, and opens the local preview for you. Running processes show under the conversation title, with the URL and a Stop button.
+- **Files first.** Each conversation is `meta.json`, `events.jsonl` and a readable `messages.md` under `~/.agent-cockpit/`. Nothing leaves your machine except what the CLIs themselves send.
+- **A real Mac app.** Native window, runs from Finder or the Dock, and quitting stops every agent and dev server it started.
+
+## Quick start
+
+Requirements: macOS on Apple silicon, Node 22+, and the CLIs you want to use, signed in: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) and/or [Codex](https://github.com/openai/codex) (`codex`).
+
+```bash
+git clone https://github.com/Holodeck23/agent-cockpit.git
+cd agent-cockpit
+npm install
+node node_modules/electron/install.js   # Electron's binary, if your npm blocks install scripts
+
+npm run app        # build and open the desktop app from the repo
+```
+
+To build and install the app:
+
+```bash
+npm run package
+cp -R release/mac-arm64/Cockpit.app /Applications/
+```
+
+The build is ad-hoc signed, not notarized, so the first launch may need right-click, then Open.
+
+Prefer a browser? `npm start` serves the same UI at http://127.0.0.1:4317.
 
 ## How it works
 
 ```
-Cockpit.app window or browser (React) ──SSE / JSON──► local server (Node, 127.0.0.1)
-                                   ├─ claude -p  (stream-json in/out, approvals over stdio)
-                                   ├─ codex app-server   (JSON-RPC over stdio)
-                                   └─ ~/.agent-cockpit/threads/<id>/{meta.json, events.jsonl, messages.md}
+Cockpit window (React) ──HTTP + SSE──►  local server (Node, 127.0.0.1, random port)
+                                         ├─ claude -p          stream-json over stdio, approvals over stdio
+                                         ├─ codex app-server   JSON-RPC over stdio
+                                         ├─ process runner     dev servers, one process group each
+                                         └─ ~/.agent-cockpit/  threads as plain files
+         each agent session ──stdio──►  cockpit MCP server ──HTTP + session token──► local server
 ```
 
-- **Adapters** (`server/agents/<agent>/`) turn each CLI's wire protocol into one `NormalizedEvent` union (`server/agents/types.ts`).
-- **Flags are allowlisted.** `flags.ts` builds argv from a zod schema, so the UI can never pass raw arguments.
-- **Hooks are off by default** in cockpit threads (`disableAllHooks`), so SessionStart instructions don't hijack every spawned session. Threads can opt in.
-- **Thread data lives in `~/.agent-cockpit/`**, outside this repo.
+- **Adapters** turn each CLI's wire protocol into one event model, so threads, storage and UI never care which agent is talking.
+- **Nothing raw reaches a command line.** Every flag passed to a CLI is built from a schema allowlist.
+- **The server only answers its own page.** Loopback host, matching origin and JSON-only writes, so a website open in your browser can't drive your agents.
+- **The desktop app is the same server** in Electron's main process, with a sandboxed page and no Node in the renderer.
 
-## Commands
+More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The CLI protocol details that took testing to find are in [docs/PROTOCOLS.md](docs/PROTOCOLS.md), and the build history, phase by phase with what and why, is in [docs/BUILD-NOTES.md](docs/BUILD-NOTES.md).
+
+## The cockpit MCP
+
+| Tool | What it does | Asks first |
+|---|---|---|
+| `start_process` | Runs a command such as `npm run dev` in the project and waits for its URL or first output | Yes |
+| `stop_process` | Stops it and everything it spawned | Yes |
+| `list_processes` | The project's processes, status and URL | No |
+| `read_process_output` | The log, incrementally | No |
+| `open_preview` | Opens a local page (localhost only) for you | No |
+
+Each session's tools are scoped to that session's project by a token that ends with the session. The token is passed through the agent's environment, never on a command line.
+
+## Development
 
 | Command | What it does |
 |---|---|
-| `npm run verify` | typecheck, unit tests, web build |
-| `npm run smoke:claude` | real two-turn Claude run on Haiku; the second turn resumes the first by session id |
-| `tsx scripts/proof-ui.ts <mode> [dir]` (modes: parallel, approvals, interrupt, reload, switch) | drives the real UI in headless Chrome and saves screenshots to `docs/proof/` |
-| `npm run smoke:codex` | same resume check against `codex app-server` (default model `gpt-5.6-luna`, override with `COCKPIT_CODEX_MODEL`) |
-| `npm start` | serve the cockpit on http://127.0.0.1:4317 |
-| `npm run app` | build, then open the desktop app from the repo (DevTools in the View menu) |
-| `npm run package` | build `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.0-arm64.dmg` (ad-hoc signed, personal use) |
-| `npm run proof:app` | Phase A gate: drives the packaged app with a bare launchd PATH, runs a Haiku thread to Done, quits mid-turn, checks no agent survives |
-| `npm run icon` | regenerate `build/icon.icns` from `build/icon.svg` |
-| `npm run smoke:mcp [claude\|codex]` | cockpit MCP against a real agent outside the app: it must start the dev server, read its log and open the preview on its own |
-| `npm run proof:mcp` | Phase 4 gate on the packaged app: same task on Haiku, plus the process chip, Stop, restart, and quit leaving no dev server behind |
-| `tsx scripts/proof-b.ts b1\|b2\|b3` | Phase B gates on the packaged app: chrome, conversation list, thread + composer (real Haiku threads, screenshots in `docs/proof/`) |
+| `npm run verify` | Typecheck, unit tests, web and Electron builds |
+| `npm start` | Serve the UI at http://127.0.0.1:4317 |
+| `npm run app` | Build and open the desktop app from the repo |
+| `npm run package` | Build `release/mac-arm64/Cockpit.app` and a `.dmg` |
+| `npm run smoke:claude` / `smoke:codex` | Real two-turn run that resumes across processes |
+| `npm run smoke:mcp [claude\|codex]` | Real agent, dev-server task: must use the cockpit tools on its own |
+| `npm run proof:app` | Packaged app from a bare Finder PATH: a Haiku thread to Done, quit mid-turn, no agent left running |
+| `tsx scripts/proof-b.ts b1\|b2\|b3` | Packaged app UI gates with screenshots |
+| `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
 
-## Interface
+Proofs and smokes use real agents on small models (Claude Haiku, a light Codex model), so they cost a few cents each. Screenshots land in [docs/proof/](docs/proof/).
 
-The layout and visual language follow Enjoy (measured tokens in `web/src/styles/tokens.css`); the name, mark, illustrations, copy and code are our own.
+## Status and roadmap
 
-- **Tab bar:** pinned projects (`projects.json`), each with its live working count and a needs-you badge; "Projects ▾" opens a folder or a recent project.
-- **Conversation list:** search, All / Needs you / Working / Unread with live counts, Show completed. "Unread" is tracked per window in localStorage.
-- **Thread:** messages under author rows, each tool call collapsed into one timed activity line, approvals as inline cards, Stop / Complete, and a ⋯ menu (show transcript in Finder, usage). Opening a thread mid-turn shows everything streamed so far.
-- **Composer:** the agent picker (agent, model, effort, permissions) starts new conversations and, on an existing one, switches agent with the transcript handed over. Files and Workflows are placeholders until Phase 5.
+Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, and the cockpit MCP with the process runner.
 
-## Desktop app
+Next:
+1. **Workflows and schedules.** Saved, repeatable jobs per project, chained with `@workflow`, run on a schedule, landing as conversations you didn't start. Includes a `save_workflow` MCP tool.
+2. **Phone.** Check in and answer approvals from your phone over a private network.
+3. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
 
-`Cockpit.app` is the same server in Electron's main process (`electron/main.ts` → `server/start.ts`), on a random 127.0.0.1 port, with a native window around the page. Nothing about the API changes: the page still talks HTTP/SSE through the loopback guard.
+## Credits
 
-- **Preload** exposes only `window.cockpit.{platform, pickFolder}`. The page runs with `contextIsolation`, `sandbox` and no Node; other URLs open in the default browser; web permission requests are denied.
-- **PATH:** a Finder/Dock launch gets launchd's bare PATH, so at startup the app asks the login shell (`$SHELL -ilc`) for its PATH and merges it in (`electron/shell-path.ts`), with Homebrew/npm fallbacks if the shell can't answer.
-- **Quitting** stops every agent before exit: stdin EOF, SIGTERM after 1.5s (an agent mid-turn), SIGKILL after 3s (`server/agents/stop.ts`). Closing the window keeps the app and its agents running, per macOS convention.
-- Install: `cp -R release/mac-arm64/Cockpit.app /Applications/`. It's ad-hoc signed, not notarized, so the first launch may need right-click → Open.
-
-## Protocol notes (verified against claude 2.1.283)
-
-- Approvals need **both** `--permission-prompts host` and `--permission-prompt-tool stdio`. Without the second flag, every prompt is silently denied.
-- A permission request arrives as `control_request{request:{subtype:"can_use_tool", tool_name, input, permission_suggestions}}`. The answer is `control_response{response:{subtype:"success", request_id, response:{behavior, updatedInput|message}}}`.
-- Hook settings **merge** across sources: `--settings '{"hooks":{"SessionStart":[]}}'` does not silence existing SessionStart hooks (13 still fired in testing). Only `disableAllHooks` turns them off, which is why cockpit threads default to it.
-- Approving must echo the original tool input as `updatedInput`; an empty object replaces it.
-- An interrupt ends the turn with a failed `result`; the manager records it as `stopped` so it isn't shown as an error.
-- `rate_limit_event` carries the five-hour limit status and `resetsAt`, which the usage badge uses.
-
-## Codex notes (verified against codex-cli 0.147)
-
-- Protocol: `initialize` → `initialized` → `thread/start` (or `thread/resume {threadId}`) → `turn/start`. No `jsonrpc` field. Codex assigns its own thread id, and the manager adopts it from the `session` event.
-- Approvals arrive as server requests (`item/commandExecution/requestApproval`, `item/fileChange/requestApproval`) and are answered with `{decision: accept | acceptForSession | decline}`.
-- Cockpit permission modes map to approval policy + sandbox: manual/acceptEdits → on-request + workspace-write, plan → read-only, auto/dontAsk → never + workspace-write, bypassPermissions → never + danger-full-access.
-- If `~/.codex/config.toml` pins a model newer than the installed CLI supports, every turn fails with a 400 error. Set a model on the thread, or upgrade the CLI.
-
-## Cockpit MCP and processes
-
-Every agent session gets a small MCP server named `cockpit` (`server/mcp/`), so the agent can run things that keep running and show them to you:
-
-| Tool | Does | Approval |
-|---|---|---|
-| `start_process` | runs a command (e.g. `npm run dev`) in the project, in its own process group; waits for its URL or first output | asks, like Bash |
-| `stop_process` | stops it and everything it forked | asks |
-| `list_processes` | this project's processes, status, URL | none |
-| `read_process_output` | the log, incrementally with `since` | none |
-| `open_preview` | opens a local page (localhost only) in your browser; becomes the preview pane in Phase 7 | none |
-
-- The MCP process is the app's own binary in Node mode (`ELECTRON_RUN_AS_NODE=1`, `dist-electron/mcp.cjs` inside app.asar), so it needs no Node on PATH.
-- It calls back to `/api/mcp` with a per-session token that pins it to its thread's project and dies with the session. The token lives in the agent's environment, never argv: Claude's stdio MCP servers inherit it, Codex forwards it through `mcp_servers.cockpit.env_vars`.
-- Processes are listed under the thread title (`1 process · :5173`), with the URL and a Stop button. Quitting the app stops them all (group SIGTERM, SIGKILL after 3s).
-- Codex asks before MCP tool calls through an MCP elicitation; the cockpit shows it as a normal approval card.
-
-## Switching agents
-
-`POST /api/threads/:id/agent` closes the current session, appends an `agent_switch` event, and gives the thread a fresh session id. The next message starts a new session, seeded with the transcript so far (`server/threads/handoff.ts`): through `--append-system-prompt` for Claude and `developerInstructions` for Codex. Provider-side history isn't transferred; the files on disk and the transcript are the handoff.
+The layout and interaction model are inspired by [Enjoy](https://enjoy.dev), a commercial desktop app for coding agents. Cockpit's name, mark, illustrations, copy and code are its own. No code or assets were taken from Enjoy.
