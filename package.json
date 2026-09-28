@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "smoke:claude": "tsx scripts/smoke-claude.ts",
-    "verify": "npm run typecheck && npm test && npm run build"
+    "verify": "npm run typecheck && npm test && npm run build",
+    "smoke:codex": "tsx scripts/smoke-codex.ts"
   },
   "author": "",
   "license": "UNLICENSED",

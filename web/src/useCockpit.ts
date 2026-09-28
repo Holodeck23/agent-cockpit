@@ -56,6 +56,13 @@ export function useCockpit(): Cockpit {
           setStreaming((s) => s + delta)
           return
         }
+        if (update.event.kind === 'agent_switch') {
+          // Settings and session changed server-side: reload the thread and the list.
+          const id = update.threadId
+          api.thread(id).then(setDetail, (e: unknown) => setError(String(e)))
+          refresh()
+          return
+        }
         if (update.event.kind === 'assistant_text' || update.event.kind === 'result') setStreaming('')
         const stored: StoredEvent = { ts: new Date().toISOString(), event: update.event }
         setDetail((d) => (d ? { ...d, status: update.status, events: [...d.events, stored] } : d))

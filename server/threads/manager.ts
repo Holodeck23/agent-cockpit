@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { launchClaude } from '../agents/claude/launch.ts'
+import { launchCodex } from '../agents/codex/launch.ts'
+import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent } from '../agents/types.ts'
 import { deriveStatus, previewOf } from './status.ts'
 import type { ThreadStore } from './store.ts'
@@ -10,6 +12,8 @@ export interface LaunchRequest {
   readonly settings: ThreadSettings
   readonly sessionId?: string
   readonly resume?: string
+  /** Context for a fresh session after an agent switch. */
+  readonly seed?: string
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
 
@@ -33,12 +37,22 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         useHooks: req.settings.useHooks,
         sessionId: req.sessionId,
         resume: req.resume,
+        appendSystemPrompt: req.seed,
       },
       onEvent,
     ),
-  codex: () => {
-    throw new Error('Codex adapter arrives in phase 3')
-  },
+  codex: (req, onEvent) =>
+    launchCodex(
+      {
+        cwd: req.cwd,
+        model: req.settings.model,
+        effort: req.settings.effort,
+        permissionMode: req.settings.permissionMode,
+        resume: req.resume,
+        developerInstructions: req.seed,
+      },
+      onEvent,
+    ),
 }
 
 interface Live {
@@ -54,6 +68,8 @@ export interface ThreadManager {
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
+  /** Hand the thread to another agent/model; the transcript goes with it. */
+  switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
   summaries(): ThreadSummary[]
   status(threadId: string): ThreadStatus
   subscribe(listener: UpdateListener): () => void
@@ -79,6 +95,11 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
     // Deltas are for live rendering only; the final assistant_text is persisted.
     if (event.kind !== 'text_delta') store.append(threadId, event)
+    // Codex assigns its own thread id; remember it so the next process resumes it.
+    if (event.kind === 'session') {
+      const meta = store.get(threadId)
+      if (meta && meta.sessionId !== event.sessionId) store.update(threadId, { sessionId: event.sessionId })
+    }
     if (entry && event.kind === 'result') {
       entry.turnRunning = false
       entry.stopRequested = false
@@ -96,12 +117,13 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
         cwd: meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),
+        ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
       },
       (event) => record(meta.id, event),
     )
     const entry: Live = { session, turnRunning: false, stopRequested: false }
     live.set(meta.id, entry)
-    if (!meta.sessionStarted) store.update(meta.id, { sessionStarted: true })
+    if (!meta.sessionStarted) store.update(meta.id, { sessionStarted: true, handoff: undefined })
     return entry
   }
 
@@ -158,6 +180,18 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
     setCompleted(threadId, completed) {
       requireMeta(threadId)
       return store.update(threadId, { completed })
+    },
+    switchAgent(threadId, settings) {
+      const meta = requireMeta(threadId)
+      const entry = live.get(threadId)
+      if (entry?.turnRunning) throw new Error('Stop the current turn before switching agents')
+      entry?.session.close()
+      live.delete(threadId)
+      const handoff = buildHandoff(store.events(threadId), meta.projectPath)
+      store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
+      const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
+      broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
+      return next
     },
     summaries() {
       return store.list().map((meta) => {

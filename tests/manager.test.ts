@@ -102,3 +102,33 @@ describe('thread manager', () => {
     expect(seen).toContain('result:done')
   })
 })
+
+describe('switching agents', () => {
+  it('starts a fresh codex session seeded with the transcript so far', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp/p', settings, text: 'make a.txt' })
+    agent.emit({ kind: 'tool_use', id: 't1', name: 'Write', input: { file_path: '/tmp/p/a.txt' } })
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'Created a.txt' })
+    agent.emit({ kind: 'result', ok: true })
+    const switched = manager.switchAgent(meta.id, { ...settings, agent: 'codex' })
+    expect(switched.sessionId).not.toBe(meta.sessionId)
+    manager.send(meta.id, 'what was done?')
+    const request = agent.requests.at(-1)
+    expect(request?.resume).toBeUndefined()
+    expect(request?.seed).toContain('Created a.txt')
+    expect(request?.seed).toContain('Write: /tmp/p/a.txt')
+  })
+
+  it('refuses to switch mid-turn', () => {
+    const { manager, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'busy' })
+    expect(() => manager.switchAgent(meta.id, { ...settings, agent: 'codex' })).toThrow(/Stop the current turn/)
+  })
+
+  it('adopts the id the agent reports for its session', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'x' })
+    agent.emit({ kind: 'session', sessionId: 'codex-thread-1' })
+    expect(store.get(meta.id)?.sessionId).toBe('codex-thread-1')
+  })
+})

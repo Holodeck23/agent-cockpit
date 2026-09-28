@@ -18,6 +18,7 @@ const createThreadBody = z.object({
 const messageBody = z.object({ text: z.string().min(1).max(200_000) })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 const completedBody = z.object({ completed: z.boolean() })
+const switchBody = z.object({ settings: threadSettingsSchema })
 
 class HttpError extends Error {
   constructor(
@@ -113,6 +114,8 @@ export function createApiHandler(manager: ThreadManager, store: ThreadStore, all
         sendJson(res, 202, { data: {} })
       } else if (method === 'POST' && action === 'completed') {
         sendJson(res, 200, { data: manager.setCompleted(threadId, parseBody(completedBody, await readJson(req)).completed) })
+      } else if (method === 'POST' && action === 'agent') {
+        sendJson(res, 200, { data: manager.switchAgent(threadId, parseBody(switchBody, await readJson(req)).settings) })
       } else {
         throw new HttpError(404, 'Not found')
       }

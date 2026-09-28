@@ -30,6 +30,7 @@ export type NormalizedEvent =
   | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior }
   | { kind: 'usage'; limitType: string; status: string; resetsAt?: number }
   | { kind: 'result'; ok: boolean; stopped?: boolean; text?: string; costUsd?: number; durationMs?: number }
+  | { kind: 'agent_switch'; from: AgentId; to: AgentId }
   | { kind: 'exit'; code: number | null }
   | { kind: 'error'; message: string }
 

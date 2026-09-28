@@ -12,6 +12,7 @@ interface NewThreadProps {
 const LAST_SETUP_KEY = 'cockpit:last-setup'
 
 interface Setup {
+  agent: 'claude' | 'codex'
   projectPath: string
   model: string
   effort: string
@@ -19,7 +20,7 @@ interface Setup {
 }
 
 function loadSetup(fallbackProject: string): Setup {
-  const base: Setup = { projectPath: fallbackProject, model: '', effort: '', permissionMode: 'manual' }
+  const base: Setup = { agent: 'claude', projectPath: fallbackProject, model: '', effort: '', permissionMode: 'manual' }
   try {
     const raw = localStorage.getItem(LAST_SETUP_KEY)
     return raw ? { ...base, ...(JSON.parse(raw) as Partial<Setup>) } : base
@@ -47,7 +48,7 @@ export function NewThread({ knownProjects, onCreated, onError }: NewThreadProps)
         projectPath: setup.projectPath.trim(),
         text,
         settings: {
-          agent: 'claude',
+          agent: setup.agent,
           permissionMode: setup.permissionMode,
           ...(setup.model ? { model: setup.model } : {}),
           ...(setup.effort ? { effort: setup.effort as ThreadSettings['effort'] } : {}),
@@ -79,6 +80,13 @@ export function NewThread({ knownProjects, onCreated, onError }: NewThreadProps)
               <option key={p} value={p} />
             ))}
           </datalist>
+        </label>
+        <label>
+          Agent
+          <select value={setup.agent} onChange={(e) => change({ agent: e.target.value as Setup['agent'] })}>
+            <option>claude</option>
+            <option>codex</option>
+          </select>
         </label>
         <label>
           Model

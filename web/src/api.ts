@@ -30,6 +30,8 @@ export const api = {
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
   interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
+  switchAgent: (id: string, settings: Partial<ThreadSettings>) =>
+    request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
 }

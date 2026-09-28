@@ -63,6 +63,12 @@ export function EventItem({ stored, openApprovals, onApprove }: EventItemProps) 
     }
     case 'approval_resolved':
       return <div className="meta-line">{RESOLVED_LABEL[event.behavior]}</div>
+    case 'agent_switch':
+      return (
+        <div className="meta-line">
+          Handed over from {event.from} to {event.to}. The conversation so far goes with it.
+        </div>
+      )
     case 'result':
       return (
         <div className="meta-line">

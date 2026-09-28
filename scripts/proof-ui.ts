@@ -81,6 +81,26 @@ if (mode === 'parallel') {
   const status = await page.locator('.thread-head .chip').textContent()
   console.log(`stopped in ${((Date.now() - started) / 1000).toFixed(1)}s, status now: ${status}`)
   await page.screenshot({ path: `${OUT}phase-2-interrupt.png` })
+} else if (mode === 'switch') {
+  if (!projectDir) throw new Error('usage: proof-ui.ts switch <projectDir>')
+  await page.getByRole('button', { name: 'New thread' }).click()
+  await page.getByLabel('Permissions').selectOption('acceptEdits')
+  await startThread(page, projectDir, 'Use the Write tool to create notes.txt containing the word alpha. Reply briefly.')
+  const headChip = page.locator('.thread-head .chip')
+  await headChip.filter({ hasText: /Done|Error/ }).waitFor({ timeout: 120_000 })
+  await page.getByLabel('Agent', { exact: true }).selectOption('codex')
+  await page.getByLabel('Switch model').fill('gpt-5.6-luna')
+  await page.getByRole('button', { name: 'Switch' }).click()
+  await page.locator('.meta-line', { hasText: 'Handed over from claude to codex' }).waitFor({ timeout: 15_000 })
+  const box = page.getByPlaceholder('Reply…')
+  await box.fill('Without using any tools: which file did the previous agent create, and what word is in it? One line.')
+  await box.press('Enter')
+  await page.waitForTimeout(1500)
+  await headChip.filter({ hasText: /Done|Error/ }).waitFor({ timeout: 180_000 })
+  const answer = (await page.locator('.bubble.agent').allTextContents()).at(-1) ?? ''
+  console.log('codex answered:', answer)
+  console.log(/notes\.txt/i.test(answer) && /alpha/i.test(answer) ? 'SWITCH PASS' : 'SWITCH FAIL')
+  await page.screenshot({ path: `${OUT}phase-3-switch.png` })
 } else {
   throw new Error(`unknown mode ${mode}`)
 }

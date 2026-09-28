@@ -25,6 +25,8 @@ export interface ThreadMeta {
   /** True once the agent has seen at least one message under sessionId. */
   readonly sessionStarted: boolean
   readonly completed: boolean
+  /** Transcript handed to the next agent session after a switch; cleared once delivered. */
+  readonly handoff?: string
   readonly createdAt: string
   readonly updatedAt: string
 }

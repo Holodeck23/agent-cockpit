@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { openApprovals } from '../../../server/threads/status.ts'
 import { api, type ThreadDetail } from '../api.ts'
+import { AgentSwitcher } from './AgentSwitcher.tsx'
 import { Composer } from './Composer.tsx'
 import { EventItem } from './EventItem.tsx'
 import { StatusChip } from './StatusChip.tsx'
@@ -16,6 +17,7 @@ export function ThreadView({ detail, streaming, onError }: ThreadViewProps) {
   const running = status === 'working' || status === 'needs_input'
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const bottom = useRef<HTMLDivElement>(null)
+  const usage = [...events].reverse().find((e) => e.event.kind === 'usage')?.event
 
   useEffect(() => {
     void bottom.current?.scrollIntoView({ block: 'end' })
@@ -36,6 +38,12 @@ export function ThreadView({ detail, streaming, onError }: ThreadViewProps) {
           </p>
         </div>
         <div className="thread-actions">
+          {usage?.kind === 'usage' ? (
+            <span className="usage" title={usage.resetsAt ? `resets ${new Date(usage.resetsAt * 1000).toLocaleTimeString()}` : undefined}>
+              5h limit: {usage.status}
+            </span>
+          ) : null}
+          <AgentSwitcher key={`${meta.id}-${meta.settings.agent}-${meta.settings.model ?? ''}`} meta={meta} disabled={running} onError={onError} />
           <StatusChip status={status} />
           {running ? (
             <button type="button" onClick={() => guard(api.interrupt(meta.id))}>
