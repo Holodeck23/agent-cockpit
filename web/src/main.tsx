@@ -7,6 +7,7 @@ import './styles/chrome.css'
 import './styles/list.css'
 import './styles/thread.css'
 import './styles.css'
+import './styles/workflows.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root element')

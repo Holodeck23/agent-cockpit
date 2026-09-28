@@ -43,6 +43,7 @@ export function toolDetail(input: unknown): string {
 
 const COCKPIT_TOOLS: Record<string, string> = {
   start_process: 'Start a process',
+  save_workflow: 'Save a workflow',
   stop_process: 'Stop a process',
   list_processes: 'List processes',
   read_process_output: 'Read process output',
@@ -59,6 +60,8 @@ export function friendlyToolName(name: string): string {
 
 function describeCockpitTool(tool: string, input: unknown): string {
   switch (tool) {
+    case 'save_workflow':
+      return `Saving workflow ${field(input, 'name') ?? ''}`
     case 'start_process':
       return `Starting ${clip(field(input, 'command') ?? 'a process', 48)}`
     case 'stop_process':

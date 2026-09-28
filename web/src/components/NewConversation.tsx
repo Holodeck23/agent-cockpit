@@ -119,6 +119,7 @@ export function NewConversation({ project, onOpenProject, onCreated, onError }: 
         </div>
       </div>
       <Composer
+        projectPath={project?.path}
         draftKey={`new:${project?.path ?? ''}`}
         placeholder="Describe what you want…"
         disabled={!project || starting}

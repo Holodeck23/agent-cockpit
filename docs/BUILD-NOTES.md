@@ -128,3 +128,9 @@ The scheduler checks every five seconds while Cockpit is running. Intervals are 
 `save_workflow` is an approval-gated MCP tool. It creates an unscheduled workflow in the calling session's project with default manual permissions; agents cannot activate schedules through it. HTTP routes also support manual runs, editing, scheduling and archival. Every run creates a normal conversation with workflow provenance.
 
 Gate: `npm run verify` passed with 106 tests. Tests use fake agents for deterministic scheduling and exercise the actual HTTP/MCP routes. The Workflows UI follows in Phase 5b. Live Claude validation remains blocked by the previously recorded empty-reply failure; it was not retried.
+
+## Phase 5b: workflow editor and live desktop proof
+
+The Workflows tab now lists and edits project workflows with agent, model, permissions and repeat interval. Save pauses a schedule, Save and run opens its new conversation, and Save and enable schedule activates recurrence explicitly. Users can pause, archive, and open the latest run. The conversation composer inserts `@workflow:name` references from the current project.
+
+Gate: 106 unit tests and builds passed. `npm run proof:workflows` ran the packaged app with a synthetic project and real Codex on the configured small model: a manual workflow and a due scheduled workflow both completed with the expected response. Composer insertion, pause, archive and the 980px desktop layout passed. Light/dark screenshots are in `proof/phase-5-workflows*.png`. No Claude retry was made. Files is the remaining Phase 5 panel.

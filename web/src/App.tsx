@@ -1,6 +1,7 @@
+import { Workflows } from './components/Workflows.tsx'
 import { useState } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
-import { FolderIcon, WorkflowIcon } from './components/icons.tsx'
+import { FolderIcon } from './components/icons.tsx'
 import { NewConversation } from './components/NewConversation.tsx'
 import { Placeholder } from './components/Placeholder.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
@@ -69,9 +70,8 @@ export function App() {
           Browse this project's files and hand them to a conversation. Coming with workflows.
         </Placeholder>
       ) : (
-        <Placeholder icon={<WorkflowIcon />} title="Workflows">
-          Saved, repeatable jobs you can run or schedule for this project. On the way.
-        </Placeholder>
+        <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError}
+          onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />
       )}
     </div>
   )

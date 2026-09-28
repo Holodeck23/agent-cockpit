@@ -1,3 +1,4 @@
+import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo } from '../../server/processes/runner.ts'
 import type { Project, ProjectPatch } from '../../server/projects/store.ts'
@@ -28,6 +29,11 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 }
 
 export const api = {
+  listWorkflows: (projectPath: string) => request<Workflow[]>(`/api/workflows?projectPath=${encodeURIComponent(projectPath)}`),
+  saveWorkflow: (body: WorkflowInput, id?: string) => request<Workflow>(id ? `/api/workflows/${id}/save` : '/api/workflows', { method: 'POST', body }),
+  runWorkflow: (id: string) => request<ThreadMeta>(`/api/workflows/${id}/run`, { method: 'POST', body: {} }),
+  enableWorkflow: (id: string, enabled: boolean) => request<Workflow>(`/api/workflows/${id}/enabled`, { method: 'POST', body: { enabled } }),
+  archiveWorkflow: (id: string) => request<Workflow>(`/api/workflows/${id}/archive`, { method: 'POST', body: {} }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   openProject: (path: string, patch: ProjectPatch = {}) =>
@@ -62,3 +68,5 @@ export function subscribe({ onUpdate, onProcess, onOpen }: StreamHandlers): () =
   source.addEventListener('process', (message) => onProcess?.(JSON.parse(message.data as string) as ProcessInfo))
   return () => source.close()
 }
+
+export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'

@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { WorkflowMention } from './WorkflowMention.tsx'
 import { ArrowUpIcon, PlusIcon } from './icons.tsx'
 
 interface ComposerProps {
   /** Drafts are kept per conversation in localStorage and survive reloads. */
+  projectPath?: string
   draftKey: string
   placeholder: string
   disabled?: boolean
@@ -30,7 +32,7 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
-export function Composer({ draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
+export function Composer({ projectPath, draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const box = useRef<HTMLTextAreaElement>(null)
@@ -83,9 +85,10 @@ export function Composer({ draftKey, placeholder, disabled, picker, onSubmit }: 
             onChange={(e) => update(e.target.value)}
             onKeyDown={onKeyDown}
           />
-          <span className="chip-soon" title="Mention files and workflows: arrives with the Files and Workflows tabs">
-            @ Files and workflows
-          </span>
+          {projectPath ? <WorkflowMention key={projectPath} projectPath={projectPath} onInsert={(name) => {
+            update(`${text}${text && !/\s$/.test(text) ? ' ' : ''}@workflow:${name} `)
+            box.current?.focus()
+          }} /> : null}
         </div>
         <div className="composer-foot">
           <button type="button" className="icon-button" disabled title="Attachments arrive with the Files tab" aria-label="Attach">

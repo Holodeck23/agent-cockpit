@@ -1,0 +1,42 @@
+/* Uses Cockpit's existing surface, type and accent tokens in both themes. */
+.workflows-layout { display: grid; grid-template-columns: minmax(240px, 29%) minmax(0, 1fr); flex: 1; min-height: 0; overflow: hidden; }
+.workflow-list { border-right: 1px solid var(--border); padding: 24px 20px; overflow: auto; background: var(--canvas-app); }
+.workflow-list header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.workflow-list h1 { font-size: 25px; margin: 5px 0 0; }
+.workflow-kicker { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+.workflow-intro, .workflow-list footer { color: var(--muted); line-height: 1.6; font-size: 13px; }
+.workflow-list footer { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 20px; }
+.workflow-row { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: 9px; text-align: left; padding: 18px; margin: 12px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--body); }
+.workflow-row.selected { border-color: var(--blue); box-shadow: 0 0 0 2px var(--halo-soft); }
+.workflow-row strong { font-size: 15px; overflow-wrap: anywhere; }
+.workflow-row span { color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.workflow-row small { color: var(--success); font-weight: 600; }
+.workflow-row .workflow-error { color: var(--danger); }
+.workflow-editor { padding: 30px clamp(24px, 4vw, 64px); overflow: auto; background: var(--content); }
+.workflow-editor > header { margin-bottom: 28px; }
+.workflow-editor h1 { margin: 8px 0; font-size: 29px; overflow-wrap: anywhere; }
+.workflow-editor header p, .workflow-help { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.workflow-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workflow-editor label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; margin-top: 20px; }
+.workflow-editor input, .workflow-editor textarea { box-sizing: border-box; width: 100%; padding: 12px 14px; color: var(--strong); background: var(--panel); border: 1px solid var(--input-border); border-radius: 8px; font: inherit; line-height: 1.6; }
+.workflow-editor textarea { resize: vertical; min-height: 180px; }
+.workflow-editor small { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.workflow-editor code { color: var(--link); }
+.workflow-config { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 24px; margin-top: 8px; }
+.workflow-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.workflow-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.workflow-actions button, .workflow-run button { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--strong); font: inherit; font-size: 13px; }
+.workflow-actions .button-primary { background: var(--blue); color: white; border-color: var(--blue-shadow); }
+.workflow-run { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 32px; }
+.workflow-run > div:first-child { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.workflow-run span { color: var(--muted); }
+.workflow-empty { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 16px; padding: clamp(30px, 6vw, 80px); overflow: auto; }
+.workflow-empty > svg { width: 40px; height: 40px; color: var(--blue); }
+.workflow-empty h2 { font-size: 28px; max-width: 380px; }
+.workflow-empty p { max-width: 430px; color: var(--muted); line-height: 1.7; }
+.workflow-list-empty { display: flex; flex-direction: column; gap: 12px; padding: 32px 0; color: var(--muted); line-height: 1.6; font-size: 13px; }
+.workflow-list-empty svg { width: 28px; height: 28px; }
+.workflow-notice { padding: 14px 18px; border: 1px solid var(--needs-border); background: var(--needs-bg); border-radius: 8px; color: var(--needs-ink); font-size: 13px; overflow-wrap: anywhere; }
+.workflow-mention { align-self: flex-start; color: var(--muted); background: var(--field); border: 0; border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; max-width: 210px; }
+@media (max-width: 800px) { .workflows-layout { grid-template-columns: 210px minmax(0, 1fr); } .workflow-editor { padding: 24px; } .workflow-config { grid-template-columns: 1fr; gap: 12px; } }
+@media (max-width: 560px) { .workflows-layout { display: block; overflow: auto; } .workflow-list { border-right: 0; border-bottom: 1px solid var(--border); max-height: 280px; } .workflow-editor { overflow: visible; } }

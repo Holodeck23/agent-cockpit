@@ -113,6 +113,7 @@ export function ThreadView({ detail, streaming, processes, onError }: ThreadView
         />
       </div>
       <Composer
+        projectPath={meta.projectPath}
         draftKey={meta.id}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         onSubmit={(text) => api.send(meta.id, text).then(() => undefined)}
