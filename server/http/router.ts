@@ -10,6 +10,8 @@ import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
+import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
+import { expandWorkflows } from '../workflows/store.ts'
 import { openSse } from './sse.ts'
 
 const createThreadBody = z.object({
@@ -34,6 +36,7 @@ function assertDirectory(path: string): void {
 }
 
 export interface ApiDeps {
+  readonly workflows: WorkflowDeps
   readonly manager: ThreadManager
   readonly store: ThreadStore
   readonly projects: ProjectStore
@@ -41,7 +44,7 @@ export interface ApiDeps {
   readonly mcp: McpRouteDeps
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows }: ApiDeps, allowedPorts: readonly number[]) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -56,6 +59,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp }: A
     try {
       if (method === 'GET' && parts[1] === 'stream') {
         openSse(req, res, manager, processes)
+        return true
+      }
+      if (parts[1] === 'workflows') {
+        await handleWorkflowRoute(req, res, url, parts, workflows)
         return true
       }
       if (parts[1] === 'mcp') {
@@ -88,7 +95,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp }: A
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req))
         assertDirectory(body.projectPath)
-        const meta = manager.create(body)
+        const meta = manager.create({ ...body, text: expandWorkflows(body.text, body.projectPath, workflows.store) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -109,7 +116,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp }: A
           },
         })
       } else if (method === 'POST' && action === 'messages') {
-        manager.send(threadId, parseBody(messageBody, await readJson(req)).text)
+        manager.send(threadId, expandWorkflows(parseBody(messageBody, await readJson(req)).text, store.get(threadId)!.projectPath, workflows.store))
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)

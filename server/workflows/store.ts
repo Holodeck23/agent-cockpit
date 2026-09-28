@@ -1,0 +1,83 @@
+import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
+import { z } from 'zod'
+import { threadSettingsSchema } from '../threads/types.ts'
+
+export const workflowInputSchema = z.object({
+  projectPath: z.string().min(1).max(1000).refine(isAbsolute, 'Choose an absolute project path'),
+  name: z.string().min(1).max(60).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase words separated by hyphens'),
+  prompt: z.string().trim().min(1).max(40_000),
+  settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
+  intervalMinutes: z.number().int().min(5).max(43_200).nullable().default(null),
+})
+export type WorkflowInput = z.input<typeof workflowInputSchema>
+const workflowSchema = workflowInputSchema.extend({
+  id: z.uuid(), enabled: z.boolean(), nextRunAt: z.string().nullable(),
+  createdAt: z.string(), updatedAt: z.string(),
+  lastThreadId: z.string().optional(), lastRunAt: z.string().optional(), lastError: z.string().optional(),
+  archived: z.boolean().default(false),
+})
+export type Workflow = z.output<typeof workflowSchema>
+export interface WorkflowStore {
+  list(projectPath?: string): Workflow[]
+  get(id: string): Workflow | undefined
+  save(input: WorkflowInput, id?: string): Workflow
+  update(id: string, patch: Partial<Pick<Workflow, 'enabled' | 'nextRunAt' | 'lastThreadId' | 'lastRunAt' | 'lastError' | 'archived'>>): Workflow
+}
+
+export function createWorkflowStore(root: string): WorkflowStore {
+  mkdirSync(root, { recursive: true, mode: 0o700 })
+  const file = join(root, 'workflows.json')
+  const read = (): Workflow[] => existsSync(file) ? z.array(workflowSchema).parse(JSON.parse(readFileSync(file, 'utf8'))) : []
+  const write = (rows: Workflow[]): void => {
+    writeFileSync(`${file}.tmp`, JSON.stringify(rows, null, 2), { mode: 0o600 })
+    renameSync(`${file}.tmp`, file)
+  }
+  return {
+    list: (projectPath) => read().filter((w) => !w.archived && (projectPath === undefined || w.projectPath === projectPath)),
+    get: (id) => read().find((w) => w.id === id && !w.archived),
+    save(input, id) {
+      const parsed = workflowInputSchema.parse(input)
+      const rows = read()
+      const old = id ? rows.find((w) => w.id === id && !w.archived) : undefined
+      if (id && !old) throw new Error('Unknown workflow')
+      if (old && old.projectPath !== parsed.projectPath) throw new Error('A workflow cannot move to another project')
+      if (rows.some((w) => !w.archived && w.id !== id && w.projectPath === parsed.projectPath && w.name === parsed.name)) {
+        throw new Error('A workflow with that name already exists in this project')
+      }
+      const now = new Date().toISOString()
+      // Editing instructions or permissions always pauses the schedule for review.
+      const next: Workflow = { ...old, ...parsed, id: old?.id ?? randomUUID(), enabled: false, nextRunAt: null,
+        archived: false, createdAt: old?.createdAt ?? now, updatedAt: now, lastError: undefined }
+      write(old ? rows.map((w) => w.id === id ? next : w) : [...rows, next])
+      return next
+    },
+    update(id, patch) {
+      const rows = read()
+      const old = rows.find((w) => w.id === id && !w.archived)
+      if (!old) throw new Error('Unknown workflow')
+      const next = workflowSchema.parse({ ...old, ...patch, updatedAt: new Date().toISOString() })
+      write(rows.map((w) => w.id === id ? next : w))
+      return next
+    },
+  }
+}
+
+/** References compose instructions into one turn, not separate agent runs. */
+export function expandWorkflows(text: string, projectPath: string, store: WorkflowStore): string {
+  const workflows = store.list(projectPath)
+  let references = 0
+  const expand = (input: string, stack: string[]): string => {
+    const output = input.replace(/@workflow:([a-z0-9]+(?:-[a-z0-9]+)*)/g, (_match, name: string) => {
+      if (++references > 32 || stack.length >= 8) throw new Error('Too many nested workflow references')
+      if (stack.includes(name)) throw new Error(`Circular workflow reference: ${[...stack, name].join(' → ')}`)
+      const workflow = workflows.find((w) => w.name === name)
+      if (!workflow) throw new Error(`Unknown workflow in this project: ${name}`)
+      return `\nWorkflow ${name}:\n${expand(workflow.prompt, [...stack, name])}\n`
+    })
+    if (output.length > 200_000) throw new Error('Expanded workflow exceeds 200,000 characters')
+    return output
+  }
+  return expand(text, [])
+}

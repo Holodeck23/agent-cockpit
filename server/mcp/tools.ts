@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import type { Workflow } from '../workflows/store.ts'
+import { workflowInputSchema } from '../workflows/store.ts'
 import type { OutputLine } from '../processes/output.ts'
 import type { ProcessInfo, ProcessRead } from '../processes/runner.ts'
 
@@ -7,6 +9,7 @@ import type { ProcessInfo, ProcessRead } from '../processes/runner.ts'
 // call back to the cockpit's /api/mcp routes, which enforce the project scope.
 
 export interface CockpitApi {
+  saveWorkflow(body: { name: string; prompt: string }): Promise<Workflow>
   list(): Promise<ProcessInfo[]>
   start(body: { command: string; name?: string }): Promise<{ process: ProcessInfo; reused: boolean }>
   read(id: string, options: { since?: number; tail?: number }): Promise<ProcessRead>
@@ -32,6 +35,7 @@ export function createCockpitApi(baseUrl: string, token: string): CockpitApi {
     return params.size ? `?${params}` : ''
   }
   return {
+    saveWorkflow: (body) => call('POST', '/workflows', body),
     list: () => call('GET', '/processes'),
     start: (body) => call('POST', '/processes', body),
     read: (id, options) => call('GET', `/processes/${encodeURIComponent(id)}/output${query(options)}`),
@@ -194,5 +198,15 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
     },
   )
 
+  server.registerTool('save_workflow', {
+    title: 'Save a workflow',
+    description: 'Save reusable instructions for this project. Creates a new, unscheduled workflow for the user to review in Workflows. Use @workflow:name in prompts to include another saved workflow. Does not run or schedule it.',
+    inputSchema: { name: workflowInputSchema.shape.name, prompt: workflowInputSchema.shape.prompt },
+  }, async (input) => {
+    try {
+      const saved = await api.saveWorkflow(input)
+      return text(`Saved ${saved.name}. Review it in Workflows; its schedule is paused.`)
+    } catch (error) { return failure(error) }
+  })
   return server
 }

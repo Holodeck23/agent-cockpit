@@ -1,3 +1,4 @@
+import { createWorkflowStore } from '../server/workflows/store.ts'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -36,9 +37,10 @@ async function harness(): Promise<Harness> {
   const processes = createProcessRunner({ graceMs: 500 })
   runner = processes
   const opened: string[] = []
+  const workflows = createWorkflowStore(mkdtempSync(join(tmpdir(), 'cockpit-workflows-mcp-')))
   server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, openUrl: (u) => void opened.push(u) }).catch(
+    handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, workflows, openUrl: (u) => void opened.push(u) }).catch(
       (error: unknown) => sendJson(res, error instanceof HttpError ? error.status : 500, { error: (error as Error).message }),
     )
   })
@@ -69,11 +71,26 @@ function devProject(): string {
 }
 
 describe('cockpit MCP tools', () => {
-  it('lists the five cockpit tools', async () => {
+  it('lists the six cockpit tools', async () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['list_processes', 'open_preview', 'read_process_output', 'start_process', 'stop_process'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['list_processes', 'open_preview', 'read_process_output', 'save_workflow', 'start_process', 'stop_process'])
+  })
+
+  it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
+    const h = await harness()
+    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject() })
+    const client = await h.connect(token)
+    expect(textOf(await client.callTool({ name: 'save_workflow', arguments: { name: 'review', prompt: 'Review changes' } }))).toContain('schedule is paused')
+    const forged = await fetch(`${h.url}/api/mcp/workflows`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'other', prompt: 'Review', projectPath: '/another/project', enabled: true, intervalMinutes: 5 }) })
+    const saved = (await forged.json()).data
+    expect(saved.projectPath).toBe(h.sessions.resolve(token)?.projectPath)
+    expect(saved.enabled).toBe(false)
+    expect(saved.intervalMinutes).toBeNull()
+    h.sessions.revoke(token)
+    expect((await client.callTool({ name: 'save_workflow', arguments: { name: 'expired', prompt: 'Review' } })).isError).toBe(true)
   })
 
   it('starts a dev server, reads its log, and opens its URL for the user', async () => {

@@ -116,3 +116,15 @@ Workflows and schedules (with `save_workflow`), phone access, and the in-app pre
 **Live integration.** `npm run smoke:codex` passed both turns and resumed the codeword correctly. `npm run smoke:claude` returned empty replies and failed; the script did not expose a reason. No retry was made. Claude live integration remains unverified for this checkpoint; rerun `npm run smoke:claude` when the CLI/session issue is resolved. Real-agent approval and MCP proofs were not rerun in this checkpoint.
 
 **Next.** Phase 5: saved workflows, scheduling, and `save_workflow`; then phone access and the embedded preview pane. The existing Files and Workflows UI sections remain placeholders.
+
+## Phase 5a: workflow storage, execution and scheduling
+
+Workflows are stored atomically in `workflows.json` under the Cockpit state directory, scoped to a project. Each saves a name, instructions, agent settings, an optional interval, and its latest conversation/error. Editing pauses its schedule. Archiving retains the saved record.
+
+`@workflow:name` expands reusable instructions from the same project into one agent turn. Nested references have cycle, depth, count and size limits. These are instruction references, not separate dependent agent jobs.
+
+The scheduler checks every five seconds while Cockpit is running. Intervals are 5 minutes to 30 days. It records the next due time before launching, runs at most once after downtime, skips workflows already working or awaiting approval, and pauses after a failed scheduled run. A crash between recording the due time and launching can skip that occurrence; the policy prefers avoiding duplicate work. Closing Cockpit stops the scheduler.
+
+`save_workflow` is an approval-gated MCP tool. It creates an unscheduled workflow in the calling session's project with default manual permissions; agents cannot activate schedules through it. HTTP routes also support manual runs, editing, scheduling and archival. Every run creates a normal conversation with workflow provenance.
+
+Gate: `npm run verify` passed with 106 tests. Tests use fake agents for deterministic scheduling and exercise the actual HTTP/MCP routes. The Workflows UI follows in Phase 5b. Live Claude validation remains blocked by the previously recorded empty-reply failure; it was not retried.

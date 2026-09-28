@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { McpSessions } from '../mcp/sessions.ts'
 import type { ProcessRunner } from '../processes/runner.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
+import { workflowInputSchema, type WorkflowStore } from '../workflows/store.ts'
 import { readCursor } from './process-routes.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
@@ -29,6 +30,7 @@ export function assertLocalUrl(raw: string): string {
 }
 
 export interface McpRouteDeps {
+  readonly workflows?: WorkflowStore
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
   readonly openUrl: (url: string) => Promise<void> | void
@@ -39,7 +41,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl }: McpRouteDeps,
+  { sessions, processes, openUrl, workflows }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -47,6 +49,11 @@ export async function handleMcpRoute(
   const method = req.method ?? 'GET'
   const { projectPath } = grant
 
+  if (parts[2] === 'workflows' && method === 'POST') {
+    if (!workflows) throw new HttpError(503, 'Workflows unavailable')
+    const body = parseBody(workflowInputSchema.pick({ name: true, prompt: true }), await readJson(req))
+    return sendJson(res, 201, { data: workflows.save({ ...body, projectPath }) })
+  }
   if (parts[2] === 'preview' && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
     await openUrl(target)

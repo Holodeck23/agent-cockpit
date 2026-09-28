@@ -87,7 +87,7 @@ interface Live {
 }
 
 export interface ThreadManager {
-  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string }): ThreadMeta
+  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
   send(threadId: string, text: string): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
@@ -220,10 +220,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   }
 
   return {
-    create({ projectPath, title, settings, text }) {
+    create({ projectPath, title, settings, text, workflowId, workflowTrigger }) {
       const now = new Date().toISOString()
       const meta = store.create({
         id: randomUUID(),
+        workflowId, workflowTrigger,
         title: title?.trim() || text.slice(0, 60),
         projectPath,
         settings,

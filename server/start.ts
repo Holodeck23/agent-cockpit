@@ -3,16 +3,20 @@ import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, join, normalize } from 'node:path'
 import { spawn } from 'node:child_process'
+import { createWorkflowStore } from './workflows/store.ts'
+import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore } from './projects/store.ts'
-import { createThreadManager, type ThreadManager } from './threads/manager.ts'
+import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
 
 export interface StartOptions {
   /** 0 picks a free port. */
   readonly port: number
+  /** Inject adapters for deterministic integration tests. */
+  readonly launchers?: ManagerOptions['launchers']
   readonly host?: string
   /** Folder holding the built web UI (index.html + assets). */
   readonly webDist: string
@@ -77,6 +81,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   let baseUrl = ''
   const mcpCommand = options.mcp
   const manager = createThreadManager(store, {
+    ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
           mcp: (grant) => {
@@ -89,6 +94,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         }
       : {}),
   })
+  const workflowStore = createWorkflowStore(root)
+  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
   const server = createServer()
 
   await new Promise<void>((resolve, reject) => {
@@ -103,16 +110,19 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  const api = createApiHandler({ manager, store, projects, processes, mcp: { sessions, processes, openUrl } }, [port, ...(options.trustedPorts ?? [])])
+  const api = createApiHandler({ manager, store, projects, processes, workflows, mcp: { sessions, processes, openUrl, workflows: workflows.store } }, [port, ...(options.trustedPorts ?? [])])
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)
     })
   })
 
+  workflows.runner.start()
+
   let closing: Promise<void> | undefined
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      workflows.runner.close()
       await Promise.all([manager.shutdown(), processes.shutdown()])
       await new Promise<void>((resolve) => {
         server.close(() => resolve())
