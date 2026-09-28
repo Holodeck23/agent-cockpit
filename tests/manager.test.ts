@@ -1,0 +1,94 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import type { AgentSession, EventSink } from '../server/agents/types.ts'
+import { createThreadManager, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
+import { createThreadStore } from '../server/threads/store.ts'
+import { threadSettingsSchema } from '../server/threads/types.ts'
+
+interface FakeAgent {
+  readonly requests: LaunchRequest[]
+  emit: EventSink
+  readonly approvals: Array<{ requestId: string; behavior: string }>
+}
+
+function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
+  const agent: FakeAgent = { requests: [], emit: () => undefined, approvals: [] }
+  const launcher: Launcher = (request, onEvent) => {
+    agent.requests.push(request)
+    agent.emit = onEvent
+    let alive = true
+    const session: AgentSession = {
+      agent: 'claude',
+      send: (text) => onEvent({ kind: 'user_text', text }),
+      respondApproval: (requestId, behavior) => {
+        agent.approvals.push({ requestId, behavior })
+        onEvent({ kind: 'approval_resolved', requestId, behavior })
+      },
+      interrupt: () => undefined,
+      close: () => {
+        alive = false
+        onEvent({ kind: 'exit', code: 0 })
+      },
+      alive: () => alive,
+    }
+    return session
+  }
+  return { launcher, agent }
+}
+
+function setup() {
+  const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-test-')))
+  const { launcher, agent } = fakeLauncher()
+  const manager = createThreadManager(store, { claude: launcher, codex: launcher })
+  const settings = threadSettingsSchema.parse({})
+  return { store, manager, agent, settings }
+}
+
+describe('thread manager', () => {
+  it('starts a new session with --session-id, then resumes after the process exits', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hello' })
+    expect(agent.requests[0]).toMatchObject({ sessionId: meta.sessionId })
+    agent.emit({ kind: 'result', ok: true })
+    agent.emit({ kind: 'exit', code: 0 })
+    manager.send(meta.id, 'again')
+    expect(agent.requests[1]).toMatchObject({ resume: meta.sessionId })
+  })
+
+  it('walks the statuses working → needs_input → working → done', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'write a file' })
+    expect(manager.status(meta.id)).toBe('working')
+    agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'Write', input: {}, suggestions: [] })
+    expect(manager.status(meta.id)).toBe('needs_input')
+    manager.approve(meta.id, 'r1', 'allow')
+    expect(agent.approvals).toEqual([{ requestId: 'r1', behavior: 'allow' }])
+    expect(manager.status(meta.id)).toBe('working')
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('persists deltas only as the final text, and survives a new manager (restart)', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hi' })
+    agent.emit({ kind: 'text_delta', text: 'he' })
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'hello' })
+    agent.emit({ kind: 'result', ok: true })
+    const restarted = createThreadManager(store, { claude: fakeLauncher().launcher, codex: fakeLauncher().launcher })
+    const [summary] = restarted.summaries()
+    expect(summary).toMatchObject({ status: 'done', preview: 'hello' })
+    expect(store.events(meta.id).some((e) => e.event.kind === 'text_delta')).toBe(false)
+  })
+
+  it('broadcasts every event with the current status', () => {
+    const { manager, agent, settings } = setup()
+    const seen: string[] = []
+    manager.subscribe((u) => seen.push(`${u.event.kind}:${u.status}`))
+    manager.create({ projectPath: '/tmp', settings, text: 'x' })
+    agent.emit({ kind: 'result', ok: true })
+    expect(seen).toContain('user_text:working')
+    expect(seen).toContain('result:done')
+  })
+})
