@@ -75,5 +75,5 @@ Phase 5 workflows + schedule + `save_workflow` (fills in the Files/Workflows tab
 ## Verification
 - Every checkpoint: `npm run verify` (typecheck + 30+ tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
 - A packaged-app proof via Playwright `_electron`, with screenshots in `docs/proof/`.
-- One commit per checkpoint. The repo has no remote and stays that way.
+- One commit per checkpoint, pushed to github.com/Holodeck23/agent-cockpit (public since 2026-09-29; history scrubbed of personal paths before the first push).
 - Final: `release/mac-arm64/Cockpit.app` exists and launches from Finder. Installing is one copy to /Applications.
