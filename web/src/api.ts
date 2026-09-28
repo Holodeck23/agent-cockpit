@@ -1,8 +1,9 @@
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
+import type { Project, ProjectPatch } from '../../server/projects/store.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 
-export type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+export type { Project, ProjectPatch, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 export interface ThreadDetail {
   readonly meta: ThreadMeta
@@ -23,6 +24,9 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 
 export const api = {
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
+  listProjects: () => request<Project[]>('/api/projects'),
+  openProject: (path: string, patch: ProjectPatch = {}) =>
+    request<Project>('/api/projects', { method: 'POST', body: { path, ...patch } }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
   createThread: (body: { projectPath: string; text: string; title?: string; settings: Partial<ThreadSettings> }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),

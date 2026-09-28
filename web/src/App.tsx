@@ -1,15 +1,36 @@
+import { useState } from 'react'
+import { FolderIcon, WorkflowIcon } from './components/icons.tsx'
 import { NewThread } from './components/NewThread.tsx'
+import { Placeholder } from './components/Placeholder.tsx'
+import { ProjectTabBar } from './components/ProjectTabBar.tsx'
+import { SubNav, type Section } from './components/SubNav.tsx'
 import { ThreadList } from './components/ThreadList.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
+import { useTheme } from './theme.ts'
 import { useCockpit } from './useCockpit.ts'
+import { useProjects } from './useProjects.ts'
 
 export function App() {
   const cockpit = useCockpit()
-  const knownProjects = [...new Set(cockpit.threads.map((t) => t.meta.projectPath))]
+  const projects = useProjects(cockpit.threads, cockpit.reportError)
+  const theme = useTheme()
+  const [section, setSection] = useState<Section>('conversations')
+
+  const activePath = projects.active?.path
+  const visible = activePath ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
+  const knownProjects = projects.all.map((p) => p.path)
 
   return (
-    <div className="layout">
-      <ThreadList threads={cockpit.threads} selectedId={cockpit.selectedId} onSelect={cockpit.select} />
+    <div className="app">
+      <ProjectTabBar projects={projects} />
+      <SubNav
+        section={section}
+        onSection={setSection}
+        working={visible.filter((t) => t.status === 'working').length}
+        theme={theme.mode}
+        onCycleTheme={theme.cycle}
+      />
       {cockpit.error ? (
         <div className="toast" role="alert">
           {cockpit.error}
@@ -18,17 +39,33 @@ export function App() {
           </button>
         </div>
       ) : null}
-      {cockpit.selectedId && cockpit.detail ? (
-        <ThreadView detail={cockpit.detail} streaming={cockpit.streaming} onError={cockpit.reportError} />
+      {section === 'conversations' ? (
+        <div className="layout">
+          <ThreadList threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
+          {selectedId && cockpit.detail ? (
+            <ThreadView detail={cockpit.detail} streaming={cockpit.streaming} onError={cockpit.reportError} />
+          ) : (
+            <NewThread
+              key={activePath ?? 'no-project'}
+              defaultProject={activePath}
+              knownProjects={knownProjects}
+              onError={cockpit.reportError}
+              onCreated={(meta) => {
+                cockpit.refresh()
+                projects.select(meta.projectPath)
+                cockpit.select(meta.id)
+              }}
+            />
+          )}
+        </div>
+      ) : section === 'files' ? (
+        <Placeholder icon={<FolderIcon />} title="Files">
+          Browse this project's files and hand them to a conversation. Coming with workflows.
+        </Placeholder>
       ) : (
-        <NewThread
-          knownProjects={knownProjects}
-          onError={cockpit.reportError}
-          onCreated={(meta) => {
-            cockpit.refresh()
-            cockpit.select(meta.id)
-          }}
-        />
+        <Placeholder icon={<WorkflowIcon />} title="Workflows">
+          Saved, repeatable jobs you can run or schedule for this project. On the way.
+        </Placeholder>
       )}
     </div>
   )

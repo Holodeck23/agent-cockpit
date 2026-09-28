@@ -7,8 +7,8 @@ import { resolveAppPath } from './shell-path.ts'
 // with a native window around it. The page talks to the server over HTTP/SSE
 // exactly as in a browser; the preload adds only a folder picker.
 
-// Keep in step with --bg in web/src/styles.css so the window never flashes white.
-const CANVAS = { light: '#faf6ef', dark: '#16130f' }
+// Keep in step with --canvas-app in web/src/styles/tokens.css so the window never flashes.
+const CANVAS = { light: '#fafaf9', dark: '#202020' }
 // Longer than stopChild's EOF → SIGTERM → SIGKILL ladder (2 × 1.5s), so a hung agent is killed, not orphaned.
 const SHUTDOWN_GRACE_MS = 4000
 const isDev = !app.isPackaged
@@ -87,6 +87,10 @@ function createWindow(url: string): BrowserWindow {
 
 function registerIpc(url: string): void {
   const origin = new URL(url).origin
+  ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
+  })
   ipcMain.handle('cockpit:pick-folder', async (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
     const options: OpenDialogOptions = { title: 'Choose a project folder', properties: ['openDirectory', 'createDirectory'] }

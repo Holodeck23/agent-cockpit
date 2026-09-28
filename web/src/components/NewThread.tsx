@@ -5,6 +5,8 @@ import { native } from '../native.ts'
 import { Composer } from './Composer.tsx'
 
 interface NewThreadProps {
+  /** The active project; wins over the folder remembered from last time. */
+  defaultProject: string | undefined
   knownProjects: string[]
   onCreated: (meta: ThreadMeta) => void
   onError: (message: string) => void
@@ -30,8 +32,11 @@ function loadSetup(fallbackProject: string): Setup {
   }
 }
 
-export function NewThread({ knownProjects, onCreated, onError }: NewThreadProps) {
-  const [setup, setSetup] = useState<Setup>(() => loadSetup(knownProjects[0] ?? ''))
+export function NewThread({ defaultProject, knownProjects, onCreated, onError }: NewThreadProps) {
+  const [setup, setSetup] = useState<Setup>(() => {
+    const loaded = loadSetup(knownProjects[0] ?? '')
+    return defaultProject ? { ...loaded, projectPath: defaultProject } : loaded
+  })
 
   const change = (patch: Partial<Setup>): void => {
     const next = { ...setup, ...patch }

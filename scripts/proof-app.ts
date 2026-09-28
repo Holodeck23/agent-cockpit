@@ -8,37 +8,15 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { _electron as electron } from 'playwright-core'
+import { checker, LAUNCHD_PATH, launchPackagedApp, PROOF_DIR as OUT } from './lib/launch-app.ts'
 
-const root = fileURLToPath(new URL('..', import.meta.url))
-const executablePath = join(root, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit')
-const OUT = join(root, 'docs/proof')
 mkdirSync(OUT, { recursive: true })
-
-const LAUNCHD_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 const claudeDir = dirname(execFileSync('which', ['claude'], { encoding: 'utf8' }).trim())
 const projectDir = mkdtempSync(join(tmpdir(), 'cockpit-app-proof-'))
 writeFileSync(join(projectDir, 'README.md'), '# proof project\n')
+const { check, finish } = checker()
 
-const checks: Array<[string, boolean, string?]> = []
-const check = (name: string, ok: boolean, detail?: string): void => {
-  checks.push([name, ok, detail])
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`)
-}
-
-const app = await electron.launch({
-  executablePath,
-  env: {
-    HOME: process.env.HOME ?? '',
-    USER: process.env.USER ?? '',
-    LOGNAME: process.env.LOGNAME ?? process.env.USER ?? '',
-    SHELL: process.env.SHELL ?? '/bin/zsh',
-    TMPDIR: process.env.TMPDIR ?? '/tmp',
-    PATH: LAUNCHD_PATH,
-    COCKPIT_HOME: mkdtempSync(join(tmpdir(), 'cockpit-app-state-')),
-  },
-})
+const app = await launchPackagedApp()
 const appPid = app.process().pid ?? 0
 
 const mainPath = await app.evaluate(() => process.env.PATH ?? '')
@@ -104,6 +82,4 @@ check(
   alive.length ? `still alive: ${alive.join(',')}` : `quit took ${(quitMs / 1000).toFixed(1)}s`,
 )
 
-const failed = checks.filter(([, ok]) => !ok)
-console.log(failed.length === 0 ? `PHASE A PASS (${checks.length} checks)` : `PHASE A FAIL (${failed.length} of ${checks.length})`)
-process.exit(failed.length === 0 ? 0 : 1)
+finish('PHASE A')

@@ -17,6 +17,22 @@ function get(port: number, path: string, host = `127.0.0.1:${port}`): Promise<{ 
   })
 }
 
+function post(port: number, path: string, body: unknown): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const req = request(
+      { host: '127.0.0.1', port, path, method: 'POST', headers: { 'content-type': 'application/json' } },
+      (res) => {
+        let text = ''
+        res.on('data', (chunk: Buffer) => (text += chunk.toString()))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body: text }))
+      },
+    )
+    req.on('error', reject)
+    req.end(payload)
+  })
+}
+
 describe('startServer', () => {
   let running: RunningServer | undefined
   afterEach(async () => {
@@ -38,6 +54,16 @@ describe('startServer', () => {
     const threads = await get(server.port, '/api/threads')
     expect(threads.status).toBe(200)
     expect(JSON.parse(threads.body)).toEqual({ data: [] })
+  })
+
+  it('opens a project folder and lists it', async () => {
+    const server = await start()
+    const folder = mkdtempSync(join(tmpdir(), 'cockpit-proj-'))
+    const opened = await post(server.port, '/api/projects', { path: folder, pinned: true })
+    expect(opened.status).toBe(200)
+    const listed = await get(server.port, '/api/projects')
+    expect(JSON.parse(listed.body).data).toMatchObject([{ path: folder, pinned: true }])
+    expect((await post(server.port, '/api/projects', { path: join(folder, 'missing') })).status).toBe(400)
   })
 
   it('still rejects a foreign Host header', async () => {

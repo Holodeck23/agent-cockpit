@@ -2,6 +2,7 @@
 export interface CockpitBridge {
   readonly platform: string
   pickFolder(): Promise<string | undefined>
+  setTheme(mode: 'system' | 'light' | 'dark'): void
 }
 
 export const native: CockpitBridge | undefined = (window as { cockpit?: CockpitBridge }).cockpit

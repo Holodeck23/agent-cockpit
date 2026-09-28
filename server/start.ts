@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, join, normalize } from 'node:path'
 import { createApiHandler } from './http/router.ts'
+import { createProjectStore } from './projects/store.ts'
 import { createThreadManager, type ThreadManager } from './threads/manager.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
 
@@ -51,7 +52,9 @@ function serveStatic(webDist: string, pathname: string, res: ServerResponse): vo
 
 export async function startServer(options: StartOptions): Promise<RunningServer> {
   const host = options.host ?? '127.0.0.1'
-  const store = createThreadStore(options.stateRoot ?? defaultRoot())
+  const root = options.stateRoot ?? defaultRoot()
+  const store = createThreadStore(root)
+  const projects = createProjectStore(root)
   const manager = createThreadManager(store)
   const server = createServer()
 
@@ -65,7 +68,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 
   // The API guard needs the real port, which is only known after listen when port is 0.
   const port = (server.address() as AddressInfo).port
-  const api = createApiHandler(manager, store, [port, ...(options.trustedPorts ?? [])])
+  const api = createApiHandler(manager, store, projects, [port, ...(options.trustedPorts ?? [])])
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)

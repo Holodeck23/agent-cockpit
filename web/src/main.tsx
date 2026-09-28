@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App.tsx'
 import { native } from './native.ts'
+import './styles/tokens.css'
+import './styles/chrome.css'
 import './styles.css'
 
 const root = document.getElementById('root')

@@ -1,0 +1,80 @@
+/* Design tokens. Values measured from the reference app's light and dark themes
+   (measured from reference screenshots; not in this repo);
+   the CSS is our own. Every colour is a light-dark() pair, so the theme follows
+   color-scheme: the OS by default, or data-theme="light|dark" on <html>. */
+
+:root {
+  color-scheme: light dark;
+
+  /* surfaces, back to front */
+  /* dark measured #202020, same as --canvas-app; a step darker so the active tab reads as joined to the sub-nav */
+  --topbar: light-dark(#e5e5df, #171717);
+  --canvas-app: light-dark(#fafaf9, #202020);
+  --panel: light-dark(#fff, #191919);
+  --content: light-dark(#fff, #121212);
+  --field: light-dark(#f0f0eb, #2a2a2a);
+  --subtle: light-dark(#f5f5f1, #191919);
+  --subnav-active: light-dark(#f0f0eb, #2a2a2a);
+  --bubble-in: light-dark(#fafaf9, #1d1d1d);
+  --bubble-out: light-dark(#fffdfb, #272727);
+  --composer-foot: light-dark(#fafaf9, #1d1d1d);
+  --completed-bg: light-dark(#e0e0db, #3a3a3a);
+
+  /* ink */
+  --strong: light-dark(#242523, #f2f2f2);
+  --body: light-dark(#353630, #d8d8d8);
+  --secondary: light-dark(#5e6058, #d8d8d8);
+  --muted: light-dark(#72736d, #a7a7a7);
+  --you: light-dark(#aa969c, #b9a7ad);
+
+  /* lines */
+  --border: light-dark(#e5e5df, #ffffff13);
+  --input-border: light-dark(#cdcec5, #4a4a4a);
+
+  /* accents */
+  --blue: #2878ef;
+  --blue-shadow: #1d56ac;
+  --link: light-dark(#2459e8, #90b0ff);
+  --halo: light-dark(#2459e88c, #90b0ffbf);
+  --halo-soft: light-dark(#2459e824, #90b0ff29);
+  --focus-ring: light-dark(#e5effd, #1b283b);
+  --project-soft: light-dark(#e5effd, #1b283b);
+  --pink: light-dark(#b53270, #f394be);
+  --orange: #f58220;
+  --success: light-dark(#386244, #a6cbb6);
+  --danger: light-dark(#c2402f, #f08a7c);
+
+  /* "needs you" */
+  --needs-bg: light-dark(#fff1df, #342b23);
+  --needs-border: light-dark(#e8bf8e, #70543a);
+  --needs-ink: light-dark(#844214, #ffd392);
+
+  /* project colours (letter avatars, tags) */
+  --p-blue: #2878ef;
+  --p-pink: light-dark(#b53270, #f394be);
+  --p-orange: #f58220;
+  --p-green: light-dark(#3b8a55, #7cc793);
+  --p-purple: light-dark(#7b5bd6, #b3a0f0);
+  --p-gray: light-dark(#72736d, #a7a7a7);
+
+  /* type */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --round: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* shape */
+  --r-xs: 7px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 14px;
+  --r-xl: 16px;
+
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--body);
+  background: var(--canvas-app);
+}
+
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }

@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
+import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
@@ -19,6 +20,7 @@ const messageBody = z.object({ text: z.string().min(1).max(200_000) })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 const completedBody = z.object({ completed: z.boolean() })
 const switchBody = z.object({ settings: threadSettingsSchema })
+const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
 
 class HttpError extends Error {
   constructor(
@@ -66,7 +68,12 @@ function assertDirectory(path: string): void {
   throw new HttpError(400, `Not a folder on this computer: ${path}`)
 }
 
-export function createApiHandler(manager: ThreadManager, store: ThreadStore, allowedPorts: readonly number[]) {
+export function createApiHandler(
+  manager: ThreadManager,
+  store: ThreadStore,
+  projects: ProjectStore,
+  allowedPorts: readonly number[],
+) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -83,6 +90,19 @@ export function createApiHandler(manager: ThreadManager, store: ThreadStore, all
         openSse(req, res, manager)
         return true
       }
+      if (parts[1] === 'projects' && parts.length === 2) {
+        if (method === 'GET') {
+          projects.ensure(store.list().map((meta) => ({ path: meta.projectPath, at: meta.updatedAt })))
+          sendJson(res, 200, { data: projects.list() })
+          return true
+        }
+        if (method === 'POST') {
+          const { path, ...patch } = parseBody(projectBody, await readJson(req))
+          assertDirectory(path)
+          sendJson(res, 200, { data: projects.open(path, patch) })
+          return true
+        }
+      }
       if (parts[1] !== 'threads') throw new HttpError(404, 'Not found')
 
       if (parts.length === 2 && method === 'GET') {
@@ -93,6 +113,7 @@ export function createApiHandler(manager: ThreadManager, store: ThreadStore, all
         const body = parseBody(createThreadBody, await readJson(req))
         assertDirectory(body.projectPath)
         const meta = manager.create(body)
+        projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
       }

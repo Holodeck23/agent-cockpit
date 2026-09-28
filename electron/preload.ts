@@ -5,6 +5,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 const cockpit = {
   platform: process.platform,
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:pick-folder') as Promise<string | undefined>,
+  /** Native chrome (traffic lights, menus) follows the page's theme choice. */
+  setTheme: (mode: 'system' | 'light' | 'dark'): void => ipcRenderer.send('cockpit:set-theme', mode),
 }
 
 contextBridge.exposeInMainWorld('cockpit', cockpit)
