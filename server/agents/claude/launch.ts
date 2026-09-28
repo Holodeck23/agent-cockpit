@@ -9,6 +9,8 @@ import { parseClaudeLine } from './parse.ts'
 export interface ClaudeLaunchDeps {
   /** Override for tests or a non-PATH install. */
   executable?: string
+  /** Added to the agent's environment (and so inherited by its MCP servers). */
+  env?: Readonly<Record<string, string>>
 }
 
 /**
@@ -20,7 +22,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: process.env,
+    env: { ...process.env, ...deps.env },
   })
   let exited = false
   const stderrTail: string[] = []

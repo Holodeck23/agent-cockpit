@@ -1,0 +1,64 @@
+import { randomBytes } from 'node:crypto'
+
+// Every agent session gets its own cockpit MCP token. The loopback guard only
+// keeps browser pages out; any local process can already reach the API. So
+// the token is about identity and scope: it says which thread is calling and
+// confines that thread's tools to its own project. It is revoked when the
+// session's process exits.
+
+export interface McpGrant {
+  readonly threadId: string
+  readonly projectPath: string
+}
+
+export interface McpSessions {
+  issue(grant: McpGrant): string
+  revoke(token: string): void
+  resolve(token: string): McpGrant | undefined
+}
+
+export function createMcpSessions(): McpSessions {
+  const grants = new Map<string, McpGrant>()
+  return {
+    issue(grant) {
+      const token = randomBytes(32).toString('base64url')
+      grants.set(token, grant)
+      return token
+    },
+    revoke: (token) => void grants.delete(token),
+    resolve: (token) => grants.get(token),
+  }
+}
+
+/** How to start the cockpit MCP server; supplied by whoever hosts the server (app or CLI). */
+export interface McpCommand {
+  readonly command: string
+  readonly args: readonly string[]
+  /** Non-secret variables for the MCP process, e.g. ELECTRON_RUN_AS_NODE. */
+  readonly env?: Readonly<Record<string, string>>
+}
+
+/**
+ * What an agent launcher needs to wire the cockpit MCP into one session.
+ * `secretEnv` goes into the agent's own environment, never argv, and each CLI
+ * forwards it to the MCP process (Claude inherits it; Codex via env_vars).
+ */
+export interface CockpitMcpLaunch extends McpCommand {
+  readonly secretEnv: Readonly<Record<string, string>>
+}
+
+export const MCP_SERVER_NAME = 'cockpit'
+export const MCP_URL_ENV = 'COCKPIT_MCP_URL'
+export const MCP_TOKEN_ENV = 'COCKPIT_MCP_TOKEN'
+
+/** Read-only or harmless tools the agent may call without an approval card. */
+export const AUTO_ALLOWED_TOOLS = ['list_processes', 'read_process_output', 'open_preview'] as const
+export const ALL_TOOLS = ['start_process', 'stop_process', ...AUTO_ALLOWED_TOOLS] as const
+
+/** Appended to the agent's system prompt so it reaches for the tools on its own. */
+export const COCKPIT_GUIDANCE = [
+  'You are running inside Cockpit, which manages long-running processes for this project.',
+  'For anything that keeps running (a dev server, a watcher, `npm run dev`), use the cockpit `start_process` tool instead of',
+  'running it in the shell or backgrounding it with `&`. Then use `read_process_output` to confirm it started (and later to',
+  'check its logs for errors), and `open_preview` to show the user the running app.',
+].join(' ')

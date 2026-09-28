@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
+import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
+import { COCKPIT_GUIDANCE, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent } from '../agents/types.ts'
 import { deriveStatus, messageCountOf, previewOf } from './status.ts'
@@ -14,6 +16,8 @@ export interface LaunchRequest {
   readonly resume?: string
   /** Context for a fresh session after an agent switch. */
   readonly seed?: string
+  /** The cockpit MCP server to attach to this session, if the host provides one. */
+  readonly cockpit?: CockpitMcpLaunch
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
 
@@ -26,9 +30,14 @@ export type UpdateListener = (update: ThreadUpdate) => void
 
 const IDLE_CLOSE_MS = 5 * 60_000
 
+/** Cockpit guidance first (only when its tools are attached), then any handoff seed. */
+const instructionsFor = (req: LaunchRequest): string | undefined =>
+  [req.cockpit ? COCKPIT_GUIDANCE : undefined, req.seed].filter(Boolean).join('\n\n') || undefined
+
 export const defaultLaunchers: Record<AgentId, Launcher> = {
-  claude: (req, onEvent) =>
-    launchClaude(
+  claude: (req, onEvent) => {
+    const mcp = req.cockpit ? claudeMcpOptions(req.cockpit) : undefined
+    return launchClaude(
       {
         cwd: req.cwd,
         model: req.settings.model,
@@ -37,10 +46,13 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         useHooks: req.settings.useHooks,
         sessionId: req.sessionId,
         resume: req.resume,
-        appendSystemPrompt: req.seed,
+        appendSystemPrompt: instructionsFor(req),
+        ...(mcp ? { mcpConfig: mcp.mcpConfig, allowedTools: mcp.allowedTools } : {}),
       },
       onEvent,
-    ),
+      mcp ? { env: mcp.env } : {},
+    )
+  },
   codex: (req, onEvent) =>
     launchCodex(
       {
@@ -49,10 +61,19 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         effort: req.settings.effort,
         permissionMode: req.settings.permissionMode,
         resume: req.resume,
-        developerInstructions: req.seed,
+        developerInstructions: instructionsFor(req),
       },
       onEvent,
+      req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit), env: req.cockpit.secretEnv } : {},
     ),
+}
+
+/** Issues a session's cockpit MCP launch; `release` revokes its token when the session ends. */
+export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaunch; release(): void }
+
+export interface ManagerOptions {
+  readonly launchers?: Record<AgentId, Launcher>
+  readonly mcp?: McpProvider
 }
 
 interface Live {
@@ -81,7 +102,8 @@ export interface ThreadManager {
   shutdown(): Promise<void>
 }
 
-export function createThreadManager(store: ThreadStore, launchers: Record<AgentId, Launcher> = defaultLaunchers): ThreadManager {
+export function createThreadManager(store: ThreadStore, options: ManagerOptions = {}): ThreadManager {
+  const launchers = options.launchers ?? defaultLaunchers
   const live = new Map<string, Live>()
   const listeners = new Set<UpdateListener>()
 
@@ -119,14 +141,19 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
   const ensureSession = (meta: ThreadMeta): Live => {
     const existing = live.get(meta.id)
     if (existing?.session.alive()) return existing
+    const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
     const session = launchers[meta.settings.agent](
       {
         cwd: meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
+        ...(mcp ? { cockpit: mcp.launch } : {}),
       },
-      (event) => record(meta.id, event),
+      (event) => {
+        if (event.kind === 'exit') mcp?.release()
+        record(meta.id, event)
+      },
     )
     const entry: Live = { session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)

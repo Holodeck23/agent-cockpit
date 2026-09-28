@@ -52,3 +52,23 @@ describe('codex turn outcomes and policy', () => {
     expect(codexPolicy('bypassPermissions')).toEqual({ approvalPolicy: 'never', sandbox: 'danger-full-access' })
   })
 })
+
+describe('parseCodexNotification for MCP tool calls', () => {
+  const item = { type: 'mcpToolCall', id: 'call_1', server: 'cockpit', tool: 'list_processes', arguments: {}, status: 'inProgress' }
+
+  it('names the call like Claude does, mcp__server__tool', () => {
+    expect(parseCodexNotification('item/started', { item })).toEqual([
+      { kind: 'tool_use', id: 'call_1', name: 'mcp__cockpit__list_processes', input: {} },
+    ])
+  })
+
+  it('reports the text result, or the error on failure', () => {
+    const result = { content: [{ type: 'text', text: 'No processes for this project.' }], structuredContent: null, _meta: null }
+    expect(parseCodexNotification('item/completed', { item: { ...item, status: 'completed', result, error: null } })).toEqual([
+      { kind: 'tool_result', toolUseId: 'call_1', content: 'No processes for this project.', isError: false },
+    ])
+    expect(
+      parseCodexNotification('item/completed', { item: { ...item, status: 'failed', result: null, error: { message: 'boom' } } }),
+    ).toEqual([{ kind: 'tool_result', toolUseId: 'call_1', content: 'boom', isError: true }])
+  })
+})

@@ -23,6 +23,11 @@ export const claudeLaunchSchema = z
     useHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().max(20_000).optional(),
     mcpConfig: mcpConfigSchema.default({ mcpServers: {} }),
+    /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
+    allowedTools: z
+      .array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/))
+      .max(50)
+      .default([]),
   })
   .refine((o) => !(o.sessionId && o.resume), { message: 'sessionId and resume are mutually exclusive' })
 
@@ -50,6 +55,7 @@ export function buildClaudeArgs(input: ClaudeLaunchInput): string[] {
     ...(o.effort ? ['--effort', o.effort] : []),
     ...(o.sessionId ? ['--session-id', o.sessionId] : []),
     ...(o.resume ? ['--resume', o.resume] : []),
+    ...(o.allowedTools.length ? ['--allowedTools', o.allowedTools.join(',')] : []),
     ...(o.appendSystemPrompt ? ['--append-system-prompt', o.appendSystemPrompt] : []),
   ]
 }

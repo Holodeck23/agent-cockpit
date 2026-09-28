@@ -42,7 +42,7 @@ function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
 function setup() {
   const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-test-')))
   const { launcher, agent } = fakeLauncher()
-  const manager = createThreadManager(store, { claude: launcher, codex: launcher })
+  const manager = createThreadManager(store, { launchers: { claude: launcher, codex: launcher } })
   const settings = threadSettingsSchema.parse({})
   return { store, manager, agent, settings }
 }
@@ -92,7 +92,7 @@ describe('thread manager', () => {
     agent.emit({ kind: 'text_delta', text: 'he' })
     agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'hello' })
     agent.emit({ kind: 'result', ok: true })
-    const restarted = createThreadManager(store, { claude: fakeLauncher().launcher, codex: fakeLauncher().launcher })
+    const restarted = createThreadManager(store, { launchers: { claude: fakeLauncher().launcher, codex: fakeLauncher().launcher } })
     const [summary] = restarted.summaries()
     expect(summary).toMatchObject({ status: 'done', preview: 'hello' })
     expect(store.events(meta.id).some((e) => e.event.kind === 'text_delta')).toBe(false)
@@ -144,5 +144,30 @@ describe('switching agents', () => {
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'x' })
     agent.emit({ kind: 'session', sessionId: 'codex-thread-1' })
     expect(store.get(meta.id)?.sessionId).toBe('codex-thread-1')
+  })
+
+  it('attaches a cockpit MCP per session with guidance, and revokes it when the session exits', () => {
+    const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-test-')))
+    const { launcher, agent } = fakeLauncher()
+    const grants: Array<{ threadId: string; projectPath: string }> = []
+    let released = 0
+    const manager = createThreadManager(store, {
+      launchers: { claude: launcher, codex: launcher },
+      mcp: (grant) => {
+        grants.push(grant)
+        return {
+          launch: { command: 'node', args: ['mcp.cjs'], secretEnv: { COCKPIT_MCP_TOKEN: `t${grants.length}` } },
+          release: () => void released++,
+        }
+      },
+    })
+    const meta = manager.create({ projectPath: '/tmp', settings: threadSettingsSchema.parse({}), text: 'hi' })
+    expect(grants).toEqual([{ threadId: meta.id, projectPath: '/tmp' }])
+    expect(agent.requests[0]?.cockpit?.secretEnv).toEqual({ COCKPIT_MCP_TOKEN: 't1' })
+    agent.emit({ kind: 'result', ok: true })
+    agent.emit({ kind: 'exit', code: 0 })
+    expect(released).toBe(1)
+    manager.send(meta.id, 'again')
+    expect(agent.requests[1]?.cockpit?.secretEnv).toEqual({ COCKPIT_MCP_TOKEN: 't2' })
   })
 })

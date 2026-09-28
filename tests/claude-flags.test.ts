@@ -30,4 +30,11 @@ describe('buildClaudeArgs', () => {
       buildClaudeArgs({ ...base, sessionId: '3e6a366b-3f63-435a-a822-c515bd808f9c', resume: '3e6a366b-3f63-435a-a822-c515bd808f9c' }),
     ).toThrow()
   })
+
+  it('passes pre-allowed tools and rejects anything that is not a tool name', () => {
+    const args = buildClaudeArgs({ ...base, allowedTools: ['mcp__cockpit__list_processes', 'mcp__cockpit__open_preview'] })
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__cockpit__list_processes,mcp__cockpit__open_preview')
+    expect(buildClaudeArgs(base)).not.toContain('--allowedTools')
+    expect(() => buildClaudeArgs({ ...base, allowedTools: ['Bash(rm -rf /)'] })).toThrow()
+  })
 })

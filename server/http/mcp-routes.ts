@@ -1,0 +1,77 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { z } from 'zod'
+import type { McpSessions } from '../mcp/sessions.ts'
+import type { ProcessRunner } from '../processes/runner.ts'
+import { HttpError, parseBody, readJson, sendJson } from './json.ts'
+import { readCursor } from './process-routes.ts'
+
+// /api/mcp: the cockpit MCP server (one per agent session) calls back here.
+// Every call carries that session's bearer token, and everything it can see or
+// touch is confined to the session's own project.
+
+const startBody = z.object({ command: z.string().trim().min(1).max(2000), name: z.string().trim().min(1).max(60).optional() })
+const previewBody = z.object({ url: z.string().min(1).max(2000) })
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/** Only a local http(s) page can be previewed; the agent must not open arbitrary sites. */
+export function assertLocalUrl(raw: string): string {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new HttpError(400, `Not a URL: ${raw}`)
+  }
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !LOOPBACK.has(url.hostname)) {
+    throw new HttpError(400, `Preview only opens local http(s) pages (localhost, 127.0.0.1), not ${raw}`)
+  }
+  return url.toString()
+}
+
+export interface McpRouteDeps {
+  readonly sessions: McpSessions
+  readonly processes: ProcessRunner
+  readonly openUrl: (url: string) => Promise<void> | void
+}
+
+export async function handleMcpRoute(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  parts: readonly string[],
+  { sessions, processes, openUrl }: McpRouteDeps,
+): Promise<void> {
+  const auth = req.headers.authorization ?? ''
+  const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
+  if (!grant) throw new HttpError(401, 'Missing or expired cockpit session token')
+  const method = req.method ?? 'GET'
+  const { projectPath } = grant
+
+  if (parts[2] === 'preview' && method === 'POST') {
+    const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
+    await openUrl(target)
+    sendJson(res, 200, { data: { opened: target } })
+    return
+  }
+  if (parts[2] !== 'processes') throw new HttpError(404, 'Not found')
+
+  const id = parts[3]
+  if (!id) {
+    if (method === 'GET') return sendJson(res, 200, { data: processes.list(projectPath) })
+    if (method === 'POST') {
+      const body = parseBody(startBody, await readJson(req))
+      return sendJson(res, 201, { data: processes.start({ projectPath, ...body }) })
+    }
+    throw new HttpError(404, 'Not found')
+  }
+  // A process from another project does not exist as far as this session is concerned.
+  if (processes.get(id)?.projectPath !== projectPath) throw new HttpError(404, `No process ${id} in this project`)
+  const action = parts[4]
+  if (method === 'GET' && action === 'output') {
+    const since = readCursor(url.searchParams.get('since'), Number.MAX_SAFE_INTEGER)
+    const tail = readCursor(url.searchParams.get('tail'), 2000)
+    return sendJson(res, 200, { data: processes.read(id, { ...(since !== undefined ? { since } : {}), tail: tail ?? 100 }) })
+  }
+  if (method === 'POST' && action === 'stop') return sendJson(res, 200, { data: await processes.stop(id) })
+  throw new HttpError(404, 'Not found')
+}

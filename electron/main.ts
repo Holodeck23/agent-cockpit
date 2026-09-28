@@ -35,7 +35,19 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function boot(): Promise<void> {
-  running = await startServer({ port: 0, webDist: join(app.getAppPath(), 'dist') })
+  running = await startServer({
+    port: 0,
+    webDist: join(app.getAppPath(), 'dist'),
+    // Each agent session spawns the cockpit MCP server with this app's own binary in
+    // plain-Node mode, so it works from Finder with no Node on PATH (and reads from app.asar).
+    mcp: {
+      command: process.execPath,
+      args: [join(app.getAppPath(), 'dist-electron', 'mcp.cjs')],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    },
+    // Late-bound so the preview target can be swapped (Phase 7 pane, or a proof stub).
+    openUrl: (url) => shell.openExternal(url),
+  })
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
   registerIpc(running.url, join(running.store.root, 'threads'))
   mainWindow = createWindow(running.url)

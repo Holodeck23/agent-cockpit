@@ -17,7 +17,18 @@ function itemStarted(item: z.infer<typeof itemSchema>): NormalizedEvent[] {
     )
     return [{ kind: 'tool_use', id: item.id, name: 'Edit', input: { file_path: paths.join(', ') } }]
   }
+  if (item.type === 'mcpToolCall' && typeof item.server === 'string' && typeof item.tool === 'string') {
+    // Same naming as Claude (mcp__server__tool), so the UI labels both agents' calls alike.
+    return [{ kind: 'tool_use', id: item.id, name: `mcp__${item.server}__${item.tool}`, input: item.arguments ?? {} }]
+  }
   return []
+}
+
+function mcpResultText(item: z.infer<typeof itemSchema>): string {
+  const error = z.object({ message: z.string() }).safeParse(item.error)
+  if (error.success) return error.data.message
+  const result = z.object({ content: z.array(z.looseObject({ text: z.string().optional() })) }).safeParse(item.result)
+  return result.success ? result.data.content.flatMap((c) => (c.text ? [c.text] : [])).join('\n') : ''
 }
 
 function itemCompleted(item: z.infer<typeof itemSchema>): NormalizedEvent[] {
@@ -31,6 +42,9 @@ function itemCompleted(item: z.infer<typeof itemSchema>): NormalizedEvent[] {
   }
   if (item.type === 'fileChange') {
     return [{ kind: 'tool_result', toolUseId: item.id, content: String(item.status ?? ''), isError: item.status === 'failed' }]
+  }
+  if (item.type === 'mcpToolCall') {
+    return [{ kind: 'tool_result', toolUseId: item.id, content: mcpResultText(item).slice(0, 4000), isError: item.status === 'failed' }]
   }
   return []
 }

@@ -2,7 +2,9 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, join, normalize } from 'node:path'
+import { spawn } from 'node:child_process'
 import { createApiHandler } from './http/router.ts'
+import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore } from './projects/store.ts'
 import { createThreadManager, type ThreadManager } from './threads/manager.ts'
@@ -18,6 +20,18 @@ export interface StartOptions {
   readonly trustedPorts?: readonly number[]
   /** Where threads are stored; defaults to COCKPIT_HOME or ~/.agent-cockpit. */
   readonly stateRoot?: string
+  /** How to start the cockpit MCP server; without it, agent sessions get no cockpit tools. */
+  readonly mcp?: McpCommand
+  /** Opens a preview for the user; defaults to macOS `open`. The app passes shell.openExternal. */
+  readonly openUrl?: (url: string) => Promise<void> | void
+}
+
+function openWithSystem(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    spawn('open', [url], { stdio: 'ignore' })
+      .on('error', reject)
+      .on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`open exited with ${code}`))))
+  })
 }
 
 export interface RunningServer {
@@ -57,8 +71,24 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const root = options.stateRoot ?? defaultRoot()
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
-  const manager = createThreadManager(store)
   const processes = createProcessRunner()
+  const sessions = createMcpSessions()
+  // Known once listening; sessions only start after that.
+  let baseUrl = ''
+  const mcpCommand = options.mcp
+  const manager = createThreadManager(store, {
+    ...(mcpCommand
+      ? {
+          mcp: (grant) => {
+            const token = sessions.issue(grant)
+            return {
+              launch: { ...mcpCommand, secretEnv: { [MCP_URL_ENV]: baseUrl, [MCP_TOKEN_ENV]: token } },
+              release: () => sessions.revoke(token),
+            }
+          },
+        }
+      : {}),
+  })
   const server = createServer()
 
   await new Promise<void>((resolve, reject) => {
@@ -71,7 +101,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 
   // The API guard needs the real port, which is only known after listen when port is 0.
   const port = (server.address() as AddressInfo).port
-  const api = createApiHandler({ manager, store, projects, processes }, [port, ...(options.trustedPorts ?? [])])
+  baseUrl = `http://${host}:${port}`
+  const openUrl = options.openUrl ?? openWithSystem
+  const api = createApiHandler({ manager, store, projects, processes, mcp: { sessions, processes, openUrl } }, [port, ...(options.trustedPorts ?? [])])
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)

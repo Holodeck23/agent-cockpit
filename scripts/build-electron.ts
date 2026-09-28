@@ -17,5 +17,7 @@ const common: BuildOptions = {
 await Promise.all([
   build({ ...common, entryPoints: ['electron/main.ts'], outfile: 'dist-electron/main.cjs' }),
   build({ ...common, entryPoints: ['electron/preload.ts'], outfile: 'dist-electron/preload.cjs' }),
+  // The cockpit MCP server each agent session spawns (see server/mcp/stdio.ts).
+  build({ ...common, entryPoints: ['server/mcp/stdio.ts'], outfile: 'dist-electron/mcp.cjs' }),
 ])
-console.log('[build-electron] dist-electron/main.cjs, dist-electron/preload.cjs')
+console.log('[build-electron] dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs')

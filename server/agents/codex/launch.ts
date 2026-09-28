@@ -39,15 +39,22 @@ export function codexPolicy(mode: (typeof PERMISSION_MODES)[number]): Policy {
   }
 }
 
+const ELICITATION_METHOD = 'mcpServer/elicitation/request'
 const APPROVAL_METHODS = new Set([
   'item/commandExecution/requestApproval',
   'item/fileChange/requestApproval',
   'execCommandApproval',
   'applyPatchApproval',
+  // Codex asks before an MCP tool call (e.g. cockpit start_process) through an MCP elicitation.
+  ELICITATION_METHOD,
 ])
 
 function describeApproval(request: ServerRequest): { toolName: string; input: unknown; description?: string } {
   const params = (request.params ?? {}) as Record<string, unknown>
+  if (request.method === ELICITATION_METHOD) {
+    const message = typeof params.message === 'string' ? params.message : 'An MCP server is asking to continue'
+    return { toolName: `MCP: ${String(params.serverName ?? 'server')}`, input: { message }, description: message }
+  }
   const isFile = request.method.includes('fileChange') || request.method === 'applyPatchApproval'
   return {
     toolName: isFile ? 'Edit' : 'Shell',
@@ -56,15 +63,28 @@ function describeApproval(request: ServerRequest): { toolName: string; input: un
   }
 }
 
-export function launchCodex(input: CodexLaunchInput, onEvent: EventSink): AgentSession {
+export interface CodexLaunchDeps {
+  /** Config overrides (`-c key=value`) built by the cockpit, never from the UI. */
+  configArgs?: readonly string[]
+  /** Added to the app-server's environment. */
+  env?: Readonly<Record<string, string>>
+}
+
+export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: CodexLaunchDeps = {}): AgentSession {
   const opts = codexLaunchSchema.parse(input)
-  const child = spawn('codex', ['app-server'], { cwd: opts.cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env })
+  const child = spawn('codex', ['app-server', ...(deps.configArgs ?? [])], {
+    cwd: opts.cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, ...deps.env },
+  })
   let exited = false
   let threadId: string | undefined
   let currentTurnId: string | undefined
   const queued: string[] = []
   // Approval request id (as a string) -> JSON-RPC id to reply to.
   const approvalIds = new Map<string, number | string>()
+  // Which pending approvals are MCP elicitations: they take a different reply shape.
+  const elicitations = new Set<string>()
 
   const rpc = createRpcClient(child, {
     onNotification(method, params) {
@@ -83,6 +103,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink): AgentS
       }
       const requestId = String(request.id)
       approvalIds.set(requestId, request.id)
+      if (request.method === ELICITATION_METHOD) elicitations.add(requestId)
       onEvent({ kind: 'approval_request', requestId, suggestions: ['acceptForSession'], ...describeApproval(request) })
     },
     onProtocolError(message) {
@@ -145,8 +166,12 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink): AgentS
       const rpcId = approvalIds.get(approval.requestId)
       if (rpcId === undefined) return
       approvalIds.delete(approval.requestId)
-      const decision = behavior === 'deny' ? 'decline' : behavior === 'allow_session' ? 'acceptForSession' : 'accept'
-      rpc.respond(rpcId, { decision })
+      if (elicitations.delete(approval.requestId)) {
+        rpc.respond(rpcId, behavior === 'deny' ? { action: 'decline', content: null, _meta: null } : { action: 'accept', content: {}, _meta: null })
+      } else {
+        const decision = behavior === 'deny' ? 'decline' : behavior === 'allow_session' ? 'acceptForSession' : 'accept'
+        rpc.respond(rpcId, { decision })
+      }
       onEvent({ kind: 'approval_resolved', requestId: approval.requestId, behavior })
     },
     interrupt() {

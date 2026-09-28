@@ -8,6 +8,7 @@ import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
+import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
 import { openSse } from './sse.ts'
 
@@ -37,9 +38,10 @@ export interface ApiDeps {
   readonly store: ThreadStore
   readonly projects: ProjectStore
   readonly processes: ProcessRunner
+  readonly mcp: McpRouteDeps
 }
 
-export function createApiHandler({ manager, store, projects, processes }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp }: ApiDeps, allowedPorts: readonly number[]) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -54,6 +56,10 @@ export function createApiHandler({ manager, store, projects, processes }: ApiDep
     try {
       if (method === 'GET' && parts[1] === 'stream') {
         openSse(req, res, manager, processes)
+        return true
+      }
+      if (parts[1] === 'mcp') {
+        await handleMcpRoute(req, res, url, parts, mcp)
         return true
       }
       if (parts[1] === 'processes') {
