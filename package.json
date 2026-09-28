@@ -1,5 +1,6 @@
 {
   "name": "agent-cockpit",
+  "productName": "Cockpit",
   "version": "0.1.0",
   "description": "Personal cockpit for coding-agent CLIs (Claude Code, Codex): parallel threads, approvals, workflows.",
   "scripts": {
@@ -10,27 +11,34 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "smoke:claude": "tsx scripts/smoke-claude.ts",
-    "verify": "npm run typecheck && npm test && npm run build",
-    "smoke:codex": "tsx scripts/smoke-codex.ts"
+    "verify": "npm run typecheck && npm test && npm run build && npm run build:electron",
+    "smoke:codex": "tsx scripts/smoke-codex.ts",
+    "build:electron": "tsx scripts/build-electron.ts",
+    "icon": "tsx scripts/make-icon.ts",
+    "app": "npm run build && npm run build:electron && electron .",
+    "package": "npm run build && npm run build:electron && electron-builder --mac --arm64",
+    "proof:app": "tsx scripts/proof-app.ts"
   },
   "author": "",
   "license": "UNLICENSED",
   "type": "module",
-  "dependencies": {
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "zod": "^4.6.5"
-  },
+  "main": "dist-electron/main.cjs",
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "playwright-core": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "zod": "^4.6.5"
   },
   "private": true
 }

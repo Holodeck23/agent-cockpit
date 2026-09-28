@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
+import { stopChild } from '../stop.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
@@ -73,9 +74,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
     interrupt() {
       write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })
     },
-    close() {
-      if (!exited) child.stdin.end()
-    },
+    close: () => stopChild(child, () => !exited),
     alive: () => !exited,
   }
 }

@@ -1,0 +1,15 @@
+{
+  "appId": "local.cockpit.app",
+  "productName": "Cockpit",
+  "directories": { "output": "release", "buildResources": "build" },
+  "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
+  "npmRebuild": false,
+  "mac": {
+    "target": [{ "target": "dmg", "arch": ["arm64"] }],
+    "category": "public.app-category.developer-tools",
+    "icon": "build/icon.icns",
+    "identity": "-",
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false
+  }
+}

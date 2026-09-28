@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { EFFORTS, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import { api, type ThreadMeta, type ThreadSettings } from '../api.ts'
+import { native } from '../native.ts'
 import { Composer } from './Composer.tsx'
 
 interface NewThreadProps {
@@ -81,6 +82,19 @@ export function NewThread({ knownProjects, onCreated, onError }: NewThreadProps)
             ))}
           </datalist>
         </label>
+        {native ? (
+          <button
+            type="button"
+            className="browse"
+            onClick={() => {
+              void native?.pickFolder().then((path) => {
+                if (path) change({ projectPath: path })
+              })
+            }}
+          >
+            Browse…
+          </button>
+        ) : null}
         <label>
           Agent
           <select value={setup.agent} onChange={(e) => change({ agent: e.target.value as Setup['agent'] })}>

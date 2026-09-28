@@ -30,6 +30,7 @@ function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
       close: () => {
         alive = false
         onEvent({ kind: 'exit', code: 0 })
+        return Promise.resolve()
       },
       alive: () => alive,
     }

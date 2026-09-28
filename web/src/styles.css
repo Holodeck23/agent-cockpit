@@ -104,6 +104,15 @@ code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.85em
 
 .toast { position: fixed; right: 16px; top: 16px; z-index: 10; background: var(--panel-2); border: 1px solid var(--error); border-radius: var(--radius); padding: 10px 14px; display: flex; gap: 10px; max-width: min(480px, calc(100vw - 32px)); }
 
+/* Desktop app: the window has no title bar, so leave room for the traffic lights
+   and make the empty top strips draggable. */
+.in-app .sidebar { padding-top: 44px; }
+.in-app .layout::before { content: ''; position: fixed; top: 0; left: 0; width: 340px; height: 38px; -webkit-app-region: drag; z-index: 5; }
+.in-app .thread-head { -webkit-app-region: drag; }
+.in-app .thread-head :is(button, select, input, a, code, .chip) { -webkit-app-region: no-drag; }
+.setup .browse { align-self: end; }
+.in-app .setup { grid-template-columns: 2fr auto 1fr 1fr 1fr 1fr; }
+
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: 40dvh 1fr; }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }

@@ -73,7 +73,8 @@ export interface ThreadManager {
   summaries(): ThreadSummary[]
   status(threadId: string): ThreadStatus
   subscribe(listener: UpdateListener): () => void
-  shutdown(): void
+  /** Stops every live agent session; resolves once all have exited. */
+  shutdown(): Promise<void>
 }
 
 export function createThreadManager(store: ThreadStore, launchers: Record<AgentId, Launcher> = defaultLaunchers): ThreadManager {
@@ -103,7 +104,7 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
     if (entry && event.kind === 'result') {
       entry.turnRunning = false
       entry.stopRequested = false
-      entry.idleTimer = setTimeout(() => entry.session.close(), IDLE_CLOSE_MS)
+      entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
     }
     if (event.kind === 'exit') live.delete(threadId)
     broadcast(threadId, event)
@@ -185,7 +186,7 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
       if (entry?.turnRunning) throw new Error('Stop the current turn before switching agents')
-      entry?.session.close()
+      void entry?.session.close()
       live.delete(threadId)
       const handoff = buildHandoff(store.events(threadId), meta.projectPath)
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
@@ -208,8 +209,8 @@ export function createThreadManager(store: ThreadStore, launchers: Record<AgentI
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    shutdown() {
-      for (const entry of live.values()) entry.session.close()
+    async shutdown() {
+      await Promise.all([...live.values()].map((entry) => entry.session.close()))
     },
   }
 }

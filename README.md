@@ -7,7 +7,7 @@ It does no AI inference of its own. It drives the official CLIs headless, and us
 ## How it works
 
 ```
-browser (React) ──SSE / JSON──► local server (Node, 127.0.0.1)
+Cockpit.app window or browser (React) ──SSE / JSON──► local server (Node, 127.0.0.1)
                                    ├─ claude -p  (stream-json in/out, approvals over stdio)
                                    ├─ codex app-server   (JSON-RPC over stdio)
                                    └─ ~/.agent-cockpit/threads/<id>/{meta.json, events.jsonl, messages.md}
@@ -27,6 +27,19 @@ browser (React) ──SSE / JSON──► local server (Node, 127.0.0.1)
 | `tsx scripts/proof-ui.ts <mode> [dir]` (modes: parallel, approvals, interrupt, reload, switch) | drives the real UI in headless Chrome and saves screenshots to `docs/proof/` |
 | `npm run smoke:codex` | same resume check against `codex app-server` (default model `gpt-5.6-luna`, override with `COCKPIT_CODEX_MODEL`) |
 | `npm start` | serve the cockpit on http://127.0.0.1:4317 |
+| `npm run app` | build, then open the desktop app from the repo (DevTools in the View menu) |
+| `npm run package` | build `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.0-arm64.dmg` (ad-hoc signed, personal use) |
+| `npm run proof:app` | Phase A gate: drives the packaged app with a bare launchd PATH, runs a Haiku thread to Done, quits mid-turn, checks no agent survives |
+| `npm run icon` | regenerate `build/icon.icns` from `build/icon.svg` |
+
+## Desktop app
+
+`Cockpit.app` is the same server in Electron's main process (`electron/main.ts` → `server/start.ts`), on a random 127.0.0.1 port, with a native window around the page. Nothing about the API changes: the page still talks HTTP/SSE through the loopback guard.
+
+- **Preload** exposes only `window.cockpit.{platform, pickFolder}`. The page runs with `contextIsolation`, `sandbox` and no Node; other URLs open in the default browser; web permission requests are denied.
+- **PATH:** a Finder/Dock launch gets launchd's bare PATH, so at startup the app asks the login shell (`$SHELL -ilc`) for its PATH and merges it in (`electron/shell-path.ts`), with Homebrew/npm fallbacks if the shell can't answer.
+- **Quitting** stops every agent before exit: stdin EOF, SIGTERM after 1.5s (an agent mid-turn), SIGKILL after 3s (`server/agents/stop.ts`). Closing the window keeps the app and its agents running, per macOS convention.
+- Install: `cp -R release/mac-arm64/Cockpit.app /Applications/`. It's ad-hoc signed, not notarized, so the first launch may need right-click → Open.
 
 ## Protocol notes (verified against claude 2.1.283)
 

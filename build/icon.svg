@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Cockpit mark: three gauge bars on a blue tile (macOS icon grid: 824px body, 100px inset). -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3d8cff"/>
+      <stop offset="1" stop-color="#2066d6"/>
+    </linearGradient>
+    <filter id="drop" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" filter="url(#drop)"/>
+  <g fill="#fff">
+    <rect x="304" y="448" width="96" height="248" rx="48"/>
+    <rect x="464" y="296" width="96" height="400" rx="48"/>
+    <rect x="624" y="376" width="96" height="320" rx="48"/>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
+import { stopChild } from '../stop.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
 import { parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
@@ -153,9 +154,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink): AgentS
         rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
       }
     },
-    close() {
-      if (!exited) child.stdin.end()
-    },
+    close: () => stopChild(child, () => !exited),
     alive: () => !exited,
   }
 }

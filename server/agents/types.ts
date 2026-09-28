@@ -40,8 +40,8 @@ export interface AgentSession {
   send(text: string): void
   respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
   interrupt(): void
-  /** Graceful shutdown (stdin EOF). */
-  close(): void
+  /** Stdin EOF, escalating to SIGTERM/SIGKILL if the agent hangs on; resolves once it has exited. */
+  close(): Promise<void>
   readonly alive: () => boolean
 }
 
