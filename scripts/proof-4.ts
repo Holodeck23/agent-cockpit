@@ -47,7 +47,9 @@ async function approveUntilDone(page: Page, threadId: string, screenshot?: strin
   await waitUntil(page, 'the turn to finish', async () => {
     const card = page.locator('.approval.open').first()
     if (await card.isVisible()) {
-      asked.push(((await card.locator('.approval-title strong').nth(1).textContent()) ?? '').trim())
+      const tool = ((await card.locator('.approval-title strong').nth(1).textContent()) ?? '').trim()
+      const detail = ((await card.locator('.approval-detail').textContent()) ?? '').trim()
+      asked.push(tool === 'Start a process' ? tool : `${tool}: ${detail.slice(0, 60)}`)
       if (screenshot && asked.length === 1) await page.screenshot({ path: join(PROOF_DIR, screenshot) })
       await card.getByRole('button', { name: 'Allow', exact: true }).click()
       return undefined
@@ -97,7 +99,11 @@ const threadId = await waitUntil(page, 'the thread', async () =>
 
 const asked = await approveUntilDone(page, threadId, 'phase-4-approval.png')
 check('turn finished', (await headStatus(page).textContent()) === 'Done', (await headStatus(page).textContent()) ?? '')
-check('only starting a process asked for approval', asked.length > 0 && asked.every((t) => t === 'Start a process'), asked.join(', '))
+// The agent may also use Bash, which asks in manual mode like any command. What matters here: starting a
+// process asks, and the read-only cockpit tools (list, read log, preview) never do.
+const READ_ONLY = ['List processes', 'Read process output', 'Open a preview']
+check('starting a process asked for approval', asked.includes('Start a process'), asked.join(' | '))
+check('read-only cockpit tools never asked', !asked.some((t) => READ_ONLY.some((r) => t.startsWith(r))))
 
 const { events } = await getJson<{ events: StoredEvent[] }>(page, `/api/threads/${threadId}/events`)
 const tools = events.flatMap(({ event }) => (event.kind === 'tool_use' && event.name ? [event.name] : []))

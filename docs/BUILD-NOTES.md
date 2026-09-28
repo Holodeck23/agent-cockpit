@@ -93,9 +93,17 @@ The plan was a personal V1 in small phases, each with a proof gate that has to p
 
 ## Numbers
 
-- 92 unit tests across 13 files.
+- 106 unit tests across 14 files.
 - Real-agent smokes for Claude, Codex and the cockpit MCP, and a proof gate for every phase (browser proofs for phases 1 to 3, packaged-app proofs from Phase A on).
 - One commit per phase or checkpoint; see `git log`.
+
+## Re-verification after Phase 5 (2026-09-29)
+
+The reliability checkpoint rewrote parts of the thread manager, and its Claude checks had failed with empty replies. They ran while the Claude account was at its usage limit; after the reset, `npm run smoke:claude` passed (resume recalled the codeword), and every Claude gate was re-run on a fresh package: `proof:app` 10/10, `proof-b` b1 11/11, b2 12/12, b3 17/17, `proof:mcp` 16/16, `proof:reliability`, and `smoke:mcp claude`.
+
+`proof:mcp` was tightened on the way. In one run Haiku also used Bash, which correctly asked for approval in manual mode, and the old check ("only starting a process asks") failed on it. The check now asserts what it was meant to: starting a process asks, and the read-only cockpit tools never do. Approval details are logged in the check output.
+
+Also fixed: the composer's `@ Workflow` picker had lost the inset of the chip it replaced and sat on the card border.
 
 ## Next
 
