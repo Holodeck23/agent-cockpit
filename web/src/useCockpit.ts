@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, subscribe, type StoredEvent, type ThreadDetail, type ThreadSummary, type ThreadUpdate } from './api.ts'
+import { api, subscribe, type ProcessInfo, type StoredEvent, type ThreadDetail, type ThreadSummary, type ThreadUpdate } from './api.ts'
 
 export interface Cockpit {
   readonly threads: ThreadSummary[]
@@ -8,6 +8,8 @@ export interface Cockpit {
   /** Text streamed for the current turn but not yet finalized. */
   readonly streaming: string
   readonly error: string | undefined
+  /** Project processes (dev servers etc.) started through the cockpit MCP, newest first. */
+  readonly processes: ProcessInfo[]
   select(id: string | undefined): void
   refresh(): void
   reportError(message: string | undefined): void
@@ -30,12 +32,18 @@ function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): Threa
   })
 }
 
+/** Replaces the process with the same id, or adds it at the front. */
+function upsertProcess(list: ProcessInfo[], info: ProcessInfo): ProcessInfo[] {
+  return list.some((p) => p.id === info.id) ? list.map((p) => (p.id === info.id ? info : p)) : [info, ...list]
+}
+
 export function useCockpit(): Cockpit {
   const [threads, setThreads] = useState<ThreadSummary[]>([])
   const [selectedId, setSelectedId] = useState<string>()
   const [detail, setDetail] = useState<ThreadDetail>()
   const [streaming, setStreaming] = useState('')
   const [error, setError] = useState<string>()
+  const [processes, setProcesses] = useState<ProcessInfo[]>([])
 
   const refresh = useCallback(() => {
     api.listThreads().then(setThreads, (e: unknown) => setError(String(e)))
@@ -94,8 +102,10 @@ export function useCockpit(): Cockpit {
     const onOpen = (): void => {
       refresh()
       if (selectedRef.current) reloadDetail(selectedRef.current)
+      api.listProcesses().then(setProcesses, (e: unknown) => setError(String(e)))
     }
-    return subscribe(onUpdate, onOpen)
+    const onProcess = (info: ProcessInfo): void => setProcesses((current) => upsertProcess(current, info))
+    return subscribe({ onUpdate, onProcess, onOpen })
   }, [refresh])
 
   return {
@@ -104,6 +114,7 @@ export function useCockpit(): Cockpit {
     detail,
     streaming,
     error,
+    processes,
     select: setSelectedId,
     refresh,
     reportError: setError,

@@ -42,7 +42,12 @@ export function App() {
         <div className="layout">
           <ConversationList key={`list:${activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
           {selectedId && cockpit.detail ? (
-            <ThreadView detail={cockpit.detail} streaming={cockpit.streaming} onError={cockpit.reportError} />
+            <ThreadView
+              detail={cockpit.detail}
+              streaming={cockpit.streaming}
+              processes={cockpit.processes.filter((p) => p.projectPath === cockpit.detail?.meta.projectPath)}
+              onError={cockpit.reportError}
+            />
           ) : (
             <NewConversation
               key={`new:${activePath ?? ''}`}

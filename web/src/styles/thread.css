@@ -20,6 +20,36 @@
 .transcript-link .icon { width: 14px; height: 14px; }
 button.transcript-link:hover { color: var(--strong); text-decoration: underline; }
 
+/* Project processes chip (dev servers started through the cockpit MCP) */
+.process-chip-wrap { position: relative; flex: none; }
+.process-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; margin: -2px 0; padding: 0 9px 0 8px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel);
+  color: var(--body); font-family: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: default;
+}
+.process-chip:hover, .process-chip[aria-expanded='true'] { background: var(--field); color: var(--strong); }
+.process-chip-port { font-family: var(--mono); color: var(--muted); }
+.process-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent); }
+.process-stopping .process-dot { background: var(--needs-ink); box-shadow: none; }
+.process-exited .process-dot { background: var(--muted); box-shadow: none; opacity: 0.6; }
+.process-menu { left: 0; right: auto; width: 360px; }
+.process-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: var(--r-sm); }
+.process-row .process-dot { margin-top: 6px; }
+.process-row:hover { background: var(--field); }
+.process-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.process-name { font-weight: 500; color: var(--strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-exited .process-name { color: var(--muted); }
+.process-meta { display: flex; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); }
+.process-meta code { font: 11.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-url { font: 12px var(--mono); color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-url:hover { text-decoration: underline; }
+.process-stop {
+  display: grid; place-items: center; width: 28px; height: 28px; flex: none; padding: 0;
+  border: 0; border-radius: var(--r-sm); background: none; color: var(--secondary);
+}
+.process-stop:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.process-stop .icon { width: 15px; height: 15px; }
+
 .thread-actions { display: flex; gap: 8px; flex: none; }
 .segment { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); }
 .segment > button, .segment .icon-button {

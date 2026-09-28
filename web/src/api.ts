@@ -1,9 +1,10 @@
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
+import type { ProcessInfo } from '../../server/processes/runner.ts'
 import type { Project, ProjectPatch } from '../../server/projects/store.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 
-export type { Project, ProjectPatch, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+export type { ProcessInfo, Project, ProjectPatch, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 export interface ThreadDetail {
   readonly meta: ThreadMeta
@@ -42,11 +43,22 @@ export const api = {
     request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
+  listProcesses: () => request<ProcessInfo[]>('/api/processes'),
+  stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
 }
 
-export function subscribe(onUpdate: (update: ThreadUpdate) => void, onOpen?: () => void): () => void {
+export interface StreamHandlers {
+  onUpdate(update: ThreadUpdate): void
+  /** A project process started, printed its URL, is stopping, or exited. */
+  onProcess?(info: ProcessInfo): void
+  /** (Re)connected: anything missed while disconnected should be re-read. */
+  onOpen?(): void
+}
+
+export function subscribe({ onUpdate, onProcess, onOpen }: StreamHandlers): () => void {
   const source = new EventSource('/api/stream')
   source.onopen = () => onOpen?.()
   source.onmessage = (message) => onUpdate(JSON.parse(message.data as string) as ThreadUpdate)
+  source.addEventListener('process', (message) => onProcess?.(JSON.parse(message.data as string) as ProcessInfo))
   return () => source.close()
 }

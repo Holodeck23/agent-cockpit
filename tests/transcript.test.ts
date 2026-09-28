@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 import type { StoredEvent } from '../server/threads/types.ts'
-import { buildTranscript, describeTool, elapsed, toolDetail } from '../web/src/transcript.ts'
+import { buildTranscript, describeTool, elapsed, friendlyToolName, toolDetail } from '../web/src/transcript.ts'
 
 const at = (second: number, event: NormalizedEvent): StoredEvent => ({
   ts: new Date(Date.UTC(2026, 8, 28, 10, 0, second)).toISOString(),
@@ -83,5 +83,19 @@ describe('buildTranscript', () => {
     )
     expect(items[0]).toMatchObject({ error: 'exit 1' })
     expect(items[1]).toMatchObject({ text: 'Turn failed', tone: 'error' })
+  })
+})
+
+describe('cockpit MCP tools in the transcript', () => {
+  it('describes each cockpit tool call in plain words', () => {
+    expect(describeTool('mcp__cockpit__start_process', { command: 'npm run dev' })).toBe('Starting npm run dev')
+    expect(describeTool('mcp__cockpit__read_process_output', { id: 'proc-1' })).toBe('Reading the proc-1 log')
+    expect(describeTool('mcp__cockpit__open_preview', {})).toBe('Opening the preview')
+    expect(describeTool('mcp__other__thing', {})).toBe('Using thing (other)')
+  })
+
+  it('names MCP tools readably on approval cards', () => {
+    expect(friendlyToolName('mcp__cockpit__start_process')).toBe('Start a process')
+    expect(friendlyToolName('Bash')).toBe('Bash')
   })
 })

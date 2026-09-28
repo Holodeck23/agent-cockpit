@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { openApprovals } from '../../../server/threads/status.ts'
-import { api, type ThreadDetail } from '../api.ts'
+import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
 import { native } from '../native.ts'
 import { buildTranscript } from '../transcript.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
+import { ProcessChip } from './ProcessChip.tsx'
 import { Bars, CheckIcon, FileIcon, StopIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
@@ -13,6 +14,8 @@ import { TranscriptView } from './TranscriptView.tsx'
 interface ThreadViewProps {
   detail: ThreadDetail
   streaming: string
+  /** This project's processes, for the status-line chip. */
+  processes: ProcessInfo[]
   onError: (message: string) => void
 }
 
@@ -23,7 +26,7 @@ function shortPath(path: string): string {
   return `…/threads/${id.slice(0, 8)}/${parts.at(-1) ?? ''}`
 }
 
-export function ThreadView({ detail, streaming, onError }: ThreadViewProps) {
+export function ThreadView({ detail, streaming, processes, onError }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = status === 'working' || status === 'needs_input'
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
@@ -55,7 +58,7 @@ export function ThreadView({ detail, streaming, onError }: ThreadViewProps) {
       <header className="thread-head">
         <div className="thread-heading">
           <h1>{meta.title}</h1>
-          <p className="thread-status">
+          <div className="thread-status">
             <span className={`status-text status-${status}`}>
               {status === 'working' ? <Bars live /> : null}
               {STATUS_LABEL[status]}
@@ -71,7 +74,8 @@ export function ThreadView({ detail, streaming, onError }: ThreadViewProps) {
                 {shortPath(transcriptPath)}
               </span>
             )}
-          </p>
+            <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />
+          </div>
         </div>
         <div className="thread-actions">
           <div className="segment">

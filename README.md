@@ -31,6 +31,8 @@ Cockpit.app window or browser (React) ──SSE / JSON──► local server (No
 | `npm run package` | build `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.0-arm64.dmg` (ad-hoc signed, personal use) |
 | `npm run proof:app` | Phase A gate: drives the packaged app with a bare launchd PATH, runs a Haiku thread to Done, quits mid-turn, checks no agent survives |
 | `npm run icon` | regenerate `build/icon.icns` from `build/icon.svg` |
+| `npm run smoke:mcp [claude\|codex]` | cockpit MCP against a real agent outside the app: it must start the dev server, read its log and open the preview on its own |
+| `npm run proof:mcp` | Phase 4 gate on the packaged app: same task on Haiku, plus the process chip, Stop, restart, and quit leaving no dev server behind |
 | `tsx scripts/proof-b.ts b1\|b2\|b3` | Phase B gates on the packaged app: chrome, conversation list, thread + composer (real Haiku threads, screenshots in `docs/proof/`) |
 
 ## Interface
@@ -66,6 +68,23 @@ The layout and visual language follow Enjoy (measured tokens in `web/src/styles/
 - Approvals arrive as server requests (`item/commandExecution/requestApproval`, `item/fileChange/requestApproval`) and are answered with `{decision: accept | acceptForSession | decline}`.
 - Cockpit permission modes map to approval policy + sandbox: manual/acceptEdits → on-request + workspace-write, plan → read-only, auto/dontAsk → never + workspace-write, bypassPermissions → never + danger-full-access.
 - If `~/.codex/config.toml` pins a model newer than the installed CLI supports, every turn fails with a 400 error. Set a model on the thread, or upgrade the CLI.
+
+## Cockpit MCP and processes
+
+Every agent session gets a small MCP server named `cockpit` (`server/mcp/`), so the agent can run things that keep running and show them to you:
+
+| Tool | Does | Approval |
+|---|---|---|
+| `start_process` | runs a command (e.g. `npm run dev`) in the project, in its own process group; waits for its URL or first output | asks, like Bash |
+| `stop_process` | stops it and everything it forked | asks |
+| `list_processes` | this project's processes, status, URL | none |
+| `read_process_output` | the log, incrementally with `since` | none |
+| `open_preview` | opens a local page (localhost only) in your browser; becomes the preview pane in Phase 7 | none |
+
+- The MCP process is the app's own binary in Node mode (`ELECTRON_RUN_AS_NODE=1`, `dist-electron/mcp.cjs` inside app.asar), so it needs no Node on PATH.
+- It calls back to `/api/mcp` with a per-session token that pins it to its thread's project and dies with the session. The token lives in the agent's environment, never argv: Claude's stdio MCP servers inherit it, Codex forwards it through `mcp_servers.cockpit.env_vars`.
+- Processes are listed under the thread title (`1 process · :5173`), with the URL and a Stop button. Quitting the app stops them all (group SIGTERM, SIGKILL after 3s).
+- Codex asks before MCP tool calls through an MCP elicitation; the cockpit shows it as a normal approval card.
 
 ## Switching agents
 

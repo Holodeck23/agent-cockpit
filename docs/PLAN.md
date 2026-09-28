@@ -1,6 +1,6 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Status 2026-09-28:** Phase A (474f6b4) and Phase B1–B3 (97ce133, e1e075d, 3689fcc) done, every gate green on the packaged app. Next: Phase 4 (cockpit MCP).
+**Status 2026-09-29:** Phase A (474f6b4), Phase B1–B3 (97ce133, e1e075d, 3689fcc) and Phase 4a–4c (c124854, 3b36286, and the 4c commit) done, every gate green on the packaged app. Next: Phase 5 (workflows + schedule, now including `save_workflow`).
 
 ## Context
 Phases 0–3 are built and proven in this repo (4 commits): the Claude adapter, the Codex app-server adapter, threads + SSE, approvals, Stop, the Claude↔Codex switch with handoff, and 30 unit tests. Today it runs as a local server you open in a browser. Two changes:
@@ -63,8 +63,14 @@ New server bit: a `projects.json` store (`server/projects/store.ts`) with path, 
 
 **Gate for each B checkpoint:** in the packaged app, screenshot the same states as the reference (empty state, working thread, needs-you approval, dark mode) into `docs/proof/phase-B*-*.png` and compare them against the reference images. Layout, colours and type have to match on sight. Existing unit tests and proofs stay green (proof selectors get updated where markup changes).
 
-## Then (unchanged from the previous plan)
-Phase 4 cockpit MCP → Phase 5 workflows + schedule (fills in the Files/Workflows tabs) → Phase 6 phone (Tailscale, not installed) → Phase 7 preview pane.
+## Phase 4: cockpit MCP (done 2026-09-29)
+Scope as agreed: there was no process runner, preview pane or workflow store yet, so Phase 4 built the runner and `open_preview` opens the default browser; `save_workflow` moved to Phase 5.
+- **4a Process runner** (`server/processes/`): per-project long-running commands, each in its own process group; ring-buffered (512 KB), ANSI-stripped, numbered output; first local URL detected. Stop = group SIGTERM → SIGKILL after 3s; all stopped on quit. `/api/processes` + a named `process` SSE event.
+- **4b MCP** (`server/mcp/`): stdio server bundled to `dist-electron/mcp.cjs`, run by the app binary with `ELECTRON_RUN_AS_NODE=1`. Tools: `start_process`, `stop_process`, `list_processes`, `read_process_output`, `open_preview` (loopback URLs only). Per-session bearer token (identity + project scope, not secrecy: the loopback API is open to local processes anyway) in the agent's env, never argv; Claude's MCP servers inherit it, Codex forwards it via `env_vars`. Read-only tools pre-allowed; start/stop use the approval card (Codex's arrive as MCP elicitations). One guidance line in the system prompt.
+- **4c UI + gate:** a process chip in the thread status line (`1 process · :5173`) opening a list with URL and Stop; cockpit tool calls read as plain activity lines. Gate `npm run proof:mcp`: real Haiku, prompt names no tools; it started, read the log, opened the preview, and quit left nothing running. Codex covered by `npm run smoke:mcp codex`.
+
+## Then
+Phase 5 workflows + schedule + `save_workflow` (fills in the Files/Workflows tabs) → Phase 6 phone (Tailscale, not installed) → Phase 7 preview pane (`open_preview` retargets to it).
 
 ## Verification
 - Every checkpoint: `npm run verify` (typecheck + 30+ tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.

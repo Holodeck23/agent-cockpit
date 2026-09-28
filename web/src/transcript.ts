@@ -34,16 +34,51 @@ function field(input: unknown, key: string): string | undefined {
 
 /** The main argument of a tool call, for approval cards. */
 export function toolDetail(input: unknown): string {
-  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description']) {
+  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'id', 'message']) {
     const value = field(input, key)
     if (value) return value
   }
   return typeof input === 'object' && input !== null ? JSON.stringify(input).slice(0, 160) : ''
 }
 
+const COCKPIT_TOOLS: Record<string, string> = {
+  start_process: 'Start a process',
+  stop_process: 'Stop a process',
+  list_processes: 'List processes',
+  read_process_output: 'Read process output',
+  open_preview: 'Open a preview',
+}
+
+/** "mcp__cockpit__start_process" → "Start a process"; other MCP tools → "tool (server)". */
+export function friendlyToolName(name: string): string {
+  const match = /^mcp__(.+?)__(.+)$/.exec(name)
+  if (!match) return name
+  const [, server = '', tool = ''] = match
+  return server === 'cockpit' ? (COCKPIT_TOOLS[tool] ?? tool) : `${tool} (${server})`
+}
+
+function describeCockpitTool(tool: string, input: unknown): string {
+  switch (tool) {
+    case 'start_process':
+      return `Starting ${clip(field(input, 'command') ?? 'a process', 48)}`
+    case 'stop_process':
+      return `Stopping ${field(input, 'id') ?? 'a process'}`
+    case 'list_processes':
+      return 'Checking running processes'
+    case 'read_process_output':
+      return `Reading the ${field(input, 'id') ?? 'process'} log`
+    case 'open_preview':
+      return `Opening the preview${field(input, 'url') ? ` at ${clip(field(input, 'url') ?? '', 40)}` : ''}`
+    default:
+      return `Using ${tool}`
+  }
+}
+
 /** A plain-words activity line for a tool call: "Reading README.md", "Running npm test". */
 export function describeTool(name: string, input: unknown): string {
   const path = field(input, 'file_path') ?? field(input, 'path')
+  if (name.startsWith('mcp__cockpit__')) return describeCockpitTool(name.slice('mcp__cockpit__'.length), input)
+  if (name.startsWith('mcp__')) return `Using ${friendlyToolName(name)}`
   switch (name) {
     case 'Bash':
     case 'Shell': {
@@ -134,7 +169,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           key,
           requestId: event.requestId,
           agent,
-          toolName: event.toolName,
+          toolName: friendlyToolName(event.toolName),
           detail: toolDetail(event.input),
           canAllowForSession: event.suggestions.length > 0,
         })
