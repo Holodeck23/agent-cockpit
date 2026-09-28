@@ -19,7 +19,8 @@
     "app": "npm run build && npm run build:electron && electron .",
     "package": "npm run build && npm run build:electron && electron-builder --mac --arm64",
     "proof:app": "tsx scripts/proof-app.ts",
-    "proof:mcp": "tsx scripts/proof-4.ts"
+    "proof:mcp": "tsx scripts/proof-4.ts",
+    "proof:reliability": "tsx scripts/proof-reliability.ts"
   },
   "author": "",
   "license": "UNLICENSED",

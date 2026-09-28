@@ -4,7 +4,7 @@ import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { COCKPIT_GUIDANCE, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
-import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent } from '../agents/types.ts'
+import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval } from '../agents/types.ts'
 import { deriveStatus, messageCountOf, previewOf } from './status.ts'
 import type { ThreadStore } from './store.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
@@ -77,6 +77,7 @@ export interface ManagerOptions {
 }
 
 interface Live {
+  readonly pending: Map<string, PendingApproval>
   readonly session: AgentSession
   turnRunning: boolean
   stopRequested: boolean
@@ -106,6 +107,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const launchers = options.launchers ?? defaultLaunchers
   const live = new Map<string, Live>()
   const listeners = new Set<UpdateListener>()
+  const generations = new Map<string, symbol>()
+  const closing = new Set<Promise<void>>()
+
+  const closeEntry = (entry: Live): Promise<void> => {
+    if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    const closingSession = entry.session.close()
+    closing.add(closingSession)
+    void closingSession.then(() => closing.delete(closingSession), () => closing.delete(closingSession))
+    return closingSession
+  }
 
   const statusOf = (threadId: string): ThreadStatus =>
     deriveStatus(store.events(threadId), live.get(threadId)?.turnRunning ?? false)
@@ -130,17 +141,27 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (meta && meta.sessionId !== event.sessionId) store.update(threadId, { sessionId: event.sessionId })
     }
     if (entry && event.kind === 'result') {
+      entry.pending.clear()
       entry.turnRunning = false
       entry.stopRequested = false
       entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
     }
-    if (event.kind === 'exit') live.delete(threadId)
+    if (event.kind === 'exit') {
+      if (entry?.idleTimer) clearTimeout(entry.idleTimer)
+      live.delete(threadId)
+      generations.delete(threadId)
+    }
     broadcast(threadId, event)
   }
 
   const ensureSession = (meta: ThreadMeta): Live => {
     const existing = live.get(meta.id)
     if (existing?.session.alive()) return existing
+    const generation = Symbol()
+    generations.set(meta.id, generation)
+    const pending = new Map<string, PendingApproval>()
+    const requestIds = new Map<string, string>()
+    record(meta.id, { kind: 'session_boundary' })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
     const session = launchers[meta.settings.agent](
       {
@@ -152,10 +173,29 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       },
       (event) => {
         if (event.kind === 'exit') mcp?.release()
-        record(meta.id, event)
+        // An old process may exit after its replacement has already started.
+        if (generations.get(meta.id) !== generation) return
+        if (event.kind === 'approval_request') {
+          const publicId = randomUUID()
+          requestIds.set(event.requestId, publicId)
+          pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
+          record(meta.id, { ...event, requestId: publicId })
+        } else if (event.kind === 'approval_resolved') {
+          const publicId = requestIds.get(event.requestId)
+          if (!publicId) return
+          pending.delete(publicId)
+          requestIds.delete(event.requestId)
+          record(meta.id, { ...event, requestId: publicId })
+        } else {
+          if (event.kind === 'result' || event.kind === 'exit') {
+            pending.clear()
+            requestIds.clear()
+          }
+          record(meta.id, event)
+        }
       },
     )
-    const entry: Live = { session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     if (!meta.sessionStarted) store.update(meta.id, { sessionStarted: true, handoff: undefined })
     return entry
@@ -172,8 +212,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
     entry.turnRunning = true
-    if (meta.completed) store.update(threadId, { completed: false })
-    else store.update(threadId, {})
+    if (meta.completed) {
+      store.update(threadId, { completed: false })
+      record(threadId, { kind: 'completion_changed', completed: false })
+    } else store.update(threadId, {})
     entry.session.send(text)
   }
 
@@ -198,12 +240,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     approve(threadId, requestId, behavior) {
       const entry = live.get(threadId)
       if (!entry?.session.alive()) throw new Error('This approval belongs to a session that has ended')
-      const request = store
-        .events(threadId)
-        .map(({ event }) => event)
-        .find((event) => event.kind === 'approval_request' && event.requestId === requestId)
-      if (request?.kind !== 'approval_request') throw new Error('Unknown approval request')
-      entry.session.respondApproval({ requestId, input: request.input, suggestions: request.suggestions }, behavior)
+      const request = entry.pending.get(requestId)
+      if (!request || !entry.turnRunning) throw new Error('Unknown or expired approval request')
+      entry.pending.delete(requestId)
+      entry.session.respondApproval(request, behavior)
     },
     interrupt(threadId) {
       const entry = live.get(threadId)
@@ -213,14 +253,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     setCompleted(threadId, completed) {
       requireMeta(threadId)
-      return store.update(threadId, { completed })
+      const meta = store.update(threadId, { completed })
+      record(threadId, { kind: 'completion_changed', completed })
+      return meta
     },
     switchAgent(threadId, settings) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
       if (entry?.turnRunning) throw new Error('Stop the current turn before switching agents')
-      void entry?.session.close()
+      generations.delete(threadId)
       live.delete(threadId)
+      if (entry) void closeEntry(entry)
       const handoff = buildHandoff(store.events(threadId), meta.projectPath)
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
@@ -247,7 +290,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       return () => listeners.delete(listener)
     },
     async shutdown() {
-      await Promise.all([...live.values()].map((entry) => entry.session.close()))
+      await Promise.all([...closing, ...[...live.values()].map(closeEntry)])
     },
   }
 }

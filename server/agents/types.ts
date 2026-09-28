@@ -13,6 +13,8 @@ export interface PendingApproval {
 }
 
 export type NormalizedEvent =
+  | { kind: 'session_boundary' }
+  | { kind: 'completion_changed'; completed: boolean }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
   | { kind: 'user_text'; text: string }
   | { kind: 'text_delta'; text: string }

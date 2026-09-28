@@ -100,3 +100,19 @@ The plan was a personal V1 in small phases, each with a proof gate that has to p
 ## Next
 
 Workflows and schedules (with `save_workflow`), phone access, and the in-app preview pane. See the roadmap in the [README](../README.md).
+
+
+## Reliability checkpoint after Phase 4 (2026-09-29)
+
+**What.** Fixed four issues found in review before starting workflows and scheduling.
+
+- Agent callbacks belong to one process generation. An old process's delayed exit, result, or session notification cannot remove or overwrite its replacement. Shutdown also waits for sessions already closing after a switch.
+- Approval cards use fresh public IDs mapped to the current session's wire IDs and original inputs. Responses to expired or already answered requests are rejected. Turn/session boundaries clear pending approvals, including when resuming after an unclean application exit.
+- Conversation loads check both selection and request generation. Selecting another conversation clears the old detail, shows a loading state, and prevents the old composer from acting on the wrong thread. Reconnect loads use the same guard.
+- Completing, reopening, or sending a message to a completed thread broadcasts the metadata change, updating the header and list filters immediately.
+
+**Gate.** `npm run verify`: 97 tests, typecheck, and both builds passed. `npm run package` produced the app and DMG. `npm run proof:reliability` passed against the packaged app with synthetic threads: delayed response ordering, correct message target, repeated selection, completion/reopening, filtering, and deselection. This proof makes no agent calls. Manager regressions cover delayed process callbacks, shutdown, reused approval IDs, expired approvals, restart, and completion notifications.
+
+**Live integration.** `npm run smoke:codex` passed both turns and resumed the codeword correctly. `npm run smoke:claude` returned empty replies and failed; the script did not expose a reason. No retry was made. Claude live integration remains unverified for this checkpoint; rerun `npm run smoke:claude` when the CLI/session issue is resolved. Real-agent approval and MCP proofs were not rerun in this checkpoint.
+
+**Next.** Phase 5: saved workflows, scheduling, and `save_workflow`; then phone access and the embedded preview pane. The existing Files and Workflows UI sections remain placeholders.

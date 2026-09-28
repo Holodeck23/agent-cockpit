@@ -25,6 +25,7 @@ function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): Threa
     return {
       ...t,
       status: update.status,
+      meta: update.event.kind === 'completion_changed' ? { ...t.meta, completed: update.event.completed } : t.meta,
       preview: text ? text.slice(0, 140) : t.preview,
       messageCount: t.messageCount + (isMessage ? 1 : 0),
       lastActivityAt,
@@ -51,33 +52,41 @@ export function useCockpit(): Cockpit {
 
   useEffect(refresh, [refresh])
 
-  useEffect(() => {
-    setStreaming('')
-    if (!selectedId) {
-      setDetail(undefined)
-      return
-    }
-    api.thread(selectedId).then(
+  const selectedRef = useRef(selectedId)
+  const loadVersion = useRef(0)
+  const reloadDetail = useCallback((id: string): void => {
+    const version = ++loadVersion.current
+    api.thread(id).then(
       (loaded) => {
+        if (version !== loadVersion.current || selectedRef.current !== id) return
         setDetail(loaded)
         setStreaming(loaded.streaming)
       },
-      (e: unknown) => setError(String(e)),
+      (e: unknown) => {
+        if (version === loadVersion.current && selectedRef.current === id) setError(String(e))
+      },
     )
-  }, [selectedId])
+  }, [])
 
-  // One subscription for the life of the page. Re-subscribing on every change dropped
-  // events that arrived during the reconnect (SSE doesn't replay), leaving stale
-  // statuses; current values are read through refs instead.
-  const selectedRef = useRef(selectedId)
-  selectedRef.current = selectedId
+  const select = useCallback((id: string | undefined): void => {
+    if (selectedRef.current === id) return
+    ++loadVersion.current
+    selectedRef.current = id
+    setSelectedId(id)
+    setDetail(undefined)
+    setStreaming('')
+  }, [])
+
+  useEffect(() => {
+    if (selectedId) reloadDetail(selectedId)
+    return () => { ++loadVersion.current }
+  }, [selectedId, reloadDetail])
+
+  // One subscription for the life of the page; refs identify the selected thread.
   const knownIds = useRef(new Set<string>())
   knownIds.current = new Set(threads.map((t) => t.meta.id))
 
   useEffect(() => {
-    const reloadDetail = (id: string): void => {
-      api.thread(id).then(setDetail, (e: unknown) => setError(String(e)))
-    }
     const onUpdate = (update: ThreadUpdate): void => {
       const isDelta = update.event.kind === 'text_delta'
       if (!knownIds.current.has(update.threadId)) refresh()
@@ -86,6 +95,11 @@ export function useCockpit(): Cockpit {
       if (update.event.kind === 'text_delta') {
         const delta = update.event.text
         setStreaming((s) => s + delta)
+        return
+      }
+      if (update.event.kind === 'completion_changed') {
+        const completed = update.event.completed
+        setDetail((d) => d?.meta.id === update.threadId ? { ...d, meta: { ...d.meta, completed } } : d)
         return
       }
       if (update.event.kind === 'agent_switch') {
@@ -106,7 +120,7 @@ export function useCockpit(): Cockpit {
     }
     const onProcess = (info: ProcessInfo): void => setProcesses((current) => upsertProcess(current, info))
     return subscribe({ onUpdate, onProcess, onOpen })
-  }, [refresh])
+  }, [refresh, reloadDetail])
 
   return {
     threads,
@@ -115,7 +129,7 @@ export function useCockpit(): Cockpit {
     streaming,
     error,
     processes,
-    select: setSelectedId,
+    select,
     refresh,
     reportError: setError,
   }

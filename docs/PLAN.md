@@ -1,6 +1,6 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Status 2026-09-29:** Phase A (474f6b4), Phase B1–B3 (97ce133, e1e075d, 3689fcc) and Phase 4a–4c (c124854, 3b36286, 639f982) done, every gate green on the packaged app. Next: Phase 5 (workflows + schedule, now including `save_workflow`).
+**Status 2026-09-29:** Phases 0–3, desktop Phase A, UI Phase B1–B3, and MCP/process Phase 4a–4c are implemented. A reliability checkpoint now fixes session-switch races, session-scoped approvals, stale conversation loads, and completion updates. Current checks: 97 unit tests, typecheck, both builds, packaging, the synthetic packaged-app reliability gate, and the real Codex resume smoke pass. The Claude resume smoke returned empty replies and failed; it was not retried, and its cause is unverified. Previous phase proof results are historical. Next feature phase: Phase 5 (workflows + schedule, including `save_workflow`).
 
 ## Context
 Phases 0–3 are built and proven in this repo (4 commits): the Claude adapter, the Codex app-server adapter, threads + SSE, approvals, Stop, the Claude↔Codex switch with handoff, and 30 unit tests. Today it runs as a local server you open in a browser. Two changes:

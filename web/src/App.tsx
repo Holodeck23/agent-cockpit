@@ -41,13 +41,15 @@ export function App() {
       {section === 'conversations' ? (
         <div className="layout">
           <ConversationList key={`list:${activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
-          {selectedId && cockpit.detail ? (
+          {selectedId ? cockpit.detail?.meta.id === selectedId ? (
             <ThreadView
               detail={cockpit.detail}
               streaming={cockpit.streaming}
               processes={cockpit.processes.filter((p) => p.projectPath === cockpit.detail?.meta.projectPath)}
               onError={cockpit.reportError}
             />
+          ) : (
+            <main className="thread" role="status">Loading conversation…</main>
           ) : (
             <NewConversation
               key={`new:${activePath ?? ''}`}

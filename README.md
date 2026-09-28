@@ -81,6 +81,7 @@ Each session's tools are scoped to that session's project by a token that ends w
 | `npm run smoke:mcp [claude\|codex]` | Real agent, dev-server task: must use the cockpit tools on its own |
 | `npm run proof:app` | Packaged app from a bare Finder PATH: a Haiku thread to Done, quit mid-turn, no agent left running |
 | `tsx scripts/proof-b.ts b1\|b2\|b3` | Packaged app UI gates with screenshots |
+| `npm run proof:reliability` | Packaged app with synthetic threads: delayed loads, message routing, completion and reopening; no agent usage |
 | `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
 
 Proofs and smokes use real agents on small models (Claude Haiku, a light Codex model), so they cost a few cents each. Screenshots land in [docs/proof/](docs/proof/).

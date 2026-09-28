@@ -2,12 +2,14 @@ import type { StoredEvent, ThreadStatus } from './types.ts'
 
 /** Approval requests that have not been answered yet, oldest first. */
 export function openApprovals(events: readonly StoredEvent[]): string[] {
-  const resolved = new Set(
-    events.flatMap(({ event }) => (event.kind === 'approval_resolved' ? [event.requestId] : [])),
-  )
-  return events.flatMap(({ event }) =>
-    event.kind === 'approval_request' && !resolved.has(event.requestId) ? [event.requestId] : [],
-  )
+  const pending = new Set<string>()
+  for (const { event } of events) {
+    if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch' || event.kind === 'result') {
+      pending.clear()
+    } else if (event.kind === 'approval_request') pending.add(event.requestId)
+    else if (event.kind === 'approval_resolved') pending.delete(event.requestId)
+  }
+  return [...pending]
 }
 
 /**

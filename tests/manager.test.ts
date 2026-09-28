@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink } from '../server/agents/types.ts'
 import { createThreadManager, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
+import { openApprovals } from '../server/threads/status.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 
 interface FakeAgent {
@@ -59,13 +60,13 @@ describe('thread manager', () => {
   })
 
   it('walks the statuses working → needs_input → working → done', () => {
-    const { manager, agent, settings } = setup()
+    const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'write a file' })
     expect(manager.status(meta.id)).toBe('working')
     const input = { file_path: '/tmp/a.txt', content: 'hi' }
     agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'Write', input, suggestions: [] })
     expect(manager.status(meta.id)).toBe('needs_input')
-    manager.approve(meta.id, 'r1', 'allow')
+    manager.approve(meta.id, openApprovals(store.events(meta.id))[0]!, 'allow')
     // The original tool input must be echoed back, never replaced.
     expect(agent.approvals).toEqual([{ requestId: 'r1', behavior: 'allow', input }])
     expect(manager.status(meta.id)).toBe('working')
@@ -169,5 +170,119 @@ describe('switching agents', () => {
     expect(released).toBe(1)
     manager.send(meta.id, 'again')
     expect(agent.requests[1]?.cockpit?.secretEnv).toEqual({ COCKPIT_MCP_TOKEN: 't2' })
+  })
+})
+
+
+describe('session lifecycle regressions', () => {
+  it('ignores late callbacks and waits for both closing and replacement sessions on shutdown', async () => {
+    const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-race-')))
+    const sessions: Array<{ emit: EventSink; finish: () => void; closeCalls: number }> = []
+    const launcher: Launcher = (_request, emit) => {
+      let alive = true
+      let finish!: () => void
+      const closed = new Promise<void>((resolve) => { finish = () => { alive = false; emit({ kind: 'exit', code: 0 }); resolve() } })
+      const control = { emit, finish, closeCalls: 0 }
+      sessions.push(control)
+      return {
+        agent: 'claude', alive: () => alive, send: (text) => emit({ kind: 'user_text', text }),
+        respondApproval: () => undefined, interrupt: () => undefined,
+        close: () => { control.closeCalls++; return closed },
+      }
+    }
+    const manager = createThreadManager(store, { launchers: { claude: launcher, codex: launcher } })
+    const settings = threadSettingsSchema.parse({})
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    const old = sessions[0]!
+    old.emit({ kind: 'result', ok: true })
+    manager.switchAgent(meta.id, { ...settings, agent: 'codex' })
+    manager.send(meta.id, 'continue')
+    const replacement = sessions[1]!
+    replacement.emit({ kind: 'session', sessionId: 'replacement' })
+    replacement.emit({ kind: 'text_delta', text: 'new text' })
+    old.emit({ kind: 'session', sessionId: 'old' })
+    old.emit({ kind: 'result', ok: false })
+    old.emit({ kind: 'text_delta', text: 'old text' })
+    expect(manager.status(meta.id)).toBe('working')
+    expect(manager.partialText(meta.id)).toBe('new text')
+    expect(store.get(meta.id)?.sessionId).toBe('replacement')
+    let shutdownDone = false
+    const shutdown = manager.shutdown().then(() => { shutdownDone = true })
+    expect(replacement.closeCalls).toBe(1)
+    replacement.finish()
+    await Promise.resolve()
+    expect(shutdownDone).toBe(false)
+    old.finish()
+    await shutdown
+    expect(old.closeCalls).toBe(1)
+  })
+
+  it('keeps a replacement tracked after the old process exits', async () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    const oldEmit = agent.emit
+    oldEmit({ kind: 'result', ok: true })
+    manager.switchAgent(meta.id, { ...settings, agent: 'codex' })
+    manager.send(meta.id, 'next')
+    oldEmit({ kind: 'exit', code: 0 })
+    expect(manager.status(meta.id)).toBe('working')
+    await manager.shutdown()
+    expect(manager.status(meta.id)).toBe('idle')
+  })
+
+  it('expires old approvals and translates reused wire ids to fresh public ids', async () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    const request = { kind: 'approval_request' as const, requestId: '1', toolName: 'Shell', input: { command: 'first' }, suggestions: [] }
+    agent.emit(request)
+    const oldId = openApprovals(store.events(meta.id))[0]!
+    agent.emit({ kind: 'exit', code: 0 })
+    manager.send(meta.id, 'next')
+    expect(manager.status(meta.id)).toBe('working')
+    expect(() => manager.approve(meta.id, oldId, 'allow')).toThrow(/expired/)
+    agent.emit({ ...request, input: { command: 'second' } })
+    const nextId = openApprovals(store.events(meta.id))[0]!
+    expect(nextId).not.toBe(oldId)
+    manager.approve(meta.id, nextId, 'allow')
+    expect(agent.approvals).toEqual([{ requestId: '1', behavior: 'allow', input: { command: 'second' } }])
+    expect(() => manager.approve(meta.id, nextId, 'allow')).toThrow(/expired/)
+    agent.emit({ kind: 'exit', code: 0 })
+    manager.send(meta.id, 'third')
+    agent.emit(request)
+    expect(openApprovals(store.events(meta.id))).toHaveLength(1)
+    expect(manager.status(meta.id)).toBe('needs_input')
+    agent.emit({ kind: 'result', ok: false, stopped: true })
+    manager.send(meta.id, 'fourth')
+    expect(openApprovals(store.events(meta.id))).toEqual([])
+    expect(manager.status(meta.id)).toBe('working')
+    await manager.shutdown()
+  })
+
+  it('clears pre-restart approvals even when no exit was recorded', async () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    agent.emit({ kind: 'approval_request', requestId: 'old', toolName: 'Write', input: {}, suggestions: [] })
+    const launcher = fakeLauncher().launcher
+    const restarted = createThreadManager(store, { launchers: { claude: launcher, codex: launcher } })
+    restarted.send(meta.id, 'after restart')
+    expect(restarted.status(meta.id)).toBe('working')
+    expect(openApprovals(store.events(meta.id))).toEqual([])
+    await restarted.shutdown()
+    await manager.shutdown()
+  })
+
+  it('broadcasts completion, reopening, and automatic reopening on a new message', async () => {
+    const { store, manager, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    const seen: boolean[] = []
+    manager.subscribe(({ event }) => { if (event.kind === 'completion_changed') seen.push(event.completed) })
+    manager.setCompleted(meta.id, true)
+    expect(store.get(meta.id)?.completed).toBe(true)
+    manager.setCompleted(meta.id, false)
+    manager.setCompleted(meta.id, true)
+    manager.send(meta.id, 'reopen')
+    expect(seen).toEqual([true, false, true, false])
+    expect(manager.summaries()[0]?.meta.completed).toBe(false)
+    await manager.shutdown()
   })
 })
