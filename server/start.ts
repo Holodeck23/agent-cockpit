@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, join, normalize } from 'node:path'
 import { createApiHandler } from './http/router.ts'
+import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore } from './projects/store.ts'
 import { createThreadManager, type ThreadManager } from './threads/manager.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
@@ -24,7 +25,8 @@ export interface RunningServer {
   readonly port: number
   readonly store: ThreadStore
   readonly manager: ThreadManager
-  /** Stops agent sessions, then the HTTP server (including open SSE streams). */
+  readonly processes: ProcessRunner
+  /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
 
@@ -56,6 +58,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
   const manager = createThreadManager(store)
+  const processes = createProcessRunner()
   const server = createServer()
 
   await new Promise<void>((resolve, reject) => {
@@ -68,7 +71,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 
   // The API guard needs the real port, which is only known after listen when port is 0.
   const port = (server.address() as AddressInfo).port
-  const api = createApiHandler(manager, store, projects, [port, ...(options.trustedPorts ?? [])])
+  const api = createApiHandler({ manager, store, projects, processes }, [port, ...(options.trustedPorts ?? [])])
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)
@@ -78,7 +81,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   let closing: Promise<void> | undefined
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      await manager.shutdown()
+      await Promise.all([manager.shutdown(), processes.shutdown()])
       await new Promise<void>((resolve) => {
         server.close(() => resolve())
         server.closeAllConnections()
@@ -87,5 +90,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, close }
 }

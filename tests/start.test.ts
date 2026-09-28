@@ -78,6 +78,25 @@ describe('startServer', () => {
     expect(page.body).toContain('cockpit page')
   })
 
+  it('lists, reads and stops project processes, and stops them on close', async () => {
+    const server = await start()
+    const folder = mkdtempSync(join(tmpdir(), 'cockpit-proj-'))
+    expect(JSON.parse((await get(server.port, '/api/processes')).body)).toEqual({ data: [] })
+    const { process: started } = server.processes.start({
+      projectPath: folder,
+      command: `"${process.execPath}" -e "console.log('ready'); setInterval(() => {}, 1000)"`,
+    })
+    const listed = JSON.parse((await get(server.port, `/api/processes?project=${encodeURIComponent(folder)}`)).body)
+    expect(listed.data).toMatchObject([{ id: started.id, status: 'running' }])
+    expect((await get(server.port, '/api/processes/proc-999/output')).status).toBe(404)
+    expect((await get(server.port, `/api/processes/${started.id}/output?tail=-1`)).status).toBe(400)
+    const stopped = await post(server.port, `/api/processes/${started.id}/stop`, {})
+    expect(JSON.parse(stopped.body).data).toMatchObject({ id: started.id, status: 'exited' })
+    const other = server.processes.start({ projectPath: folder, command: 'sleep 30', name: 'sleeper' })
+    await server.close()
+    expect(server.processes.get(other.process.id)?.status).not.toBe('running')
+  })
+
   it('closes with an SSE stream still open', async () => {
     const server = await start()
     await new Promise<void>((resolve) => {

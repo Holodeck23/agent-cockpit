@@ -1,14 +1,15 @@
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
+import type { ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { isTrustedRequest } from './guard.ts'
+import { HttpError, parseBody, readJson, sendJson } from './json.ts'
+import { handleProcessRoute } from './process-routes.ts'
 import { openSse } from './sse.ts'
-
-const MAX_BODY_BYTES = 1_000_000
 
 const createThreadBody = z.object({
   projectPath: z.string().min(1).max(1000),
@@ -22,43 +23,6 @@ const completedBody = z.object({ completed: z.boolean() })
 const switchBody = z.object({ settings: threadSettingsSchema })
 const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
 
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
-
-async function readJson(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = []
-  let size = 0
-  for await (const chunk of req) {
-    const buffer = chunk as Buffer
-    size += buffer.length
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'Request body too large')
-    chunks.push(buffer)
-  }
-  if (chunks.length === 0) return {}
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
-  } catch {
-    throw new HttpError(400, 'Body is not valid JSON')
-  }
-}
-
-function parseBody<T>(schema: z.ZodType<T>, value: unknown): T {
-  const result = schema.safeParse(value)
-  if (!result.success) throw new HttpError(400, z.prettifyError(result.error))
-  return result.data
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'content-type': 'application/json' })
-  res.end(JSON.stringify(body))
-}
-
 function assertDirectory(path: string): void {
   try {
     if (statSync(path).isDirectory()) return
@@ -68,12 +32,14 @@ function assertDirectory(path: string): void {
   throw new HttpError(400, `Not a folder on this computer: ${path}`)
 }
 
-export function createApiHandler(
-  manager: ThreadManager,
-  store: ThreadStore,
-  projects: ProjectStore,
-  allowedPorts: readonly number[],
-) {
+export interface ApiDeps {
+  readonly manager: ThreadManager
+  readonly store: ThreadStore
+  readonly projects: ProjectStore
+  readonly processes: ProcessRunner
+}
+
+export function createApiHandler({ manager, store, projects, processes }: ApiDeps, allowedPorts: readonly number[]) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -87,7 +53,11 @@ export function createApiHandler(
 
     try {
       if (method === 'GET' && parts[1] === 'stream') {
-        openSse(req, res, manager)
+        openSse(req, res, manager, processes)
+        return true
+      }
+      if (parts[1] === 'processes') {
+        await handleProcessRoute(req, res, url, parts, processes)
         return true
       }
       if (parts[1] === 'projects' && parts.length === 2) {

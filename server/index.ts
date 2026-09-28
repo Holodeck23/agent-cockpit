@@ -13,7 +13,7 @@ console.log(`[cockpit] ${running.url}  (threads in ${running.store.root})`)
 
 const stop = (): void => {
   void running.close().finally(() => process.exit(0))
-  setTimeout(() => process.exit(0), 2000).unref()
+  setTimeout(() => process.exit(0), 5000).unref()
 }
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)

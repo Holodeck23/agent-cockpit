@@ -1,8 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { ProcessRunner } from '../processes/runner.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 
-/** One stream for all threads; the client filters by threadId. */
-export function openSse(req: IncomingMessage, res: ServerResponse, manager: ThreadManager): void {
+/**
+ * One stream for all threads; the client filters by threadId. Process changes
+ * go out as a named `process` event so thread listeners never see them.
+ */
+export function openSse(req: IncomingMessage, res: ServerResponse, manager: ThreadManager, processes: ProcessRunner): void {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -12,9 +16,13 @@ export function openSse(req: IncomingMessage, res: ServerResponse, manager: Thre
   const unsubscribe = manager.subscribe((update) => {
     res.write(`data: ${JSON.stringify(update)}\n\n`)
   })
+  const unsubscribeProcesses = processes.subscribe((info) => {
+    res.write(`event: process\ndata: ${JSON.stringify(info)}\n\n`)
+  })
   const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000)
   req.on('close', () => {
     clearInterval(heartbeat)
     unsubscribe()
+    unsubscribeProcesses()
   })
 }
