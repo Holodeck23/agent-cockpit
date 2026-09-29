@@ -7,16 +7,22 @@
 - **Verified for this checkpoint:** 140 tests, typecheck, both builds, packaging, 32 phone checks through real Tailscale, and packaged desktop reliability. Earlier Claude-dependent proofs were not repeated during its usage cap; see BUILD-NOTES for their last failures.
 - **Installed:** the packaged app was signature-checked and launched. Phone access and the existing pairing resumed; the previous app bundle was preserved privately.
 - **Portable setup:** each person uses their own CLI accounts, project folder and Tailscale account; `npm run doctor` checks prerequisites. Model selection defaults to their CLI configuration.
-- **Next:** complete physical-phone notification acceptance, then Phase 7 preview pane. Additional agent adapters remain Phase 8.
+- **Next:** walk the primary release flow on a fresh setup (below), complete physical-phone notification acceptance, then Phase 7 preview pane. Additional agent adapters remain Phase 8.
 
 
-## Next session: inspect the current MVP
+## MVP inspection (2026-09-29)
 
-Run the app and its existing checks. Walk through the features already built in the first five phases, note failures and missing pieces, and choose one primary user flow for the first release.
+Fresh walkthrough used the packaged app and Codex `gpt-5.6-luna`. Claude's first live check hit its provider cap; no further Claude calls were made.
 
-**Done when:** a short checklist records what works, what fails, and the single release-critical user flow.
+- **Works:** 140 tests and builds; Codex conversation resume; desktop selection/routing/completion; files and attachment answers; manual/scheduled workflows; 16 packaged process checks covering approval, start, logs, preview routing, Stop, restart and quit cleanup.
+- **Blocked:** fresh Claude↔Codex handoff acceptance while Claude is capped.
+- **Still unverified in this inspection:** native folder picker, actual external-browser opening (the proof captures the request and fetches the URL), simultaneous live agents, Deny/session-wide approvals, active-agent Stop, second-Mac setup and physical-phone push.
+- **Polish observed:** technical Codex MCP approval wording and conversation titles truncated mid-word.
+- **Screenshots:** refreshed Phase 4 and Phase 5 captures in `docs/proof/`, using synthetic projects. Run logs and the full checklist are kept outside the repo.
 
-This inspection has not been performed in the setup/documentation checkpoint. Do not treat earlier proof results as the checklist or preselect the release flow without the walkthrough.
+**Primary release flow:** open a project → ask Codex to run its dev server and inspect the log → allow the action → receive a working local preview URL → stop or restart the server from the conversation.
+
+**Next acceptance:** walk that flow from the native folder picker through an actual browser opening on a fresh setup. Files and workflows support this flow. Keep Claude handoff and physical-phone push visibly pending; preview-pane development remains Phase 7.
 
 ## Scope for the first release
 

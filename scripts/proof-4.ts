@@ -1,5 +1,5 @@
 // Phase 4 gate, run against the PACKAGED app (npm run package first): `npm run proof:mcp`.
-// A real Haiku thread in a small web project is asked, in plain words that name no tools, to get
+// A real agent thread (Haiku by default, --codex selects Codex) in a small web project is asked, in plain words that name no tools, to get
 // the dev server running and show the site. It has to start the server through the cockpit MCP,
 // read its log, and open the preview itself. The preview is captured (not opened) by swapping
 // shell.openExternal in the main process. Then: the header chip, Stop from the UI, a restart,
@@ -11,6 +11,9 @@ import type { Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR } from './lib/launch-app.ts'
 import { DEV_PROMPT, makeDevProject } from './lib/dev-fixture.ts'
 import { chooseAgent, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
+
+const agent = process.argv.includes('--codex') ? 'codex' : 'claude'
+const model = agent === 'codex' ? (process.env.COCKPIT_CODEX_MODEL ?? 'gpt-5.6-luna') : 'haiku'
 
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
@@ -49,7 +52,7 @@ async function approveUntilDone(page: Page, threadId: string, screenshot?: strin
     if (await card.isVisible()) {
       const tool = ((await card.locator('.approval-title strong').nth(1).textContent()) ?? '').trim()
       const detail = ((await card.locator('.approval-detail').textContent()) ?? '').trim()
-      asked.push(tool === 'Start a process' ? tool : `${tool}: ${detail.slice(0, 60)}`)
+      asked.push(tool === 'Start a process' ? tool : `${tool}: ${detail}`)
       if (screenshot && asked.length === 1) await page.screenshot({ path: join(PROOF_DIR, screenshot) })
       await card.getByRole('button', { name: 'Allow', exact: true }).click()
       return undefined
@@ -91,7 +94,7 @@ await app.evaluate(({ shell }) => {
 const openedUrls = (): Promise<string[]> => app.evaluate(() => (globalThis as { __opened?: string[] }).__opened ?? [])
 
 await openProject(page, project, 'Sprout site')
-await chooseAgent(page, { model: 'haiku' })
+await chooseAgent(page, { agent, model })
 await startConversation(page, DEV_PROMPT)
 const threadId = await waitUntil(page, 'the thread', async () =>
   (await getJson<Array<{ meta: { id: string; projectPath: string } }>>(page, '/api/threads')).find((t) => t.meta.projectPath === project)?.meta.id,
@@ -101,9 +104,9 @@ const asked = await approveUntilDone(page, threadId, 'phase-4-approval.png')
 check('turn finished', (await headStatus(page).textContent()) === 'Done', (await headStatus(page).textContent()) ?? '')
 // The agent may also use Bash, which asks in manual mode like any command. What matters here: starting a
 // process asks, and the read-only cockpit tools (list, read log, preview) never do.
-const READ_ONLY = ['List processes', 'Read process output', 'Open a preview']
-check('starting a process asked for approval', asked.includes('Start a process'), asked.join(' | '))
-check('read-only cockpit tools never asked', !asked.some((t) => READ_ONLY.some((r) => t.startsWith(r))))
+const READ_ONLY = ['List processes', 'Read process output', 'Open a preview', 'list_processes', 'read_process_output', 'open_preview']
+check('starting a process asked for approval', asked.some((tool) => tool === 'Start a process' || (tool.startsWith('MCP: cockpit:') && /\bstart_process\b/.test(tool))), asked.join(' | '))
+check('read-only cockpit tools never asked', !asked.some((t) => READ_ONLY.some((r) => t.includes(r))))
 
 const { events } = await getJson<{ events: StoredEvent[] }>(page, `/api/threads/${threadId}/events`)
 const tools = events.flatMap(({ event }) => (event.kind === 'tool_use' && event.name ? [event.name] : []))

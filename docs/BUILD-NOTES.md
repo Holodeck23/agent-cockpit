@@ -231,3 +231,19 @@ Review found that Web Push lacked a network timeout, allowing a stalled endpoint
 Scope clarification: this is an early MVP. The portability pass makes the existing Mac checkpoint easier for another builder to try; it does not expand the milestone into a finished cross-platform product. Remaining physical-phone checks are tracked openly and do not block MVP feedback.
 
 The portability package passed 27 non-agent phone checks through Tailscale. Its application archive contains no per-user state files or CLI credential directories. Final focused review found no further blocking code findings after the unsubscribe and timeout fixes. The next session is reserved for a broader phases 1–5 walkthrough and selection of one release-critical flow; that inspection has not been marked complete.
+
+
+## MVP inspection (2026-09-29)
+
+**What.** A walkthrough of phases 1 to 5 on the packaged app, to record what works, what fails and the one flow the first release depends on. Claude hit its usage limit on the first live check, so every live check after that ran on Codex.
+
+**Proof changes.** `proof:files` and `proof:mcp` take `--codex` (model from `COCKPIT_CODEX_MODEL`), through an `agent` option on the shared `chooseAgent` helper. Codex asks for cockpit tools as MCP approvals ("MCP: cockpit ... start_process"), so the process proof recognises that wording as well as Cockpit's own label, and keeps the full approval detail in its log. Claude with Haiku stays the default.
+
+**Results.** 140 tests and builds; Codex conversation resume; desktop selection, routing, completion and reopening; file preview and an attachment-only answer; manual and scheduled workflows; 16 packaged process checks (approval, start, log, preview URL, served page, Stop, restart, nothing left running after quit). Fresh screenshots of Phase 4 and 5 use synthetic projects.
+
+**Not covered.** Claude to Codex handoff (Claude capped), the native folder picker, a real external browser opening the preview (the proof captures the request and fetches the URL), several live agents at once, Deny and session-wide approvals, stopping an active agent turn, setup on a second Mac, and push delivery to a physical phone.
+
+**Polish noted.** Codex approval cards read technically ("MCP: cockpit"), and long titles are cut mid-word.
+
+**Primary release flow.** Open a project, ask the agent to run its dev server and check the log, allow the start, get a working local preview URL, then stop or restart the server from the conversation. Files and workflows support it.
+

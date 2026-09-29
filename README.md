@@ -6,6 +6,29 @@ Cockpit does no AI inference itself. It drives the official `claude` and `codex`
 
 ![A Cockpit conversation: the agent started the dev server, read its log and opened the preview; the running process shows under the title](docs/proof/phase-4-thread.png)
 
+## Desktop walkthrough
+
+Fresh packaged-app captures from the September 29 inspection, using Codex Luna and synthetic projects. The primary demo flow is: open a project, ask the agent to start its dev server, approve, inspect the preview URL, then stop or restart it.
+
+<details>
+<summary>Approval, attached files, and repeatable workflows</summary>
+
+**Approve the process start in the conversation.**
+
+![Codex waiting for approval to start the project dev server](docs/proof/phase-4-approval.png)
+
+**Attach a project file and get an answer from its contents.**
+
+![Codex Luna answers using an attached release note](docs/proof/phase-5-files-attached.png)
+
+**Save instructions and choose when they run.**
+
+![Workflow editor with Codex Luna, repeat interval and schedule controls](docs/proof/phase-5-workflows.png)
+
+[File browser in dark mode](docs/proof/phase-5-files-dark.png) · [Workflow editor in dark mode](docs/proof/phase-5-workflows-dark.png) · [Process controls](docs/proof/phase-4-processes.png)
+
+</details>
+
 ## Features
 
 - **Parallel conversations, grouped by project.** A tab per pinned project, each showing how many agents are working and how many need you. The list filters by All, Needs you, Working and Unread, with live counts and search.
@@ -63,7 +86,7 @@ If a CLI cannot be found, run `npm run doctor` from the source checkout and rest
 
 ## Use it from your phone
 
-1. Install Tailscale on the Mac and phone, and sign in with the same account. Keep the Mac awake with Cockpit running.
+1. Install Tailscale on the Mac and phone, and sign in with the same account. On the Mac, allow Tailscale's network extension when macOS asks (System Settings, Login Items & Extensions, Network Extensions). In the Tailscale admin console, turn on MagicDNS and HTTPS certificates. Keep the Mac awake with Cockpit running.
 2. In Cockpit on the Mac, open **Phone access** and choose **Turn on phone access**. If Tailscale needs setup, follow the error shown there.
 3. Open the displayed HTTPS address on the phone, or scan its QR code. Choose **Ask my Mac**, compare the six-digit code on both screens, then **Allow** on the Mac.
 4. On Android, Chrome can add Cockpit to the home screen. Open a conversation to reply, answer an approval, or stop it.
@@ -132,6 +155,8 @@ Open **Files**, or use the composer's attachment button, to preview a text file 
 | `npm run proof:phone` | Packaged app and real Tailscale on HTTPS 8443: turn on phone access, pair a phone-sized Chrome, and refusals for a login not on the allowlist, the LAN address, no identity, a foreign Origin, an unpaired and a removed phone, each with a control |
 | `npm run proof:phone -- --live` | Also run one real Codex workflow-save approval, answer it through the phone view, and verify the result arrives live; uses the configured small Codex model |
 
+Use `npm run proof:files -- --codex` and `npm run proof:mcp -- --codex` to run the packaged file/process checks with Codex instead of Claude. Set `COCKPIT_CODEX_MODEL` to choose an available model.
+
 Some proofs and smokes call real agents and consume your provider allowance. Codex proofs default to the model used for development; set `COCKPIT_CODEX_MODEL` to a model available to your account before running them. The product itself uses your CLI's default when Model is blank. Screenshots land in [docs/proof/](docs/proof/).
 
 ## Status and roadmap
@@ -139,8 +164,9 @@ Some proofs and smokes call real agents and consume your provider allowance. Cod
 Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file attachments, and phone access over Tailscale with pairing and a phone layout.
 
 Next:
-1. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
-2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
+1. **Primary release flow.** Walk it on a fresh setup: open a project with the folder picker, ask the agent to run its dev server and check the log, allow the start, open the preview in a real browser, then stop or restart the server.
+2. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
+3. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
 
 ## Credits
 
