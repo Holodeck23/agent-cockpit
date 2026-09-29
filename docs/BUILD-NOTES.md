@@ -219,3 +219,15 @@ Limits: automated Chrome rejected actual push registration during the earlier se
 Implementation commit `44fb890` was pushed to `main`. The packaged app was installed only after verifying that the installed instance had no active conversations and the proof instances had closed. Its prior bundle was preserved in the private verification folder. Signature verification passed; the new installed process served the notification API and service worker, resumed phone access, and retained the existing pairing. Notification delivery remained disabled on that device at the installation check. No further runtime code changes were made for this documentation checkpoint.
 
 PLAN now separates completed functionality, current verification and pending phone acceptance. ARCHITECTURE records the remote notification path and storage; README contains phone setup and the manual delivery check. Private handoff notes retain the command logs, installation result and previous app bundle.
+
+## Setup for other users and review (2026-09-29)
+
+The supported target remains macOS on Apple silicon. README now separates source-build prerequisites, agent sign-in, first conversation, optional phone access and per-user storage. The app ships no paired devices, credentials or project paths. Empty Model uses the user's CLI default; the account-specific Codex suggestion was removed. Development proofs retain an explicit model override through `COCKPIT_CODEX_MODEL`.
+
+`npm run doctor` checks the platform and agent CLI versions with bounded local commands, and reports optional Tailscale installation separately. It performs no sign-in or agent work and does not claim authentication is valid. Tailscale discovery now searches the user's PATH before standard locations and rejects non-executable files/directories; the phone proof uses the same discovery. Two tests exercise custom install paths and fallback behavior.
+
+Review found that Web Push lacked a network timeout, allowing a stalled endpoint to leave delivery and the test request pending. The sender now sets a 15-second socket timeout. Verification passed 140 tests, typecheck and both builds. Physical-phone push delivery and a full first run on a second person's Mac remain unverified; documentation does not present either as passed.
+
+Scope clarification: this is an early MVP. The portability pass makes the existing Mac checkpoint easier for another builder to try; it does not expand the milestone into a finished cross-platform product. Remaining physical-phone checks are tracked openly and do not block MVP feedback.
+
+The portability package passed 27 non-agent phone checks through Tailscale. Its application archive contains no per-user state files or CLI credential directories. Final focused review found no further blocking code findings after the unsubscribe and timeout fixes. The next session is reserved for a broader phases 1–5 walkthrough and selection of one release-critical flow; that inspection has not been marked complete.

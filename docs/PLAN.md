@@ -4,10 +4,23 @@
 
 - **Complete:** Claude/Codex adapters, conversations and approvals, desktop UI, process tools, workflows, file attachments, Tailscale pairing, phone layout, and the real Codex phone-approval gate.
 - **Implemented, awaiting device acceptance:** encrypted Web Push, subscription recovery, and notification-to-conversation routing. Actual delivery and tapping on a physical phone remain unverified.
-- **Verified for this checkpoint:** 138 tests, typecheck, both builds, packaging, 32 phone checks through real Tailscale, and packaged desktop reliability. Earlier Claude-dependent proofs were not repeated during its usage cap; see BUILD-NOTES for their last failures.
+- **Verified for this checkpoint:** 140 tests, typecheck, both builds, packaging, 32 phone checks through real Tailscale, and packaged desktop reliability. Earlier Claude-dependent proofs were not repeated during its usage cap; see BUILD-NOTES for their last failures.
 - **Installed:** the packaged app was signature-checked and launched. Phone access and the existing pairing resumed; the previous app bundle was preserved privately.
+- **Portable setup:** each person uses their own CLI accounts, project folder and Tailscale account; `npm run doctor` checks prerequisites. Model selection defaults to their CLI configuration.
 - **Next:** complete physical-phone notification acceptance, then Phase 7 preview pane. Additional agent adapters remain Phase 8.
 
+
+## Next session: inspect the current MVP
+
+Run the app and its existing checks. Walk through the features already built in the first five phases, note failures and missing pieces, and choose one primary user flow for the first release.
+
+**Done when:** a short checklist records what works, what fails, and the single release-critical user flow.
+
+This inspection has not been performed in the setup/documentation checkpoint. Do not treat earlier proof results as the checklist or preselect the release flow without the walkthrough.
+
+## Scope for the first release
+
+This is an early build. Prioritize a usable demo, clear setup for other builders and feedback from trying it. Ship small verified checkpoints and keep incomplete features visible. Cross-platform packaging, broad onboarding automation and production polish can wait. Physical-phone push acceptance is pending, but it does not block trying the desktop and phone-approval MVP.
 
 ## Original scope (historical)
 Phases 0–3 are built and proven in this repo (4 commits): the Claude adapter, the Codex app-server adapter, threads + SSE, approvals, Stop, the Claude↔Codex switch with handoff, and 30 unit tests. Today it runs as a local server you open in a browser. Two changes:

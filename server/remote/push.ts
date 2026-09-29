@@ -34,6 +34,7 @@ export const webPushSender: PushSender = async (subscription, payload, keys) => 
       vapidDetails: { subject: 'https://github.com/Holodeck23/agent-cockpit', ...keys },
       TTL: 3600,
       urgency: 'high',
+      timeout: 15_000,
     })
     return result.statusCode
   } catch (error) {

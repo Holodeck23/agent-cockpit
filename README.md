@@ -18,15 +18,24 @@ Cockpit does no AI inference itself. It drives the official `claude` and `codex`
 - **Phone access.** Pair a phone through Tailscale to follow conversations, reply, approve requests and stop a turn. The notification bell enables alerts when an agent asks for approval.
 - **A real Mac app.** Native window, runs from Finder or the Dock, and quitting stops every agent and dev server it started.
 
+## Early release
+
+Cockpit is an early, usable build for other builders to try and give feedback on. The current supported target is macOS on Apple silicon; remaining experiments and acceptance checks are listed below.
+
 ## Quick start
 
-Requirements: macOS on Apple silicon, Node 22+, and the CLIs you want to use, signed in: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) and/or [Codex](https://github.com/openai/codex) (`codex`).
+**Supported MVP:** macOS on Apple silicon. Windows, Linux and Intel Mac packages are not currently supported or verified.
+
+Use your own [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) and/or [Codex](https://github.com/openai/codex) (`codex`) installation and account. You only need one of them. Open that CLI in a terminal, finish its sign-in and confirm it can answer a prompt before using Cockpit. Cockpit does not provide an AI account, transfer the developer's credentials, or bypass provider usage limits.
+
+To build from source, install Node 22.12+ and Git:
 
 ```bash
 git clone https://github.com/Holodeck23/agent-cockpit.git
 cd agent-cockpit
 npm install
 node node_modules/electron/install.js   # Electron's binary, if your npm blocks install scripts
+npm run doctor     # check this Mac's platform and installed CLIs; no agent usage
 
 npm run app        # build and open the desktop app from the repo
 ```
@@ -41,6 +50,16 @@ cp -R release/mac-arm64/Cockpit.app /Applications/
 The build is ad-hoc signed, not notarized, so the first launch may need right-click, then Open.
 
 Prefer a browser? `npm start` serves the same UI at http://127.0.0.1:4317.
+
+### Your first conversation
+
+1. Open Cockpit and choose **Open a project folder…**. Pick a folder on your own Mac.
+2. In **Agent settings**, select the CLI you installed. Leave **Model** blank to use its configured default, or enter a model your account can access. Model access varies by provider and account.
+3. Start with **Ask before acting**, then send a small request. Approval cards let you allow or deny proposed actions.
+
+Every macOS user gets separate state under their own `~/.agent-cockpit/`. No project folders, paired phones, signing keys or accounts ship inside the app. Phone access starts off and is optional. Each user pairs their own devices on their own Tailscale account; the public repository address used as Web Push contact metadata is not a relay or an account dependency.
+
+If a CLI cannot be found, run `npm run doctor` from the source checkout and restart Cockpit after installation. If an agent reports authentication, model-access or usage-limit errors, resolve them in that CLI/account or select your other installed agent.
 
 ## Use it from your phone
 
@@ -97,6 +116,7 @@ Open **Files**, or use the composer's attachment button, to preview a text file 
 
 | Command | What it does |
 |---|---|
+| `npm run doctor` | Check the supported platform and discover installed agent CLIs and optional Tailscale; does not test account authentication |
 | `npm run verify` | Typecheck, unit tests, web and Electron builds |
 | `npm start` | Serve the UI at http://127.0.0.1:4317 |
 | `npm run app` | Build and open the desktop app from the repo |
@@ -107,12 +127,12 @@ Open **Files**, or use the composer's attachment button, to preview a text file 
 | `tsx scripts/proof-b.ts b1\|b2\|b3` | Packaged app UI gates with screenshots |
 | `npm run proof:reliability` | Packaged app with synthetic threads: delayed loads, message routing, completion and reopening; no agent usage |
 | `npm run proof:workflows` | Packaged app: real Codex manual and scheduled workflow runs, editor and schedule controls |
-| `npm run proof:files` | Packaged app: synthetic file browsing, preview, draft attachments and failed-send recovery; no agent usage |
+| `npm run proof:files` | Packaged app: file browsing, draft preservation and a real Haiku attachment check |
 | `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
 | `npm run proof:phone` | Packaged app and real Tailscale on HTTPS 8443: turn on phone access, pair a phone-sized Chrome, and refusals for a login not on the allowlist, the LAN address, no identity, a foreign Origin, an unpaired and a removed phone, each with a control |
 | `npm run proof:phone -- --live` | Also run one real Codex workflow-save approval, answer it through the phone view, and verify the result arrives live; uses the configured small Codex model |
 
-Proofs and smokes use real agents on small models (Claude Haiku, a light Codex model), so they cost a few cents each. Screenshots land in [docs/proof/](docs/proof/).
+Some proofs and smokes call real agents and consume your provider allowance. Codex proofs default to the model used for development; set `COCKPIT_CODEX_MODEL` to a model available to your account before running them. The product itself uses your CLI's default when Model is blank. Screenshots land in [docs/proof/](docs/proof/).
 
 ## Status and roadmap
 

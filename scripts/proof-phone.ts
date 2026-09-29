@@ -27,6 +27,7 @@ import { threadSettingsSchema } from '../server/threads/types.ts'
 import { apiPost } from './lib/ui.ts'
 import { createWorkflowStore } from '../server/workflows/store.ts'
 import type { ThreadDetail } from '../web/src/api.ts'
+import { tailscaleBinary } from '../server/remote/tailscale.ts'
 
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
@@ -34,7 +35,7 @@ const PORT = 47822
 const HTTPS_PORT = 8443
 
 function tailscale(args: string[]): string {
-  return execFileSync('/usr/local/bin/tailscale', args, { encoding: 'utf8', timeout: 15_000 })
+  return execFileSync(tailscaleBinary(), args, { encoding: 'utf8', timeout: 15_000 })
 }
 const status = JSON.parse(tailscale(['status', '--json'])) as { Self: { DNSName: string; UserID: number }; User: Record<string, { LoginName: string }> }
 const NAME = status.Self.DNSName.replace(/\.$/, '')

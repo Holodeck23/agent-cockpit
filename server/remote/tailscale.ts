@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { accessSync, constants, statSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
 
 // Thin wrapper over the `tailscale` CLI. Every call has a timeout: when the
 // macOS network extension is not approved or the app is logged out, the CLI
@@ -25,15 +26,17 @@ const TIMEOUT_MS = 15_000
 
 export class TailscaleError extends Error {}
 
-function binary(): string {
-  const found = CANDIDATES.find((path) => existsSync(path))
+export function tailscaleBinary(path = process.env.PATH ?? '', candidates: readonly string[] = CANDIDATES): string {
+  const found = [...path.split(delimiter).filter(Boolean).map((dir) => join(dir, 'tailscale')), ...candidates].find((file) => {
+    try { accessSync(file, constants.X_OK); return statSync(file).isFile() } catch { return false }
+  })
   if (!found) throw new TailscaleError('Tailscale is not installed on this Mac')
   return found
 }
 
 function run(args: readonly string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(binary(), [...args], { timeout: TIMEOUT_MS, maxBuffer: 4_000_000 }, (error, stdout, stderr) => {
+    execFile(tailscaleBinary(), [...args], { timeout: TIMEOUT_MS, maxBuffer: 4_000_000 }, (error, stdout, stderr) => {
       if (!error) return resolve(stdout)
       if (error.killed) return reject(new TailscaleError('Tailscale did not answer. Open the Tailscale menu and check it is connected.'))
       reject(new TailscaleError(`tailscale ${args[0]} failed: ${(stderr || error.message).trim().split('\n')[0]}`))

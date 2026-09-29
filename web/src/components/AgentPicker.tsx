@@ -16,7 +16,8 @@ export interface AgentChoice {
 
 const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
   claude: ['haiku', 'sonnet', 'opus'],
-  codex: ['gpt-5.6-luna'],
+  // Account-specific model ids can be typed; blank uses the user's CLI default.
+  codex: [],
 }
 
 const PERMISSION_LABEL: Record<ThreadSettings['permissionMode'], string> = {
