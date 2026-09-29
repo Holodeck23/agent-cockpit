@@ -57,7 +57,6 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   return {
     agent: 'claude',
     send(text: string) {
-      onEvent({ kind: 'user_text', text })
       write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } })
     },
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {

@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
 import type { StoredEvent, ThreadMeta } from './types.ts'
+import { withAttachmentNote } from '../files/references.ts'
 
 // File-first storage, one folder per thread, outside the repo:
 //   <root>/threads/<id>/meta.json     current metadata (atomic rewrite)
@@ -27,7 +28,7 @@ export function defaultRoot(): string {
 }
 
 function markdownFor(event: NormalizedEvent, ts: string): string | undefined {
-  if (event.kind === 'user_text') return `\n## You · ${ts}\n\n${event.text}\n`
+  if (event.kind === 'user_text') return `\n## You · ${ts}\n\n${withAttachmentNote(event.text)}\n`
   if (event.kind === 'assistant_text') return `\n## Agent · ${ts}\n\n${event.text}\n`
   if (event.kind === 'tool_use') return `\n> tool: ${event.name}\n`
   return undefined

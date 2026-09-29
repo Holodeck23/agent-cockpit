@@ -32,6 +32,10 @@ describe('elapsed', () => {
 })
 
 describe('buildTranscript', () => {
+  it('shows attached files by name without their contents', () => {
+    const [item] = buildTranscript([at(0, { kind: 'user_text', text: 'Review @file:src%2Fapp.ts' })], 'claude')
+    expect(item).toMatchObject({ type: 'message', author: 'you', text: 'Review', attachments: ['src/app.ts'] })
+  })
   it('groups authors, collapses tool calls into timed steps, and folds approvals', () => {
     const items = buildTranscript(
       [

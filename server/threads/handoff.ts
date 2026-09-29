@@ -1,3 +1,4 @@
+import { withAttachmentNote } from '../files/references.ts'
 import type { StoredEvent } from './types.ts'
 
 const MAX_HANDOFF_CHARS = 24_000
@@ -11,7 +12,8 @@ export function buildHandoff(events: readonly StoredEvent[], projectPath: string
   const lines = events.flatMap(({ event }): string[] => {
     switch (event.kind) {
       case 'user_text':
-        return [`USER: ${event.text}`]
+        // References, not contents: the files on disk are current, a copy from then is not.
+        return [`USER: ${withAttachmentNote(event.text)}`]
       case 'assistant_text':
         return [`PREVIOUS AGENT: ${event.text}`]
       case 'tool_use': {

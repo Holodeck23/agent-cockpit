@@ -20,8 +20,8 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     if (isBusy(id)) throw new Error('This workflow already has a running conversation')
     try {
       if (!statSync(workflow.projectPath).isDirectory()) throw new Error('Project folder is unavailable')
-      const text = expandFiles(expandWorkflows(workflow.prompt, workflow.projectPath, store), workflow.projectPath)
-      const thread = manager.create({ projectPath: workflow.projectPath, settings: workflow.settings, text,
+      const agentText = expandFiles(expandWorkflows(workflow.prompt, workflow.projectPath, store), workflow.projectPath)
+      const thread = manager.create({ projectPath: workflow.projectPath, settings: workflow.settings, text: workflow.prompt, agentText,
         title: `${workflow.name} · ${trigger === 'scheduled' ? 'Scheduled' : 'Run'}`,
         workflowId: id, workflowTrigger: trigger })
       store.update(id, { lastThreadId: thread.id, lastRunAt: new Date(now()).toISOString(), lastError: undefined })

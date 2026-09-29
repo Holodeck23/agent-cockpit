@@ -1,8 +1,10 @@
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { expandFiles, listFiles, readProjectFile } from '../server/files/browser.ts'
+import { describeAttachments, MessageReferenceError } from '../server/files/references.ts'
+import { buildHandoff } from '../server/threads/handoff.ts'
 import { startServer } from '../server/start.ts'
 import type { Launcher } from '../server/threads/manager.ts'
 
@@ -52,7 +54,7 @@ describe('project files', () => {
   it('serves registered project files and sends expanded contents to the agent', async () => {
     const root = fixture(); const messages: string[] = []
     const launcher: Launcher = (_request, emit) => ({ agent: 'codex', alive: () => true,
-      send: (text) => { messages.push(text); emit({ kind: 'user_text', text }) }, respondApproval() {}, interrupt() {},
+      send: (text) => { messages.push(text) }, respondApproval() {}, interrupt() {},
       close: async () => { emit({ kind: 'exit', code: 0 }) } })
     const server = await startServer({ port: 0, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-files-state-')), webDist: root,
       launchers: { claude: launcher, codex: launcher } })
@@ -69,6 +71,61 @@ describe('project files', () => {
       const id = (await created.json()).data.id
       await post(`threads/${id}/messages`, { text: '@file:src%2Fhello%20world.ts' })
       expect(messages[1]).toContain('export const greeting')
+
+      // What the user wrote is what is stored, titled and previewed; contents only reach the agent.
+      const detail = (await (await fetch(`${server.url}/api/threads/${id}/events`)).json()).data
+      expect(detail.meta.title).toBe('Explain @file:README.md')
+      const stored = detail.events.filter((e: { event: { kind: string } }) => e.event.kind === 'user_text').map((e: { event: { text: string } }) => e.event.text)
+      expect(stored).toEqual(['Explain @file:README.md', '@file:src%2Fhello%20world.ts'])
+      const transcript = readFileSync(detail.transcriptPath, 'utf8')
+      expect(transcript).toContain('Attached: src/hello world.ts')
+      expect(transcript).not.toContain('# Sample project')
+      expect(transcript).not.toContain('export const greeting')
+      const summary = (await (await fetch(`${server.url}/api/threads`)).json()).data.find((t: { meta: { id: string } }) => t.meta.id === id)
+      expect(summary.preview).toBe('@file:src%2Fhello%20world.ts')
     } finally { await server.close() }
+  })
+  it('refuses bad references with a plain 400 and leaves mid-word text alone', async () => {
+    const root = fixture(); const messages: string[] = []
+    const launcher: Launcher = (_request, emit) => ({ agent: 'codex', alive: () => true,
+      send: (text) => { messages.push(text) }, respondApproval() {}, interrupt() {},
+      close: async () => { emit({ kind: 'exit', code: 0 }) } })
+    const server = await startServer({ port: 0, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-files-state-')), webDist: root,
+      launchers: { claude: launcher, codex: launcher } })
+    try {
+      const post = (path: string, body: unknown) => fetch(`${server.url}/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const refused = async (text: string) => {
+        const res = await post('threads', { projectPath: root, text })
+        const body = await res.json() as { error: string }
+        expect(res.status).toBe(400)
+        expect(body.error).not.toContain(root)
+        expect(body.error).not.toMatch(/ENOENT|URI malformed/)
+        return body.error
+      }
+      expect(await refused('Read @file:missing.md')).toBe('Not found in this project: missing.md')
+      expect(await refused('Read @file:src%2Fnope%2Fa.ts')).toBe('Not found in this project: src/nope/a.ts')
+      expect(await refused('Read @file:%E0%A4%A')).toMatch(/not a valid file reference/)
+      expect(await refused('Run @workflow:not-saved')).toMatch(/Unknown workflow/)
+      expect(messages).toEqual([])
+      const plain = await post('threads', { projectPath: root, text: 'mail a@file:x and b@workflow:y as written' })
+      expect(plain.status).toBe(201)
+      expect(messages).toEqual(['mail a@file:x and b@workflow:y as written'])
+      const listing = await fetch(`${server.url}/api/files/read?${new URLSearchParams({ projectPath: root, path: 'gone.txt' })}`)
+      expect(listing.status).toBe(400)
+      expect((await listing.json()).error).toBe('Not found in this project: gone.txt')
+    } finally { await server.close() }
+  })
+  it('matches references only at the start of a token', () => {
+    const root = fixture()
+    expect(expandFiles('see(@file:README.md)', root)).toBe('see(@file:README.md)')
+    expect(expandFiles('line one\n@file:README.md', root)).toContain('# Sample project')
+    expect(() => expandFiles('@file:missing.md', root)).toThrow(MessageReferenceError)
+    expect(describeAttachments('Check @file:src%2Fhello%20world.ts and @file:README.md please')).toEqual({
+      text: 'Check and please', attachments: ['src/hello world.ts', 'README.md'] })
+  })
+  it('hands a switched agent the reference, not a copy of the file', () => {
+    const handoff = buildHandoff([{ ts: '', event: { kind: 'user_text', text: 'Summarise @file:notes.md' } }], '/project')
+    expect(handoff).toContain('USER: Summarise\nAttached: notes.md')
+    expect(handoff).not.toContain('@file:')
   })
 })

@@ -159,7 +159,6 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   return {
     agent: 'codex',
     send(text) {
-      onEvent({ kind: 'user_text', text })
       startTurn(text)
     },
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {

@@ -87,8 +87,13 @@ interface Live {
 }
 
 export interface ThreadManager {
-  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
-  send(threadId: string, text: string): void
+  /**
+   * `text` is what the user wrote (stored, titled, shown); `agentText` is what the
+   * agent receives when references were expanded. They differ only for attachments
+   * and workflow references.
+   */
+  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
+  send(threadId: string, text: string, agentText?: string): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
@@ -207,7 +212,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string): void => {
+  const send = (threadId: string, text: string, agentText = text): void => {
     const meta = requireMeta(threadId)
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
@@ -216,11 +221,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    entry.session.send(text)
+    record(threadId, { kind: 'user_text', text })
+    entry.session.send(agentText)
   }
 
   return {
-    create({ projectPath, title, settings, text, workflowId, workflowTrigger }) {
+    create({ projectPath, title, settings, text, agentText, workflowId, workflowTrigger }) {
       const now = new Date().toISOString()
       const meta = store.create({
         id: randomUUID(),
@@ -234,7 +240,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         createdAt: now,
         updatedAt: now,
       })
-      send(meta.id, text)
+      send(meta.id, text, agentText)
       return meta
     },
     send,

@@ -3,9 +3,10 @@
 // cards, and small notes. Pure, so it's unit-tested without a browser.
 import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
+import { describeAttachments } from '../../server/files/references.ts'
 
 export type TranscriptItem =
-  | { type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean }
+  | { type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[] }
   | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string }
   | {
       type: 'approval'
@@ -150,7 +151,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       case 'assistant_text': {
         const author = event.kind === 'user_text' ? 'you' : agent
         const showAuthor = !(last?.type === 'message' && last.author === author)
-        items.push({ type: 'message', key, author, text: event.text, ts, showAuthor })
+        if (event.kind === 'user_text') {
+          // Attached files show as names; their contents went to the agent, not the transcript.
+          const { text, attachments } = describeAttachments(event.text)
+          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(attachments.length ? { attachments } : {}) })
+        } else items.push({ type: 'message', key, author, text: event.text, ts, showAuthor })
         return
       }
       case 'tool_use':

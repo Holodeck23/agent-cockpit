@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { threadSettingsSchema } from '../threads/types.ts'
+import { MessageReferenceError, WORKFLOW_REFERENCE } from '../files/references.ts'
 
 export const workflowInputSchema = z.object({
   projectPath: z.string().min(1).max(1000).refine(isAbsolute, 'Choose an absolute project path'),
@@ -64,19 +65,19 @@ export function createWorkflowStore(root: string): WorkflowStore {
   }
 }
 
-/** References compose instructions into one turn, not separate agent runs. */
+/** References compose instructions into one turn, not separate agent runs. Returns the agent's text. */
 export function expandWorkflows(text: string, projectPath: string, store: WorkflowStore): string {
   const workflows = store.list(projectPath)
   let references = 0
   const expand = (input: string, stack: string[]): string => {
-    const output = input.replace(/@workflow:([a-z0-9]+(?:-[a-z0-9]+)*)/g, (_match, name: string) => {
-      if (++references > 32 || stack.length >= 8) throw new Error('Too many nested workflow references')
-      if (stack.includes(name)) throw new Error(`Circular workflow reference: ${[...stack, name].join(' → ')}`)
+    const output = input.replace(WORKFLOW_REFERENCE, (_match, lead: string, name: string) => {
+      if (++references > 32 || stack.length >= 8) throw new MessageReferenceError('Too many nested workflow references')
+      if (stack.includes(name)) throw new MessageReferenceError(`Circular workflow reference: ${[...stack, name].join(' → ')}`)
       const workflow = workflows.find((w) => w.name === name)
-      if (!workflow) throw new Error(`Unknown workflow in this project: ${name}`)
-      return `\nWorkflow ${name}:\n${expand(workflow.prompt, [...stack, name])}\n`
+      if (!workflow) throw new MessageReferenceError(`Unknown workflow in this project: ${name}`)
+      return `${lead}\nWorkflow ${name}:\n${expand(workflow.prompt, [...stack, name])}\n`
     })
-    if (output.length > 200_000) throw new Error('Expanded workflow exceeds 200,000 characters')
+    if (output.length > 200_000) throw new MessageReferenceError('Expanded workflow exceeds 200,000 characters')
     return output
   }
   return expand(text, [])

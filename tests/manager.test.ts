@@ -22,7 +22,7 @@ function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
     let alive = true
     const session: AgentSession = {
       agent: 'claude',
-      send: (text) => onEvent({ kind: 'user_text', text }),
+      send: () => {},
       respondApproval: ({ requestId, input }, behavior) => {
         agent.approvals.push({ requestId, behavior, input })
         onEvent({ kind: 'approval_resolved', requestId, behavior })
@@ -185,7 +185,7 @@ describe('session lifecycle regressions', () => {
       const control = { emit, finish, closeCalls: 0 }
       sessions.push(control)
       return {
-        agent: 'claude', alive: () => alive, send: (text) => emit({ kind: 'user_text', text }),
+        agent: 'claude', alive: () => alive, send: () => {},
         respondApproval: () => undefined, interrupt: () => undefined,
         close: () => { control.closeCalls++; return closed },
       }

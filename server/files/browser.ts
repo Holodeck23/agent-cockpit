@@ -1,5 +1,6 @@
 import { closeSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { decodeReference, FILE_REFERENCE, MessageReferenceError } from './references.ts'
 
 const HIDDEN = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release'])
 const MAX_BYTES = 100_000
@@ -7,16 +8,34 @@ export interface FileEntry { name: string; path: string; kind: 'directory' | 'fi
 export interface FileListing { path: string; entries: FileEntry[]; truncated: boolean }
 export interface FilePreview { path: string; text: string; bytes: number }
 
+/** Filesystem errors carry absolute paths; callers only ever see the project-relative one. */
+function explained<T>(shown: string, missing: string, read: () => T): T {
+  try {
+    return read()
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (typeof code !== 'string') throw error
+    if (code === 'ENOENT' || code === 'ENOTDIR') throw new Error(missing)
+    if (code === 'EACCES' || code === 'EPERM') throw new Error(`Cockpit is not allowed to read ${shown}`)
+    throw new Error(`Could not read ${shown}`)
+  }
+}
+const realpathOrExplain = (path: string, shown: string, missing: string): string => explained(shown, missing, () => realpathSync(path))
+
 function contained(projectPath: string, path: string): { root: string; target: string } {
   if (isAbsolute(path) || path.split(/[\\/]/).includes('..')) throw new Error('File must be inside the project')
-  const root = realpathSync(projectPath)
-  const target = realpathSync(resolve(root, path))
+  const root = realpathOrExplain(projectPath, 'the project folder', 'Project folder is unavailable')
+  const target = realpathOrExplain(resolve(root, path), path || 'the project folder', `Not found in this project: ${path}`)
   if (target !== root && !target.startsWith(`${root}${sep}`)) throw new Error('File must be inside the project')
   if (relative(root, target).split(sep).some((part) => HIDDEN.has(part))) throw new Error('Generated and dependency folders are excluded')
   return { root, target }
 }
 
 export function listFiles(projectPath: string, path = ''): FileListing {
+  return explained(path || 'the project folder', `Not found in this project: ${path}`, () => listInside(projectPath, path))
+}
+
+function listInside(projectPath: string, path: string): FileListing {
   const { root, target } = contained(projectPath, path)
   if (!statSync(target).isDirectory()) throw new Error('Choose a folder')
   const names = readdirSync(target, { withFileTypes: true }).filter((entry) => !HIDDEN.has(entry.name) && !entry.isSymbolicLink() && (entry.isDirectory() || entry.isFile()))
@@ -26,6 +45,10 @@ export function listFiles(projectPath: string, path = ''): FileListing {
 }
 
 export function readProjectFile(projectPath: string, path: string): FilePreview {
+  return explained(path, `Not found in this project: ${path}`, () => readInside(projectPath, path))
+}
+
+function readInside(projectPath: string, path: string): FilePreview {
   const { root, target } = contained(projectPath, path)
   // Bounded read from one descriptor; reject devices, pipes, directories and binary data.
   if (!statSync(target).isFile()) throw new Error('Choose a text file')
@@ -50,14 +73,24 @@ export function readProjectFile(projectPath: string, path: string): FilePreview 
   } finally { closeSync(fd) }
 }
 
-/** Percent-encoded relative paths let references handle spaces, #, and Unicode. */
+/**
+ * Percent-encoded relative paths let references handle spaces, #, and Unicode.
+ * Returns the text the agent receives; the stored message keeps the references.
+ */
 export function expandFiles(text: string, projectPath: string): string {
   let count = 0
-  const output = text.replace(/@file:([^\s]+)/g, (_match, encoded: string) => {
-    if (++count > 8) throw new Error('Attach at most 8 files per message')
-    const file = readProjectFile(projectPath, decodeURIComponent(encoded))
-    return `\nProject file: ${file.path}\n<file-content>\n${file.text}\n</file-content>\n`
+  const output = text.replace(FILE_REFERENCE, (_match, lead: string, encoded: string) => {
+    if (++count > 8) throw new MessageReferenceError('Attach at most 8 files per message')
+    const path = decodeReference(encoded)
+    if (path === undefined) throw new MessageReferenceError(`This attachment is not a valid file reference: @file:${encoded}`)
+    let file: FilePreview
+    try {
+      file = readProjectFile(projectPath, path)
+    } catch (error) {
+      throw new MessageReferenceError(error instanceof Error ? error.message : `Could not attach ${path}`)
+    }
+    return `${lead}\nProject file: ${file.path}\n<file-content>\n${file.text}\n</file-content>\n`
   })
-  if (output.length > 200_000) throw new Error('Message and attached files exceed 200,000 characters')
+  if (output.length > 200_000) throw new MessageReferenceError('Message and attached files exceed 200,000 characters')
   return output
 }

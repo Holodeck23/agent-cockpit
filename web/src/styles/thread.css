@@ -80,6 +80,8 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 }
 .bubble.user { background: var(--bubble-out); }
 .bubble.streaming { border-style: dashed; }
+.attachments { margin-top: 8px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.attachments.only { margin-top: 0; }
 
 .step { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 4px; font-size: 14px; color: var(--secondary); }
 .step .bars { width: 14px; height: 14px; }

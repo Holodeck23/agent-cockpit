@@ -1,4 +1,5 @@
 import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
+import { MessageReferenceError } from '../files/references.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -46,6 +47,10 @@ export interface ApiDeps {
 }
 
 export function createApiHandler({ manager, store, projects, processes, mcp, workflows }: ApiDeps, allowedPorts: readonly number[]) {
+  // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
+  const agentTextFor = (text: string, projectPath: string): string =>
+    expandFiles(expandWorkflows(text, projectPath, workflows.store), projectPath)
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -107,7 +112,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req))
         assertDirectory(body.projectPath)
-        const meta = manager.create({ ...body, text: expandFiles(expandWorkflows(body.text, body.projectPath, workflows.store), body.projectPath) })
+        const meta = manager.create({ ...body, agentText: agentTextFor(body.text, body.projectPath) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -128,7 +133,8 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           },
         })
       } else if (method === 'POST' && action === 'messages') {
-        manager.send(threadId, expandFiles(expandWorkflows(parseBody(messageBody, await readJson(req)).text, store.get(threadId)!.projectPath, workflows.store), store.get(threadId)!.projectPath))
+        const { text } = parseBody(messageBody, await readJson(req))
+        manager.send(threadId, text, agentTextFor(text, store.get(threadId)!.projectPath))
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
@@ -145,7 +151,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MessageReferenceError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

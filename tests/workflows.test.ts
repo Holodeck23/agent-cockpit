@@ -19,7 +19,7 @@ function setup() {
   const launcher: Launcher = (_req, emit) => {
     const session = { emit, text: [] as string[] }; sessions.push(session)
     let alive = true
-    return { agent: 'codex', alive: () => alive, send: (text) => { session.text.push(text); emit({ kind: 'user_text', text }) },
+    return { agent: 'codex', alive: () => alive, send: (text) => { session.text.push(text) },
       respondApproval: () => undefined, interrupt: () => undefined,
       close: async () => { alive = false; emit({ kind: 'exit', code: 0 }) } }
   }
@@ -62,6 +62,9 @@ describe('workflows', () => {
     expect(t.workflowId).toBe(w.id)
     expect(t.workflowTrigger).toBe('manual')
     expect(h.sessions[0]?.text[0]).toContain('Inspect the diff')
+    // The stored message is the workflow prompt as written, not its expansion.
+    const stored = h.threads.events(t.id).filter(({ event }) => event.kind === 'user_text')
+    expect(stored.map(({ event }) => event.kind === 'user_text' && event.text)).toEqual([h.store.get(w.id)?.prompt])
     expect(h.store.get(w.id)?.lastThreadId).toBe(t.id)
     expect(() => h.runner.run(w.id)).toThrow(/already has/)
     h.sessions[0]!.emit({ kind: 'result', ok: true })

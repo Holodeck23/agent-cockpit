@@ -39,6 +39,7 @@ export type NormalizedEvent =
 export interface AgentSession {
   readonly agent: AgentId
   /** Send a user message. Resolves once written to the agent's stdin. */
+  /** Delivers a turn to the agent. The thread manager records the user's own message. */
   send(text: string): void
   respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
   interrupt(): void

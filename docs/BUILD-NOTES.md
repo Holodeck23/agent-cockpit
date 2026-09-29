@@ -93,7 +93,7 @@ The plan was a personal V1 in small phases, each with a proof gate that has to p
 
 ## Numbers
 
-- 111 unit tests across 15 files.
+- 115 unit tests across 15 files.
 - Real-agent smokes for Claude, Codex and the cockpit MCP, and a proof gate for every phase (browser proofs for phases 1 to 3, packaged-app proofs from Phase A on).
 - One commit per phase or checkpoint; see `git log`.
 
@@ -151,3 +151,18 @@ The Files tab browses one directory at a time, previews UTF-8 text, and adds an 
 File reads require project containment after resolving symbolic links, reject path traversal and outside links, and are bounded to 100 KB per file, eight attachments, and 200,000 total characters. Directory listings cap at 500 entries and omit `.git`, dependencies, build outputs and symbolic links. Binary, invalid UTF-8 and non-regular files are rejected. File contents are not recursively interpreted as workflow or file references.
 
 Gate: `npm run verify` passed with 111 tests, and packaging succeeded. `npm run proof:files` passed against the packaged app with synthetic data and no agent calls: browsing, binary rejection, a filename with spaces, draft preservation through reload, failed-send recovery, attaching to the existing conversation, correct message target, minimum desktop width and dark mode. Screenshots: `proof/phase-5-files.png` and `proof/phase-5-files-dark.png`. Unit/HTTP tests verify containment, limits and the expanded text delivered to fake agents. Phase 5 is complete; Phase 6 phone access is next.
+
+
+## Checkpoint after Phase 5: attachment references (2026-09-29)
+
+**What.** Four defects from review of Phase 5c.
+
+- **Stored text was the expanded text.** The server replaced `@file:` references with file contents before creating the conversation, so the title, the list card, the stored message and `messages.md` all held the file. Now the thread manager takes two texts: what the user wrote (stored, titled, previewed) and what the agent receives. The manager records the user's message itself; the Claude and Codex adapters only deliver the turn. `@workflow:` references had the same problem and use the same split, including scheduled and manual workflow runs, which now store the workflow's prompt as written.
+- **Transcript size.** A message could store up to 8 files of 100 KB each. The transcript now shows attachments as one line under the message ("Attached: src/app.ts"), and `messages.md` does the same.
+- **Agent switch.** The handoff carries the user's message with its attachments named, not a copy of the file from that moment. The files on disk are current; the copy was not.
+- **Errors.** A missing file returned 500 with the raw `ENOENT` text and an absolute path; malformed percent-encoding returned 500 "URI malformed"; and a reference was matched mid-word, so `a@file:x` in normal text blocked sending. References now count only at the start of a word. Unknown files, bad encoding, too many attachments and unknown workflows return 400 with a short message that names the project-relative path only. The Files panel's own read and list errors use the same wording.
+
+**Why the split lives in the manager.** Recording the user's message in each adapter meant every adapter had to be told which text to show. With the manager recording it, the stored message cannot differ between agents, and tests with fake agents exercise the real path.
+
+**Gate.** `npm run verify`: 115 tests, typecheck and both builds. New tests cover the stored message, title, preview and `messages.md` over HTTP, each error case (and that no absolute path or raw error text is returned), mid-word text passing through untouched, the handoff, workflow runs, and the transcript view. `npm run proof:files` now ends with one real Haiku turn in the packaged app: it attaches a note holding a random codeword through the Files panel, asks for the codeword, and asserts the answer contains it with no tool calls (so it came from the attachment), while the stored message equals what was typed, and the title, `messages.md` and the message bubble do not contain the file. Screenshot: `proof/phase-5-files-attached.png`. Regression proofs re-run on the same package: `proof:app` 10/10, `proof-b` b1 11/11, b2 12/12, b3 17/17, `proof:mcp` 16/16, `proof:reliability` and `proof:workflows` all passed.
+

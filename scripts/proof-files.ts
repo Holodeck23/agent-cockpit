@@ -1,14 +1,28 @@
-// Packaged-app file browser proof with synthetic files. No agent calls.
+// Packaged-app file browser proof with synthetic files, plus one real Haiku turn that
+// answers from an attached file (a few cents). The stored message, title and
+// transcript must keep the reference, never the file's contents.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron } from 'playwright-core'
+import { _electron as electron, type Page } from 'playwright-core'
 import { ROOT, LAUNCHD_PATH, PROOF_DIR } from './lib/launch-app.ts'
-import { openProject } from './lib/ui.ts'
+import { chooseAgent, openProject } from './lib/ui.ts'
+/** Polls from Node: page.waitForFunction does not await an async predicate (a Promise is truthy). */
+async function waitUntil<T>(page: Page, what: string, read: () => Promise<T | undefined>, timeoutMs = 180_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const value = await read()
+    if (value) return value
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+    await page.waitForTimeout(500)
+  }
+}
+const getJson = <T>(page: Page, path: string): Promise<T> =>
+  page.evaluate(async (p) => ((await (await fetch(p)).json()) as { data: unknown }).data, path) as Promise<T>
 const state = mkdtempSync(join(tmpdir(), 'cockpit-files-proof-'))
 const project = join(state, 'sample-project'); mkdirSync(join(project, 'src'), { recursive: true })
 writeFileSync(join(project, 'src', 'hello world.ts'), '// Greeting module\nexport const greeting = "Hello from Cockpit"\n')
@@ -81,5 +95,43 @@ try {
   await page.getByRole('button', { name: 'Send', exact: true }).click(); await delivered
   assert.equal(sent, followup.trim())
   console.log('PASS attachment preserves and targets the existing conversation draft')
+  // One real agent turn: the answer must come from the attachment, the record must not hold it.
+  await page.unrouteAll({ behavior: 'wait' })
+  const codeword = `lantern-${randomUUID().slice(0, 8)}`
+  mkdirSync(join(project, 'notes'))
+  writeFileSync(join(project, 'notes', 'release.md'), `# Release notes\n\nThe release codename is ${codeword}.\n`)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  await chooseAgent(page, { model: 'haiku', permissions: 'manual' })
+  const question = 'What is the release codename in the attached note? Reply with the codename only.'
+  await page.getByRole('textbox', { name: 'Message' }).fill(question)
+  await page.getByRole('button', { name: 'Attach', exact: true }).click()
+  await page.locator('.file-row').filter({ hasText: 'notes' }).click()
+  await page.locator('.file-row').filter({ hasText: 'release.md' }).click()
+  await page.getByRole('button', { name: 'Add to conversation', exact: true }).click()
+  const typed = `${question}\n@file:notes%2Frelease.md`
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  type Summary = { meta: { id: string; title: string }; status: string; preview: string }
+  const thread = await waitUntil(page, 'the Haiku turn to finish', async () => (await getJson<Summary[]>(page, '/api/threads'))
+    .find((t) => t.meta.title.startsWith('What is the release codename') && (t.status === 'done' || t.status === 'error')))
+  type Detail = { meta: { title: string }; events: { event: { kind: string; text?: string } }[]; transcriptPath: string }
+  const detail = await getJson<Detail>(page, `/api/threads/${thread.meta.id}/events`)
+  const said = detail.events.filter((e) => e.event.kind === 'assistant_text').map((e) => e.event.text ?? '').join('\n')
+  const stored = detail.events.filter((e) => e.event.kind === 'user_text').map((e) => e.event.text)
+  const tools = detail.events.filter((e) => e.event.kind === 'tool_use').length
+  assert.equal(thread.status, 'done', `Haiku turn ended as ${thread.status}; if replies are empty, check the Claude usage limit first`)
+  assert.ok(said.includes(codeword), `answer did not use the attachment: ${said.slice(0, 200)}`)
+  assert.equal(tools, 0, 'agent used tools, so the answer may not have come from the attachment')
+  console.log(`PASS Haiku answered from the attached file without tools (${said.trim().slice(0, 60)})`)
+  assert.deepEqual(stored, [typed])
+  assert.ok(!detail.meta.title.includes(codeword), 'title holds file contents')
+  const transcript = readFileSync(detail.transcriptPath, 'utf8')
+  assert.ok(transcript.includes('Attached: notes/release.md'), 'transcript does not name the attachment')
+  assert.equal(transcript.split(codeword).length - 1, said.split(codeword).length - 1, 'transcript holds file contents beyond the answer')
+  const bubble = page.locator('.bubble.user').last()
+  await bubble.locator('.attachments').filter({ hasText: 'Attached: notes/release.md' }).waitFor()
+  assert.ok(!((await bubble.textContent()) ?? '').includes(codeword), 'user bubble shows file contents')
+  await page.screenshot({ path: join(PROOF_DIR, 'phase-5-files-attached.png') })
+  console.log('PASS stored message, title, transcript and bubble keep the reference, not the contents')
   console.log('FILES PASS')
 } finally { await app.close() }

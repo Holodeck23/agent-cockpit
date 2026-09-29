@@ -58,7 +58,12 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
             return (
               <section key={item.key} className="message">
                 {item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
-                <div className={`bubble ${item.author === 'you' ? 'user' : 'agent'}`}>{item.text}</div>
+                <div className={`bubble ${item.author === 'you' ? 'user' : 'agent'}`}>
+                  {item.text}
+                  {item.attachments ? (
+                    <div className={`attachments${item.text ? '' : ' only'}`}>Attached: {item.attachments.join(', ')}</div>
+                  ) : null}
+                </div>
               </section>
             )
           case 'step': {
