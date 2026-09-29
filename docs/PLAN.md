@@ -72,6 +72,13 @@ Scope as agreed: there was no process runner, preview pane or workflow store yet
 ## Then
 Phase 5 workflows + schedule + `save_workflow` (fills in the Files/Workflows tabs) → Phase 6 phone (Tailscale, not installed) → Phase 7 preview pane (`open_preview` retargets to it).
 
+**Phase 8: more agents (requested 2026-09-29, not scheduled).** Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
+- **Antigravity:** `agy` with stream-json output and `--conversation` for resume. Its Google sign-in is a terminal prompt, so first-run login needs its own flow.
+- **OpenCode:** `opencode acp --hostname 127.0.0.1 --port 0` (Agent Client Protocol), config passed through the environment.
+- **OpenRouter:** an API, not an agent CLI. The likely route is OpenCode, which supports OpenRouter as a model provider, so OpenRouter models arrive with the OpenCode adapter and no separate agent loop. Verify against current OpenCode docs before building.
+- **Grok Build:** in Enjoy's list; not requested yet.
+- Open questions: approvals and MCP injection per CLI, and what the agent-switch handoff needs for agents without a resumable session.
+
 ## Verification
 - Every checkpoint: `npm run verify` (typecheck + 30+ tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
 - A packaged-app proof via Playwright `_electron`, with screenshots in `docs/proof/`.
