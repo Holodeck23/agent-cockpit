@@ -1,9 +1,8 @@
 import { Workflows } from './components/Workflows.tsx'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
-import { FolderIcon } from './components/icons.tsx'
+import { Files } from './components/Files.tsx'
 import { NewConversation } from './components/NewConversation.tsx'
-import { Placeholder } from './components/Placeholder.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
@@ -15,6 +14,8 @@ export function App() {
   const cockpit = useCockpit()
   const projects = useProjects(cockpit.threads, cockpit.reportError)
   const theme = useTheme()
+  const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
+  const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
   const [section, setSection] = useState<Section>('conversations')
 
   const activePath = projects.active?.path
@@ -44,6 +45,9 @@ export function App() {
           <ConversationList key={`list:${activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (
             <ThreadView
+              initialDraft={fileDraft?.threadId === selectedId ? fileDraft?.text : undefined}
+              onDraftLoaded={clearFileDraft}
+              onBrowseFiles={() => setSection('files')}
               detail={cockpit.detail}
               streaming={cockpit.streaming}
               processes={cockpit.processes.filter((p) => p.projectPath === cockpit.detail?.meta.projectPath)}
@@ -55,6 +59,9 @@ export function App() {
             <NewConversation
               key={`new:${activePath ?? ''}`}
               project={projects.active}
+              initialDraft={fileDraft && !fileDraft.threadId && fileDraft.projectPath === activePath ? fileDraft.text : undefined}
+              onDraftLoaded={clearFileDraft}
+              onBrowseFiles={() => setSection('files')}
               onOpenProject={projects.open}
               onError={cockpit.reportError}
               onCreated={(meta) => {
@@ -66,9 +73,11 @@ export function App() {
           )}
         </div>
       ) : section === 'files' ? (
-        <Placeholder icon={<FolderIcon />} title="Files">
-          Browse this project's files and hand them to a conversation. Coming with workflows.
-        </Placeholder>
+        <Files key={activePath ?? 'no-project'} project={projects.active} onAttach={(reference) => {
+          if (!activePath) return
+          setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
+          setSection('conversations')
+        }} />
       ) : (
         <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />

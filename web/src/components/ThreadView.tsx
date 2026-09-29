@@ -12,6 +12,9 @@ import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 
 interface ThreadViewProps {
+  initialDraft?: string
+  onDraftLoaded?: () => void
+  onBrowseFiles?: () => void
   detail: ThreadDetail
   streaming: string
   /** This project's processes, for the status-line chip. */
@@ -26,7 +29,7 @@ function shortPath(path: string): string {
   return `…/threads/${id.slice(0, 8)}/${parts.at(-1) ?? ''}`
 }
 
-export function ThreadView({ detail, streaming, processes, onError }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = status === 'working' || status === 'needs_input'
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
@@ -113,6 +116,9 @@ export function ThreadView({ detail, streaming, processes, onError }: ThreadView
         />
       </div>
       <Composer
+        initialDraft={initialDraft}
+        onDraftLoaded={onDraftLoaded}
+        onBrowseFiles={onBrowseFiles}
         projectPath={meta.projectPath}
         draftKey={meta.id}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}

@@ -12,6 +12,8 @@ Cockpit does no AI inference itself. It drives the official `claude` and `codex`
 - **Approvals where you are.** When an agent asks to run a command or edit a file, the request appears as a card in the conversation: Allow, Allow for this session, or Deny.
 - **Two agents, one thread.** Pick Claude Code or Codex, the model, effort and permission mode per conversation. Switch agent mid-thread and the transcript is handed over to the new one.
 - **Dev servers the agent can see.** Every agent session gets a built-in `cockpit` MCP server. The agent starts long-running commands through it, reads their output, and opens the local preview for you. Running processes show under the conversation title, with the URL and a Stop button.
+- **Repeatable workflows.** Save project instructions and agent settings, run them manually or on a repeating interval, and open each run as a conversation. Schedules run while Cockpit is open and pause on failure.
+- **Project files in the conversation.** Browse and preview text files, then attach their current contents to a new or existing conversation draft.
 - **Files first.** Each conversation is `meta.json`, `events.jsonl` and a readable `messages.md` under `~/.agent-cockpit/`. Nothing leaves your machine except what the CLIs themselves send.
 - **A real Mac app.** Native window, runs from Finder or the Dock, and quitting stops every agent and dev server it started.
 
@@ -66,8 +68,17 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The CLI protocol details t
 | `list_processes` | The project's processes, status and URL | No |
 | `read_process_output` | The log, incrementally | No |
 | `open_preview` | Opens a local page (localhost only) for you | No |
+| `save_workflow` | Saves reusable instructions in the current project, with scheduling off | Yes |
 
 Each session's tools are scoped to that session's project by a token that ends with the session. The token is passed through the agent's environment, never on a command line.
+
+## Workflows and files
+
+Open **Workflows** to save instructions, choose an agent and permissions, and run the job. To repeat it, set an interval (5 minutes to 30 days) and choose **Save and enable schedule**. Saving edits pauses the schedule. Runs already working or waiting for approval are skipped; after downtime, at most one missed run is started. Cockpit must remain open for schedules to run.
+
+Use `@workflow:daily-review` to include another saved workflow's instructions in the same turn. References stay within the project and cycles are rejected. This combines instructions; it does not create separate dependent agent jobs.
+
+Open **Files**, or use the composer's attachment button, to preview a text file and add it to your draft. `@file:src%2Fhello%20world.ts` is an encoded relative path; the picker handles encoding. Files are read again when sent, including during scheduled workflow runs. Text files are limited to 100 KB each, eight attachments and 200,000 characters per expanded prompt.
 
 ## Development
 
@@ -82,6 +93,8 @@ Each session's tools are scoped to that session's project by a token that ends w
 | `npm run proof:app` | Packaged app from a bare Finder PATH: a Haiku thread to Done, quit mid-turn, no agent left running |
 | `tsx scripts/proof-b.ts b1\|b2\|b3` | Packaged app UI gates with screenshots |
 | `npm run proof:reliability` | Packaged app with synthetic threads: delayed loads, message routing, completion and reopening; no agent usage |
+| `npm run proof:workflows` | Packaged app: real Codex manual and scheduled workflow runs, editor and schedule controls |
+| `npm run proof:files` | Packaged app: synthetic file browsing, preview, draft attachments and failed-send recovery; no agent usage |
 | `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
 
 Proofs and smokes use real agents on small models (Claude Haiku, a light Codex model), so they cost a few cents each. Screenshots land in [docs/proof/](docs/proof/).
@@ -91,9 +104,8 @@ Proofs and smokes use real agents on small models (Claude Haiku, a light Codex m
 Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, and the cockpit MCP with the process runner.
 
 Next:
-1. **Workflows and schedules.** Saved, repeatable jobs per project, chained with `@workflow`, run on a schedule, landing as conversations you didn't start. Includes a `save_workflow` MCP tool.
-2. **Phone.** Check in and answer approvals from your phone over a private network.
-3. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
+1. **Phone.** Check in and answer approvals from your phone over a private network.
+2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
 
 ## Credits
 

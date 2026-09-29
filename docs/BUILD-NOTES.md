@@ -93,7 +93,7 @@ The plan was a personal V1 in small phases, each with a proof gate that has to p
 
 ## Numbers
 
-- 106 unit tests across 14 files.
+- 111 unit tests across 15 files.
 - Real-agent smokes for Claude, Codex and the cockpit MCP, and a proof gate for every phase (browser proofs for phases 1 to 3, packaged-app proofs from Phase A on).
 - One commit per phase or checkpoint; see `git log`.
 
@@ -107,7 +107,7 @@ Also fixed: the composer's `@ Workflow` picker had lost the inset of the chip it
 
 ## Next
 
-Workflows and schedules (with `save_workflow`), phone access, and the in-app preview pane. See the roadmap in the [README](../README.md).
+Phone access, then the in-app preview pane. Workflows, schedules and the Files panel are now implemented. See the roadmap in the [README](../README.md).
 
 
 ## Reliability checkpoint after Phase 4 (2026-09-29)
@@ -142,3 +142,12 @@ Gate: `npm run verify` passed with 106 tests. Tests use fake agents for determin
 The Workflows tab now lists and edits project workflows with agent, model, permissions and repeat interval. Save pauses a schedule, Save and run opens its new conversation, and Save and enable schedule activates recurrence explicitly. Users can pause, archive, and open the latest run. The conversation composer inserts `@workflow:name` references from the current project.
 
 Gate: 106 unit tests and builds passed. `npm run proof:workflows` ran the packaged app with a synthetic project and real Codex on the configured small model: a manual workflow and a due scheduled workflow both completed with the expected response. Composer insertion, pause, archive and the 980px desktop layout passed. Light/dark screenshots are in `proof/phase-5-workflows*.png`. No Claude retry was made. Files is the remaining Phase 5 panel.
+
+
+## Phase 5c: project files and conversation attachments
+
+The Files tab browses one directory at a time, previews UTF-8 text, and adds an encoded `@file:relative-path` reference to the selected conversation draft (or the new-conversation draft). Existing draft text is preserved. The composer attachment button opens Files. References are resolved on send, so the agent receives current file contents; workflows can use the same references on each run. Expansion happens before launching the agent, and failed submissions retain the draft and show the error.
+
+File reads require project containment after resolving symbolic links, reject path traversal and outside links, and are bounded to 100 KB per file, eight attachments, and 200,000 total characters. Directory listings cap at 500 entries and omit `.git`, dependencies, build outputs and symbolic links. Binary, invalid UTF-8 and non-regular files are rejected. File contents are not recursively interpreted as workflow or file references.
+
+Gate: `npm run verify` passed with 111 tests, and packaging succeeded. `npm run proof:files` passed against the packaged app with synthetic data and no agent calls: browsing, binary rejection, a filename with spaces, draft preservation through reload, failed-send recovery, attaching to the existing conversation, correct message target, minimum desktop width and dark mode. Screenshots: `proof/phase-5-files.png` and `proof/phase-5-files-dark.png`. Unit/HTTP tests verify containment, limits and the expanded text delivered to fake agents. Phase 5 is complete; Phase 6 phone access is next.

@@ -4,6 +4,9 @@ import { ArrowUpIcon, PlusIcon } from './icons.tsx'
 
 interface ComposerProps {
   /** Drafts are kept per conversation in localStorage and survive reloads. */
+  onBrowseFiles?: () => void
+  initialDraft?: string
+  onDraftLoaded?: () => void
   projectPath?: string
   draftKey: string
   placeholder: string
@@ -32,14 +35,20 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
-export function Composer({ projectPath, draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, projectPath, draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
+  const [submitError, setSubmitError] = useState<string>()
   const box = useRef<HTMLTextAreaElement>(null)
+  const appliedDraft = useRef<string | undefined>(undefined)
 
   useEffect(() => {
-    setText(loadDraft(draftKey))
-  }, [draftKey])
+    const saved = loadDraft(draftKey)
+    const shouldAppend = initialDraft && appliedDraft.current !== initialDraft
+    const next = shouldAppend ? `${saved}${saved ? '\n' : ''}${initialDraft} ` : saved
+    setText(next)
+    if (shouldAppend) { appliedDraft.current = initialDraft; saveDraft(draftKey, next); onDraftLoaded?.() }
+  }, [draftKey, initialDraft, onDraftLoaded])
 
   // Grow with the text, up to a limit, then scroll.
   useLayoutEffect(() => {
@@ -59,9 +68,12 @@ export function Composer({ projectPath, draftKey, placeholder, disabled, picker,
     const trimmed = text.trim()
     if (!trimmed || sending || disabled) return
     setSending(true)
+    setSubmitError(undefined)
     try {
       await onSubmit(trimmed)
       update('')
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {
       setSending(false)
     }
@@ -73,6 +85,7 @@ export function Composer({ projectPath, draftKey, placeholder, disabled, picker,
 
   return (
     <form className="composer" onSubmit={(e) => void submit(e)}>
+      {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
       <div className="composer-card">
         <div className="composer-top">
           <textarea
@@ -91,7 +104,7 @@ export function Composer({ projectPath, draftKey, placeholder, disabled, picker,
           }} /> : null}
         </div>
         <div className="composer-foot">
-          <button type="button" className="icon-button" disabled title="Attachments arrive with the Files tab" aria-label="Attach">
+          <button type="button" className="icon-button" disabled={!projectPath || !onBrowseFiles} onClick={onBrowseFiles} title="Browse project files" aria-label="Attach">
             <PlusIcon />
           </button>
           {picker}

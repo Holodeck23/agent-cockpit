@@ -1,0 +1,19 @@
+.files-layout { display: grid; grid-template-columns: minmax(240px, 29%) minmax(0, 1fr); min-height: 0; }
+.file-list { overflow: auto; border-right: 1px solid var(--border); padding: 24px 20px; }
+.file-list h1 { font-size: 25px; margin: 6px 0 12px; }
+.file-list header p, .file-list footer, .file-list > p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.file-list footer { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.file-location { display: flex; align-items: center; gap: 12px; margin: 24px 0 12px; overflow-wrap: anywhere; }
+.file-location button { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); padding: 7px 10px; flex: none; }
+.file-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--body); }
+.file-row span:first-of-type { overflow-wrap: anywhere; flex: 1; }
+.file-row:hover { background: var(--field); }
+.file-row.selected { background: var(--project-soft); border-color: var(--halo); }
+.file-preview { min-width: 0; overflow: auto; background: var(--content); padding: 30px; }
+.file-preview > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.file-preview header h2 { font-size: 23px; margin: 0 0 8px; overflow-wrap: anywhere; }
+.file-preview header span, .file-help { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.file-preview header button { flex: none; }
+.file-preview pre { font-family: var(--mono); font-size: 13px; line-height: 1.7; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--subtle); overflow: auto; tab-size: 2; }
+@media (max-width: 800px) { .file-preview > header { flex-direction: column; } .files-layout { grid-template-columns: 220px minmax(0, 1fr); } }
+@media (max-width: 560px) { .files-layout { display: block; overflow: auto; } .file-list { max-height: 280px; border-bottom: 1px solid var(--border); } }

@@ -7,6 +7,9 @@ import { ArrowUpIcon, FolderIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
 
 interface NewConversationProps {
+  onBrowseFiles?: () => void
+  initialDraft?: string
+  onDraftLoaded?: () => void
   project: Project | undefined
   onOpenProject: (path: string) => Promise<void>
   onCreated: (meta: ThreadMeta) => void
@@ -57,7 +60,7 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ project, onOpenProject, onCreated, onError }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(loadChoice)
   const [starting, setStarting] = useState(false)
 
@@ -119,6 +122,9 @@ export function NewConversation({ project, onOpenProject, onCreated, onError }: 
         </div>
       </div>
       <Composer
+        onBrowseFiles={onBrowseFiles}
+        initialDraft={initialDraft}
+        onDraftLoaded={onDraftLoaded}
         projectPath={project?.path}
         draftKey={`new:${project?.path ?? ''}`}
         placeholder="Describe what you want…"

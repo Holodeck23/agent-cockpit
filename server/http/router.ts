@@ -1,3 +1,4 @@
+import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -61,6 +62,17 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         openSse(req, res, manager, processes)
         return true
       }
+      if (parts[1] === 'files' && method === 'GET') {
+        const projectPath = url.searchParams.get('projectPath') ?? ''
+        if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+        const path = url.searchParams.get('path') ?? ''
+        try {
+          const data = parts[2] === 'read' ? readProjectFile(projectPath, path) : parts.length === 2 ? listFiles(projectPath, path) : undefined
+          if (!data) throw new Error('Unknown file action')
+          sendJson(res, 200, { data })
+        } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
+      }
       if (parts[1] === 'workflows') {
         await handleWorkflowRoute(req, res, url, parts, workflows)
         return true
@@ -95,7 +107,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req))
         assertDirectory(body.projectPath)
-        const meta = manager.create({ ...body, text: expandWorkflows(body.text, body.projectPath, workflows.store) })
+        const meta = manager.create({ ...body, text: expandFiles(expandWorkflows(body.text, body.projectPath, workflows.store), body.projectPath) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -116,7 +128,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           },
         })
       } else if (method === 'POST' && action === 'messages') {
-        manager.send(threadId, expandWorkflows(parseBody(messageBody, await readJson(req)).text, store.get(threadId)!.projectPath, workflows.store))
+        manager.send(threadId, expandFiles(expandWorkflows(parseBody(messageBody, await readJson(req)).text, store.get(threadId)!.projectPath, workflows.store), store.get(threadId)!.projectPath))
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)

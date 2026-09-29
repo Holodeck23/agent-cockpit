@@ -21,7 +21,8 @@
     "proof:app": "tsx scripts/proof-app.ts",
     "proof:mcp": "tsx scripts/proof-4.ts",
     "proof:reliability": "tsx scripts/proof-reliability.ts",
-    "proof:workflows": "tsx scripts/proof-workflows.ts"
+    "proof:workflows": "tsx scripts/proof-workflows.ts",
+    "proof:files": "tsx scripts/proof-files.ts"
   },
   "author": "",
   "license": "UNLICENSED",

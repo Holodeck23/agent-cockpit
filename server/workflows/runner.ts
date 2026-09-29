@@ -1,3 +1,4 @@
+import { expandFiles } from '../files/browser.ts'
 import { statSync } from 'node:fs'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
@@ -19,7 +20,7 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     if (isBusy(id)) throw new Error('This workflow already has a running conversation')
     try {
       if (!statSync(workflow.projectPath).isDirectory()) throw new Error('Project folder is unavailable')
-      const text = expandWorkflows(workflow.prompt, workflow.projectPath, store)
+      const text = expandFiles(expandWorkflows(workflow.prompt, workflow.projectPath, store), workflow.projectPath)
       const thread = manager.create({ projectPath: workflow.projectPath, settings: workflow.settings, text,
         title: `${workflow.name} · ${trigger === 'scheduled' ? 'Scheduled' : 'Run'}`,
         workflowId: id, workflowTrigger: trigger })

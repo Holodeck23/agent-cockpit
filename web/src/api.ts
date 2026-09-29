@@ -1,3 +1,4 @@
+import type { FileListing, FilePreview } from '../../server/files/browser.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo } from '../../server/processes/runner.ts'
@@ -29,6 +30,8 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 }
 
 export const api = {
+  listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
+  readFile: (projectPath: string, path: string) => request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path })}`),
   listWorkflows: (projectPath: string) => request<Workflow[]>(`/api/workflows?projectPath=${encodeURIComponent(projectPath)}`),
   saveWorkflow: (body: WorkflowInput, id?: string) => request<Workflow>(id ? `/api/workflows/${id}/save` : '/api/workflows', { method: 'POST', body }),
   runWorkflow: (id: string) => request<ThreadMeta>(`/api/workflows/${id}/run`, { method: 'POST', body: {} }),
@@ -70,3 +73,5 @@ export function subscribe({ onUpdate, onProcess, onOpen }: StreamHandlers): () =
 }
 
 export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
+
+export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
