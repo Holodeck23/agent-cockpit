@@ -95,10 +95,26 @@ Scope as agreed: there was no process runner, preview pane or workflow store yet
 - **4b MCP** (`server/mcp/`): stdio server bundled to `dist-electron/mcp.cjs`, run by the app binary with `ELECTRON_RUN_AS_NODE=1`. Tools: `start_process`, `stop_process`, `list_processes`, `read_process_output`, `open_preview` (loopback URLs only). Per-session bearer token (identity + project scope, not secrecy: the loopback API is open to local processes anyway) in the agent's env, never argv; Claude's MCP servers inherit it, Codex forwards it via `env_vars`. Read-only tools pre-allowed; start/stop use the approval card (Codex's arrive as MCP elicitations). One guidance line in the system prompt.
 - **4c UI + gate:** a process chip in the thread status line (`1 process · :5173`) opening a list with URL and Stop; cockpit tool calls read as plain activity lines. Gate `npm run proof:mcp`: real Haiku, prompt names no tools; it started, read the log, opened the preview, and quit left nothing running. Codex covered by `npm run smoke:mcp codex`.
 
-## Remaining work
-Complete physical-phone notification acceptance, then Phase 7 preview pane (`open_preview` retargets to it). Phases 5 and the phone approval gate are complete.
+## Phase 5: workflows and project files (done 2026-09-29)
 
-**Phase 8: more agents (requested 2026-09-29, not scheduled).** Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
+- **5a Workflows:** project-scoped saved instructions, manual runs, bounded `@workflow:name` expansion, approval-gated `save_workflow`, and schedules that run while Cockpit is open.
+- **5b Workflow UI:** create, edit, run, schedule, pause and archive workflows with per-run agent settings. Manual and scheduled Codex runs passed in the packaged app.
+- **5c Files:** bounded project browsing, text preview and `@file:` attachments for new or existing conversations. Stored messages retain references rather than copying file contents into titles and transcripts.
+
+## Phase 6: phone access and approvals (implemented 2026-09-29)
+
+- **6a Tailscale access:** an isolated phone listener, owner allowlist, six-digit pairing, revocable device tokens and guarded phone routes.
+- **6b Phone UI:** one-column conversation list and thread view, replies, approval actions and Stop, plus an installable Android home-screen app.
+- **6c–6d Notifications and live approval:** encrypted Web Push subscriptions, approval notifications, notification-to-conversation routing, and a real Codex workflow approval completed from the paired phone view.
+- **Gate:** 32 packaged phone checks passed through real Tailscale. The remaining manual acceptance item is actual notification delivery and tap routing on a physical phone; implementation and browser-side routing are complete.
+
+## Phase 7: embedded preview pane (not started)
+
+Retarget `open_preview` from the external browser to an in-app preview pane, then let the agent inspect its own UI change with a screenshot. Start only after the physical-phone notification acceptance check.
+
+## Phase 8: more agents (requested 2026-09-29, not scheduled)
+
+Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
 - **Antigravity:** `agy` with stream-json output and `--conversation` for resume. Its Google sign-in is a terminal prompt, so first-run login needs its own flow.
 - **OpenCode:** `opencode acp --hostname 127.0.0.1 --port 0` (Agent Client Protocol), config passed through the environment.
 - **OpenRouter:** an API, not an agent CLI. The likely route is OpenCode, which supports OpenRouter as a model provider, so OpenRouter models arrive with the OpenCode adapter and no separate agent loop. Verify against current OpenCode docs before building.
