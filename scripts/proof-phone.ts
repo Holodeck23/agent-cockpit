@@ -21,6 +21,9 @@ import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, chromium, devices, type ElectronApplication, type Page } from 'playwright-core'
 import { checker, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { randomUUID } from 'node:crypto'
+import { createThreadStore } from '../server/threads/store.ts'
+import { threadSettingsSchema } from '../server/threads/types.ts'
 
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
@@ -111,6 +114,24 @@ if (serveTarget() !== 'none') throw new Error(`Tailscale already serves HTTPS ${
 // ---- 2. Turn it on from the UI, then the refusals and their controls ----
 const state = mkdtempSync(join(tmpdir(), 'cockpit-phone-'))
 writeFileSync(join(state, 'remote.json'), configFor({}))
+// Two synthetic conversations in two projects, so the phone list has something to show.
+{
+  const store = createThreadStore(state)
+  const seed = (folder: string, title: string, lines: [string, string]) => {
+    const projectPath = join(state, folder)
+    mkdirSync(projectPath, { recursive: true })
+    const id = randomUUID(); const now = new Date().toISOString()
+    store.create({ id, projectPath, title, settings: threadSettingsSchema.parse({ model: 'haiku' }), sessionId: randomUUID(),
+      sessionStarted: false, completed: false, createdAt: now, updatedAt: now })
+    store.append(id, { kind: 'user_text', text: lines[0] })
+    store.append(id, { kind: 'assistant_text', messageId: 'm1', text: lines[1] })
+    store.append(id, { kind: 'result', ok: true })
+  }
+  seed('bakery-website', 'Add opening hours to the footer', ['Add our opening hours to the footer, Mon to Sat 7 to 18.',
+    'Done. The footer now lists Monday to Saturday, 7:00 to 18:00, and Sunday as closed.'])
+  seed('sprout', 'Fix the watering reminder time zone', ['Reminders fire an hour early since the clocks changed.',
+    'Found it: the schedule used a fixed UTC offset. It now uses the plant owner\'s time zone, and the test covers the change.'])
+}
 const { app, page } = await launch(state)
 const phoneBrowser = await chromium.launch({ channel: 'chrome' })
 try {
@@ -170,6 +191,43 @@ try {
   const blocked = await phone.evaluate(async () => (await fetch('/api/threads', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ projectPath: '/tmp', text: 'x' }) })).status)
   check('a paired phone still cannot start conversations in arbitrary folders', blocked === 403, String(blocked))
+  // ---- Phone layout ----
+  await phone.getByText('Add opening hours to the footer').waitFor()
+  const cards = await phone.locator('.card .card-meta').allTextContents()
+  check('the phone lists every project\'s conversations, labelled by project',
+    cards.some((t) => t.startsWith('bakery-website')) && cards.some((t) => t.startsWith('sprout')), cards.join(' | '))
+  check('the phone shows only Conversations (no Files or Workflows)', await phone.getByRole('tab', { name: 'Files' }).count() === 0 &&
+    await phone.getByRole('tab', { name: 'Workflows' }).count() === 0 && await phone.getByRole('button', { name: 'New conversation' }).count() === 0)
+  // On a phone, content wider than the screen stretches the layout viewport itself, so innerWidth grows
+  // with it and "wider than the window" never triggers. Compare with the screen, and measure every box.
+  const fits = () => phone.evaluate(() => window.innerWidth <= screen.width && document.documentElement.scrollWidth <= screen.width &&
+    [...document.querySelectorAll<HTMLElement>('.card, .bubble, .composer-card, .thread-head, .thread-actions, .approval, .send')]
+      .filter((el) => el.offsetParent !== null).every((el) => el.getBoundingClientRect().right <= window.innerWidth + 1))
+  check('the list fits the phone width', await fits())
+  await phone.screenshot({ path: join(PROOF_DIR, 'phase-6-phone-list.png') })
+  await phone.getByText('Fix the watering reminder time zone').click()
+  await phone.getByRole('button', { name: 'Back to conversations' }).waitFor()
+  check('a conversation opens full screen: the list is hidden', !(await phone.locator('.list').isVisible()))
+  check('the phone cannot switch agents or mark complete', await phone.locator('.picker-button').count() === 0 &&
+    await phone.getByRole('button', { name: 'Mark complete' }).count() === 0 && await phone.locator('.agent-static').isVisible())
+  await phone.screenshot({ path: join(PROOF_DIR, 'phase-6-phone-thread.png') })
+  const measured = await phone.evaluate(() => ({ screen: screen.width, inner: window.innerWidth, visual: Math.round(window.visualViewport?.width ?? 0),
+    doc: document.documentElement.scrollWidth,
+    boxes: [...document.querySelectorAll<HTMLElement>('.thread, .bubble, .composer-card, .thread-head, .thread-actions')]
+      .map((el) => `${el.className.split(' ')[0]}:${Math.round(el.getBoundingClientRect().left)}-${Math.round(el.getBoundingClientRect().right)}`) }))
+  check('the conversation fits the phone width', await fits(), JSON.stringify(measured))
+  await phone.getByRole('button', { name: 'Back to conversations' }).click()
+  await phone.locator('.list').waitFor()
+  check('back returns to the list', await phone.locator('.thread').count() === 0 || !(await phone.locator('.thread').isVisible()))
+  const manifest = await phone.evaluate(async () => {
+    const res = await fetch('/manifest.webmanifest')
+    const body = (await res.json()) as { name: string; display: string; icons: { src: string; purpose: string }[] }
+    const icons = await Promise.all(body.icons.map(async (i) => (await fetch(i.src)).status))
+    return { type: res.headers.get('content-type'), name: body.name, display: body.display, maskable: body.icons.some((i) => i.purpose === 'maskable'), icons }
+  })
+  check('the web app manifest and its icons are served', manifest.type === 'application/manifest+json' && manifest.name === 'Cockpit' &&
+    manifest.display === 'standalone' && manifest.maskable && manifest.icons.every((code) => code === 200), JSON.stringify(manifest))
+
   const list = await getJson<RemoteStatus>(page, '/api/remote')
   check('the Mac lists the paired phone', list.devices.length === 1 && list.pairings.length === 0, `devices ${list.devices.length}, pending ${list.pairings.length}`)
 

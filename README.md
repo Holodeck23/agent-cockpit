@@ -102,10 +102,10 @@ Proofs and smokes use real agents on small models (Claude Haiku, a light Codex m
 
 ## Status and roadmap
 
-Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file attachments, and phone access over Tailscale with pairing.
+Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file attachments, and phone access over Tailscale with pairing and a phone layout.
 
 Next:
-1. **Phone, continued.** A phone-sized layout, "needs you" notifications, and answering a real approval from the phone.
+1. **Phone, continued.** "Needs you" notifications, and answering a real agent's approval from the phone.
 2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
 
 ## Credits

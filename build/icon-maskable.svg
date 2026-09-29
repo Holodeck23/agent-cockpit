@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Cockpit mark, full bleed for Android launchers (maskable: the bars sit inside the 80% safe zone). -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3d8cff"/>
+      <stop offset="1" stop-color="#2066d6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#tile)"/>
+  <g fill="#fff" transform="translate(512 512) scale(0.85) translate(-512 -496)">
+    <rect x="304" y="448" width="96" height="248" rx="48"/>
+    <rect x="464" y="296" width="96" height="400" rx="48"/>
+    <rect x="624" y="376" width="96" height="320" rx="48"/>
+  </g>
+</svg>

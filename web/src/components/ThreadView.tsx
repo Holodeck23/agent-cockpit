@@ -7,7 +7,7 @@ import { buildTranscript } from '../transcript.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
-import { Bars, CheckIcon, FileIcon, StopIcon } from './icons.tsx'
+import { Bars, CheckIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 
@@ -20,6 +20,9 @@ interface ThreadViewProps {
   /** This project's processes, for the status-line chip. */
   processes: ProcessInfo[]
   onError: (message: string) => void
+  /** Phone: reply, approve and stop only; a back button returns to the list. */
+  phone?: boolean
+  onBack?: () => void
 }
 
 /** "…/threads/1a2b3c4d/messages.md": enough to recognise, short enough to fit. */
@@ -29,7 +32,7 @@ function shortPath(path: string): string {
   return `…/threads/${id.slice(0, 8)}/${parts.at(-1) ?? ''}`
 }
 
-export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, phone = false, onBack }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = status === 'working' || status === 'needs_input'
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
@@ -59,6 +62,11 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   return (
     <main className="thread">
       <header className="thread-head">
+        {onBack ? (
+          <button type="button" className="back-button" aria-label="Back to conversations" onClick={onBack}>
+            <ChevronLeftIcon />
+          </button>
+        ) : null}
         <div className="thread-heading">
           <h1>{meta.title}</h1>
           <div className="thread-status">
@@ -77,7 +85,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
                 {shortPath(transcriptPath)}
               </span>
             )}
-            <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />
+            {phone ? null : <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />}
           </div>
         </div>
         <div className="thread-actions">
@@ -85,7 +93,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             <button type="button" aria-label="Stop" title="Stop the current turn" disabled={!running} onClick={() => guard(api.interrupt(meta.id))}>
               <StopIcon />
             </button>
-            <button
+            {phone ? null : <button
               type="button"
               aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
               aria-pressed={meta.completed}
@@ -93,16 +101,16 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
             >
               <CheckIcon />
-            </button>
+            </button>}
           </div>
-          <div className="segment">
+          {phone ? null : <div className="segment">
             <ThreadMenu
               transcriptPath={transcriptPath}
               usage={usage}
               completed={meta.completed}
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
             />
-          </div>
+          </div>}
         </div>
       </header>
       <div className="events" ref={scroller}>
@@ -118,19 +126,21 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
       <Composer
         initialDraft={initialDraft}
         onDraftLoaded={onDraftLoaded}
-        onBrowseFiles={onBrowseFiles}
-        projectPath={meta.projectPath}
+        onBrowseFiles={phone ? undefined : onBrowseFiles}
+        projectPath={phone ? undefined : meta.projectPath}
         draftKey={meta.id}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         onSubmit={(text) => api.send(meta.id, text).then(() => undefined)}
-        picker={
+        picker={phone ? (
+          <span className="agent-static">{meta.settings.agent === 'codex' ? 'Codex' : 'Claude Code'}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>
+        ) : (
           <AgentPicker
             key={`${meta.id}-${JSON.stringify(choice)}`}
             value={choice}
             lockedReason={running ? 'Stop the current turn before switching.' : undefined}
             onSwitch={(next) => guard(api.switchAgent(meta.id, settingsFromChoice(next, meta.settings)))}
           />
-        }
+        )}
       />
     </main>
   )

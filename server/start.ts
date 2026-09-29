@@ -61,6 +61,7 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json',
 }
 
 function serveStatic(webDist: string, pathname: string, res: ServerResponse): void {

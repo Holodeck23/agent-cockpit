@@ -8,9 +8,11 @@ interface ConversationCardProps {
   selected: boolean
   unread: boolean
   onSelect: (id: string) => void
+  /** Shown when the list mixes projects (the phone). */
+  project?: string
 }
 
-export function ConversationCard({ thread, selected, unread, onSelect }: ConversationCardProps) {
+export function ConversationCard({ thread, selected, unread, onSelect, project }: ConversationCardProps) {
   const tag = tagFor(thread.meta.title)
   const classes = ['card', selected ? 'selected' : '', thread.meta.completed ? 'completed' : '', unread ? 'unread' : '']
   return (
@@ -31,7 +33,7 @@ export function ConversationCard({ thread, selected, unread, onSelect }: Convers
       <span className="card-title">{thread.meta.title}</span>
       <span className="card-foot">
         <span className="card-meta">
-          {agentLabel(thread.meta.settings.agent)} · {dayLabel(thread.lastActivityAt)}
+          {project ? `${project} · ` : ''}{agentLabel(thread.meta.settings.agent)} · {dayLabel(thread.lastActivityAt)}
         </span>
         <StatusPill status={thread.status} />
       </span>

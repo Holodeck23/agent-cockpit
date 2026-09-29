@@ -105,6 +105,11 @@ export const MonitorIcon = (p: IconProps) => (
     <path d="M9 20h6M12 16.5V20" />
   </Svg>
 )
+export const ChevronLeftIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m14.5 6-6 6 6 6" />
+  </Svg>
+)
 export const PhoneIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" />

@@ -10,6 +10,9 @@ interface ConversationListProps {
   threads: ThreadSummary[]
   selectedId: string | undefined
   onSelect: (id: string | undefined) => void
+  /** Phone: conversations from every project, labelled with the project, and no New button. */
+  projectName?: (path: string) => string
+  canCreate?: boolean
 }
 
 const SHOW_COMPLETED_KEY = 'cockpit:show-completed'
@@ -22,7 +25,7 @@ function loadShowCompleted(): boolean {
   }
 }
 
-export function ConversationList({ threads, selectedId, onSelect }: ConversationListProps) {
+export function ConversationList({ threads, selectedId, onSelect, projectName, canCreate = true }: ConversationListProps) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ListFilter>('all')
   const [showCompleted, setShowCompleted] = useState(loadShowCompleted)
@@ -51,9 +54,11 @@ export function ConversationList({ threads, selectedId, onSelect }: Conversation
       <header className="list-head">
         <ConversationsArt className="list-art" />
         <h1>Conversations</h1>
-        <button type="button" className="new-button" aria-label="New conversation" title="New conversation" onClick={() => onSelect(undefined)}>
-          <PlusIcon />
-        </button>
+        {canCreate ? (
+          <button type="button" className="new-button" aria-label="New conversation" title="New conversation" onClick={() => onSelect(undefined)}>
+            <PlusIcon />
+          </button>
+        ) : null}
       </header>
       <label className="search">
         <SearchIcon />
@@ -78,6 +83,7 @@ export function ConversationList({ threads, selectedId, onSelect }: Conversation
           rows.map((thread) => (
             <ConversationCard
               key={thread.meta.id}
+              project={projectName?.(thread.meta.projectPath)}
               thread={thread}
               selected={thread.meta.id === selectedId}
               unread={isUnread(thread)}

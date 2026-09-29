@@ -25,6 +25,4 @@ code { font-family: var(--mono); font-size: 0.86em; }
 }
 .toast button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; }
 
-@media (max-width: 760px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: 40dvh minmax(0, 1fr); }
-}
+/* Narrow screens (the phone) are laid out in styles/phone.css. */

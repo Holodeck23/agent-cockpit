@@ -48,3 +48,45 @@
 .pair-code { font: 600 34px var(--mono); letter-spacing: 0.18em; color: var(--strong); text-align: center; padding: 14px 0; background: var(--field); border-radius: var(--r-md); }
 .pair-wait { color: var(--muted); text-align: center; }
 .pair-error { color: #c2372b; }
+
+/* ---------- phone layout ---------- */
+.back-button { display: none; }
+.phone-bar { align-items: center; gap: 10px; }
+.phone-title { font: 600 15px var(--round); color: var(--strong); }
+.agent-static { font-size: 13px; color: var(--muted); }
+.thread-pick { place-items: center; color: var(--muted); font-size: 14px; }
+
+@media (max-width: 760px) {
+  .app { grid-template-rows: auto 48px minmax(0, 1fr); }
+  .tabbar { padding: env(safe-area-inset-top) 12px 0; min-height: 44px; overflow-x: auto; }
+  .subnav { padding: 0 10px; }
+  .subnav-item { padding: 7px 10px; }
+  /* One panel at a time: the list, or the open conversation. */
+  .layout { grid-template-columns: 1fr; }
+  .layout.has-selection > .list { display: none; }
+  .layout:not(.has-selection) > .thread { display: none; }
+  .list { border-right: 0; }
+  .list-art { display: none; }
+  .cards { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
+  .back-button {
+    display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin-left: -8px;
+    border: 0; border-radius: var(--r-sm); background: none; color: var(--strong);
+  }
+  .back-button .icon { width: 22px; height: 22px; }
+  .thread { grid-template-columns: minmax(0, 1fr); }
+  .thread-head { gap: 8px; padding: 10px 12px; }
+  .thread-heading { flex: 1; }
+  .thread-head h1 { font-size: 17px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .thread-status { gap: 8px; }
+  .transcript-link { display: none; }
+  .events { padding: 14px 12px 8px; }
+  .bubble { padding: 11px 14px; font-size: 15px; }
+  .composer { padding: 4px 10px calc(10px + env(safe-area-inset-bottom)); }
+  .composer textarea { font-size: 16px; }
+  .phone .composer-foot > .icon-button { display: none; }
+  .approval { padding: 12px; }
+  .approval-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .approval-actions button { min-height: 44px; }
+  .approval-actions button:first-child { grid-column: 1 / -1; }
+  .toast { top: auto; bottom: calc(16px + env(safe-area-inset-bottom)); right: 12px; left: 12px; max-width: none; }
+}

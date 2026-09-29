@@ -7,6 +7,7 @@ import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
+import { Mark } from './components/icons.tsx'
 import type { PageMode } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { useCockpit } from './useCockpit.ts'
@@ -14,6 +15,8 @@ import { useProjects } from './useProjects.ts'
 
 export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const local = page.mode === 'local'
+  // A paired phone sees every project's conversations and can reply, approve and stop.
+  const phone = !local
   const cockpit = useCockpit(local)
   const projects = useProjects(cockpit.threads, cockpit.reportError)
   const theme = useTheme()
@@ -23,18 +26,27 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
 
   const activePath = projects.active?.path
-  const visible = activePath ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  const visible = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
 
   return (
     <div className="app">
-      <ProjectTabBar projects={projects} />
+      {phone ? (
+        <header className="tabbar phone-bar">
+          <Mark className="tabbar-mark" />
+          <span className="phone-title">Cockpit</span>
+        </header>
+      ) : (
+        <ProjectTabBar projects={projects} />
+      )}
       <SubNav
         section={section}
         onSection={setSection}
         working={visible.filter((t) => t.status === 'working').length}
         theme={theme.mode}
         onCycleTheme={theme.cycle}
+        conversationsOnly={phone}
         tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} /> : null}
       />
       {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
@@ -49,8 +61,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
       ) : null}
       {section === 'conversations' ? (
-        <div className="layout">
-          <ConversationList key={`list:${activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} />
+        <div className={`layout${selectedId ? ' has-selection' : ''}`}>
+          <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select}
+            {...(phone ? { projectName, canCreate: false } : {})} />
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (
             <ThreadView
               initialDraft={fileDraft?.threadId === selectedId ? fileDraft?.text : undefined}
@@ -60,9 +73,13 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               streaming={cockpit.streaming}
               processes={cockpit.processes.filter((p) => p.projectPath === cockpit.detail?.meta.projectPath)}
               onError={cockpit.reportError}
+              phone={phone}
+              onBack={() => cockpit.select(undefined)}
             />
           ) : (
             <main className="thread" role="status">Loading conversation…</main>
+          ) : phone ? (
+            <main className="thread thread-pick">Pick a conversation to follow it here.</main>
           ) : (
             <NewConversation
               key={`new:${activePath ?? ''}`}
