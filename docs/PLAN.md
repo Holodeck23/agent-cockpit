@@ -15,7 +15,7 @@
 Fresh walkthrough used the packaged app and Codex `gpt-5.6-luna`. Claude's first live check hit its provider cap; no further Claude calls were made.
 
 - **Works:** 140 tests and builds; Codex conversation resume; desktop selection/routing/completion; files and attachment answers; manual/scheduled workflows; 16 packaged process checks covering approval, start, logs, preview routing, Stop, restart and quit cleanup.
-- **Blocked:** fresh Claude↔Codex handoff acceptance while Claude is capped.
+- **Claude, after its limit reset:** the Claude↔Codex handoff, the attachment answer and the 16 packaged process checks all pass.
 - **Still unverified in this inspection:** native folder picker, actual external-browser opening (the proof captures the request and fetches the URL), simultaneous live agents, Deny/session-wide approvals, active-agent Stop, second-Mac setup and physical-phone push.
 - **Polish observed:** technical Codex MCP approval wording and conversation titles truncated mid-word.
 - **Screenshots:** refreshed Phase 4 and Phase 5 captures in `docs/proof/`, using synthetic projects. Run logs and the full checklist are kept outside the repo.

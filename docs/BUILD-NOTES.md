@@ -241,9 +241,11 @@ The portability package passed 27 non-agent phone checks through Tailscale. Its 
 
 **Results.** 140 tests and builds; Codex conversation resume; desktop selection, routing, completion and reopening; file preview and an attachment-only answer; manual and scheduled workflows; 16 packaged process checks (approval, start, log, preview URL, served page, Stop, restart, nothing left running after quit). Fresh screenshots of Phase 4 and 5 use synthetic projects.
 
-**Not covered.** Claude to Codex handoff (Claude capped), the native folder picker, a real external browser opening the preview (the proof captures the request and fetches the URL), several live agents at once, Deny and session-wide approvals, stopping an active agent turn, setup on a second Mac, and push delivery to a physical phone.
+**Not covered.** The native folder picker, a real external browser opening the preview (the proof captures the request and fetches the URL), several live agents at once, Deny and session-wide approvals, stopping an active agent turn, setup on a second Mac, and push delivery to a physical phone.
 
 **Polish noted.** Codex approval cards read technically ("MCP: cockpit"), and long titles are cut mid-word.
 
 **Primary release flow.** Open a project, ask the agent to run its dev server and check the log, allow the start, get a working local preview URL, then stop or restart the server from the conversation. Files and workflows support it.
+
+**Claude re-check.** After Claude's usage limit reset, the checks it had blocked were run on Claude with Haiku: the Claude to Codex switch with handoff (`proof-ui.ts switch`), `proof:files` including the attachment-only answer, and `proof:mcp` 16/16. All passed.
 
