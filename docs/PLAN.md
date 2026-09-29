@@ -1,8 +1,15 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Status 2026-09-29:** Phases 0–3, A, B1–B3, 4a–4c, the reliability checkpoint and Phase 5a–5b (workflows, `@workflow` mentions, schedules while the app is open, `save_workflow`) are done. Re-verified after the reliability rewrite: 106 unit tests, `smoke:claude`, `smoke:mcp claude`, and on the packaged app `proof:app`, `proof-b b1/b2/b3`, `proof:mcp` (16/16) and `proof:reliability`. The earlier empty Claude replies ran while the account was at its usage limit and did not recur. Phase 5c now adds the Files panel, bounded text previews and `@file:` attachments for conversations and workflows. Its gate passed 111 unit tests, typecheck, builds, packaging and the packaged Files proof with synthetic data. A review checkpoint then fixed attachment handling: conversations store what the user wrote and only the agent receives file contents, references match at the start of a word, and bad references return a plain 400. `proof:files` now includes a real Haiku turn; 115 unit tests. Phase 5 is complete. Phase 6a (phone access over Tailscale: second listener, identity allowlist, pairing, Phone panel) is done; `proof:phone` 17/17 through real Tailscale. 6b (phone layout, home-screen manifest) is done; `proof:phone` 25/25. 6c Web Push is implemented with subscription recovery tests; physical-phone delivery remains unverified. 6d passed through real Tailscale with Codex: phone approval, saved workflow and live completion. Current gate: 138 tests, builds, package, phone proof 32/32 and desktop reliability. Next: physical-phone notification acceptance, then Phase 7 preview pane.
+**Status 2026-09-29:** The desktop MVP and phone approval flow are installed and running. Implementation checkpoint `44fb890` is on `main` and was pushed to the remote.
 
-## Context
+- **Complete:** Claude/Codex adapters, conversations and approvals, desktop UI, process tools, workflows, file attachments, Tailscale pairing, phone layout, and the real Codex phone-approval gate.
+- **Implemented, awaiting device acceptance:** encrypted Web Push, subscription recovery, and notification-to-conversation routing. Actual delivery and tapping on a physical phone remain unverified.
+- **Verified for this checkpoint:** 138 tests, typecheck, both builds, packaging, 32 phone checks through real Tailscale, and packaged desktop reliability. Earlier Claude-dependent proofs were not repeated during its usage cap; see BUILD-NOTES for their last failures.
+- **Installed:** the packaged app was signature-checked and launched. Phone access and the existing pairing resumed; the previous app bundle was preserved privately.
+- **Next:** complete physical-phone notification acceptance, then Phase 7 preview pane. Additional agent adapters remain Phase 8.
+
+
+## Original scope (historical)
 Phases 0–3 are built and proven in this repo (4 commits): the Claude adapter, the Codex app-server adapter, threads + SSE, approvals, Stop, the Claude↔Codex switch with handoff, and 30 unit tests. Today it runs as a local server you open in a browser. Two changes:
 1. **A real desktop app**, not localhost in a browser.
 2. **A UI that looks like Enjoy.** Reference screenshots and measured design tokens were captured privately (not in this repo). The useful ones were `section-coach-tour.png`, `demo-07-send.png`, `demo-08-open-plant.png`, `tour2-15-dark.png`, `section-home-features.png` and a measured `design-tokens.txt`.
@@ -69,8 +76,8 @@ Scope as agreed: there was no process runner, preview pane or workflow store yet
 - **4b MCP** (`server/mcp/`): stdio server bundled to `dist-electron/mcp.cjs`, run by the app binary with `ELECTRON_RUN_AS_NODE=1`. Tools: `start_process`, `stop_process`, `list_processes`, `read_process_output`, `open_preview` (loopback URLs only). Per-session bearer token (identity + project scope, not secrecy: the loopback API is open to local processes anyway) in the agent's env, never argv; Claude's MCP servers inherit it, Codex forwards it via `env_vars`. Read-only tools pre-allowed; start/stop use the approval card (Codex's arrive as MCP elicitations). One guidance line in the system prompt.
 - **4c UI + gate:** a process chip in the thread status line (`1 process · :5173`) opening a list with URL and Stop; cockpit tool calls read as plain activity lines. Gate `npm run proof:mcp`: real Haiku, prompt names no tools; it started, read the log, opened the preview, and quit left nothing running. Codex covered by `npm run smoke:mcp codex`.
 
-## Then
-Phase 5 workflows + schedule + `save_workflow` (fills in the Files/Workflows tabs) → Phase 6 phone (Tailscale, not installed) → Phase 7 preview pane (`open_preview` retargets to it).
+## Remaining work
+Complete physical-phone notification acceptance, then Phase 7 preview pane (`open_preview` retargets to it). Phases 5 and the phone approval gate are complete.
 
 **Phase 8: more agents (requested 2026-09-29, not scheduled).** Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
 - **Antigravity:** `agy` with stream-json output and `--conversation` for resume. Its Google sign-in is a terminal prompt, so first-run login needs its own flow.
@@ -80,7 +87,7 @@ Phase 5 workflows + schedule + `save_workflow` (fills in the Files/Workflows tab
 - Open questions: approvals and MCP injection per CLI, and what the agent-switch handoff needs for agents without a resumable session.
 
 ## Verification
-- Every checkpoint: `npm run verify` (typecheck + 30+ tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
+- Every checkpoint: `npm run verify` (typecheck + unit/integration tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
 - A packaged-app proof via Playwright `_electron`, with screenshots in `docs/proof/`.
 - One commit per checkpoint, pushed to github.com/Holodeck23/agent-cockpit (public since 2026-09-29; history scrubbed of personal paths before the first push).
 - Final: `release/mac-arm64/Cockpit.app` exists and launches from Finder. Installing is one copy to /Applications.
