@@ -22,7 +22,7 @@ Fresh walkthrough used the packaged app and Codex `gpt-5.6-luna`. Claude's first
 
 **Primary release flow:** open a project → ask Codex to run its dev server and inspect the log → allow the action → receive a working local preview URL → stop or restart the server from the conversation.
 
-**Next acceptance:** walk that flow from the native folder picker through an actual browser opening on a fresh setup. Files and workflows support this flow. Keep Claude handoff and physical-phone push visibly pending; preview-pane development remains Phase 7.
+**Next acceptance:** walk that flow from the native folder picker through an actual browser opening on a fresh setup. Files and workflows support this flow. Keep physical-phone push visibly pending; preview-pane development remains Phase 7.
 
 ## Scope for the first release
 
