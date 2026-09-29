@@ -85,11 +85,16 @@ export function PhonePanel({ status, onError, onOpenChange }: PhoneButtonProps) 
               <ul className="menu-list">
                 {status.devices.map((d) => (
                   <li key={d.id} className="device-row">
-                    <div className="device-text"><span className="device-name">{d.name}</span><span className="device-meta">Last used {ago(d.lastSeenAt)}</span></div>
+                    <div className="device-text"><span className="device-name">{d.name}</span><span className="device-meta">Last used {ago(d.lastSeenAt)}{d.notifications ? ' · notifications on' : ''}</span></div>
                     <button type="button" className="device-revoke" onClick={() => void api.revokeDevice(d.id).catch((e: unknown) => onError(String(e)))}>Remove</button>
                   </li>
                 ))}
               </ul>
+              {status.devices.some((d) => d.notifications) ? (
+                <button type="button" className="phone-toggle off" onClick={() => void api.testPush().then(
+                  ({ sent }) => { if (!sent.some((s) => s.status >= 200 && s.status < 300)) onError('The test notification was not accepted. Turn notifications off and on again on the phone.') },
+                  (e: unknown) => onError(String(e)))}>Send a test notification</button>
+              ) : null}
               <button type="button" className="phone-toggle off" disabled={busy} onClick={() => toggle(false)}>Turn off phone access</button>
             </div>
           ) : (

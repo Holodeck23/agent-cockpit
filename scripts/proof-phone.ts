@@ -24,6 +24,9 @@ import { checker, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { randomUUID } from 'node:crypto'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
+import { apiPost } from './lib/ui.ts'
+import { createWorkflowStore } from '../server/workflows/store.ts'
+import type { ThreadDetail } from '../web/src/api.ts'
 
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
@@ -172,6 +175,7 @@ try {
 
   // ---- 3. Pair a phone ----
   const context = await phoneBrowser.newContext({ ...devices['Pixel 9'] })
+  await context.grantPermissions(['notifications'], { origin: `https://${HOST}` })
   const phone = await context.newPage()
   phone.setDefaultTimeout(20_000)
   await phone.goto(`https://${HOST}/`)
@@ -227,6 +231,58 @@ try {
   })
   check('the web app manifest and its icons are served', manifest.type === 'application/manifest+json' && manifest.name === 'Cockpit' &&
     manifest.display === 'standalone' && manifest.maskable && manifest.icons.every((code) => code === 200), JSON.stringify(manifest))
+
+  // ---- Notifications ----
+  // Chrome under automation refuses push subscriptions ("Registration failed - permission denied", headless or
+  // not). Real-phone delivery remains a separate manual gate; here we check the bell and worker.
+  check('the phone shows the notifications bell', await phone.getByRole('button', { name: 'Turn on notifications' }).isVisible())
+  const worker = await waitUntil(phone, 'the service worker', async () =>
+    (await phone.evaluate(async () => (await navigator.serviceWorker.getRegistration('/'))?.active?.scriptURL ?? '')) || undefined)
+  check('the service worker is registered', worker.endsWith('/sw.js'))
+
+  // Optional real-agent gate: npm run proof:phone -- --live
+  // A single small Codex turn, with the approval answered exclusively through the phone UI.
+  if (process.argv.includes('--live')) {
+    const projectPath = join(state, 'phone-approval-project')
+    mkdirSync(projectPath)
+    const workflowStore = createWorkflowStore(state)
+    const created = await apiPost(page, '/api/threads', {
+      projectPath, title: 'Save a workflow from my phone',
+      settings: { agent: 'codex', model: process.env.COCKPIT_CODEX_MODEL ?? 'gpt-5.6-luna', permissionMode: 'manual' },
+      text: 'Use the cockpit save_workflow tool to save a workflow named phone-check with instructions "Reply PHONE_APPROVED without running tools." Do not run shell commands or edit files. After the tool succeeds, reply PHONE_APPROVED.',
+    }) as { data?: { id: string }; error?: string }
+    if (!created.data) throw new Error(created.error ?? 'Could not create the approval conversation')
+    const id = created.data.id
+    const pending = await waitUntil(page, 'the real Codex approval', async () => {
+      const detail = await getJson<ThreadDetail>(page, `/api/threads/${id}/events`)
+      if (detail.status === 'error' || detail.status === 'done') return { detail, failed: true }
+      return detail.status === 'needs_input' ? { detail, failed: false } : undefined
+    }, 120_000)
+    if (pending.failed) throw new Error(`Agent finished before approval: ${JSON.stringify(pending.detail.events.slice(-3))}`)
+    check('real Codex waits for approval without saving the workflow', workflowStore.list(projectPath).length === 0)
+    // The exact destination used by notificationclick, including a fresh page load.
+    await phone.goto(`https://${HOST}/?thread=${encodeURIComponent(id)}`)
+    await phone.getByRole('heading', { name: 'Save a workflow from my phone', exact: true }).waitFor()
+    const approval = phone.locator('.approval')
+    await approval.waitFor()
+    check('notification destination opens the requested conversation and its approval',
+      !(await phone.locator('.list').isVisible()) && (await approval.innerText()).includes('save_workflow'))
+    await phone.screenshot({ path: join(PROOF_DIR, 'phase-6-phone-approval.png') })
+    await approval.getByRole('button', { name: 'Allow', exact: true }).click()
+    const completed = await waitUntil(page, 'Codex to finish after phone approval', async () => {
+      const detail = await getJson<ThreadDetail>(page, `/api/threads/${id}/events`)
+      return detail.status === 'done' || detail.status === 'error' ? detail : undefined
+    }, 120_000)
+    check('phone approval reaches the real agent and it completes successfully', completed.status === 'done' &&
+      completed.events.some(({ event }) => event.kind === 'assistant_text' && event.text.includes('PHONE_APPROVED')))
+    check('the approved tool saved exactly one workflow with scheduling off',
+      workflowStore.list(projectPath).length === 1 && workflowStore.list(projectPath)[0]?.enabled === false)
+    await waitUntil(phone, 'the completed response over the phone live stream', async () =>
+      (await phone.locator('.thread-status .status-text').innerText()).trim() === 'Done' &&
+      (await phone.locator('.bubble').last().innerText()).includes('PHONE_APPROVED') || undefined)
+    check('the phone receives the completed response without reloading', true)
+    await phone.screenshot({ path: join(PROOF_DIR, 'phase-6-phone-approved.png') })
+  }
 
   const list = await getJson<RemoteStatus>(page, '/api/remote')
   check('the Mac lists the paired phone', list.devices.length === 1 && list.pairings.length === 0, `devices ${list.devices.length}, pending ${list.pairings.length}`)

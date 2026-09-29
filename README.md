@@ -14,7 +14,8 @@ Cockpit does no AI inference itself. It drives the official `claude` and `codex`
 - **Dev servers the agent can see.** Every agent session gets a built-in `cockpit` MCP server. The agent starts long-running commands through it, reads their output, and opens the local preview for you. Running processes show under the conversation title, with the URL and a Stop button.
 - **Repeatable workflows.** Save project instructions and agent settings, run them manually or on a repeating interval, and open each run as a conversation. Schedules run while Cockpit is open and pause on failure.
 - **Project files in the conversation.** Browse and preview text files, then attach their current contents to a new or existing conversation draft.
-- **Files first.** Each conversation is `meta.json`, `events.jsonl` and a readable `messages.md` under `~/.agent-cockpit/`. Nothing leaves your machine except what the CLIs themselves send.
+- **Files first.** Each conversation is `meta.json`, `events.jsonl` and a readable `messages.md` under `~/.agent-cockpit/`. Agents send prompts to their providers. Optional phone access serves conversations over Tailscale; optional Web Push sends encrypted notification payloads through the browser's push provider.
+- **Phone access.** Pair a phone through Tailscale to follow conversations, reply, approve requests and stop a turn. The notification bell enables alerts when an agent asks for approval.
 - **A real Mac app.** Native window, runs from Finder or the Dock, and quitting stops every agent and dev server it started.
 
 ## Quick start
@@ -40,6 +41,18 @@ cp -R release/mac-arm64/Cockpit.app /Applications/
 The build is ad-hoc signed, not notarized, so the first launch may need right-click, then Open.
 
 Prefer a browser? `npm start` serves the same UI at http://127.0.0.1:4317.
+
+## Use it from your phone
+
+1. Install Tailscale on the Mac and phone, and sign in with the same account. Keep the Mac awake with Cockpit running.
+2. In Cockpit on the Mac, open **Phone access** and choose **Turn on phone access**. If Tailscale needs setup, follow the error shown there.
+3. Open the displayed HTTPS address on the phone, or scan its QR code. Choose **Ask my Mac**, compare the six-digit code on both screens, then **Allow** on the Mac.
+4. On Android, Chrome can add Cockpit to the home screen. Open a conversation to reply, answer an approval, or stop it.
+5. To try notifications, tap the bell on the phone and grant permission. In the Mac's Phone access panel, choose **Send a test notification**. Confirm that it appears on the phone. A push service accepting a message alone does not prove delivery.
+
+Notifications contain the project and conversation title and can appear on the phone's lock screen. Tap the bell again to turn them off; removing a paired phone also removes its subscriptions. Phone access requires the Mac to be reachable over Tailscale. No public relay or Telegram bot is needed.
+
+**Validation:** the packaged app is tested through real Tailscale with a phone-sized Chrome browser. Real push delivery to a physical phone remains a manual acceptance check; automated Chrome in this setup rejects push registration. The app reports agent usage-limit errors, and another configured agent can be selected when one provider is capped.
 
 ## How it works
 
@@ -97,6 +110,7 @@ Open **Files**, or use the composer's attachment button, to preview a text file 
 | `npm run proof:files` | Packaged app: synthetic file browsing, preview, draft attachments and failed-send recovery; no agent usage |
 | `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
 | `npm run proof:phone` | Packaged app and real Tailscale on HTTPS 8443: turn on phone access, pair a phone-sized Chrome, and refusals for a login not on the allowlist, the LAN address, no identity, a foreign Origin, an unpaired and a removed phone, each with a control |
+| `npm run proof:phone -- --live` | Also run one real Codex workflow-save approval, answer it through the phone view, and verify the result arrives live; uses the configured small Codex model |
 
 Proofs and smokes use real agents on small models (Claude Haiku, a light Codex model), so they cost a few cents each. Screenshots land in [docs/proof/](docs/proof/).
 
@@ -105,7 +119,7 @@ Proofs and smokes use real agents on small models (Claude Haiku, a light Codex m
 Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file attachments, and phone access over Tailscale with pairing and a phone layout.
 
 Next:
-1. **Phone, continued.** "Needs you" notifications, and answering a real agent's approval from the phone.
+1. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
 2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
 
 ## Credits

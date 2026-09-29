@@ -10,7 +10,7 @@ import type { RemoteStatus } from '../../server/remote/service.ts'
 export type { ProcessInfo, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
-export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean }
+export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean; notifications: boolean }
 
 export interface ThreadDetail {
   readonly meta: ThreadMeta
@@ -64,6 +64,10 @@ export const api = {
   decidePairing: (id: string, approve: boolean) => request<RemoteStatus>(`/api/remote/pairings/${id}`, { method: 'POST', body: { approve } }),
   revokeDevice: (id: string) => request<RemoteStatus>(`/api/remote/devices/${id}/revoke`, { method: 'POST', body: {} }),
   requestPairing: (name: string) => request<{ id: string; code: string }>('/api/remote/pair', { method: 'POST', body: { name } }),
+  pushKey: () => request<{ publicKey: string }>('/api/remote/push/key'),
+  pushSubscribe: (subscription: PushSubscriptionJSON) => request<unknown>('/api/remote/push/subscribe', { method: 'POST', body: { subscription } }),
+  pushUnsubscribe: () => request<unknown>('/api/remote/push/unsubscribe', { method: 'POST', body: {} }),
+  testPush: () => request<{ sent: { deviceId: string; status: number }[] }>('/api/remote/push/test', { method: 'POST', body: {} }),
   pairingStatus: (id: string) => request<{ status: 'pending' | 'approved' | 'denied' }>(`/api/remote/pair/${id}`),
 }
 

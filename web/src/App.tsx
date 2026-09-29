@@ -1,5 +1,5 @@
 import { Workflows } from './components/Workflows.tsx'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
 import { Files } from './components/Files.tsx'
 import { NewConversation } from './components/NewConversation.tsx'
@@ -10,6 +10,7 @@ import { useTheme } from './theme.ts'
 import { Mark } from './components/icons.tsx'
 import type { PageMode } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
+import { PhoneNotify } from './components/PhoneNotify.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
 
@@ -27,6 +28,14 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
 
   const activePath = projects.active?.path
   const visible = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  // A tapped notification opens /?thread=<id>: select it once, then tidy the address.
+  const { select } = cockpit
+  useEffect(() => {
+    const thread = new URLSearchParams(window.location.search).get('thread')
+    if (!thread) return
+    select(thread)
+    window.history.replaceState(null, '', '/')
+  }, [select])
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
 
@@ -47,7 +56,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         theme={theme.mode}
         onCycleTheme={theme.cycle}
         conversationsOnly={phone}
-        tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} /> : null}
+        tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
+          : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
       />
       {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
         <div className="pairing-banner" role="alert"><PairingRequests status={cockpit.remote} onError={cockpit.reportError} /></div>

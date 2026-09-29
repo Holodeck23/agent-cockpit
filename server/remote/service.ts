@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { HttpError, parseBody, readJson, sendJson } from '../http/json.ts'
 import { checkRemote, cookieValue, isRemoteRoute, remoteAuthority } from './guard.ts'
 import type { DeviceView, RemoteStore } from './store.ts'
+import { pushSubscriptionBody, webPushSender, type PushSender, type PushStore } from './push.ts'
 import { TailscaleError, type Tailscale, type TailscaleSelf } from './tailscale.ts'
 
 // Phone access: a second HTTP listener on a fixed 127.0.0.1 port that only
@@ -22,7 +23,7 @@ export interface RemoteStatus {
   readonly url?: string
   readonly login?: string
   readonly allowedLogins: string[]
-  readonly devices: DeviceView[]
+  readonly devices: (DeviceView & { notifications: boolean })[]
   readonly pairings: { id: string; code: string; name: string; login: string }[]
   readonly error?: string
 }
@@ -33,13 +34,16 @@ export interface RemoteAccessOptions {
   readonly serveStatic: (pathname: string, res: ServerResponse) => void
   /** Overrides the saved port; 0 picks a free one (tests). */
   readonly port?: number
+  /** Notification subscriptions for paired phones. */
+  readonly push: PushStore
+  readonly sendPush?: PushSender
 }
 
 const enabledBody = z.object({ enabled: z.boolean() })
 const decisionBody = z.object({ approve: z.boolean() })
 const pairBody = z.object({ name: z.string().max(80).default('Phone') })
 
-export function createRemoteAccess({ store, tailscale, serveStatic, port: portOverride }: RemoteAccessOptions) {
+export function createRemoteAccess({ store, tailscale, serveStatic, port: portOverride, push, sendPush = webPushSender }: RemoteAccessOptions) {
   let api: ApiHandler | undefined
   let server: Server | undefined
   let self: TailscaleSelf | undefined
@@ -57,7 +61,7 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
       port: boundPort() ?? configuredPort(),
       ...(self ? { url: `https://${remoteAuthority({ ...policy(), hostname: self.hostname })}`, login: self.login } : {}),
       allowedLogins: config.allowedLogins,
-      devices: store.devices(),
+      devices: store.devices().map((d) => ({ ...d, notifications: push.has(d.id) })),
       pairings: store.pendingPairings().map(({ id, code, name, login }) => ({ id, code, name, login })),
       ...(error ? { error } : {}),
     }
@@ -83,7 +87,8 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
       const method = req.method ?? 'GET'
       const device = store.deviceFor(cookieValue(req, DEVICE_COOKIE), check.login)
       if (url.pathname === '/api/remote/me' && method === 'GET') {
-        return sendJson(res, 200, { data: { mode: 'remote', login: check.login, paired: Boolean(device) } })
+        return sendJson(res, 200, { data: { mode: 'remote', login: check.login, paired: Boolean(device),
+          notifications: device ? push.has(device.id) : false } })
       }
       if (url.pathname === '/api/remote/pair' && method === 'POST') {
         const request = store.requestPairing(parseBody(pairBody, await readJson(req)).name, check.login)
@@ -101,6 +106,17 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
         return sendJson(res, 200, { data: { status: result.status } })
       }
       if (!device) return sendJson(res, 401, { error: 'Pair this phone with Cockpit on your Mac first' })
+      if (url.pathname === '/api/remote/push/key' && method === 'GET') return sendJson(res, 200, { data: { publicKey: push.publicKey() } })
+      if (url.pathname === '/api/remote/push/subscribe' && method === 'POST') {
+        push.subscribe(device.id, parseBody(pushSubscriptionBody, await readJson(req)).subscription)
+        changed()
+        return sendJson(res, 200, { data: { notifications: true } })
+      }
+      if (url.pathname === '/api/remote/push/unsubscribe' && method === 'POST') {
+        push.unsubscribe({ deviceId: device.id })
+        changed()
+        return sendJson(res, 200, { data: { notifications: false } })
+      }
       if (!isRemoteRoute(method, url.pathname) || !api) return sendJson(res, 403, { error: 'Not available from the phone' })
       await api(req, res, true)
     } catch (err) {
@@ -191,8 +207,15 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
     }
     if (parts[2] === 'devices' && parts[3] && parts[4] === 'revoke' && method === 'POST') {
       if (!store.revoke(parts[3])) throw new HttpError(404, 'Unknown phone')
+      push.unsubscribe({ deviceId: parts[3] })
       changed()
       return sendJson(res, 200, { data: status() })
+    }
+    if (parts[2] === 'push' && parts[3] === 'test' && method === 'POST') {
+      const payload = JSON.stringify({ title: 'Cockpit', body: 'Notifications from your Mac are working.', threadId: '' })
+      const results = await Promise.all(push.subscriptions().map(async ({ deviceId, subscription }) =>
+        ({ deviceId, status: await sendPush(subscription, payload, push.keys()).catch(() => 0) })))
+      return sendJson(res, 200, { data: { sent: results } })
     }
     throw new HttpError(404, 'Not found')
   }

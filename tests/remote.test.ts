@@ -28,8 +28,8 @@ describe('phone access guard', () => {
     expect(checkRemote(fakeReq({ method: 'POST', headers: { 'content-type': 'application/json', origin: `https://${HOST}` } }), policy).ok).toBe(true)
   })
   it.each([
-    ['a LAN address', { remote: '192.168.1.50' }],
-    ['a LAN Host', { headers: { host: '192.168.1.101:47821' } }],
+    ['a LAN address', { remote: '192.0.2.50' }],
+    ['a LAN Host', { headers: { host: '192.0.2.10:47821' } }],
     ['a loopback Host (not via Tailscale)', { headers: { host: '127.0.0.1:47821' } }],
     ['plain HTTP', { headers: { 'x-forwarded-proto': '' } }],
     ['no Tailscale identity (tagged device or Funnel)', { headers: { 'tailscale-user-login': '' } }],
@@ -143,7 +143,7 @@ describe('phone access over HTTP', () => {
 
       // Positive control first: the listener answers, so the refusals below are real refusals.
       expect((await phone('/')).status).toBe(200)
-      expect(JSON.parse((await phone('/api/remote/me')).body).data).toEqual({ mode: 'remote', login: OWNER, paired: false })
+      expect(JSON.parse((await phone('/api/remote/me')).body).data).toEqual({ mode: 'remote', login: OWNER, paired: false, notifications: false })
       // Negative controls against the live listener.
       expect((await call(port, '/api/threads')).status).toBe(403)
       expect((await call(port, '/', { headers: { host: '127.0.0.1' } })).status).toBe(403)

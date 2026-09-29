@@ -53,6 +53,7 @@
 .back-button { display: none; }
 .phone-bar { align-items: center; gap: 10px; }
 .phone-title { font: 600 15px var(--round); color: var(--strong); }
+.notify-button.on { color: var(--blue); }
 .agent-static { font-size: 13px; color: var(--muted); }
 .thread-pick { place-items: center; color: var(--muted); font-size: 14px; }
 
