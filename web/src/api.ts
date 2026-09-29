@@ -5,8 +5,12 @@ import type { ProcessInfo } from '../../server/processes/runner.ts'
 import type { Project, ProjectPatch } from '../../server/projects/store.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
+import type { RemoteStatus } from '../../server/remote/service.ts'
 
-export type { ProcessInfo, Project, ProjectPatch, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+export type { ProcessInfo, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+
+/** Where this page is running: the Mac's own window, or a phone through Tailscale. */
+export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean }
 
 export interface ThreadDetail {
   readonly meta: ThreadMeta
@@ -54,6 +58,13 @@ export const api = {
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
+  pageMode: () => request<PageMode>('/api/remote/me'),
+  remoteStatus: () => request<RemoteStatus>('/api/remote'),
+  setRemote: (enabled: boolean) => request<RemoteStatus>('/api/remote', { method: 'POST', body: { enabled } }),
+  decidePairing: (id: string, approve: boolean) => request<RemoteStatus>(`/api/remote/pairings/${id}`, { method: 'POST', body: { approve } }),
+  revokeDevice: (id: string) => request<RemoteStatus>(`/api/remote/devices/${id}/revoke`, { method: 'POST', body: {} }),
+  requestPairing: (name: string) => request<{ id: string; code: string }>('/api/remote/pair', { method: 'POST', body: { name } }),
+  pairingStatus: (id: string) => request<{ status: 'pending' | 'approved' | 'denied' }>(`/api/remote/pair/${id}`),
 }
 
 export interface StreamHandlers {
@@ -62,13 +73,16 @@ export interface StreamHandlers {
   onProcess?(info: ProcessInfo): void
   /** (Re)connected: anything missed while disconnected should be re-read. */
   onOpen?(): void
+  /** Desktop only: phone access settings or pairing requests changed. */
+  onRemote?(status: RemoteStatus): void
 }
 
-export function subscribe({ onUpdate, onProcess, onOpen }: StreamHandlers): () => void {
+export function subscribe({ onUpdate, onProcess, onOpen, onRemote }: StreamHandlers): () => void {
   const source = new EventSource('/api/stream')
   source.onopen = () => onOpen?.()
   source.onmessage = (message) => onUpdate(JSON.parse(message.data as string) as ThreadUpdate)
   source.addEventListener('process', (message) => onProcess?.(JSON.parse(message.data as string) as ProcessInfo))
+  source.addEventListener('remote', (message) => onRemote?.(JSON.parse(message.data as string) as RemoteStatus))
   return () => source.close()
 }
 

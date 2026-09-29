@@ -116,7 +116,7 @@ async function b1(): Promise<void> {
   check('switching tabs filters conversations to that project', (await page.locator('.card').count()) === 2)
   check('sub-nav shows the working count', (await page.locator('.subnav').getByLabel('1 working').count()) === 1)
 
-  const themeButton = page.locator('.subnav-tools .icon-button')
+  const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')
   while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
   const dark = await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors)
   const darkBg = await page.locator('.tabbar').evaluate((el) => getComputedStyle(el).backgroundColor)
@@ -168,7 +168,7 @@ async function b2(): Promise<void> {
   await page.getByRole('tablist', { name: 'Filter conversations' }).getByRole('tab', { name: /^All/ }).click()
   await cards.filter({ hasText: 'essay' }).click()
 
-  const themeButton = page.locator('.subnav-tools .icon-button')
+  const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')
   while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B2-dark.png') })
   await themeButton.click()
@@ -233,7 +233,7 @@ async function b3(): Promise<void> {
   check('answered approval folds into a note', (await page.locator('.note', { hasText: 'Allowed: Write' }).count()) === 1)
 
   // Dark mode on the running turn.
-  const themeButton = page.locator('.subnav-tools .icon-button')
+  const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')
   while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
   await page.locator('.card').filter({ hasText: 'essay' }).click()
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-dark.png') })

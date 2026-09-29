@@ -7,16 +7,20 @@ import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
+import type { PageMode } from './api.ts'
+import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
 
-export function App() {
-  const cockpit = useCockpit()
+export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
+  const local = page.mode === 'local'
+  const cockpit = useCockpit(local)
   const projects = useProjects(cockpit.threads, cockpit.reportError)
   const theme = useTheme()
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
   const [section, setSection] = useState<Section>('conversations')
+  const [phonePanelOpen, setPhonePanelOpen] = useState(false)
 
   const activePath = projects.active?.path
   const visible = activePath ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
@@ -31,7 +35,11 @@ export function App() {
         working={visible.filter((t) => t.status === 'working').length}
         theme={theme.mode}
         onCycleTheme={theme.cycle}
+        tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} /> : null}
       />
+      {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
+        <div className="pairing-banner" role="alert"><PairingRequests status={cockpit.remote} onError={cockpit.reportError} /></div>
+      ) : null}
       {cockpit.error ? (
         <div className="toast" role="alert">
           {cockpit.error}

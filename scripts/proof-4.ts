@@ -24,7 +24,7 @@ interface ProcessInfo {
   projectPath: string
 }
 interface StoredEvent {
-  event: { kind: string; name?: string; input?: unknown }
+  event: { kind: string; name?: string; input?: unknown; id?: string; toolUseId?: string; content?: unknown }
 }
 
 const getJson = <T>(page: Page, path: string): Promise<T> =>
@@ -108,7 +108,14 @@ check('read-only cockpit tools never asked', !asked.some((t) => READ_ONLY.some((
 const { events } = await getJson<{ events: StoredEvent[] }>(page, `/api/threads/${threadId}/events`)
 const tools = events.flatMap(({ event }) => (event.kind === 'tool_use' && event.name ? [event.name] : []))
 check('agent started the dev server through Cockpit, unprompted', tools.includes('mcp__cockpit__start_process'), tools.join(', '))
-check('agent read its dev-server log', tools.includes('mcp__cockpit__read_process_output'))
+// The log reaches the agent either through read_process_output or through start_process
+// with wait_seconds, which returns the first lines. Either counts, if what came back is the
+// server's own output.
+const logTools = new Set(events.flatMap(({ event }) => event.kind === 'tool_use' && event.id &&
+  (event.name === 'mcp__cockpit__read_process_output' || event.name === 'mcp__cockpit__start_process') ? [event.id] : []))
+const sawLog = events.some(({ event }) => event.kind === 'tool_result' && logTools.has(event.toolUseId ?? '') &&
+  JSON.stringify(event.content).includes('sprout dev server ready'))
+check('agent read its dev-server log', sawLog, tools.includes('mcp__cockpit__read_process_output') ? 'read_process_output' : 'start_process output')
 check('agent opened the preview itself', tools.includes('mcp__cockpit__open_preview'))
 
 const processes = await getJson<ProcessInfo[]>(page, '/api/processes')

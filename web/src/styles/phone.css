@@ -1,0 +1,50 @@
+/* ---------- phone access (desktop settings) ---------- */
+.phone-wrap { position: relative; }
+.phone-button { position: relative; }
+.phone-badge {
+  position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+  background: var(--blue); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
+}
+.phone-on { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: #2fa24f; }
+.phone-menu { width: 340px; }
+.phone-body { display: grid; gap: 10px; padding: 4px 10px 10px; }
+.phone-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--body); }
+.phone-qr { justify-self: center; width: 164px; height: 164px; padding: 6px; background: #fff; border-radius: var(--r-sm); }
+.phone-qr svg { display: block; width: 100%; height: 100%; }
+.phone-url { justify-self: center; font: 12.5px var(--mono); color: var(--link); overflow-wrap: anywhere; text-align: center; }
+.phone-error { margin: 0; font-size: 13px; color: #c2372b; }
+.phone-toggle {
+  justify-self: start; padding: 7px 14px; border: 0; border-radius: var(--r-sm); background: var(--blue); color: #fff;
+  font: inherit; font-weight: 600; cursor: default;
+}
+.phone-toggle.off { background: var(--field); color: var(--strong); font-weight: 500; }
+.phone-toggle:disabled { opacity: 0.6; }
+.device-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.device-text { display: grid; flex: 1; min-width: 0; }
+.device-name { font-weight: 500; color: var(--strong); }
+.device-meta { font-size: 12px; color: var(--muted); }
+.device-revoke, .pairing-deny { padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: none; color: var(--body); font: inherit; font-size: 13px; cursor: default; }
+
+/* pairing requests, in the panel and as a banner under the sub-nav */
+.pairing-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pairing-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--focus-ring); border-radius: var(--r-md); }
+.pairing-text { flex: 1; min-width: 0; font-size: 13.5px; color: var(--strong); }
+.pairing-meta { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.pairing-code { font: 600 13px var(--mono); color: var(--strong); letter-spacing: 0.08em; }
+.pairing-allow { padding: 5px 12px; border: 0; border-radius: var(--r-sm); background: var(--blue); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: default; }
+.pairing-banner {
+  position: fixed; top: 106px; left: 50%; z-index: 31; width: min(620px, calc(100vw - 32px)); transform: translateX(-50%);
+  border-radius: var(--r-md); background: var(--panel); box-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.45);
+}
+
+/* ---------- pairing screen (phone, before approval) ---------- */
+.pair { display: grid; gap: 14px; max-width: 420px; margin: 0 auto; padding: 48px 20px; color: var(--body); font-size: 15px; line-height: 1.5; }
+.pair-mark { width: 44px; height: 44px; }
+.pair h1 { margin: 0; font-size: 22px; line-height: 1.25; color: var(--strong); }
+.pair p { margin: 0; }
+.pair-field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.pair-field input { padding: 11px 12px; background: var(--field); border: 1px solid var(--input-border); border-radius: var(--r-sm); color: var(--strong); font: inherit; font-size: 16px; }
+.pair-ask { padding: 12px 16px; border: 0; border-radius: var(--r-md); background: var(--blue); color: #fff; font: inherit; font-weight: 600; box-shadow: 0 3px 0 var(--blue-shadow); }
+.pair-code { font: 600 34px var(--mono); letter-spacing: 0.18em; color: var(--strong); text-align: center; padding: 14px 0; background: var(--field); border-radius: var(--r-md); }
+.pair-wait { color: var(--muted); text-align: center; }
+.pair-error { color: #c2372b; }

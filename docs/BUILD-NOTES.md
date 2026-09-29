@@ -166,3 +166,29 @@ Gate: `npm run verify` passed with 111 tests, and packaging succeeded. `npm run 
 
 **Gate.** `npm run verify`: 115 tests, typecheck and both builds. New tests cover the stored message, title, preview and `messages.md` over HTTP, each error case (and that no absolute path or raw error text is returned), mid-word text passing through untouched, the handoff, workflow runs, and the transcript view. `npm run proof:files` now ends with one real Haiku turn in the packaged app: it attaches a note holding a random codeword through the Files panel, asks for the codeword, and asserts the answer contains it with no tool calls (so it came from the attachment), while the stored message equals what was typed, and the title, `messages.md` and the message bubble do not contain the file. Screenshot: `proof/phase-5-files-attached.png`. Regression proofs re-run on the same package: `proof:app` 10/10, `proof-b` b1 11/11, b2 12/12, b3 17/17, `proof:mcp` 16/16, `proof:reliability` and `proof:workflows` all passed.
 
+
+## Phase 6a: phone access over Tailscale (2026-09-29)
+
+**What.** A Phone button in the sub-nav turns on phone access. Cockpit then serves the same page on `https://<mac>.<tailnet>.ts.net` through `tailscale serve`, and a phone signed in to the owner's Tailscale account can pair once and open it. The Mac shows each pairing request as a floating banner with a six-digit code to compare, and lists paired phones with a Remove button.
+
+**How.** `server/remote/`:
+- `guard.ts` checks every phone request: loopback socket, the tailnet Host (with the port when not 443), `X-Forwarded-Proto: https`, a `Tailscale-User-Login` on the allowlist, a matching Origin, JSON writes. It also holds the list of API routes the phone may use.
+- `store.ts` keeps `remote.json` (enabled, port, HTTPS port, allowed logins, paired phones with hashed tokens) and the pending pairing requests in memory. A request lives five minutes, is redeemed once for a token, and asking again from the same phone reuses it.
+- `tailscale.ts` wraps the CLI with a 15 second timeout on every call. When the macOS network extension is waiting for approval, `tailscale status` otherwise hangs forever.
+- `service.ts` owns the phone listener, turns `tailscale serve` on and off, refuses to take over an HTTPS port that already serves something else, and resumes at launch if phone access was on.
+
+**Why these choices.**
+- *A second listener instead of widening the desktop guard.* Tailscale keeps the original Host, so the loopback guard rejects every phone request. Accepting the tailnet Host on the desktop listener would have mixed two trust models in one check.
+- *Identity and pairing.* The identity header proves which Tailscale account is asking; pairing proves which phone, and lets a lost phone be removed. Tokens are bound to the login that paired them.
+- *A fixed port.* `tailscale serve` persists its target, so the port has to survive restarts. 47821 by default, configurable in `remote.json`, along with the HTTPS port.
+- *Separate Electron profile per state folder.* The proofs launch the packaged app with their own `COCKPIT_HOME`. With the owner's Cockpit running, the single-instance lock made those launches quit at once. A different state folder now gets its own Electron profile, so it is a separate instance.
+
+**Found on the way.**
+- Requests from the Mac to its own tailnet address carry the owner's identity too, so the positive path can be tested without a second device.
+- On this Mac, a closed port on the LAN address times out instead of refusing (firewall stealth mode). "Unreachable" is only meaningful next to a control listener on every interface that IS reachable there, so both the unit test and the proof include one.
+- With the Phone panel open, the pairing banner sat under it and showed the request twice. The banner now hides while the panel is open, and floats instead of taking a layout row.
+
+**Gate.** `npm run verify`: 132 tests, including the guard's refusals each paired with a positive control, pairing, token binding and revocation over HTTP against a fake Tailscale, and the LAN control. `npm run proof:phone` on the packaged app through real Tailscale (HTTPS 8443, so an installed Cockpit on 443 is untouched): 17/17. A login not on the allowlist is refused through Tailscale; the owner is accepted; no identity, a foreign Origin, an unpaired phone and the tailnet Host on the desktop listener are refused; the LAN address cannot reach the phone port while a control listener can be reached there; a Pixel-sized Chrome pairs with the code shown on both screens, reads conversations, cannot start one in an arbitrary folder, and is refused again once removed; turning off removes the serve entry and closes the port. Screenshots mask the tailnet name, login and QR code: `proof/phase-6-phone-panel.png`, `phase-6-pairing-request.png`, `phase-6-phone-pair.png`. Also paired for real: the owner's Pixel 9a, over Tailscale, on the installed app.
+
+**Regression.** All packaged proofs re-run on the same build: `proof:app`, `proof-b` b1/b2/b3, `proof:mcp` 16/16, `proof:reliability`, `proof:workflows`, `proof:files`. Two proof fixes on the way. `proof-b` looked up the theme button by class, which the new Phone button also carries; it now asks for the theme button by label. `proof:mcp` required a `read_process_output` call to count as "read its log", but in two runs Haiku got the log from `start_process` with `wait_seconds`, which returns the first output lines, and reported no errors from them. The check now accepts either tool when the result it received contains the dev server's own output.
+

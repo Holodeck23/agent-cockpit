@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, subscribe, type ProcessInfo, type StoredEvent, type ThreadDetail, type ThreadSummary, type ThreadUpdate } from './api.ts'
+import { api, subscribe, type ProcessInfo, type RemoteStatus, type StoredEvent, type ThreadDetail, type ThreadSummary, type ThreadUpdate } from './api.ts'
 
 export interface Cockpit {
   readonly threads: ThreadSummary[]
@@ -10,6 +10,8 @@ export interface Cockpit {
   readonly error: string | undefined
   /** Project processes (dev servers etc.) started through the cockpit MCP, newest first. */
   readonly processes: ProcessInfo[]
+  /** Phone access settings; desktop only. */
+  readonly remote: RemoteStatus | undefined
   select(id: string | undefined): void
   refresh(): void
   reportError(message: string | undefined): void
@@ -38,13 +40,15 @@ function upsertProcess(list: ProcessInfo[], info: ProcessInfo): ProcessInfo[] {
   return list.some((p) => p.id === info.id) ? list.map((p) => (p.id === info.id ? info : p)) : [info, ...list]
 }
 
-export function useCockpit(): Cockpit {
+/** `local` is the Mac's own window; the phone gets no phone-access settings. */
+export function useCockpit(local = true): Cockpit {
   const [threads, setThreads] = useState<ThreadSummary[]>([])
   const [selectedId, setSelectedId] = useState<string>()
   const [detail, setDetail] = useState<ThreadDetail>()
   const [streaming, setStreaming] = useState('')
   const [error, setError] = useState<string>()
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
+  const [remote, setRemote] = useState<RemoteStatus>()
 
   const refresh = useCallback(() => {
     api.listThreads().then(setThreads, (e: unknown) => setError(String(e)))
@@ -117,10 +121,11 @@ export function useCockpit(): Cockpit {
       refresh()
       if (selectedRef.current) reloadDetail(selectedRef.current)
       api.listProcesses().then(setProcesses, (e: unknown) => setError(String(e)))
+      if (local) api.remoteStatus().then(setRemote, () => undefined)
     }
     const onProcess = (info: ProcessInfo): void => setProcesses((current) => upsertProcess(current, info))
-    return subscribe({ onUpdate, onProcess, onOpen })
-  }, [refresh, reloadDetail])
+    return subscribe({ onUpdate, onProcess, onOpen, onRemote: setRemote })
+  }, [refresh, reloadDetail, local])
 
   return {
     threads,
@@ -129,6 +134,7 @@ export function useCockpit(): Cockpit {
     streaming,
     error,
     processes,
+    remote,
     select,
     refresh,
     reportError: setError,

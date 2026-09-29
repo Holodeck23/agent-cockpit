@@ -19,6 +19,10 @@ let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
 let shutdownFinished = false
 
+// A separate state folder is a separate cockpit: give it its own Electron profile, so
+// the single-instance lock (and window state) never collide with the installed app.
+if (process.env.COCKPIT_HOME) app.setPath('userData', join(process.env.COCKPIT_HOME, 'electron'))
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {

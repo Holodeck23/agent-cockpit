@@ -10,11 +10,13 @@ interface SubNavProps {
   working: number
   theme: ThemeMode
   onCycleTheme: () => void
+  /** Extra tools on the right, e.g. the phone access button. */
+  tools?: ReactNode
 }
 
 const THEME_LABEL: Record<ThemeMode, string> = { system: 'Theme: match system', light: 'Theme: light', dark: 'Theme: dark' }
 
-export function SubNav({ section, onSection, working, theme, onCycleTheme }: SubNavProps) {
+export function SubNav({ section, onSection, working, theme, onCycleTheme, tools }: SubNavProps) {
   const item = (id: Section, icon: ReactNode, label: string, extra?: ReactNode) => (
     <button type="button" role="tab" aria-selected={section === id} className="subnav-item" onClick={() => onSection(id)}>
       {icon}
@@ -41,6 +43,7 @@ export function SubNav({ section, onSection, working, theme, onCycleTheme }: Sub
         {item('workflows', <WorkflowIcon />, 'Workflows')}
       </div>
       <div className="subnav-tools">
+        {tools}
         <button type="button" className="icon-button" aria-label={THEME_LABEL[theme]} title={THEME_LABEL[theme]} onClick={onCycleTheme}>
           {theme === 'light' ? <SunIcon /> : theme === 'dark' ? <MoonIcon /> : <MonitorIcon />}
         </button>

@@ -15,6 +15,7 @@ import { handleProcessRoute } from './process-routes.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
 import { expandWorkflows } from '../workflows/store.ts'
 import { openSse } from './sse.ts'
+import type { RemoteAccess } from '../remote/service.ts'
 
 const createThreadBody = z.object({
   projectPath: z.string().min(1).max(1000),
@@ -44,27 +45,29 @@ export interface ApiDeps {
   readonly projects: ProjectStore
   readonly processes: ProcessRunner
   readonly mcp: McpRouteDeps
+  readonly remote: RemoteAccess
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote }: ApiDeps, allowedPorts: readonly number[]) {
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   const agentTextFor = (text: string, projectPath: string): string =>
     expandFiles(expandWorkflows(text, projectPath, workflows.store), projectPath)
 
-  return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
+  /** `viaPhone` requests were already checked by the phone listener (remote/service.ts). */
+  return async (req: IncomingMessage, res: ServerResponse, viaPhone = false): Promise<boolean> => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
     if (parts[0] !== 'api') return false
     const method = req.method ?? 'GET'
 
-    if (!isTrustedRequest(req, allowedPorts)) {
+    if (!viaPhone && !isTrustedRequest(req, allowedPorts)) {
       sendJson(res, 403, { error: 'Request did not come from the cockpit page' })
       return true
     }
 
     try {
       if (method === 'GET' && parts[1] === 'stream') {
-        openSse(req, res, manager, processes)
+        openSse(req, res, manager, processes, viaPhone ? undefined : remote)
         return true
       }
       if (parts[1] === 'files' && method === 'GET') {
@@ -76,6 +79,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           if (!data) throw new Error('Unknown file action')
           sendJson(res, 200, { data })
         } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
+      }
+      if (parts[1] === 'remote') {
+        await remote.handleLocal(req, res, parts)
         return true
       }
       if (parts[1] === 'workflows') {

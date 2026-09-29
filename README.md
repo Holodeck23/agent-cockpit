@@ -96,15 +96,16 @@ Open **Files**, or use the composer's attachment button, to preview a text file 
 | `npm run proof:workflows` | Packaged app: real Codex manual and scheduled workflow runs, editor and schedule controls |
 | `npm run proof:files` | Packaged app: synthetic file browsing, preview, draft attachments and failed-send recovery; no agent usage |
 | `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
+| `npm run proof:phone` | Packaged app and real Tailscale on HTTPS 8443: turn on phone access, pair a phone-sized Chrome, and refusals for a login not on the allowlist, the LAN address, no identity, a foreign Origin, an unpaired and a removed phone, each with a control |
 
 Proofs and smokes use real agents on small models (Claude Haiku, a light Codex model), so they cost a few cents each. Screenshots land in [docs/proof/](docs/proof/).
 
 ## Status and roadmap
 
-Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, and the cockpit MCP with the process runner.
+Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file attachments, and phone access over Tailscale with pairing.
 
 Next:
-1. **Phone.** Check in and answer approvals from your phone over a private network.
+1. **Phone, continued.** A phone-sized layout, "needs you" notifications, and answering a real approval from the phone.
 2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
 
 ## Credits

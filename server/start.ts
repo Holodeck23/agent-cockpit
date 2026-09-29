@@ -11,6 +11,9 @@ import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore } from './projects/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
+import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
+import { createRemoteStore } from './remote/store.ts'
+import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
 
 export interface StartOptions {
   /** 0 picks a free port. */
@@ -28,6 +31,8 @@ export interface StartOptions {
   readonly mcp?: McpCommand
   /** Opens a preview for the user; defaults to macOS `open`. The app passes shell.openExternal. */
   readonly openUrl?: (url: string) => Promise<void> | void
+  /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
+  readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number }
 }
 
 function openWithSystem(url: string): Promise<void> {
@@ -44,6 +49,7 @@ export interface RunningServer {
   readonly store: ThreadStore
   readonly manager: ThreadManager
   readonly processes: ProcessRunner
+  readonly remote: RemoteAccess
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -96,6 +102,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   })
   const workflowStore = createWorkflowStore(root)
   const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
+  const remote = createRemoteAccess({ store: createRemoteStore(root), tailscale: options.remote?.tailscale ?? systemTailscale,
+    serveStatic: (pathname, res) => serveStatic(options.webDist, pathname, res), port: options.remote?.port })
   const server = createServer()
 
   await new Promise<void>((resolve, reject) => {
@@ -110,7 +118,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  const api = createApiHandler({ manager, store, projects, processes, workflows, mcp: { sessions, processes, openUrl, workflows: workflows.store } }, [port, ...(options.trustedPorts ?? [])])
+  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, mcp: { sessions, processes, openUrl, workflows: workflows.store } }, [port, ...(options.trustedPorts ?? [])])
+  remote.attach(api)
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)
@@ -118,12 +127,13 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   })
 
   workflows.runner.start()
+  await remote.resume()
 
   let closing: Promise<void> | undefined
   const close = (): Promise<void> => {
     closing ??= (async () => {
       workflows.runner.close()
-      await Promise.all([manager.shutdown(), processes.shutdown()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close()])
       await new Promise<void>((resolve) => {
         server.close(() => resolve())
         server.closeAllConnections()
@@ -132,5 +142,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, close }
 }
