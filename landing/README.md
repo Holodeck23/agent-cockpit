@@ -4,6 +4,10 @@
 
 The embedded interactions are explicitly labeled simulations. They do not invoke agents, execute commands, access app state, call APIs or consume provider usage. Screenshot viewing, the gallery, preview scenes and FAQ work offline. Download and external links require a connection.
 
+When served over http(s) from a non-local host, the page loads Vercel Web Analytics (`/_vercel/insights/script.js`, cookieless page views). Opened from disk or localhost it loads nothing. DMG downloads are counted by GitHub: `gh api repos/Holodeck23/agent-cockpit/releases -q '.[].assets[]|.name+" "+(.download_count|tostring)'`.
+
+Hosted on Vercel as project `agent-cockpit`: https://agent-cockpit-theta.vercel.app (`agent-cockpit.vercel.app` is someone else's site). Deploy `index.html` alone with `vercel deploy <dir> --prod`.
+
 This landing page follows the product visual system. Its structure was adapted from the demo-artifact scaffold. Unlike the broader project-to-portfolio workflow, this brief explicitly requests a landing page only, not a standalone demo.
 
 ## Preview

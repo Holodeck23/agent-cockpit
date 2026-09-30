@@ -146,5 +146,12 @@ byId('close-image').addEventListener('click',()=>dialog.close());
 dialog.addEventListener('click',event=>{if(event.target === dialog) dialog.close();});
 renderPreview();
 </script>
+<script>
+// Vercel Web Analytics (cookieless page views). Loads only when served over http(s), so the file still opens offline.
+if (location.protocol.startsWith('http') && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  const s = document.createElement('script'); s.defer = true; s.src = '/_vercel/insights/script.js'; document.head.appendChild(s);
+}
+</script>
 </body>
 </html>
