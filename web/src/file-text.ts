@@ -44,5 +44,15 @@ export function newFilePath(folder: string, name: string): string | undefined {
   return folder ? `${folder}/${trimmed}` : trimmed
 }
 
+/** "notes.md" → "notes (copy).md", then "notes (copy 2).md"…; the extension stays last. */
+export function copyPath(path: string, attempt: number): string {
+  const slash = path.lastIndexOf('/')
+  const folder = path.slice(0, slash + 1)
+  const name = path.slice(slash + 1)
+  const dot = name.lastIndexOf('.')
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+  return `${folder}${stem} (copy${attempt > 1 ? ` ${attempt}` : ''})${ext}`
+}
+
 export const draftKey = (projectPath: string, path: string): string => `file-draft:${projectPath}:${path}`
 export const tabsKey = (projectPath: string): string => `cockpit:file-tabs:${projectPath}`

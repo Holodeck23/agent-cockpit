@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { forDisk, forEditor, isDirty, lineEndingOf, newFilePath, openFile } from '../web/src/file-text.ts'
+import { copyPath, forDisk, forEditor, isDirty, lineEndingOf, newFilePath, openFile } from '../web/src/file-text.ts'
 
 describe('line endings in the file editor', () => {
   it('detects LF, CRLF and mixed files', () => {
@@ -30,5 +30,14 @@ describe('new file names', () => {
     expect(newFilePath('', 'notes.md')).toBe('notes.md')
     expect(newFilePath('src', ' notes.md ')).toBe('src/notes.md')
     for (const bad of ['', '  ', '.env', 'a/b.md', '..', 'a\\b']) expect(newFilePath('src', bad)).toBeUndefined()
+  })
+})
+
+describe('copy names', () => {
+  it('adds (copy) before the extension and numbers later ones', () => {
+    expect(copyPath('README.md', 1)).toBe('README (copy).md')
+    expect(copyPath('docs/plan.v2.md', 2)).toBe('docs/plan.v2 (copy 2).md')
+    expect(copyPath('Makefile', 1)).toBe('Makefile (copy)')
+    expect(copyPath('docs/.hidden', 1)).toBe('docs/.hidden (copy)')
   })
 })

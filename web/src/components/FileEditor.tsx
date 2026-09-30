@@ -12,6 +12,7 @@ interface FileEditorProps {
   onSave: (path: string) => void
   onReload: (path: string) => void
   onOverwrite: (path: string) => void
+  onSaveCopy: (path: string) => void
   onAttach: (path: string) => void
 }
 
@@ -19,7 +20,7 @@ interface FileEditorProps {
 const PLAIN_TEXT: Record<string, string> = { writingsuggestions: 'false', autoCorrect: 'off', autoCapitalize: 'off' }
 const nameOf = (path: string): string => path.split('/').pop() ?? path
 
-export function FileEditor({ files, active, error, onSelect, onClose, onChange, onSave, onReload, onOverwrite, onAttach }: FileEditorProps) {
+export function FileEditor({ files, active, error, onSelect, onClose, onChange, onSave, onReload, onOverwrite, onSaveCopy, onAttach }: FileEditorProps) {
   const [confirming, setConfirming] = useState<string>()
   const file = files.find((f) => f.path === active)
   const dirty = file ? isDirty(file) : false
@@ -72,7 +73,8 @@ export function FileEditor({ files, active, error, onSelect, onClose, onChange, 
           ) : null}
           {file.conflict ? (
             <div className="workflow-notice file-banner" role="alert">
-              <span>This file changed on disk since you opened it.</span>
+              <span>This file changed on disk since you opened it. Your draft is kept until you choose.</span>
+              <button type="button" className="button-soft" onClick={() => onSaveCopy(file.path)}>Save mine as a copy</button>
               <button type="button" className="button-soft" onClick={() => onReload(file.path)}>Reload from disk</button>
               <button type="button" className="button-soft" onClick={() => onOverwrite(file.path)}>Overwrite with mine</button>
             </div>

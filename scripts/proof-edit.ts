@@ -63,6 +63,21 @@ try {
   await page.getByRole('button', { name: 'Overwrite with mine', exact: true }).click()
   check('Overwrite with mine is an explicit choice that saves the draft', await waitFor(page, 'the overwrite', () => disk('README.md').includes('Keep mine')))
 
+  writeFileSync(join(project, 'README.md'), '# Garden notes\n\nKeep mine.\nThe agent added a line.\n')
+  await editor(page).fill('# Garden notes\n\nKeep mine, and my new line.\n')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Save mine as a copy', exact: true }).click()
+  check('Save mine as a copy keeps both versions', await waitFor(page, 'the copy', () => {
+    try { return disk('README (copy).md').includes('my new line') && disk('README.md').includes('The agent added a line') } catch { return false }
+  }))
+  check('the copy opens in its own tab', await waitFor(page, 'the copy tab', async () => (await page.locator('.file-tab.active').filter({ hasText: 'README (copy).md' }).count()) > 0))
+  await page.getByRole('button', { name: 'Close README (copy).md', exact: true }).click()
+  await page.getByRole('tab', { name: 'README.md' }).click()
+  await page.locator('.file-tab.active').filter({ hasText: 'README.md' }).waitFor()
+  writeFileSync(join(project, 'README.md'), '# Garden notes\n\nKeep mine.\n')
+  await page.getByRole('tab', { name: 'README.md' }).click()
+  await waitFor(page, 'the refreshed file', async () => (await editor(page).inputValue()).trim().endsWith('Keep mine.'))
+
   // Unsaved drafts are protected: closing asks, and leaving the panel or reloading keeps them.
   await editor(page).fill('# Garden notes\n\nA draft worth keeping.\n')
   await page.getByRole('button', { name: 'Close README.md', exact: true }).click()

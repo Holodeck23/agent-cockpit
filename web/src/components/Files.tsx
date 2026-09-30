@@ -20,6 +20,7 @@ export function Files({ project, onAttach }: { project?: Project; onAttach: (ref
         onSave={(path) => void open.save(path)}
         onReload={(path) => void open.reload(path)}
         onOverwrite={(path) => void open.overwrite(path)}
+        onSaveCopy={(path) => void open.saveCopy(path)}
         onAttach={(path) => onAttach(`@file:${encodeURIComponent(path)}`)}
       />
     </div>

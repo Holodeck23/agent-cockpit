@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api.ts'
-import { draftKey, forDisk, isDirty, newFilePath, openFile, tabsKey, type OpenFile } from './file-text.ts'
+import { copyPath, draftKey, forDisk, isDirty, newFilePath, openFile, tabsKey, type OpenFile } from './file-text.ts'
 
 // The Files panel's open files. Drafts and the open tabs live in localStorage per
 // project, so leaving the panel, switching project or restarting loses nothing.
@@ -104,6 +104,24 @@ export function useOpenFiles(projectPath: string | undefined) {
     try { await save(path, (await api.readFile(projectPath, path)).version) } catch (e) { setError(messageOf(e)) }
   }
 
+  /** Keeps both versions: the draft goes to a new "(copy)" file, the original shows what is on disk. */
+  const saveCopy = async (path: string): Promise<void> => {
+    const file = current.current.find((f) => f.path === path)
+    if (!projectPath || !file?.eol) return
+    setError('')
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      try {
+        const saved = await api.writeFile(projectPath, copyPath(path, attempt), forDisk(file.draft, file.eol), null)
+        await reload(path)
+        await open(saved.path)
+        return
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409)) { setError(messageOf(e)); return }
+      }
+    }
+    setError('Too many copies already exist; rename one and try again')
+  }
+
   /** Throws the draft away and shows the file as it is on disk. */
   const reload = async (path: string): Promise<void> => {
     if (!projectPath) return
@@ -136,5 +154,5 @@ export function useOpenFiles(projectPath: string | undefined) {
     }
   }
 
-  return { files, active, error, open, edit, save, overwrite, reload, close, create, setActive }
+  return { files, active, error, open, edit, save, overwrite, saveCopy, reload, close, create, setActive }
 }
