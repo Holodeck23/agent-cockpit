@@ -72,6 +72,15 @@ The boundary-setting task is complete when this file remains the canonical check
 - Acceptance date: 2026-09-30
 - Quit cleanup re-observed: after quitting the walkthrough app, no Cockpit, agent, MCP or dev-server process remained.
 
+## Published download check (v0.1.0)
+
+2026-09-30, on the DMG as published on the GitHub pre-release (sha256 `f357ce37…0300f4`, built from `7f71827`), not the local build:
+
+- Marked as a browser download, both the DMG and the installed app are rejected by `spctl`, as the README says. After the README's `xattr -dr com.apple.quarantine`, the app launches.
+- Installed to a fresh folder outside `/Applications`, with empty thread storage and launchd's bare PATH. The proofs point at it via `COCKPIT_APP=<path>/Cockpit.app`.
+- `proof:app` 10/10 (found `claude` through the login-shell PATH, Haiku reply, quit mid-turn left nothing running), `proof:mcp` 16/16 with Claude and 16/16 with `--codex`, `proof-b.ts b3` 20/20. No process left behind afterwards.
+- Not covered: a separate macOS account with its own CLI logins and no existing `~/.claude` or `~/.codex`, and clicking Open Anyway in System Settings. That second-account run is still open.
+
 ## Known issues found during acceptance
 
 - ~~**Starter click-through (P1)**~~ *Fixed 2026-09-30:* the native folder picker's Open button sat over the first-run starter suggestions, which sent on one click. Starters now only fill the message box and focus it; Enter sends. The composer also turns off macOS inline writing suggestions, whose guessed word Enter would otherwise accept instead of sending. Gate: `tsx scripts/proof-b.ts b3` (20 checks) on the packaged app.
