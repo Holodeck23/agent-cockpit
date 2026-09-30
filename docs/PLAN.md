@@ -1,13 +1,11 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Status 2026-09-29:** The desktop MVP and phone approval flow are installed and running. Implementation checkpoint `44fb890` is on `main` and was pushed to the remote.
+**Status 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
-- **Complete:** Claude/Codex adapters, conversations and approvals, desktop UI, process tools, workflows, file attachments, Tailscale pairing, phone layout, and the real Codex phone-approval gate.
-- **Implemented, awaiting device acceptance:** encrypted Web Push, subscription recovery, and notification-to-conversation routing. Actual delivery and tapping on a physical phone remain unverified.
-- **Verified for this checkpoint:** 140 tests, typecheck, both builds, packaging, 32 phone checks through real Tailscale, and packaged desktop reliability. Earlier Claude-dependent proofs were not repeated during its usage cap; see BUILD-NOTES for their last failures.
-- **Installed:** the packaged app was signature-checked and launched. Phone access and the existing pairing resumed; the previous app bundle was preserved privately.
-- **Portable setup:** each person uses their own CLI accounts, project folder and Tailscale account; `npm run doctor` checks prerequisites. Model selection defaults to their CLI configuration.
-- **Next:** walk the primary release flow on a fresh setup (below), complete physical-phone notification acceptance, then Phase 7 preview pane. Additional agent adapters remain Phase 8.
+- **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
+- **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
+- **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
+- **Next:** stranger install on a second macOS user (see RELEASE-ACCEPTANCE), physical-phone push acceptance, then Phase 7 preview pane. Calendar schedules (checkpoint 7) and more agent adapters (Phase 8) are after the first release.
 
 
 ## MVP inspection (2026-09-29)
