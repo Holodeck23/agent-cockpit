@@ -8,6 +8,7 @@ import './styles/tokens.css'
 import './styles/chrome.css'
 import './styles/list.css'
 import './styles/thread.css'
+import './styles/activity.css'
 import './styles.css'
 import './styles/workflows.css'
 

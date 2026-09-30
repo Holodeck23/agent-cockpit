@@ -25,7 +25,8 @@
     "proof:workflows": "tsx scripts/proof-workflows.ts",
     "proof:files": "tsx scripts/proof-files.ts",
     "proof:phone": "tsx scripts/proof-phone.ts",
-    "proof:limit": "tsx scripts/proof-limit.ts"
+    "proof:limit": "tsx scripts/proof-limit.ts",
+    "proof:activity": "tsx scripts/proof-activity.ts"
   },
   "author": "",
   "license": "UNLICENSED",

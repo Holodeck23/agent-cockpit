@@ -2,6 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type Men
 import { existsSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
+import { defaultRoot } from '../server/threads/store.ts'
+import { readAppPort, writeAppPort } from './app-port.ts'
 import { resolveAppPath } from './shell-path.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
@@ -39,8 +41,10 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function boot(): Promise<void> {
+  const portFile = join(defaultRoot(), 'app-port')
   running = await startServer({
     port: 0,
+    preferredPort: readAppPort(portFile),
     webDist: join(app.getAppPath(), 'dist'),
     // Each agent session spawns the cockpit MCP server with this app's own binary in
     // plain-Node mode, so it works from Finder with no Node on PATH (and reads from app.asar).
@@ -52,6 +56,7 @@ async function boot(): Promise<void> {
     // Late-bound so the preview target can be swapped (Phase 7 pane, or a proof stub).
     openUrl: (url) => shell.openExternal(url),
   })
+  writeAppPort(portFile, running.port)
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
   registerIpc(running.url, join(running.store.root, 'threads'))
   mainWindow = createWindow(running.url)

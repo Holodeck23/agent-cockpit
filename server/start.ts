@@ -26,6 +26,11 @@ export interface StartOptions {
   readonly webDist: string
   /** Extra ports whose pages may call the API, e.g. the Vite dev server. */
   readonly trustedPorts?: readonly number[]
+  /**
+   * Tried before `port`; if it is taken, `port` is used. The app passes its last port so the
+   * page's origin, and with it localStorage (theme, drafts, layout), survives a restart.
+   */
+  readonly preferredPort?: number
   /** Where threads are stored; defaults to COCKPIT_HOME or ~/.agent-cockpit. */
   readonly stateRoot?: string
   /** How to start the cockpit MCP server; without it, agent sessions get no cockpit tools. */
@@ -117,13 +122,22 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     ...(options.remote?.sendPush ? { send: options.remote.sendPush } : {}) })
   const server = createServer()
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(options.port, host, () => {
-      server.off('error', reject)
-      resolve()
+  const listen = (port: number): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(port, host, () => {
+        server.off('error', reject)
+        resolve()
+      })
     })
-  })
+  if (options.preferredPort) {
+    try {
+      await listen(options.preferredPort)
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error
+      await listen(options.port)
+    }
+  } else await listen(options.port)
 
   // The API guard needs the real port, which is only known after listen when port is 0.
   const port = (server.address() as AddressInfo).port

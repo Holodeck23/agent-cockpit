@@ -148,3 +148,8 @@ export const FileIcon = (p: IconProps) => (
     <path d="M14 3.5V8h4.5M9 13h6M9 16.5h6" />
   </Svg>
 )
+export const ActivityIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 12h4l2.5-6 4 12 2.5-6h4" />
+  </Svg>
+)

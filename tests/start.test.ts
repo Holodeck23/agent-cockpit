@@ -1,5 +1,6 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
-import { request } from 'node:http'
+import { createServer, request } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -40,12 +41,34 @@ describe('startServer', () => {
     running = undefined
   })
 
-  const start = async (): Promise<RunningServer> => {
+  const start = async (preferredPort?: number): Promise<RunningServer> => {
     const webDist = mkdtempSync(join(tmpdir(), 'cockpit-web-'))
     writeFileSync(join(webDist, 'index.html'), '<h1>cockpit page</h1>')
-    running = await startServer({ port: 0, webDist, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-state-')) })
+    running = await startServer({ port: 0, preferredPort, webDist, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-state-')) })
     return running
   }
+
+  it('reuses a preferred port, so the page keeps its origin across restarts', async () => {
+    const first = await start()
+    const port = first.port
+    await first.close()
+    const again = await start(port)
+    expect(again.port).toBe(port)
+    expect((await get(port, '/api/threads')).status).toBe(200)
+  })
+
+  it('falls back to a free port when the preferred one is taken', async () => {
+    const blocker = createServer()
+    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve))
+    const taken = (blocker.address() as AddressInfo).port
+    try {
+      const server = await start(taken)
+      expect(server.port).not.toBe(taken)
+      expect((await get(server.port, '/api/threads')).status).toBe(200)
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()))
+    }
+  })
 
   it('listens on a random loopback port and trusts that port', async () => {
     const server = await start()

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { buildActivity } from '../activity.ts'
 import { openApprovals } from '../../../server/threads/status.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
 import { native } from '../native.ts'
 import { buildTranscript } from '../transcript.ts'
+import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
-import { Bars, CheckIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
+import { ActivityIcon, Bars, CheckIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 
@@ -37,11 +39,29 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const running = status === 'working' || status === 'needs_input'
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
+  const activity = useMemo(() => buildActivity(events, running), [events, running])
+  const prefs = useActivityPrefs()
+  const showActivity = !phone && prefs.open
+  // With the pane open, tool steps live there and the conversation keeps what was said and decided.
+  const conversationItems = useMemo(() => (showActivity ? items.filter((item) => item.type !== 'step') : items), [items, showActivity])
   const usage = useMemo(() => {
     const found = [...events].reverse().find((e) => e.event.kind === 'usage')?.event
     return found?.kind === 'usage' ? found : undefined
   }, [events])
   const scroller = useRef<HTMLDivElement>(null)
+
+  const { open: activityOpen, setOpen: setActivityOpen } = prefs
+  useEffect(() => {
+    if (phone) return
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        setActivityOpen(!activityOpen)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phone, activityOpen, setActivityOpen])
 
   useEffect(() => {
     const el = scroller.current
@@ -60,7 +80,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   }
 
   return (
-    <main className="thread">
+    <main className={`thread${showActivity ? ' with-activity' : ''}`}>
       <header className="thread-head">
         {onBack ? (
           <button type="button" className="back-button" aria-label="Back to conversations" onClick={onBack}>
@@ -104,6 +124,17 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             </button>}
           </div>
           {phone ? null : <div className="segment">
+            <button
+              type="button"
+              className="activity-toggle"
+              aria-label="Activity"
+              aria-expanded={showActivity}
+              title={`${showActivity ? 'Hide' : 'Show'} activity (⌘⇧A)`}
+              onClick={() => setActivityOpen(!showActivity)}
+            >
+              <ActivityIcon />
+              {activity.length > 0 ? <span className="activity-badge">{activity.length}</span> : null}
+            </button>
             <ThreadMenu
               transcriptPath={transcriptPath}
               usage={usage}
@@ -115,7 +146,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
       </header>
       <div className="events" ref={scroller}>
         <TranscriptView
-          items={items}
+          items={conversationItems}
           openApprovals={open}
           running={running}
           streaming={streaming}
@@ -142,6 +173,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           />
         )}
       />
+      {showActivity ? (
+        <ActivityPane key={meta.id} rows={activity} width={prefs.width} onResize={prefs.setWidth} onClose={() => setActivityOpen(false)} />
+      ) : null}
     </main>
   )
 }
