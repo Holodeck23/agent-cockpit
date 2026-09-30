@@ -37,7 +37,6 @@
 .workflow-list-empty { display: flex; flex-direction: column; gap: 12px; padding: 32px 0; color: var(--muted); line-height: 1.6; font-size: 13px; }
 .workflow-list-empty svg { width: 28px; height: 28px; }
 .workflow-notice { padding: 14px 18px; border: 1px solid var(--needs-border); background: var(--needs-bg); border-radius: 8px; color: var(--needs-ink); font-size: 13px; overflow-wrap: anywhere; }
-.workflow-mention { flex: none; align-self: flex-start; margin: 11px 10px 0 0; color: var(--muted); background: var(--field); border: 0; border-radius: var(--r-sm); padding: 4px 10px; font: inherit; font-size: 12.5px; max-width: 210px; }
 @media (max-width: 800px) { .workflows-layout { grid-template-columns: 210px minmax(0, 1fr); } .workflow-editor { padding: 24px; } .workflow-config { grid-template-columns: 1fr; gap: 12px; } }
 @media (max-width: 560px) { .workflows-layout { display: block; overflow: auto; } .workflow-list { border-right: 0; border-bottom: 1px solid var(--border); max-height: 280px; } .workflow-editor { overflow: visible; } }
 

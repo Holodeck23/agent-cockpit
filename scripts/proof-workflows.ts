@@ -49,7 +49,9 @@ try {
   workflow = store.list(project)[0]!
   await waitForRun(workflow.lastThreadId!)
   console.log('PASS manual workflow completes as a real Codex conversation')
-  await page.getByLabel('Insert workflow').selectOption('quick-check')
+  await page.getByRole('button', { name: 'Add context', exact: true }).click()
+  await page.getByLabel('Search files and workflows').fill('quick')
+  await page.getByRole('option').filter({ hasText: 'quick-check' }).click()
   assert.equal(await page.getByRole('textbox', { name: 'Message' }).inputValue(), '@workflow:quick-check ')
   console.log('PASS composer inserts workflow reference')
   await page.getByRole('textbox', { name: 'Message' }).press('Enter')

@@ -5,6 +5,9 @@
 /** A reference the user can fix (unknown file, bad encoding, too many). Maps to HTTP 400. */
 export class MessageReferenceError extends Error {}
 
+/** Files one message may attach; the composer's picker and the server share it. */
+export const MAX_ATTACHED_FILES = 8
+
 export const FILE_REFERENCE = /(^|\s)@file:(\S+)/g
 export const WORKFLOW_REFERENCE = /(^|\s)@workflow:([a-z0-9]+(?:-[a-z0-9]+)*)/g
 

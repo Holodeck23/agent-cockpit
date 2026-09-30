@@ -30,4 +30,5 @@ async function boot(container: HTMLElement): Promise<void> {
 void boot(root)
 
 import './styles/files.css'
+import './styles/picker.css'
 import './styles/phone.css'

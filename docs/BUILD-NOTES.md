@@ -260,3 +260,13 @@ The portability package passed 27 non-agent phone checks through Tailscale. Its 
 **Found on the way.** Milkdown's view gives each heading an id that a plain parse leaves empty, so content comparison ignores it (caught only by the packaged-app proof; unit tests now run through a real view as well). A textarea normalises CRLF to LF and `TextDecoder` drops a byte-order mark; both are restored on save, and files mixing line endings are read-only. macOS inline predictions let Enter accept a guessed word; composer and editors turn writing suggestions off.
 
 **Gates.** `npm run proof:edit` (18 checks) and `npm run proof:docs` (15 checks) on the packaged app, with synthetic files only.
+
+## Checkpoint 6: context picker (2026-09-30)
+
+**What.** One + in the composer for files and workflows, with chips for what the message will attach.
+
+**How.** The draft text stays the single source of truth: chips are read from its `@file:`/`@workflow:` tokens (`web/src/draft-references.ts`) and edit it, so sending, storage and expansion are unchanged. Two Mac-only endpoints: `GET /api/files/search` (breadth-first walk, capped at 20,000 entries and depth 12, name matches ranked first) and `POST /api/references/check`, which resolves each distinct reference the way sending would.
+
+**Found on the way.** Search results arrive after typing; Enter could pick a row left over from the previous query, so results now carry the query they answer. A chip checked once stayed green after its file was deleted; chips re-check every few seconds while the draft waits. A send error stayed on screen after the draft changed; editing clears it.
+
+**Gate.** `npm run proof:context` (13 checks) on the packaged app, synthetic files, no agent runs.

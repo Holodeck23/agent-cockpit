@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { closeSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { decodeReference, FILE_REFERENCE, MessageReferenceError } from './references.ts'
+import { decodeReference, FILE_REFERENCE, MAX_ATTACHED_FILES, MessageReferenceError } from './references.ts'
 
 export const HIDDEN = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release'])
 export const MAX_BYTES = 100_000
@@ -89,7 +89,7 @@ export function readText(target: string): { text: string; data: Buffer } {
 export function expandFiles(text: string, projectPath: string): string {
   let count = 0
   const output = text.replace(FILE_REFERENCE, (_match, lead: string, encoded: string) => {
-    if (++count > 8) throw new MessageReferenceError('Attach at most 8 files per message')
+    if (++count > MAX_ATTACHED_FILES) throw new MessageReferenceError(`Attach at most ${MAX_ATTACHED_FILES} files per message`)
     const path = decodeReference(encoded)
     if (path === undefined) throw new MessageReferenceError(`This attachment is not a valid file reference: @file:${encoded}`)
     let file: FilePreview

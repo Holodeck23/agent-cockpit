@@ -1,6 +1,7 @@
 import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
 import { FileConflictError, writeProjectFile } from '../files/editor.ts'
+import { checkReferences, searchFiles } from '../files/search.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -29,6 +30,7 @@ const createThreadBody = z.object({
 const messageBody = z.object({ text: z.string().min(1).max(200_000) })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 const completedBody = z.object({ completed: z.boolean() })
+const checkReferencesBody = z.object({ projectPath: z.string().min(1).max(1000), text: z.string().max(200_000) })
 const writeFileBody = z.object({
   projectPath: z.string().min(1).max(1000),
   path: z.string().min(1).max(1000),
@@ -98,6 +100,19 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         } catch (error) {
           throw new HttpError(error instanceof FileConflictError ? 409 : 400, error instanceof Error ? error.message : String(error))
         }
+        return true
+      }
+      if (parts[1] === 'files' && parts[2] === 'search' && method === 'GET') {
+        const projectPath = url.searchParams.get('projectPath') ?? ''
+        if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+        try { sendJson(res, 200, { data: searchFiles(projectPath, (url.searchParams.get('q') ?? '').slice(0, 200)) }) }
+        catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
+      }
+      if (parts[1] === 'references' && parts[2] === 'check' && method === 'POST') {
+        const body = parseBody(checkReferencesBody, await readJson(req))
+        if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+        sendJson(res, 200, { data: checkReferences(body.text, body.projectPath, workflows.store) })
         return true
       }
       if (parts[1] === 'files' && method === 'GET') {

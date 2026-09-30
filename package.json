@@ -31,7 +31,8 @@
     "proof:instructions": "tsx scripts/proof-instructions.ts",
     "proof:discovery": "tsx scripts/proof-discovery.ts",
     "proof:edit": "tsx scripts/proof-edit.ts",
-    "proof:docs": "tsx scripts/proof-docs.ts"
+    "proof:docs": "tsx scripts/proof-docs.ts",
+    "proof:context": "tsx scripts/proof-context.ts"
   },
   "author": "",
   "license": "UNLICENSED",

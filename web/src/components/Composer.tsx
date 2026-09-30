@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { WorkflowMention } from './WorkflowMention.tsx'
-import { ArrowUpIcon, PlusIcon } from './icons.tsx'
+import { MAX_ATTACHED_FILES } from '../../../server/files/references.ts'
+import { addReference, referencesIn, removeReference, tokenFor } from '../draft-references.ts'
+import { ContextPicker } from './ContextPicker.tsx'
+import { ReferenceChips } from './ReferenceChips.tsx'
+import { ArrowUpIcon } from './icons.tsx'
 
 interface ComposerProps {
   /** Drafts are kept per conversation in localStorage and survive reloads. */
@@ -74,6 +77,8 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
 
   const update = (value: string): void => {
     setText(value)
+    // A send error is about the text that was sent; editing moves on from it.
+    setSubmitError(undefined)
     saveDraft(draftKey, value)
   }
 
@@ -97,10 +102,15 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event)
   }
 
+  const references = referencesIn(text)
+  const attached = new Set(references.map((r) => tokenFor(r.kind, r.reference)))
+  const filesAttached = references.filter((r) => r.kind === 'file').reduce((n, r) => n + r.count, 0)
+
   return (
     <form className="composer" onSubmit={(e) => void submit(e)}>
       {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
       <div className="composer-card">
+        <ReferenceChips projectPath={projectPath} text={text} onRemove={(token) => { update(removeReference(text, token)); box.current?.focus() }} />
         <div className="composer-top">
           <textarea
             ref={box}
@@ -113,15 +123,12 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             onChange={(e) => update(e.target.value)}
             onKeyDown={onKeyDown}
           />
-          {projectPath ? <WorkflowMention key={projectPath} projectPath={projectPath} onInsert={(name) => {
-            update(`${text}${text && !/\s$/.test(text) ? ' ' : ''}@workflow:${name} `)
-            box.current?.focus()
-          }} /> : null}
         </div>
         <div className="composer-foot">
-          <button type="button" className="icon-button" disabled={!projectPath || !onBrowseFiles} onClick={onBrowseFiles} title="Browse project files" aria-label="Attach">
-            <PlusIcon />
-          </button>
+          {projectPath ? (
+            <ContextPicker projectPath={projectPath} attached={attached} filesFull={filesAttached >= MAX_ATTACHED_FILES}
+              onBrowseFiles={onBrowseFiles} onPick={(token) => { update(addReference(text, token)); box.current?.focus() }} />
+          ) : null}
           {picker}
           <span className="composer-spacer" />
           <button type="submit" className="send" aria-label="Send" disabled={disabled || sending || !text.trim()}>

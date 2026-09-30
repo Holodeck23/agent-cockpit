@@ -1,5 +1,6 @@
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
 import type { FileSaved } from '../../server/files/editor.ts'
+import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo } from '../../server/processes/runner.ts'
@@ -43,6 +44,8 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 export const api = {
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   readFile: (projectPath: string, path: string) => request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path })}`),
+  searchFiles: (projectPath: string, q: string) => request<FileSearch>(`/api/files/search?${new URLSearchParams({ projectPath, q })}`),
+  checkReferences: (projectPath: string, text: string) => request<ReferenceCheck[]>('/api/references/check', { method: 'POST', body: { projectPath, text } }),
   /** `expected` is the version the edit started from; null creates a new file. */
   writeFile: (projectPath: string, path: string, text: string, expected: string | null) =>
     request<FileSaved>('/api/files/write', { method: 'PUT', body: { projectPath, path, text, expected } }),
@@ -104,3 +107,4 @@ export function subscribe({ onUpdate, onProcess, onOpen, onRemote }: StreamHandl
 export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
+export type { FileMatch, ReferenceCheck } from '../../server/files/search.ts'

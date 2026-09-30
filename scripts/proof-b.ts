@@ -248,7 +248,9 @@ async function b3(): Promise<void> {
   await page.getByRole('tab', { name: /Sprout/ }).click()
   await page.locator('.suggestion').first().click()
   const message = messageBox(page)
-  check('suggestion fills the message box', (await message.inputValue()) === 'Explain how this project is put together')
+  // The prefill lands on the next render; wait for it rather than reading once.
+  await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.value === 'Explain how this project is put together', undefined, { timeout: 5_000 }).catch(() => undefined)
+  check('suggestion fills the message box', (await message.inputValue()) === 'Explain how this project is put together', JSON.stringify(await message.inputValue()))
   check('suggestion alone starts nothing', (await page.locator('.card').count()) === 0)
   check('message box has focus after a suggestion', await message.evaluate((el) => el === document.activeElement))
   await page.keyboard.press('Enter')
