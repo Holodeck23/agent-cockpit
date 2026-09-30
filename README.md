@@ -10,7 +10,7 @@ Cockpit does no AI inference itself. It drives the official `claude` and `codex`
 
 **You need:** a Mac with Apple silicon (M1 or later) and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or [Codex](https://github.com/openai/codex) (`codex`) installed and signed in. Open that CLI in Terminal and check it answers a prompt before you start. Cockpit uses your own account and does no AI inference itself.
 
-1. Download `Cockpit-0.1.0-arm64.dmg` from the [latest release](https://github.com/Holodeck23/agent-cockpit/releases/latest).
+1. Download `Cockpit-0.1.0-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 2. Open the DMG and drag **Cockpit** into **Applications**.
 3. Open Cockpit from Applications. This build is not notarized by Apple, so macOS blocks the first launch with **"Cockpit" Not Opened**. Choose **Done**, not Move to Trash.
 4. Open **System Settings → Privacy & Security**, scroll down to **Security** and choose **Open Anyway** next to the message about Cockpit. Enter your password, then choose **Open Anyway** once more. The button shows for about an hour after the blocked launch; later launches open normally.
