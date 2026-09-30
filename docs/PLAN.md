@@ -28,6 +28,20 @@ Fresh walkthrough used the packaged app and Codex `gpt-5.6-luna`. Claude's first
 
 The prioritized, testable ship gate and explicit exclusions are maintained in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md). P0 is the desktop project → approval → dev server → log → external preview → Stop/restart loop, plus visible provider-limit handling and manual agent switching. Optional phone, workflow, file and future-agent work cannot delay the release unless it regresses that core flow, data safety, approval safety or process cleanup.
 
+## Upgrade sequence after the Enjoy trial (agreed 2026-09-30)
+
+A signed-in Enjoy trial was compared against this source at `b8bc616`. The trial evidence contains account details and is kept privately outside the repo. The agreed order, one independently usable checkpoint at a time:
+
+0. **Release baseline.** Close the unchecked P0 items in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) on one identified packaged build before any feature work.
+1. **Activity pane.** An optional, resizable pane beside the conversation, built from stored tool events (name, state, expandable input/output, timing). Answers and approvals stay in the conversation. Interrupted or unmatched tool calls are shown as such.
+2. **Agent availability and usage.** Installed/problem state and the latest provider-reported usage and reset time in the agent picker, with the time it was observed. Unknown stays distinct from available; no quota bars from guessed strings, no polling or automatic failover.
+3. **Project instructions.** Bounded optional instructions per project, delivered once through Claude's appended prompt and Codex's developer instructions. They take effect at the next launch/resume/switch and are recorded with the session. They never change permissions or overwrite repository instruction files.
+4. **Workflow discovery.** Search, collections and All/Scheduled/Manual views; an editable title separate from the stable `@workflow:` slug; five original starters (project orientation, focused review, release check, handoff note, dev-server startup). Copying a starter never schedules or runs it.
+
+Checkpoints 1–4 ship together as the first upgrade. Later, each its own checkpoint: 5a editable text files, 5b rich Markdown documents, 6 composer context picker, 7 calendar schedules (daily/weekday/weekly, local time, explicit DST and missed-run rules).
+
+**Proposed, not adopted:** let desktop P0 completion gate Phase 7 and track physical-phone push as a separate acceptance item. Phase 7 below keeps its current gate until this is decided.
+
 ## Scope for the first release
 
 This is an early build. Prioritize a usable demo, clear setup for other builders and feedback from trying it. Ship small verified checkpoints and keep incomplete features visible. Cross-platform packaging, broad onboarding automation and production polish can wait. Physical-phone push acceptance is pending, but it does not block trying the desktop and phone-approval MVP.
