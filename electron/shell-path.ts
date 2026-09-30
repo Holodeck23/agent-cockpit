@@ -50,9 +50,21 @@ function defaultShell(): string {
   }
 }
 
+/**
+ * COCKPIT_AGENT_PATH names folders searched before everything else, for agent CLIs
+ * installed somewhere unusual and for proofs that substitute a recorded stand-in.
+ */
+export function agentPathDirs(env: NodeJS.ProcessEnv): string[] {
+  return (env.COCKPIT_AGENT_PATH ?? '').split(':').filter((entry) => entry.length > 0)
+}
+
 /** Returns the PATH the app should use, and whether it came from the login shell. */
-export function resolveAppPath(env: NodeJS.ProcessEnv = process.env): { path: string; source: 'shell' | 'fallback' } {
-  const fromShell = loginShellPath(defaultShell())
-  if (fromShell) return { path: mergePath(env.PATH, fromShell.split(':')), source: 'shell' }
-  return { path: mergePath(env.PATH, fallbackDirs()), source: 'fallback' }
+export function resolveAppPath(
+  env: NodeJS.ProcessEnv = process.env,
+  shellPath: () => string | undefined = () => loginShellPath(defaultShell()),
+): { path: string; source: 'shell' | 'fallback' } {
+  const first = agentPathDirs(env)
+  const fromShell = shellPath()
+  if (fromShell) return { path: mergePath(env.PATH, [...first, ...fromShell.split(':')]), source: 'shell' }
+  return { path: mergePath(env.PATH, [...first, ...fallbackDirs()]), source: 'fallback' }
 }

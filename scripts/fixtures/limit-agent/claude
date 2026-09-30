@@ -1,0 +1,22 @@
+#!/bin/sh
+# Stand-in `claude` for `npm run proof:limit`. Every turn ends the way Claude Code 2.1
+# ended one when the five-hour limit was reached (recorded 2026-09-29): a rejected
+# rate_limit_event, the limit message as assistant text, then a failed result.
+# Like the real CLI it stays alive between turns and exits on stdin EOF.
+session=""
+previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+reset=$(( $(date +%s) + 7200 ))
+message="You've hit your session limit · resets in 2 hours (proof fixture)"
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"limit-fixture"}\n' "$session"
+turn=0
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  turn=$((turn + 1))
+  printf '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":%s,"rateLimitType":"five_hour"}}\n' "$reset"
+  printf '{"type":"assistant","message":{"id":"limit-fixture-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$message"
+  printf '{"type":"result","subtype":"success","is_error":true,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$message"
+done

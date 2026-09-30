@@ -26,8 +26,8 @@ Only the **Allow** path for the release-critical process start is P0. **Deny**, 
 ### Usage-limit handling — in scope, narrowly
 
 - [x] Recorded Claude and Codex protocol fixtures normalize five-hour usage events, including reset information where the provider supplies it.
-- [ ] A packaged UI check proves the conversation menu renders the latest provider-reported five-hour status and reset time.
-- [ ] A packaged acceptance fixture or controlled live case proves that a rejected limit/error ends visibly instead of leaving the conversation Working, and that the user can switch the stopped/failed conversation to the other installed agent and continue from its transcript.
+- [x] A packaged UI check proves the conversation menu renders the latest provider-reported five-hour status and reset time. `npm run proof:limit` (2026-09-30): "Limit reached, resets 5:12 PM" from the rejected event, then "23% used, resets 7:35 PM" after the next Codex turn.
+- [x] A packaged acceptance fixture or controlled live case proves that a rejected limit/error ends visibly instead of leaving the conversation Working, and that the user can switch the stopped/failed conversation to the other installed agent and continue from its transcript. `npm run proof:limit` (2026-09-30, 9/9): a recorded limit stand-in for Claude (`scripts/fixtures/limit-agent`, found through `COCKPIT_AGENT_PATH`) ends as Error with the limit message; a manual switch to real Codex recalls a codeword only Claude was told. Screenshots `docs/proof/p0-limit-*.png`.
 
 Automatic agent switching, background quota polling, predicting exhaustion and bypassing provider limits are deferred. The release promises visible provider-reported state and a manual switch only.
 

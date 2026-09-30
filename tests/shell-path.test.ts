@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractMarkedPath, fallbackDirs, loginShellPath, mergePath } from '../electron/shell-path.ts'
+import { extractMarkedPath, fallbackDirs, loginShellPath, mergePath, resolveAppPath } from '../electron/shell-path.ts'
 
 describe('extractMarkedPath', () => {
   it('ignores profile banners around the marked PATH', () => {
@@ -34,6 +34,26 @@ describe('loginShellPath', () => {
 
   it('returns undefined when the shell does not exist', () => {
     expect(loginShellPath('/nonexistent/shell', 1000)).toBeUndefined()
+  })
+})
+
+describe('resolveAppPath', () => {
+  it('searches COCKPIT_AGENT_PATH before the login shell PATH', () => {
+    const env = { PATH: '/usr/bin', COCKPIT_AGENT_PATH: '/tmp/agents::/opt/agents' }
+    expect(resolveAppPath(env, () => '/opt/homebrew/bin:/usr/bin')).toEqual({
+      path: '/tmp/agents:/opt/agents:/opt/homebrew/bin:/usr/bin',
+      source: 'shell',
+    })
+  })
+
+  it('keeps the shell order when no agent path is set', () => {
+    expect(resolveAppPath({ PATH: '/usr/bin' }, () => '/opt/homebrew/bin').path).toBe('/opt/homebrew/bin:/usr/bin')
+  })
+
+  it('puts the agent path ahead of the fallback folders when the shell cannot be asked', () => {
+    const { path, source } = resolveAppPath({ COCKPIT_AGENT_PATH: '/tmp/agents' }, () => undefined)
+    expect(source).toBe('fallback')
+    expect(path.split(':')[0]).toBe('/tmp/agents')
   })
 })
 

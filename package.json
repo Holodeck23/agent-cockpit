@@ -24,7 +24,8 @@
     "proof:reliability": "tsx scripts/proof-reliability.ts",
     "proof:workflows": "tsx scripts/proof-workflows.ts",
     "proof:files": "tsx scripts/proof-files.ts",
-    "proof:phone": "tsx scripts/proof-phone.ts"
+    "proof:phone": "tsx scripts/proof-phone.ts",
+    "proof:limit": "tsx scripts/proof-limit.ts"
   },
   "author": "",
   "license": "UNLICENSED",

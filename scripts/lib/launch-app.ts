@@ -11,7 +11,8 @@ export const PROOF_DIR = join(ROOT, 'docs/proof')
 export const LAUNCHD_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 const EXECUTABLE = join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit')
 
-export async function launchPackagedApp(): Promise<ElectronApplication> {
+/** `extraEnv` adds proof-specific settings, e.g. COCKPIT_AGENT_PATH for a stand-in agent. */
+export async function launchPackagedApp(extraEnv: Readonly<Record<string, string>> = {}): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: EXECUTABLE,
     env: {
@@ -22,6 +23,7 @@ export async function launchPackagedApp(): Promise<ElectronApplication> {
       TMPDIR: process.env.TMPDIR ?? '/tmp',
       PATH: LAUNCHD_PATH,
       COCKPIT_HOME: mkdtempSync(join(tmpdir(), 'cockpit-app-state-')),
+      ...extraEnv,
     },
   })
 }
