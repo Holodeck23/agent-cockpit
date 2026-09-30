@@ -13,7 +13,8 @@ import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
-import { expandWorkflows } from '../workflows/store.ts'
+import { resolveWorkflows } from '../workflows/store.ts'
+import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
 import type { AgentStatus } from '../agents/status.ts'
@@ -53,8 +54,11 @@ export interface ApiDeps {
 
 export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents }: ApiDeps, allowedPorts: readonly number[]) {
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
-  const agentTextFor = (text: string, projectPath: string): string =>
-    expandFiles(expandWorkflows(text, projectPath, workflows.store), projectPath)
+  // The workflows used are kept with the message, as they were at send time.
+  const expandedFor = (text: string, projectPath: string): { agentText: string; workflows?: WorkflowSnapshot[] } => {
+    const resolved = resolveWorkflows(text, projectPath, workflows.store)
+    return { agentText: expandFiles(resolved.text, projectPath), ...(resolved.used.length ? { workflows: resolved.used } : {}) }
+  }
 
   /** `viaPhone` requests were already checked by the phone listener (remote/service.ts). */
   return async (req: IncomingMessage, res: ServerResponse, viaPhone = false): Promise<boolean> => {
@@ -126,7 +130,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req))
         assertDirectory(body.projectPath)
-        const meta = manager.create({ ...body, agentText: agentTextFor(body.text, body.projectPath) })
+        const meta = manager.create({ ...body, ...expandedFor(body.text, body.projectPath) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -148,7 +152,8 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         })
       } else if (method === 'POST' && action === 'messages') {
         const { text } = parseBody(messageBody, await readJson(req))
-        manager.send(threadId, text, agentTextFor(text, store.get(threadId)!.projectPath))
+        const expanded = expandedFor(text, store.get(threadId)!.projectPath)
+        manager.send(threadId, text, expanded.agentText, expanded.workflows)
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)

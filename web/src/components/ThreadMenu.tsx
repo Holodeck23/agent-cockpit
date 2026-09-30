@@ -11,8 +11,8 @@ interface ThreadMenuProps {
   usage: UsageEvent | undefined
   completed: boolean
   onToggleCompleted: () => void
-  /** Revision the running session started with, and the project's current one. */
-  instructions?: { readonly session?: number; readonly current?: number }
+  /** Revision the running session started with (and its text), and the project's current one. */
+  instructions?: { readonly session?: number; readonly current?: number; readonly sessionText?: string }
 }
 
 function instructionsNote({ session, current }: { session?: number; current?: number }): string | undefined {
@@ -62,6 +62,12 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
             <p className="menu-note">{usageLine(usage)}</p>
           ) : null}
           {instructionLine ? <p className="menu-note">{instructionLine}</p> : null}
+          {instructions?.sessionText ? (
+            <details className="menu-note">
+              <summary>What this session received</summary>
+              <pre>{instructions.sessionText}</pre>
+            </details>
+          ) : null}
           <p className="menu-note menu-path" title={transcriptPath}>
             {transcriptPath}
           </p>

@@ -16,17 +16,20 @@ interface NewConversationProps {
   onError: (message: string) => void
 }
 
+// Last choice per project, falling back to the last choice anywhere. A default for new
+// conversations only: it never changes an existing conversation's settings.
 const CHOICE_KEY = 'cockpit:last-agent'
+const choiceKey = (projectPath: string | undefined): string => (projectPath ? `${CHOICE_KEY}:${projectPath}` : CHOICE_KEY)
 const SUGGESTIONS = [
   'Explain how this project is put together',
   'Find one bug and fix it, with a test',
   'Tidy up the README so a newcomer can get started',
 ]
 
-function loadChoice(): AgentChoice {
+function loadChoice(projectPath: string | undefined): AgentChoice {
   const fallback: AgentChoice = { agent: 'claude', model: '', effort: '', permissionMode: 'manual' }
   try {
-    const raw = localStorage.getItem(CHOICE_KEY)
+    const raw = localStorage.getItem(choiceKey(projectPath)) ?? localStorage.getItem(CHOICE_KEY)
     return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<AgentChoice>) } : fallback
   } catch {
     return fallback
@@ -61,7 +64,7 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
 }
 
 export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError }: NewConversationProps) {
-  const [choice, setChoice] = useState<AgentChoice>(loadChoice)
+  const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
   // through from the native folder picker) must never start an agent run.
@@ -71,6 +74,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
     setChoice(next)
     try {
       localStorage.setItem(CHOICE_KEY, JSON.stringify(next))
+      if (project) localStorage.setItem(choiceKey(project.path), JSON.stringify(next))
     } catch {
       // not persisted
     }

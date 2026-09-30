@@ -1,12 +1,12 @@
 // Turns a thread's raw event log into what the thread view draws: messages with
 // author rows, tool calls collapsed into one activity line each, approvals as
 // cards, and small notes. Pure, so it's unit-tested without a browser.
-import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
+import type { AgentId, ApprovalBehavior, WorkflowSnapshot } from '../../server/agents/types.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
 
 export type TranscriptItem =
-  | { type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[] }
+  | { type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[]; workflows?: readonly WorkflowSnapshot[] }
   | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string }
   | {
       type: 'approval'
@@ -154,7 +154,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (event.kind === 'user_text') {
           // Attached files show as names; their contents went to the agent, not the transcript.
           const { text, attachments } = describeAttachments(event.text)
-          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(attachments.length ? { attachments } : {}) })
+          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(attachments.length ? { attachments } : {}),
+            ...(event.workflows?.length ? { workflows: event.workflows } : {}) })
         } else items.push({ type: 'message', key, author, text: event.text, ts, showAuthor })
         return
       }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
+import type { WorkflowSnapshot } from '../agents/types.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MessageReferenceError, WORKFLOW_REFERENCE } from '../files/references.ts'
 
@@ -75,7 +76,13 @@ export function createWorkflowStore(root: string): WorkflowStore {
 
 /** References compose instructions into one turn, not separate agent runs. Returns the agent's text. */
 export function expandWorkflows(text: string, projectPath: string, store: WorkflowStore): string {
+  return resolveWorkflows(text, projectPath, store).text
+}
+
+/** The agent's text plus each referenced workflow's instructions as they were used, once per name, in order. */
+export function resolveWorkflows(text: string, projectPath: string, store: WorkflowStore): { text: string; used: WorkflowSnapshot[] } {
   const workflows = store.list(projectPath)
+  const used = new Map<string, WorkflowSnapshot>()
   let references = 0
   const expand = (input: string, stack: string[]): string => {
     const output = input.replace(WORKFLOW_REFERENCE, (_match, lead: string, name: string) => {
@@ -83,10 +90,12 @@ export function expandWorkflows(text: string, projectPath: string, store: Workfl
       if (stack.includes(name)) throw new MessageReferenceError(`Circular workflow reference: ${[...stack, name].join(' → ')}`)
       const workflow = workflows.find((w) => w.name === name)
       if (!workflow) throw new MessageReferenceError(`Unknown workflow in this project: ${name}`)
+      if (!used.has(name)) used.set(name, { name, prompt: workflow.prompt })
       return `${lead}\nWorkflow ${name}:\n${expand(workflow.prompt, [...stack, name])}\n`
     })
     if (output.length > 200_000) throw new MessageReferenceError('Expanded workflow exceeds 200,000 characters')
     return output
   }
-  return expand(text, [])
+  const output = expand(text, [])
+  return { text: output, used: [...used.values()] }
 }

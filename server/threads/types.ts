@@ -31,6 +31,8 @@ export interface ThreadMeta {
   readonly handoff?: string
   /** Project instructions revision the current agent session started with (absent: none). */
   readonly instructionsRevision?: number
+  /** That revision's text, so the thread can show what its session received even after edits. */
+  readonly instructionsText?: string
   readonly createdAt: string
   readonly updatedAt: string
 }

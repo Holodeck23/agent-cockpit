@@ -2,7 +2,7 @@
 //   tsx scripts/proof-app.ts
 // Launches it with launchd's bare PATH (what a Finder/Dock launch gets), so the
 // app has to find `claude` through its login-shell PATH fix. Starts a Haiku
-// thread from the window, waits for Done, screenshots, then quits while a second
+// thread from the window, waits for Ready, screenshots, then quits while a second
 // agent is mid-turn and checks that no agent process outlived the app.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
@@ -41,10 +41,10 @@ const prompt = 'List three prime numbers, one per line.'
 await openProject(page, projectDir)
 await chooseAgent(page, { model: 'haiku' })
 await startConversation(page, prompt)
-await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 180_000 })
+await headStatus(page).filter({ hasText: /Ready|Error/ }).waitFor({ timeout: 180_000 })
 const status = (await headStatus(page).textContent()) ?? ''
 const reply = (await page.locator('.bubble.agent').allTextContents()).join(' ')
-check('Haiku thread reached Done', status === 'Done', status)
+check('Haiku thread reached Ready', status === 'Ready', status)
 check('agent replied with primes', /\b(2|3|5|7)\b/.test(reply), reply.replace(/\s+/g, ' ').slice(0, 60))
 await page.screenshot({ path: join(OUT, 'phase-A-app.png') })
 

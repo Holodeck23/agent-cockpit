@@ -63,6 +63,12 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                   {item.attachments ? (
                     <div className={`attachments${item.text ? '' : ' only'}`}>Attached: {item.attachments.join(', ')}</div>
                   ) : null}
+                  {item.workflows?.map((w) => (
+                    <details key={w.name} className="workflow-used">
+                      <summary>Used workflow {w.name}</summary>
+                      <pre>{w.prompt}</pre>
+                    </details>
+                  ))}
                 </div>
               </section>
             )

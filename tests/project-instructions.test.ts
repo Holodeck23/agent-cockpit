@@ -96,6 +96,7 @@ describe('instructions reach sessions', () => {
     expect(requests[0]?.projectInstructions).toBe('Project A rules')
     expect(requests[1]?.projectInstructions).toBeUndefined()
     expect(store.get(a.id)?.instructionsRevision).toBe(1)
+    expect(store.get(a.id)?.instructionsText).toBe('Project A rules')
 
     // An edit does not touch the running session…
     projects.open('/work/a', { instructions: 'Project A rules, v2' })
@@ -110,6 +111,7 @@ describe('instructions reach sessions', () => {
     expect(requests.length).toBe(live + 1)
     expect(requests.at(-1)).toMatchObject({ projectInstructions: 'Project A rules, v2', resume: a.sessionId })
     expect(store.get(a.id)?.instructionsRevision).toBe(2)
+    expect(store.get(a.id)?.instructionsText).toBe('Project A rules, v2')
 
     // A switch (after the turn ends) starts fresh with the current instructions and the handoff.
     await manager.shutdown()

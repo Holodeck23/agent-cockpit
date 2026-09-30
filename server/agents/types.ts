@@ -12,11 +12,17 @@ export interface PendingApproval {
   readonly suggestions: readonly unknown[]
 }
 
+/** A workflow's instructions as they were when a message used it, so history never changes under edits. */
+export interface WorkflowSnapshot {
+  readonly name: string
+  readonly prompt: string
+}
+
 export type NormalizedEvent =
   | { kind: 'session_boundary' }
   | { kind: 'completion_changed'; completed: boolean }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
-  | { kind: 'user_text'; text: string }
+  | { kind: 'user_text'; text: string; workflows?: readonly WorkflowSnapshot[] }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }

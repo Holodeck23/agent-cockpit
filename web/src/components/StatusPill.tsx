@@ -1,6 +1,6 @@
 import type { ThreadStatus } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
-import { Bars, CheckIcon } from './icons.tsx'
+import { Bars } from './icons.tsx'
 
 interface StatusPillProps {
   status: ThreadStatus
@@ -11,7 +11,7 @@ export function StatusPill({ status }: StatusPillProps) {
   if (status === 'idle') return null
   return (
     <span className={`pill pill-${status}`}>
-      {status === 'working' ? <Bars live /> : status === 'done' ? <CheckIcon /> : null}
+      {status === 'working' ? <Bars live /> : null}
       {STATUS_LABEL[status]}
     </span>
   )

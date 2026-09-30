@@ -161,7 +161,7 @@ try {
     check('with the pane open, the approval card is in the conversation and actionable',
       (await card.getByRole('button', { name: 'Allow', exact: true }).isEnabled()) && (await pane(page).locator('.approval').count()) === 0)
     await card.getByRole('button', { name: 'Allow', exact: true }).click()
-    await page.locator('.thread-status .status-text').filter({ hasText: /Done|Error|Waiting/ }).waitFor({ timeout: 180_000 })
+    await page.locator('.thread-status .status-text').filter({ hasText: /Ready|Error|Waiting/ }).waitFor({ timeout: 180_000 })
     const liveRows = await paneRows(page)
     check('the live run filled the pane, including the approved start', liveRows.some((r) => r.label.startsWith('Starting') && r.state === 'Done'), liveRows.map((r) => `${r.label} (${r.state})`).join('; '))
     check('the live run ended with no call left running', liveRows.every((r) => r.state !== 'Running'))

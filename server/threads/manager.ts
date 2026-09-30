@@ -4,7 +4,7 @@ import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { COCKPIT_GUIDANCE, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
-import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval } from '../agents/types.ts'
+import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { deriveStatus, messageCountOf, previewOf } from './status.ts'
 import type { ThreadStore } from './store.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
@@ -105,10 +105,10 @@ export interface ThreadManager {
   /**
    * `text` is what the user wrote (stored, titled, shown); `agentText` is what the
    * agent receives when references were expanded. They differ only for attachments
-   * and workflow references.
+   * and workflow references. `workflows` records the referenced instructions as they were used.
    */
-  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
-  send(threadId: string, text: string, agentText?: string): void
+  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
+  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[]): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
@@ -220,7 +220,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     )
     const entry: Live = { pending, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
-    store.update(meta.id, { sessionStarted: true, handoff: undefined, instructionsRevision: instructions?.revision })
+    store.update(meta.id, { sessionStarted: true, handoff: undefined, instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
   }
 
@@ -230,7 +230,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string, agentText = text): void => {
+  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[]): void => {
     const meta = requireMeta(threadId)
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
@@ -239,12 +239,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text })
+    record(threadId, { kind: 'user_text', text, ...(workflows?.length ? { workflows } : {}) })
     entry.session.send(agentText)
   }
 
   return {
-    create({ projectPath, title, settings, text, agentText, workflowId, workflowTrigger }) {
+    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger }) {
       const now = new Date().toISOString()
       const meta = store.create({
         id: randomUUID(),
@@ -258,7 +258,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         createdAt: now,
         updatedAt: now,
       })
-      send(meta.id, text, agentText)
+      send(meta.id, text, agentText, workflows)
       return meta
     },
     send,

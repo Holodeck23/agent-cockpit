@@ -1,5 +1,5 @@
 // Browser proof for UI gates. Drives the real cockpit page (npm start) in headless Chrome.
-//   tsx scripts/proof-ui.ts parallel <projectDir>   start 3 threads, wait for all Done
+//   tsx scripts/proof-ui.ts parallel <projectDir>   start 3 threads, wait for all Ready
 //   tsx scripts/proof-ui.ts reload <projectDir>     after a server restart, confirm threads persisted
 //   tsx scripts/proof-ui.ts approvals <projectDir>  allow one write, deny the next
 //   tsx scripts/proof-ui.ts interrupt <projectDir>  stop a long turn
@@ -57,7 +57,7 @@ if (mode === 'parallel') {
   await openCard.waitFor({ timeout: 60_000 })
   console.log('second approval:', await openCard.locator('.approval-detail').textContent())
   await openCard.getByRole('button', { name: 'Deny' }).click()
-  await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 90_000 })
+  await headStatus(page).filter({ hasText: /Ready|Error/ }).waitFor({ timeout: 90_000 })
   await page.screenshot({ path: `${OUT}phase-2-approvals-done.png` })
   console.log('resolutions:', await page.locator('.note').allTextContents())
 } else if (mode === 'interrupt') {
@@ -65,12 +65,12 @@ if (mode === 'parallel') {
   await page.locator('.bubble.streaming').waitFor({ timeout: 60_000 })
   const started = Date.now()
   await page.getByRole('button', { name: 'Stop' }).click()
-  await headStatus(page).filter({ hasText: /Done|Error|Waiting/ }).waitFor({ timeout: 30_000 })
+  await headStatus(page).filter({ hasText: /Ready|Error|Waiting/ }).waitFor({ timeout: 30_000 })
   console.log(`stopped in ${((Date.now() - started) / 1000).toFixed(1)}s, status now: ${await headStatus(page).textContent()}`)
   await page.screenshot({ path: `${OUT}phase-2-interrupt.png` })
 } else if (mode === 'switch') {
   await startConversation(page, 'Use the Write tool to create notes.txt containing the word alpha. Reply briefly.')
-  await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 120_000 })
+  await headStatus(page).filter({ hasText: /Ready|Error/ }).waitFor({ timeout: 120_000 })
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const panel = page.getByRole('dialog', { name: 'Agent settings' })
   await panel.getByRole('radio', { name: 'Codex' }).click()
@@ -80,7 +80,7 @@ if (mode === 'parallel') {
   await messageBox(page).fill('Without using any tools: which file did the previous agent create, and what word is in it? One line.')
   await messageBox(page).press('Enter')
   await page.waitForTimeout(1500)
-  await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 180_000 })
+  await headStatus(page).filter({ hasText: /Ready|Error/ }).waitFor({ timeout: 180_000 })
   const answer = (await page.locator('.bubble.agent').allTextContents()).at(-1) ?? ''
   console.log('codex answered:', answer)
   console.log(/notes\.txt/i.test(answer) && /alpha/i.test(answer) ? 'SWITCH PASS' : 'SWITCH FAIL')

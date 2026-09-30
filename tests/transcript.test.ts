@@ -90,6 +90,17 @@ describe('buildTranscript', () => {
   })
 })
 
+describe('workflows used by a message', () => {
+  it('carries the snapshot onto the message and leaves older events unchanged', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: '@workflow:review', workflows: [{ name: 'review', prompt: 'Review the diff' }] }),
+      at(1, { kind: 'user_text', text: 'plain' }),
+    ], 'claude')
+    expect(items[0]).toMatchObject({ type: 'message', workflows: [{ name: 'review', prompt: 'Review the diff' }] })
+    expect(items[1]).not.toHaveProperty('workflows')
+  })
+})
+
 describe('cockpit MCP tools in the transcript', () => {
   it('describes each cockpit tool call in plain words', () => {
     expect(describeTool('mcp__cockpit__start_process', { command: 'npm run dev' })).toBe('Starting npm run dev')

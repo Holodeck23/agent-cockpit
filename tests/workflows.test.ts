@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createWorkflowStore, expandWorkflows } from '../server/workflows/store.ts'
+import { createWorkflowStore, expandWorkflows, resolveWorkflows } from '../server/workflows/store.ts'
 import { createWorkflowRunner } from '../server/workflows/runner.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { createThreadManager, type Launcher } from '../server/threads/manager.ts'
@@ -69,6 +69,21 @@ describe('workflows', () => {
     expect(() => h.runner.run(w.id)).toThrow(/already has/)
     h.sessions[0]!.emit({ kind: 'result', ok: true })
     expect(h.runner.run(w.id).id).not.toBe(t.id)
+  })
+
+  it('lists each referenced workflow once, in order, with the instructions it used', () => {
+    const h = setup(); h.save('inspect', 'Inspect the diff'); h.save('report', '@workflow:inspect\nWrite findings')
+    const { used } = resolveWorkflows('@workflow:report then @workflow:inspect', h.root, h.store)
+    expect(used).toEqual([{ name: 'report', prompt: '@workflow:inspect\nWrite findings' }, { name: 'inspect', prompt: 'Inspect the diff' }])
+    expect(resolveWorkflows('plain text', h.root, h.store).used).toEqual([])
+  })
+
+  it('keeps what a run used even after the referenced workflow is edited', () => {
+    const h = setup(); const inspect = h.save('inspect', 'Inspect the diff'); const w = h.save('report', '@workflow:inspect')
+    const t = h.runner.run(w.id)
+    h.store.save({ projectPath: h.root, name: 'inspect', prompt: 'Something else entirely' }, inspect.id)
+    const [first] = h.threads.events(t.id).filter(({ event }) => event.kind === 'user_text')
+    expect(first?.event).toMatchObject({ kind: 'user_text', text: '@workflow:inspect', workflows: [{ name: 'inspect', prompt: 'Inspect the diff' }] })
   })
 
   it('runs once after downtime, skips overlap including approvals, and persists next due time', () => {

@@ -279,7 +279,7 @@ try {
     check('the approved tool saved exactly one workflow with scheduling off',
       workflowStore.list(projectPath).length === 1 && workflowStore.list(projectPath)[0]?.enabled === false)
     await waitUntil(phone, 'the completed response over the phone live stream', async () =>
-      (await phone.locator('.thread-status .status-text').innerText()).trim() === 'Done' &&
+      (await phone.locator('.thread-status .status-text').innerText()).trim() === 'Ready' &&
       (await phone.locator('.bubble').last().innerText()).includes('PHONE_APPROVED') || undefined)
     check('the phone receives the completed response without reloading', true)
     await phone.screenshot({ path: join(PROOF_DIR, 'phase-6-phone-approved.png') })

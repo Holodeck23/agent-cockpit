@@ -61,6 +61,8 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .thread-menu { position: relative; }
 .menu-right { right: 0; left: auto; }
 .menu-note { margin: 6px 10px; font-size: 12px; color: var(--muted); }
+.menu-note summary { cursor: pointer; }
+.menu-note pre { margin: 6px 0 0; max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 11.5px; }
 .menu-note.menu-path { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 
 /* ---------- transcript ---------- */
@@ -82,6 +84,9 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .bubble.streaming { border-style: dashed; }
 .attachments { margin-top: 8px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .attachments.only { margin-top: 0; }
+.workflow-used { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.workflow-used summary { cursor: pointer; }
+.workflow-used pre { margin: 6px 0 0; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; color: var(--secondary); }
 
 .step { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 4px; font-size: 14px; color: var(--secondary); }
 .step .bars { width: 14px; height: 14px; }

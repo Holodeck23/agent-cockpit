@@ -200,7 +200,7 @@ async function b3(): Promise<void> {
   check('tool call collapses into a timed activity line', /^Reading README\.md· \d:\d\d$/.test(step), step)
   const authors = await page.locator('.author-name').allTextContents()
   check('author rows for you and the agent', authors.includes('You') && authors.includes('Claude Code'), authors.join(', '))
-  check('header status reads Done', (await headStatus(page).textContent()) === 'Done')
+  check('header status reads Ready', (await headStatus(page).textContent()) === 'Ready')
   check('header shows the transcript path', /…\/threads\/[0-9a-f]{8}\/messages\.md/.test((await page.locator('.transcript-link').textContent()) ?? ''))
 
   // A running turn.
@@ -227,7 +227,7 @@ async function b3(): Promise<void> {
   check('approval card names agent and tool', ((await card.locator('.approval-title').textContent()) ?? '') === 'Claude Code wants to use Write')
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-approval.png') })
   await card.getByRole('button', { name: 'Allow', exact: true }).click()
-  await headStatus(page).filter({ hasText: /Done|Error/ }).waitFor({ timeout: 90_000 })
+  await headStatus(page).filter({ hasText: /Ready|Error/ }).waitFor({ timeout: 90_000 })
   const notes = join(bakery, 'notes.txt')
   check('allowing it let the agent write the file', existsSync(notes) && readFileSync(notes, 'utf8').includes('hello'))
   check('answered approval folds into a note', (await page.locator('.note', { hasText: 'Allowed: Write' }).count()) === 1)

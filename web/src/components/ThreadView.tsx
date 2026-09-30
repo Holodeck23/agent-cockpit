@@ -141,7 +141,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               transcriptPath={transcriptPath}
               usage={usage}
               completed={meta.completed}
-              instructions={{ session: meta.instructionsRevision, current: instructionsRevision }}
+              instructions={{ session: meta.instructionsRevision, current: instructionsRevision, sessionText: meta.instructionsText }}
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
             />
           </div>}

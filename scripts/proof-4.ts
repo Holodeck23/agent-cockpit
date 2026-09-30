@@ -101,7 +101,7 @@ const threadId = await waitUntil(page, 'the thread', async () =>
 )
 
 const asked = await approveUntilDone(page, threadId, 'phase-4-approval.png')
-check('turn finished', (await headStatus(page).textContent()) === 'Done', (await headStatus(page).textContent()) ?? '')
+check('turn finished', (await headStatus(page).textContent()) === 'Ready', (await headStatus(page).textContent()) ?? '')
 // The agent may also use Bash, which asks in manual mode like any command. What matters here: starting a
 // process asks, and the read-only cockpit tools (list, read log, preview) never do.
 const READ_ONLY = ['List processes', 'Read process output', 'Open a preview', 'list_processes', 'read_process_output', 'open_preview']

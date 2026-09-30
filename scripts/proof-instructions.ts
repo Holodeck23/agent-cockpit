@@ -82,6 +82,8 @@ try {
   await page.getByRole('button', { name: 'More', exact: true }).click()
   const menu = page.getByRole('menu', { name: 'Conversation' })
   check('the conversation says which revision it started with', ((await menu.textContent()) ?? '').includes('Project instructions: revision 1'))
+  await menu.getByText('What this session received').click()
+  check('the menu shows the text this session received', ((await menu.locator('pre').textContent()) ?? '').includes(first))
   await page.keyboard.press('Escape')
 
   const second = codeword()
@@ -90,6 +92,9 @@ try {
   await page.getByRole('button', { name: 'More', exact: true }).click()
   const pending = ((await menu.textContent()) ?? '')
   check('an edit shows as pending until the agent next starts', pending.includes('revision 2 is saved') && pending.includes('this session has 1'), pending.slice(0, 160))
+  await menu.getByText('What this session received').click()
+  const received = (await menu.locator('pre').textContent()) ?? ''
+  check('after the edit, the menu still shows what the session actually received', received.includes(first) && !received.includes(second), received.slice(0, 80))
   await page.keyboard.press('Escape')
 
   const codexAnswer = await ask(page, projectA, 'codex')

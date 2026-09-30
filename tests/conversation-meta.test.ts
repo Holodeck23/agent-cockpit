@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadSummary } from '../server/threads/types.ts'
-import { dayLabel, filterConversations, tagFor, toneFor, TAG_TONES } from '../web/src/conversation-meta.ts'
+import { dayLabel, filterConversations, STATUS_LABEL, tagFor, toneFor, TAG_TONES } from '../web/src/conversation-meta.ts'
 
 function thread(id: string, patch: { title?: string; status?: ThreadSummary['status']; completed?: boolean; preview?: string }): ThreadSummary {
   return {
@@ -77,5 +77,11 @@ describe('filterConversations', () => {
   it('returns only the active tab rows', () => {
     const { rows } = filterConversations({ threads, query: '', showCompleted: false, isUnread }, 'unread')
     expect(rows.map((t) => t.meta.id)).toEqual(['4'])
+  })
+})
+
+describe('status labels', () => {
+  it('calls a finished turn Ready, so it is not mistaken for a completed conversation', () => {
+    expect(STATUS_LABEL.done).toBe('Ready')
   })
 })

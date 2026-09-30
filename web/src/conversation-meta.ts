@@ -78,6 +78,7 @@ export const STATUS_LABEL: Record<ThreadStatus, string> = {
   idle: 'Waiting',
   working: 'Working',
   needs_input: 'Needs you',
-  done: 'Done',
+  // A finished turn leaves the conversation open; the check mark is for Mark complete.
+  done: 'Ready',
   error: 'Error',
 }
