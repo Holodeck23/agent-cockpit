@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, type Project, type Workflow, type WorkflowInput } from '../api.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
-import { WorkflowIcon, PlusIcon } from './icons.tsx'
+import { WorkflowIcon } from './icons.tsx'
+import { WorkflowList } from './WorkflowList.tsx'
+import { displayTitle } from '../workflow-list.ts'
+import { freeName, type WorkflowStarter } from '../workflow-starters.ts'
 
 interface Props {
   project: Project | undefined
@@ -42,21 +45,21 @@ export function Workflows({ project, onError, onOpenThread }: Props) {
     if (intent === 'schedule') { await api.enableWorkflow(saved.id, true); await refresh() }
     if (intent === 'run') { const thread = await api.runWorkflow(saved.id); onOpenThread(thread.id) }
   })
+  // A starter becomes a paused copy in this project: saved, never run or scheduled here.
+  const addStarter = (starter: WorkflowStarter) => perform(async () => {
+    if (!projectPath) return
+    const saved = await api.saveWorkflow({ projectPath, name: freeName(starter.name, new Set(rows.map((w) => w.name))),
+      title: starter.title, collection: starter.collection, prompt: starter.prompt, intervalMinutes: null,
+      settings: { agent: 'claude', permissionMode: starter.permissionMode, useHooks: false } })
+    await refresh()
+    setSelected(saved.id); setCreating(false)
+  })
   if (!project) return <main className="workflow-empty"><WorkflowIcon /><h1>Workflows</h1><p>Open a project to save repeatable jobs.</p></main>
   return <div className="workflows-layout">
-    <nav className="workflow-list" aria-label="Saved workflows">
-      <header><div><span className="workflow-kicker">{project.name}</span><h1>Workflows</h1></div>
-        <button type="button" className="new-button" aria-label="New workflow" disabled={busy}
-          onClick={() => { setSelected(undefined); setCreating(true) }}><PlusIcon /></button></header>
-      <p className="workflow-intro">Save a job once. Run it when you need it.</p>
-      {!loaded ? <p role="status">Loading workflows…</p> : rows.length === 0 ? <div className="workflow-list-empty"><WorkflowIcon /><strong>No workflows yet</strong><span>Start with a review, a daily check, or a project brief.</span></div> : null}
-      {rows.map((w) => <button type="button" key={w.id} className={`workflow-row ${selected === w.id ? 'selected' : ''}`}
-        aria-current={selected === w.id ? 'true' : undefined} disabled={busy} onClick={() => { setSelected(w.id); setCreating(false) }}>
-        <strong>{w.name}</strong><span>{w.prompt.slice(0, 100)}</span>
-        <small className={w.lastError ? 'workflow-error' : ''}>{w.lastError ? 'Needs attention' : w.enabled ? `Every ${w.intervalMinutes} min` : 'Manual / paused'}</small>
-      </button>)}
-      <footer>Schedules run while Cockpit is open. Missed runs resume once, without a backlog.</footer>
-    </nav>
+    <WorkflowList project={project} rows={rows} loaded={loaded} selected={selected} busy={busy}
+      onSelect={(id) => { setSelected(id); setCreating(false) }}
+      onCreate={() => { setSelected(undefined); setCreating(true) }}
+      onAddStarter={(starter) => void addStarter(starter)} />
     {creating || current ? <WorkflowEditor key={current?.id ?? 'new'} workflow={current} projectPath={project.path} busy={busy} onSave={save}
       onPause={() => perform(async () => { if (current) await api.enableWorkflow(current.id, false); await refresh() })}
       onArchive={() => perform(async () => { if (current) await api.archiveWorkflow(current.id); setSelected(undefined); await refresh() })}
@@ -72,6 +75,8 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
   onPause: () => Promise<void>; onArchive: () => Promise<void>; onOpenThread: (id: string) => void
 }) {
   const [name, setName] = useState(workflow?.name ?? '')
+  const [title, setTitle] = useState(workflow?.title ?? '')
+  const [collection, setCollection] = useState(workflow?.collection ?? '')
   const [prompt, setPrompt] = useState(workflow?.prompt ?? '')
   const [interval, setInterval] = useState(workflow?.intervalMinutes?.toString() ?? '')
   const [choice, setChoice] = useState<AgentChoice>({ agent: workflow?.settings.agent ?? 'claude', model: workflow?.settings.model ?? '',
@@ -79,16 +84,20 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const intent = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value as Intent | undefined
-    void onSave({ name, prompt, projectPath, intervalMinutes: interval ? Number(interval) : null,
+    void onSave({ name, title, collection, prompt, projectPath, intervalMinutes: interval ? Number(interval) : null,
       settings: settingsFromChoice(choice, workflow?.settings) }, intent ?? 'save')
   }
   return <main className="workflow-editor">
-    <header><span className="workflow-kicker">Reusable instructions</span><h1>{workflow ? workflow.name : 'New workflow'}</h1>
+    <header><span className="workflow-kicker">Reusable instructions</span><h1>{workflow ? displayTitle(workflow) : 'New workflow'}</h1>
       <p>{workflow?.enabled ? `Scheduled · Next run ${when(workflow.nextRunAt)}` : 'Run manually, or turn on a schedule when you’re ready.'}</p></header>
     {workflow?.lastError ? <div className="workflow-notice" role="alert"><strong>Schedule paused</strong><p>{workflow.lastError}</p></div> : null}
     <form onSubmit={submit}><fieldset disabled={busy}>
-      <label>Workflow name<input required maxLength={60} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={name} onChange={(e) => setName(e.target.value)} placeholder="daily-review" /></label>
-      <small>Lowercase words with hyphens. Mention it as <code>@workflow:{name || 'daily-review'}</code>.</small>
+      <label>Title<input maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Daily review" /></label>
+      <label>Reference name<input required maxLength={60} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={name} readOnly={Boolean(workflow)}
+        onChange={(e) => setName(e.target.value)} placeholder="daily-review" /></label>
+      <small>{workflow ? <>Fixed once saved, so every <code>@workflow:{name}</code> mention keeps working. Change the title instead.</>
+        : <>Lowercase words with hyphens. Mention it as <code>@workflow:{name || 'daily-review'}</code>.</>}</small>
+      <label>Collection<input maxLength={40} value={collection} onChange={(e) => setCollection(e.target.value)} placeholder="Optional, e.g. Quality" /></label>
       <label>Instructions<textarea required maxLength={40_000} rows={9} value={prompt} onChange={(e) => setPrompt(e.target.value)}
         placeholder="Review this project’s recent changes. Report bugs with file locations and suggested fixes." /></label>
       <small>Include another workflow with <code>@workflow:name</code>. Its instructions join this run; it does not launch another agent.</small>

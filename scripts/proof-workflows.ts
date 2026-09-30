@@ -17,7 +17,7 @@ try {
   await openProject(page, project, 'Workflow proof')
   await page.getByRole('tab', { name: 'Workflows', exact: true }).click()
   await page.getByRole('button', { name: 'Create a workflow', exact: true }).click()
-  await page.getByLabel('Workflow name', { exact: true }).fill('quick-check')
+  await page.getByLabel('Reference name', { exact: true }).fill('quick-check')
   await page.getByLabel('Instructions', { exact: true }).fill('Reply only WORKFLOW_OK. Do not run commands or tools.')
   await page.getByRole('button', { name: 'Agent settings', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Agent settings' })

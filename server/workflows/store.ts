@@ -7,7 +7,12 @@ import { MessageReferenceError, WORKFLOW_REFERENCE } from '../files/references.t
 
 export const workflowInputSchema = z.object({
   projectPath: z.string().min(1).max(1000).refine(isAbsolute, 'Choose an absolute project path'),
+  /** Stable slug for @workflow: references; fixed once saved. */
   name: z.string().min(1).max(60).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase words separated by hyphens'),
+  /** What people see; free to change. Falls back to the name. */
+  title: z.string().trim().max(80).optional(),
+  /** Groups workflows in the list, e.g. "Quality". */
+  collection: z.string().trim().max(40).optional(),
   prompt: z.string().trim().min(1).max(40_000),
   settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
   intervalMinutes: z.number().int().min(5).max(43_200).nullable().default(null),
@@ -44,12 +49,15 @@ export function createWorkflowStore(root: string): WorkflowStore {
       const old = id ? rows.find((w) => w.id === id && !w.archived) : undefined
       if (id && !old) throw new Error('Unknown workflow')
       if (old && old.projectPath !== parsed.projectPath) throw new Error('A workflow cannot move to another project')
+      if (old && old.name !== parsed.name) throw new Error('A workflow keeps its reference name, so @workflow: mentions keep working. Change its title instead.')
       if (rows.some((w) => !w.archived && w.id !== id && w.projectPath === parsed.projectPath && w.name === parsed.name)) {
         throw new Error('A workflow with that name already exists in this project')
       }
       const now = new Date().toISOString()
       // Editing instructions or permissions always pauses the schedule for review.
-      const next: Workflow = { ...old, ...parsed, id: old?.id ?? randomUUID(), enabled: false, nextRunAt: null,
+      // Blank title/collection clear them rather than keeping the old value.
+      const cleared = { title: parsed.title || undefined, collection: parsed.collection || undefined }
+      const next: Workflow = { ...old, ...parsed, ...cleared, id: old?.id ?? randomUUID(), enabled: false, nextRunAt: null,
         archived: false, createdAt: old?.createdAt ?? now, updatedAt: now, lastError: undefined }
       write(old ? rows.map((w) => w.id === id ? next : w) : [...rows, next])
       return next

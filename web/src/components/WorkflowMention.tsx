@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type Workflow } from '../api.ts'
+import { displayTitle } from '../workflow-list.ts'
 
 export function WorkflowMention({ projectPath, onInsert }: { projectPath: string; onInsert: (name: string) => void }) {
   const [rows, setRows] = useState<Workflow[]>([])
@@ -14,6 +15,6 @@ export function WorkflowMention({ projectPath, onInsert }: { projectPath: string
     onChange={(e) => { if (e.target.value) onInsert(e.target.value) }}>
     <option value="">@ Workflow</option>
     {rows.length === 0 ? <option disabled>{error ? 'Workflows unavailable' : 'Save one in Workflows first'}</option> : null}
-    {rows.map((w) => <option key={w.id} value={w.name}>{w.name}</option>)}
+    {rows.map((w) => <option key={w.id} value={w.name}>{w.title ? `${w.title} (${w.name})` : displayTitle(w)}</option>)}
   </select>
 }
