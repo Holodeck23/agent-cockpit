@@ -12,14 +12,14 @@ Ship only when every **P0** item passes on the same packaged build. A checked it
 
 - [x] `npm run verify` passes typecheck, unit/integration tests, the web build and the Electron build. Latest inspection: 140 tests passed.
 - [x] The packaged-app reliability proof passes with isolated state; the packaged app proof launches with a Finder-like PATH and leaves no agent process behind.
-- [ ] Starting with a fresh `COCKPIT_HOME`, the packaged app opens from Finder, the native folder picker selects a synthetic project, and one installed agent can start a conversation without a terminal-provided PATH.
+- [x] Starting with a fresh `COCKPIT_HOME`, the packaged app opens from Finder, the native folder picker selects a synthetic project, and one installed agent can start a conversation without a terminal-provided PATH. Walkthrough 2026-09-30: launched through LaunchServices (`open -n -a … --env COCKPIT_HOME=<empty>`, the same launchd environment as Finder); the native picker registered the synthetic project; Claude and Codex conversations both started and ran tools.
 
 ### Approvals — in scope
 
 - [x] `start_process` cannot run before the user approves it; the packaged MCP proof sees and answers the approval card.
 - [x] `list_processes`, `read_process_output` and `open_preview` remain read-only and do not ask for approval.
 - [x] Answered, expired and previous-session approval IDs cannot be replayed.
-- [ ] In the fresh-package walkthrough, choosing **Allow** starts exactly one dev server and the conversation continues without a duplicate approval or process.
+- [x] In the fresh-package walkthrough, choosing **Allow** starts exactly one dev server and the conversation continues without a duplicate approval or process. Walkthrough 2026-09-30 (Codex gpt-5.6-luna): one `start_process` approval, allowed by a person clicking the card; exactly one `npm run dev` / `node server.js` under the app; the turn continued to log check, preview and Done.
 
 Only the **Allow** path for the release-critical process start is P0. **Deny**, **Allow for this session**, arbitrary shell/file approvals and phone-originated approvals are implemented but are not Day 30 release gates.
 
@@ -35,7 +35,7 @@ Automatic agent switching, background quota polling, predicting exhaustion and b
 
 - [x] The agent starts the server through Cockpit, receives its startup output and detects a loopback preview URL.
 - [x] The agent checks the server log and the served page responds with the expected content.
-- [ ] `open_preview` opens that URL in a real external browser during the fresh-package walkthrough; intercepting the request or fetching the URL in the proof is insufficient.
+- [x] `open_preview` opens that URL in a real external browser during the fresh-package walkthrough; intercepting the request or fetching the URL in the proof is insufficient. Walkthrough 2026-09-30: 0.26 s after `open_preview`, the dev server logged `GET /` then `GET /favicon.ico` from a desktop Chrome user agent, i.e. a real browser tab.
 - [x] Starting the same named server again reuses the running process rather than silently creating a duplicate.
 - [x] **Stop** terminates the whole process group and closes the port.
 - [x] A follow-up can restart the server and expose a working URL again.
@@ -67,6 +67,12 @@ These features may remain in the build, but unfinished polish or optional accept
 
 The boundary-setting task is complete when this file remains the canonical checklist. The release itself is accepted only when all P0 boxes are checked with evidence from one packaged build and the commit/package identifier is recorded below.
 
-- Accepted commit: _pending_
-- Accepted package: _pending_
-- Acceptance date: _pending_
+- Accepted commit: `f38a437`
+- Accepted package: `release/mac-arm64/Cockpit.app` built from `f38a437` (ad-hoc signed, arm64), used for `proof:limit` and the walkthrough
+- Acceptance date: 2026-09-30
+- Quit cleanup re-observed: after quitting the walkthrough app, no Cockpit, agent, MCP or dev-server process remained.
+
+## Known issues found during acceptance
+
+- **Starter click-through (P1):** the native folder picker's Open button sits over the first-run starter suggestions, which send on one click. In the walkthrough, closing the picker started "Tidy up the README…" on the default Claude model. Fix before wider sharing: starters fill the composer instead of sending, or ignore clicks right after the picker closes.
+- The transcript path at the bottom of the conversation menu renders with a stray trailing slash.
