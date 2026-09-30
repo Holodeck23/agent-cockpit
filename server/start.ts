@@ -98,6 +98,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   let baseUrl = ''
   const mcpCommand = options.mcp
   const manager = createThreadManager(store, {
+    instructions: (projectPath) => {
+      const project = projects.list().find((p) => p.path === projectPath)
+      return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
+    },
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {

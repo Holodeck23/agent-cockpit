@@ -19,6 +19,8 @@ export interface Projects {
   /** Registers (or reopens) a folder, pins it and makes it active. */
   open(path: string): Promise<void>
   togglePin(project: Project): Promise<void>
+  /** Saves a project's instructions; rejects with the server's message so the editor can show it. */
+  saveInstructions(project: Project, instructions: string): Promise<Project>
 }
 
 function loadActive(): string | undefined {
@@ -92,6 +94,12 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     }
   }
 
+  const saveInstructions = async (project: Project, instructions: string): Promise<Project> => {
+    const saved = await api.openProject(project.path, { instructions })
+    await refresh()
+    return saved
+  }
+
   return {
     all,
     tabs,
@@ -100,5 +108,6 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     select,
     open,
     togglePin,
+    saveInstructions,
   }
 }

@@ -7,6 +7,8 @@ import { z } from 'zod'
 
 export const PROJECT_COLORS = ['blue', 'pink', 'orange', 'green', 'purple', 'gray'] as const
 export type ProjectColor = (typeof PROJECT_COLORS)[number]
+/** Enough for real guidance, small enough to stay a fraction of any agent's context. */
+export const MAX_INSTRUCTIONS_CHARS = 8000
 
 const projectSchema = z.object({
   path: z.string().min(1),
@@ -14,6 +16,10 @@ const projectSchema = z.object({
   color: z.enum(PROJECT_COLORS),
   pinned: z.boolean(),
   lastOpenedAt: z.string(),
+  /** Added to every agent session started in this project; never changes permissions. */
+  instructions: z.string().max(MAX_INSTRUCTIONS_CHARS).optional(),
+  /** Bumped on every change, so a session can say which version it started with. */
+  instructionsRevision: z.number().int().min(0).optional(),
 })
 export type Project = z.output<typeof projectSchema>
 
@@ -21,6 +27,8 @@ export const projectPatchSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   color: z.enum(PROJECT_COLORS).optional(),
   pinned: z.boolean().optional(),
+  /** Empty clears them. */
+  instructions: z.string().max(MAX_INSTRUCTIONS_CHARS).optional(),
 })
 export type ProjectPatch = z.output<typeof projectPatchSchema>
 
@@ -38,6 +46,14 @@ export function colorFor(path: string): ProjectColor {
   let hash = 0
   for (const char of path) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
   return PROJECT_COLORS[hash % (PROJECT_COLORS.length - 1)] ?? 'blue'
+}
+
+/** New text bumps the revision; the same text (after trimming) changes nothing. */
+function instructionsChange(existing: Project, raw: string | undefined): Partial<Project> {
+  if (raw === undefined) return {}
+  const text = raw.trim()
+  if (text === (existing.instructions ?? '')) return {}
+  return { instructions: text || undefined, instructionsRevision: (existing.instructionsRevision ?? 0) + 1 }
 }
 
 function fresh(path: string, now: string): Project {
@@ -84,7 +100,8 @@ export function createProjectStore(root: string): ProjectStore {
       const current = read()
       const now = new Date().toISOString()
       const existing = current.find((p) => p.path === path) ?? fresh(path, now)
-      const next: Project = { ...existing, ...patch, lastOpenedAt: now }
+      const { instructions: rawInstructions, ...rest } = patch
+      const next: Project = { ...existing, ...rest, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions) }
       write([...current.filter((p) => p.path !== path), next])
       return next
     },

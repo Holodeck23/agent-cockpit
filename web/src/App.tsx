@@ -36,6 +36,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     select(thread)
     window.history.replaceState(null, '', '/')
   }, [select])
+  const detailProject = projects.all.find((p) => p.path === cockpit.detail?.meta.projectPath)
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
 
@@ -83,6 +84,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               streaming={cockpit.streaming}
               processes={cockpit.processes.filter((p) => p.projectPath === cockpit.detail?.meta.projectPath)}
               onError={cockpit.reportError}
+              instructionsRevision={detailProject?.instructions ? detailProject.instructionsRevision : undefined}
               phone={phone}
               onBack={() => cockpit.select(undefined)}
             />

@@ -132,7 +132,12 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       rpc.notify('initialized')
       const common = { cwd: opts.cwd, ...policy, ...(opts.model ? { model: opts.model } : {}) }
       const response = opts.resume
-        ? await rpc.request<{ thread: { id: string } }>('thread/resume', { threadId: opts.resume, ...common })
+        ? await rpc.request<{ thread: { id: string } }>('thread/resume', {
+            threadId: opts.resume,
+            ...common,
+            // Resume takes them too (ThreadResumeParams), so edited project instructions reach a resumed thread.
+            ...(opts.developerInstructions ? { developerInstructions: opts.developerInstructions } : {}),
+          })
         : await rpc.request<{ thread: { id: string } }>('thread/start', {
             ...common,
             ...(opts.developerInstructions ? { developerInstructions: opts.developerInstructions } : {}),

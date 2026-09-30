@@ -22,6 +22,8 @@ interface ThreadViewProps {
   /** This project's processes, for the status-line chip. */
   processes: ProcessInfo[]
   onError: (message: string) => void
+  /** The project's current instructions revision, to compare with this session's. */
+  instructionsRevision?: number
   /** Phone: reply, approve and stop only; a back button returns to the list. */
   phone?: boolean
   onBack?: () => void
@@ -34,7 +36,7 @@ function shortPath(path: string): string {
   return `…/threads/${id.slice(0, 8)}/${parts.at(-1) ?? ''}`
 }
 
-export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, phone = false, onBack }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = status === 'working' || status === 'needs_input'
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
@@ -139,6 +141,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               transcriptPath={transcriptPath}
               usage={usage}
               completed={meta.completed}
+              instructions={{ session: meta.instructionsRevision, current: instructionsRevision }}
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
             />
           </div>}

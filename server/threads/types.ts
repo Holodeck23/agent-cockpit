@@ -29,6 +29,8 @@ export interface ThreadMeta {
   readonly completed: boolean
   /** Transcript handed to the next agent session after a switch; cleared once delivered. */
   readonly handoff?: string
+  /** Project instructions revision the current agent session started with (absent: none). */
+  readonly instructionsRevision?: number
   readonly createdAt: string
   readonly updatedAt: string
 }

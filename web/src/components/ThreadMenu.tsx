@@ -11,9 +11,19 @@ interface ThreadMenuProps {
   usage: UsageEvent | undefined
   completed: boolean
   onToggleCompleted: () => void
+  /** Revision the running session started with, and the project's current one. */
+  instructions?: { readonly session?: number; readonly current?: number }
 }
 
-export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted }: ThreadMenuProps) {
+function instructionsNote({ session, current }: { session?: number; current?: number }): string | undefined {
+  if (!session && !current) return undefined
+  if (session === current) return `Project instructions: revision ${session}`
+  if (!current) return 'Project instructions were cleared; that applies when the agent next starts.'
+  return `Project instructions: revision ${current} is saved; it applies when the agent next starts${session ? ` (this session has ${session})` : ''}.`
+}
+
+export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted, instructions }: ThreadMenuProps) {
+  const instructionLine = instructions ? instructionsNote(instructions) : undefined
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
 
   return (
@@ -51,6 +61,7 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
           {usage ? (
             <p className="menu-note">{usageLine(usage)}</p>
           ) : null}
+          {instructionLine ? <p className="menu-note">{instructionLine}</p> : null}
           <p className="menu-note menu-path" title={transcriptPath}>
             {transcriptPath}
           </p>

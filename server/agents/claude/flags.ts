@@ -21,7 +21,8 @@ export const claudeLaunchSchema = z
     sessionId: z.uuid().optional(),
     resume: z.uuid().optional(),
     useHooks: z.boolean().default(false),
-    appendSystemPrompt: z.string().max(20_000).optional(),
+    // Guidance + project instructions + a switch handoff (up to 24k) must fit; same bound as Codex.
+    appendSystemPrompt: z.string().max(100_000).optional(),
     mcpConfig: mcpConfigSchema.default({ mcpServers: {} }),
     /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
     allowedTools: z

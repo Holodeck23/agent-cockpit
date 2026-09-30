@@ -120,3 +120,21 @@
 .placeholder p { margin: 0; max-width: 360px; color: var(--muted); }
 
 button:focus-visible, [role='tab']:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* modal dialog (project settings) */
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgb(0 0 0 / 0.28); }
+.modal {
+  display: grid; gap: 10px; width: min(620px, 100%); max-height: calc(100dvh - 48px); overflow: auto; padding: 18px 20px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); box-shadow: 0 30px 70px -30px rgb(0 0 0 / 0.5);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.modal-head h2 { margin: 0; font-size: 18px; font-weight: 650; color: var(--strong); }
+.modal-path { margin: -4px 0 4px; font: 12px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-field textarea {
+  min-height: 180px; padding: 10px 12px; border: 1px solid var(--input-border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--strong); font: 13.5px/1.5 var(--mono); resize: vertical;
+}
+.modal-note { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.modal-error { margin: 0; font-size: 13px; color: var(--danger); }
+.modal-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.modal-count { flex: 1; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

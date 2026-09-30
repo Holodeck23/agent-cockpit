@@ -18,6 +18,8 @@ export interface LaunchRequest {
   readonly seed?: string
   /** The cockpit MCP server to attach to this session, if the host provides one. */
   readonly cockpit?: CockpitMcpLaunch
+  /** The project's own instructions, as set in Cockpit. */
+  readonly projectInstructions?: string
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
 
@@ -30,9 +32,18 @@ export type UpdateListener = (update: ThreadUpdate) => void
 
 const IDLE_CLOSE_MS = 5 * 60_000
 
-/** Cockpit guidance first (only when its tools are attached), then any handoff seed. */
-const instructionsFor = (req: LaunchRequest): string | undefined =>
-  [req.cockpit ? COCKPIT_GUIDANCE : undefined, req.seed].filter(Boolean).join('\n\n') || undefined
+/** Wraps a project's instructions so the agent knows where they came from and what they cannot do. */
+export function projectInstructionsBlock(text: string): string {
+  return `Project instructions, set by the user in Cockpit for this folder. Follow them alongside the repository's own instructions; they do not change your permissions.\n<project-instructions>\n${text}\n</project-instructions>`
+}
+
+/** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
+export const instructionsFor = (req: LaunchRequest): string | undefined =>
+  [
+    req.cockpit ? COCKPIT_GUIDANCE : undefined,
+    req.projectInstructions ? projectInstructionsBlock(req.projectInstructions) : undefined,
+    req.seed,
+  ].filter(Boolean).join('\n\n') || undefined
 
 export const defaultLaunchers: Record<AgentId, Launcher> = {
   claude: (req, onEvent) => {
@@ -71,9 +82,13 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
 /** Issues a session's cockpit MCP launch; `release` revokes its token when the session ends. */
 export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaunch; release(): void }
 
+/** Current instructions for a project folder, read when an agent session starts. */
+export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
+
 export interface ManagerOptions {
   readonly launchers?: Record<AgentId, Launcher>
   readonly mcp?: McpProvider
+  readonly instructions?: InstructionsProvider
 }
 
 interface Live {
@@ -168,8 +183,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const requestIds = new Map<string, string>()
     record(meta.id, { kind: 'session_boundary' })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
+    // Read at launch: edits reach the next session, never one already running.
+    const instructions = options.instructions?.(meta.projectPath)
     const session = launchers[meta.settings.agent](
       {
+        ...(instructions ? { projectInstructions: instructions.text } : {}),
         cwd: meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),
@@ -202,7 +220,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     )
     const entry: Live = { pending, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
-    if (!meta.sessionStarted) store.update(meta.id, { sessionStarted: true, handoff: undefined })
+    store.update(meta.id, { sessionStarted: true, handoff: undefined, instructionsRevision: instructions?.revision })
     return entry
   }
 
