@@ -108,7 +108,9 @@ async function b1(): Promise<void> {
 
   await page.getByRole('button', { name: 'Projects' }).click()
   const menuItems = await page.getByRole('menu', { name: 'Projects' }).getByRole('menuitem').allTextContents()
-  check('Projects menu offers Open folder… and all three projects', menuItems.length === 4 && menuItems[0]?.includes('Open folder') === true, `${menuItems.length} items`)
+  check('Projects menu offers Open folder…, project settings and all three projects',
+    menuItems.length === 5 && menuItems[0]?.includes('Open folder') === true && menuItems[1]?.includes('settings') === true,
+    `${menuItems.length} items`)
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B1-projects-menu.png') })
   await page.keyboard.press('Escape')
 

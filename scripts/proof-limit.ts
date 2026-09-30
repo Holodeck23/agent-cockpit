@@ -10,12 +10,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { statusLabel, windowLabel } from '../web/src/usage.ts'
 import { chooseAgent, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
 
 const codexModel = process.env.COCKPIT_CODEX_MODEL ?? 'gpt-5.6-luna'
 const { check, finish } = checker()
 
-interface UsageEvent { kind: 'usage'; status: string; resetsAt?: number }
+interface UsageEvent { kind: 'usage'; status: string; limitType: string; usedPercent?: number; resetsAt?: number }
 interface StoredEvent { event: { kind: string; text?: string; status?: string; resetsAt?: number; to?: string } }
 interface Detail { meta: { id: string; settings: { agent: string } }; status: string; events: StoredEvent[] }
 interface Summary { meta: { id: string; title: string } }
@@ -34,13 +35,24 @@ async function waitUntil<T>(page: Page, what: string, read: () => Promise<T | un
   }
 }
 
-/** The menu line ThreadMenu renders for a usage event, computed in the page's own locale. */
+/**
+ * The menu line ThreadMenu renders for a usage event. Labels come from web/src/usage.ts; the
+ * reset time is formatted in the page's own locale, mirroring formatWhen/resetLabel there
+ * (today → bare time, tomorrow → "tomorrow <time>", later → weekday and date).
+ */
 async function expectedUsageLine(page: Page, usage: UsageEvent): Promise<string> {
-  const labels: Record<string, string> = { allowed: 'Within your limit', allowed_warning: 'Getting close to your limit', rejected: 'Limit reached' }
-  const time = usage.resetsAt
-    ? await page.evaluate((s) => new Date(s * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), usage.resetsAt)
-    : undefined
-  return `5-hour usage: ${labels[usage.status] ?? usage.status}${time ? `, resets ${time}` : ''}`
+  const reset = usage.resetsAt === undefined ? undefined : await page.evaluate((seconds) => {
+    const when = new Date(seconds * 1000)
+    const now = new Date()
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const time = when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    const text = when.toDateString() === now.toDateString() ? time
+      : when.toDateString() === tomorrow.toDateString() ? `tomorrow ${time}`
+      : `${when.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`
+    return when > now ? `resets ${text}` : `reset at ${text}; no newer report`
+  }, usage.resetsAt)
+  return `${windowLabel(usage.limitType)} usage: ${statusLabel(usage)}${reset ? `, ${reset}` : ''}`
 }
 
 const lastUsage = (detail: Detail): UsageEvent | undefined =>
