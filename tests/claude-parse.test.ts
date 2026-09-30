@@ -25,6 +25,8 @@ describe('parseClaudeLine on a real basic turn', () => {
 
   it('reports usage limits and a successful result', () => {
     expect(events.some((e) => e.kind === 'usage' && e.limitType === 'five_hour')).toBe(true)
+    // The recorded event carries unifiedWindows.five_hour.utilization 0.24.
+    expect(events.find((e) => e.kind === 'usage')).toMatchObject({ usedPercent: 24 })
     const result = events.find((e) => e.kind === 'result')
     expect(result).toMatchObject({ kind: 'result', ok: true })
   })

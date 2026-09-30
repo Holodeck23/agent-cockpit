@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EFFORTS, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
-import type { ThreadSettings } from '../api.ts'
+import { api, type AgentStatus, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { usePopover } from '../usePopover.ts'
+import { formatWhen, usageLine } from '../usage.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { ChevronDownIcon } from './icons.tsx'
 
@@ -46,6 +47,35 @@ export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): 
   }
 }
 
+/** Installed state and the provider's last usage report for the selected agent. */
+function AgentState({ status, loading }: { status: AgentStatus | undefined; loading: boolean }) {
+  if (!status) return <p className="agent-state-note">{loading ? 'Checking this agent…' : 'Status unavailable right now.'}</p>
+  const { installation, usage } = status
+  const percent = usage?.usedPercent
+  return (
+    <div className="agent-state" role="group" aria-label={`${agentName(status.id)} status`}>
+      {installation.installed ? (
+        <p className="agent-state-line">Installed · {installation.version}</p>
+      ) : (
+        <p className="agent-state-line agent-state-problem">{installation.problem}</p>
+      )}
+      {usage ? (
+        <>
+          <p className="agent-state-line">{usageLine(usage)}</p>
+          {percent !== undefined ? (
+            <div className="usage-bar" role="meter" aria-label={`${agentName(status.id)} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+              <span style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+            </div>
+          ) : null}
+          <p className="agent-state-note">Reported by {agentName(status.id)} as of {formatWhen(Date.parse(usage.observedAt))}.</p>
+        </>
+      ) : (
+        <p className="agent-state-note">No usage reported yet; it appears after this agent's next turn.</p>
+      )}
+    </div>
+  )
+}
+
 interface AgentPickerProps {
   value: AgentChoice
   /** New conversation: every change applies at once. */
@@ -61,6 +91,20 @@ export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPi
   const [draft, setDraft] = useState<AgentChoice>(value)
   const current = onSwitch ? draft : value
   const changed = JSON.stringify(draft) !== JSON.stringify(value)
+  const [statuses, setStatuses] = useState<AgentStatus[] | undefined>(undefined)
+  const [loading, setLoading] = useState(false)
+
+  // Checked each time the panel opens: cheap, and never polled in the background.
+  useEffect(() => {
+    if (!open) return
+    let current = true
+    setLoading(true)
+    api.agents()
+      .then((next) => { if (current) setStatuses(next) })
+      .catch(() => { if (current) setStatuses(undefined) })
+      .finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [open])
 
   const set = (patch: Partial<AgentChoice>): void => {
     const next = { ...current, ...patch }
@@ -96,9 +140,11 @@ export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPi
               >
                 <AgentGlyph author={agent} />
                 {agentName(agent)}
+                {statuses?.find((s) => s.id === agent)?.installation.installed === false ? <span className="agent-missing">Unavailable</span> : null}
               </button>
             ))}
           </div>
+          <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
           <label className="field">
             Model
             <input

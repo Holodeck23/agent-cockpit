@@ -1,6 +1,7 @@
 import type { NormalizedEvent } from '../../../server/agents/types.ts'
 import { native } from '../native.ts'
 import { usePopover } from '../usePopover.ts'
+import { usageLine } from '../usage.ts'
 import { FileIcon, MoreIcon } from './icons.tsx'
 
 type UsageEvent = Extract<NormalizedEvent, { kind: 'usage' }>
@@ -10,12 +11,6 @@ interface ThreadMenuProps {
   usage: UsageEvent | undefined
   completed: boolean
   onToggleCompleted: () => void
-}
-
-const USAGE_LABEL: Record<string, string> = {
-  allowed: 'Within your limit',
-  allowed_warning: 'Getting close to your limit',
-  rejected: 'Limit reached',
 }
 
 export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted }: ThreadMenuProps) {
@@ -54,10 +49,7 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
             {completed ? 'Reopen conversation' : 'Mark as complete'}
           </button>
           {usage ? (
-            <p className="menu-note">
-              5-hour usage: {USAGE_LABEL[usage.status] ?? usage.status}
-              {usage.resetsAt ? `, resets ${new Date(usage.resetsAt * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
-            </p>
+            <p className="menu-note">{usageLine(usage)}</p>
           ) : null}
           <p className="menu-note menu-path" title={transcriptPath}>
             {transcriptPath}

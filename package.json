@@ -26,7 +26,8 @@
     "proof:files": "tsx scripts/proof-files.ts",
     "proof:phone": "tsx scripts/proof-phone.ts",
     "proof:limit": "tsx scripts/proof-limit.ts",
-    "proof:activity": "tsx scripts/proof-activity.ts"
+    "proof:activity": "tsx scripts/proof-activity.ts",
+    "proof:agents": "tsx scripts/proof-agents.ts"
   },
   "author": "",
   "license": "UNLICENSED",

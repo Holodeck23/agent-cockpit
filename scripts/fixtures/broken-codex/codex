@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stand-in `codex` for `npm run proof:agents`: installed but broken, so the picker's
+# problem state can be shown without touching the real CLI.
+echo "codex: failed to load configuration (proof fixture)" >&2
+exit 1

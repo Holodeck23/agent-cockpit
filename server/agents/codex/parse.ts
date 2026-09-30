@@ -76,7 +76,7 @@ export function parseCodexNotification(method: string, params: unknown): Normali
       if (!limits.success || !limits.data.primary) return []
       const { usedPercent, resetsAt } = limits.data.primary
       return [
-        { kind: 'usage', limitType: 'five_hour', status: usedPercent >= 100 ? 'rejected' : `${usedPercent}% used`, resetsAt },
+        { kind: 'usage', limitType: 'five_hour', status: usedPercent >= 100 ? 'rejected' : `${usedPercent}% used`, resetsAt, usedPercent },
       ]
     }
     case 'turn/completed': {

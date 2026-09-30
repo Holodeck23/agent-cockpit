@@ -16,6 +16,7 @@ import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
 import { expandWorkflows } from '../workflows/store.ts'
 import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
+import type { AgentStatus } from '../agents/status.ts'
 
 const createThreadBody = z.object({
   projectPath: z.string().min(1).max(1000),
@@ -46,9 +47,11 @@ export interface ApiDeps {
   readonly processes: ProcessRunner
   readonly mcp: McpRouteDeps
   readonly remote: RemoteAccess
+  /** Installation and last reported usage per agent, for the agent picker. */
+  readonly agents?: () => Promise<AgentStatus[]>
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents }: ApiDeps, allowedPorts: readonly number[]) {
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   const agentTextFor = (text: string, projectPath: string): string =>
     expandFiles(expandWorkflows(text, projectPath, workflows.store), projectPath)
@@ -68,6 +71,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
     try {
       if (method === 'GET' && parts[1] === 'stream') {
         openSse(req, res, manager, processes, viaPhone ? undefined : remote)
+        return true
+      }
+      if (parts[1] === 'agents' && parts.length === 2 && method === 'GET' && agents) {
+        sendJson(res, 200, { data: await agents() })
         return true
       }
       if (parts[1] === 'files' && method === 'GET') {

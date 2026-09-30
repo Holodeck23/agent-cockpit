@@ -169,3 +169,12 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .open-project { margin-top: 4px; }
 .open-project-form { display: flex; gap: 8px; width: min(440px, 100%); }
 .open-project-form input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); }
+
+/* agent state in the picker */
+.agent-state { display: grid; gap: 5px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--subtle); }
+.agent-state-line { margin: 0; font-size: 13px; color: var(--body); overflow-wrap: anywhere; }
+.agent-state-problem { color: var(--danger); }
+.agent-state-note { margin: 0; font-size: 12px; color: var(--muted); }
+.usage-bar { height: 6px; border-radius: 999px; background: var(--field); overflow: hidden; }
+.usage-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--link); }
+.agent-missing { margin-left: 2px; font-size: 11px; font-weight: 500; color: var(--danger); }

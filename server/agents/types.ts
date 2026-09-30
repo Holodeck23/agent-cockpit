@@ -30,7 +30,8 @@ export type NormalizedEvent =
       suggestions: unknown[]
     }
   | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior }
-  | { kind: 'usage'; limitType: string; status: string; resetsAt?: number }
+  /** usedPercent only when the provider reports one; status stays the provider's own word. */
+  | { kind: 'usage'; limitType: string; status: string; resetsAt?: number; usedPercent?: number }
   | { kind: 'result'; ok: boolean; stopped?: boolean; text?: string; costUsd?: number; durationMs?: number }
   | { kind: 'agent_switch'; from: AgentId; to: AgentId }
   | { kind: 'exit'; code: number | null }

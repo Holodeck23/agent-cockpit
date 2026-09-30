@@ -70,6 +70,19 @@ describe('startServer', () => {
     }
   })
 
+  it('reports agent installation for the picker', async () => {
+    const webDist = mkdtempSync(join(tmpdir(), 'cockpit-web-'))
+    writeFileSync(join(webDist, 'index.html'), '<h1>cockpit page</h1>')
+    running = await startServer({ port: 0, webDist, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-state-')),
+      agentProbe: async (command) => ({ installed: true, version: `${command} 1.0` }) })
+    const res = await get(running.port, '/api/agents')
+    expect(res.status).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ data: [
+      { id: 'claude', installation: { installed: true, version: 'claude 1.0' } },
+      { id: 'codex', installation: { installed: true, version: 'codex 1.0' } },
+    ] })
+  })
+
   it('listens on a random loopback port and trusts that port', async () => {
     const server = await start()
     expect(server.port).toBeGreaterThan(0)

@@ -3,6 +3,7 @@
 # ended one when the five-hour limit was reached (recorded 2026-09-29): a rejected
 # rate_limit_event, the limit message as assistant text, then a failed result.
 # Like the real CLI it stays alive between turns and exits on stdin EOF.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit limit fixture)"; exit 0; }
 session=""
 previous=""
 for arg in "$@"; do

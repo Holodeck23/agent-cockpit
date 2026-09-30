@@ -31,7 +31,7 @@ describe('parseCodexNotification on a real app-server turn', () => {
   })
 
   it('reports five-hour usage', () => {
-    expect(events.some((e) => e.kind === 'usage' && e.status === '0% used')).toBe(true)
+    expect(events.some((e) => e.kind === 'usage' && e.status === '0% used' && e.usedPercent === 0)).toBe(true)
   })
 })
 

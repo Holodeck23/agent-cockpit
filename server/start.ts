@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process'
 import { createWorkflowStore } from './workflows/store.ts'
 import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
+import { createAgentStatus, type VersionProbe } from './agents/status.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore } from './projects/store.ts'
@@ -39,6 +40,8 @@ export interface StartOptions {
   readonly openUrl?: (url: string) => Promise<void> | void
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
+  /** How agent CLIs are checked for the picker; a fake in tests. */
+  readonly agentProbe?: VersionProbe
 }
 
 function openWithSystem(url: string): Promise<void> {
@@ -143,7 +146,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, mcp: { sessions, processes, openUrl, workflows: workflows.store } }, [port, ...(options.trustedPorts ?? [])])
+  const agents = createAgentStatus(store, options.agentProbe)
+  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, mcp: { sessions, processes, openUrl, workflows: workflows.store } }, [port, ...(options.trustedPorts ?? [])])
   remote.attach(api)
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {

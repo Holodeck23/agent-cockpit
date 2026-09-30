@@ -132,10 +132,23 @@ export function parseClaudeLine(line: string): NormalizedEvent[] {
       return parseControlRequest(raw)
     case 'rate_limit_event': {
       const info = z
-        .looseObject({ status: z.string(), rateLimitType: z.string(), resetsAt: z.number().optional() })
+        .looseObject({
+          status: z.string(),
+          rateLimitType: z.string(),
+          resetsAt: z.number().optional(),
+          unifiedWindows: z.record(z.string(), z.looseObject({ utilization: z.number().optional() })).optional(),
+        })
         .safeParse(raw.rate_limit_info)
       if (!info.success) return []
-      return [{ kind: 'usage', limitType: info.data.rateLimitType, status: info.data.status, resetsAt: info.data.resetsAt }]
+      // utilization is 0–1 for the window this event is about, when Claude reports it.
+      const utilization = info.data.unifiedWindows?.[info.data.rateLimitType]?.utilization
+      return [{
+        kind: 'usage',
+        limitType: info.data.rateLimitType,
+        status: info.data.status,
+        resetsAt: info.data.resetsAt,
+        ...(utilization === undefined ? {} : { usedPercent: Math.round(utilization * 100) }),
+      }]
     }
     case 'result':
       return [
