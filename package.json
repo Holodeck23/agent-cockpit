@@ -17,6 +17,7 @@
     "smoke:mcp": "npm run build:electron && tsx scripts/smoke-mcp.ts",
     "build:electron": "tsx scripts/build-electron.ts",
     "icon": "tsx scripts/make-icon.ts",
+    "dmg-background": "tsx scripts/make-dmg-background.ts",
     "app": "npm run build && npm run build:electron && electron .",
     "package": "npm run build && npm run build:electron && electron-builder --mac --arm64",
     "proof:app": "tsx scripts/proof-app.ts",

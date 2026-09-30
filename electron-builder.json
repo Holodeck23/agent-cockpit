@@ -1,15 +1,49 @@
 {
   "appId": "local.cockpit.app",
   "productName": "Cockpit",
-  "directories": { "output": "release", "buildResources": "build" },
-  "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json"
+  ],
   "npmRebuild": false,
   "mac": {
-    "target": [{ "target": "dmg", "arch": ["arm64"] }],
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",
     "identity": "-",
     "hardenedRuntime": false,
     "gatekeeperAssess": false
+  },
+  "dmg": {
+    "window": {
+      "width": 540,
+      "height": 400
+    },
+    "iconSize": 80,
+    "contents": [
+      {
+        "x": 130,
+        "y": 230,
+        "type": "file"
+      },
+      {
+        "x": 410,
+        "y": 230,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
   }
 }
