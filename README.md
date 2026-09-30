@@ -6,26 +6,61 @@ Cockpit does no AI inference itself. It drives the official `claude` and `codex`
 
 ![A Cockpit conversation: the agent started the dev server, read its log and opened the preview; the running process shows under the title](docs/proof/phase-4-thread.png)
 
+## Download
+
+**You need:** a Mac with Apple silicon (M1 or later) and at least one of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or [Codex](https://github.com/openai/codex) (`codex`) installed and signed in. Open that CLI in Terminal and check it answers a prompt before you start. Cockpit uses your own account and does no AI inference itself.
+
+1. Download `Cockpit-0.1.0-arm64.dmg` from the [latest release](https://github.com/Holodeck23/agent-cockpit/releases/latest).
+2. Open the DMG and drag **Cockpit** into **Applications**.
+3. Open Cockpit from Applications. This build is not notarized by Apple, so macOS blocks the first launch with **"Cockpit" Not Opened**. Choose **Done**, not Move to Trash.
+4. Open **System Settings → Privacy & Security**, scroll down to **Security** and choose **Open Anyway** next to the message about Cockpit. Enter your password, then choose **Open Anyway** once more. The button shows for about an hour after the blocked launch; later launches open normally.
+
+Prefer Terminal? After step 2, run this once instead of steps 3 and 4:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Cockpit.app
+```
+
+On current macOS, right-click → Open no longer gets past this check.
+
+### Your first conversation
+
+1. Open Cockpit and choose **Open a project folder…**. Pick a folder on your own Mac.
+2. In **Agent settings**, select the CLI you installed. Leave **Model** blank to use its configured default, or enter a model your account can access. Model access varies by provider and account.
+3. Start with **Ask before acting**, then send a small request. Approval cards let you allow or deny proposed actions.
+
+If Cockpit says Claude Code or Codex isn't installed or isn't on PATH, install that CLI, sign in, then quit and reopen Cockpit. If an agent reports authentication, model-access or usage-limit errors, resolve them in that CLI or account, or select your other installed agent.
+
+Every macOS user gets separate state under their own `~/.agent-cockpit/`. No project folders, paired phones, signing keys or accounts ship inside the app. Phone access starts off and is optional. Each user pairs their own devices on their own Tailscale account; the public repository address used as Web Push contact metadata is not a relay or an account dependency.
+
 ## Desktop walkthrough
 
-Fresh packaged-app captures from the September 29 inspection, using Codex Luna and synthetic projects. The primary demo flow is: open a project, ask the agent to start its dev server, approve, inspect the preview URL, then stop or restart it.
+Packaged-app captures with synthetic projects. The primary flow is: open a project, ask the agent to start its dev server, approve, inspect the preview URL, then stop or restart it.
 
 <details>
-<summary>Approval, attached files, and repeatable workflows</summary>
+<summary>Approvals, file editing, Markdown documents, context and workflows</summary>
 
 **Approve the process start in the conversation.**
 
 ![Codex waiting for approval to start the project dev server](docs/proof/phase-4-approval.png)
 
-**Attach a project file and get an answer from its contents.**
+**Edit project files in tabs, with an explicit Save.**
 
-![Codex Luna answers using an attached release note](docs/proof/phase-5-files-attached.png)
+![The Files panel with README.md open in a tab, marked as having unsaved changes, with Revert, Save and Add to conversation](docs/proof/checkpoint-5a-editor.png)
+
+**Read and edit Markdown as a document.**
+
+![A Markdown file in Document view: a heading, bullets, checked to-do items and a table, with a formatting toolbar and a Source switch](docs/proof/checkpoint-5b-document.png)
+
+**Add files and workflows to a message from the composer's +.**
+
+![The composer with a file chip and a workflow chip above the message, on a new conversation](docs/proof/checkpoint-6-context.png)
 
 **Save instructions and choose when they run.**
 
 ![Workflow editor with Codex Luna, repeat interval and schedule controls](docs/proof/phase-5-workflows.png)
 
-[File browser in dark mode](docs/proof/phase-5-files-dark.png) · [Workflow editor in dark mode](docs/proof/phase-5-workflows-dark.png) · [Process controls](docs/proof/phase-4-processes.png)
+[Editor in dark mode](docs/proof/checkpoint-5a-editor-dark.png) · [Document view in dark mode](docs/proof/checkpoint-5b-document-dark.png) · [Context chips in dark mode](docs/proof/checkpoint-6-context-dark.png) · [Workflow editor in dark mode](docs/proof/phase-5-workflows-dark.png) · [Process controls](docs/proof/phase-4-processes.png)
 
 </details>
 
@@ -36,7 +71,9 @@ Fresh packaged-app captures from the September 29 inspection, using Codex Luna a
 - **Two agents, one thread.** Pick Claude Code or Codex, the model, effort and permission mode per conversation. Switch agent mid-thread and the transcript is handed over to the new one.
 - **Dev servers the agent can see.** Every agent session gets a built-in `cockpit` MCP server. The agent starts long-running commands through it, reads their output, and opens the local preview for you. Running processes show under the conversation title, with the URL and a Stop button.
 - **Repeatable workflows.** Save project instructions and agent settings, run them manually or on a repeating interval, and open each run as a conversation. Schedules run while Cockpit is open and pause on failure.
-- **Project files in the conversation.** Browse and preview text files, then attach their current contents to a new or existing conversation draft.
+- **Edit project files.** The Files panel opens text files in tabs with Save (Cmd+S) and Revert. If an agent or another editor changes a file while you edit it, you get a conflict with Save mine as a copy, Reload from disk or Overwrite with mine. Nothing is overwritten silently.
+- **Markdown as a document.** Markdown files open in a Document view with a small formatting toolbar and clickable to-do boxes, and a Source switch for the raw text. Blocks you didn't touch are saved byte for byte.
+- **Context from the composer.** The composer's **+** searches the project's files and saved workflows and adds them to your message as removable chips. A reference that would fail (a missing file, an unknown workflow) turns red before you send.
 - **Files first.** Each conversation is `meta.json`, `events.jsonl` and a readable `messages.md` under `~/.agent-cockpit/`. Agents send prompts to their providers. Optional phone access serves conversations over Tailscale; optional Web Push sends encrypted notification payloads through the browser's push provider.
 - **Phone access.** Pair a phone through Tailscale to follow conversations, reply, approve requests and stop a turn. The notification bell enables alerts when an agent asks for approval.
 - **A real Mac app.** Native window, runs from Finder or the Dock, and quitting stops every agent and dev server it started.
@@ -45,15 +82,11 @@ Fresh packaged-app captures from the September 29 inspection, using Codex Luna a
 
 Cockpit is an early, usable build for other builders to try and give feedback on. The current supported target is macOS on Apple silicon; remaining experiments and acceptance checks are listed below.
 
-The canonical Day 30 ship gate is [docs/RELEASE-ACCEPTANCE.md](docs/RELEASE-ACCEPTANCE.md): a prioritized checklist for the desktop dev-server flow, approvals, provider usage limits, process controls and explicit exclusions.
+The release checklist is [docs/RELEASE-ACCEPTANCE.md](docs/RELEASE-ACCEPTANCE.md): the desktop dev-server flow, approvals, provider usage limits, process controls and what is explicitly left out. Windows, Linux and Intel Mac are not supported or verified. Cockpit does not provide an AI account, share anyone's credentials, or bypass provider usage limits.
 
-## Quick start
+## Build from source
 
-**Supported MVP:** macOS on Apple silicon. Windows, Linux and Intel Mac packages are not currently supported or verified.
-
-Use your own [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) and/or [Codex](https://github.com/openai/codex) (`codex`) installation and account. You only need one of them. Open that CLI in a terminal, finish its sign-in and confirm it can answer a prompt before using Cockpit. Cockpit does not provide an AI account, transfer the developer's credentials, or bypass provider usage limits.
-
-To build from source, install Node 22.12+ and Git:
+Install Node 22.12+ and Git:
 
 ```bash
 git clone https://github.com/Holodeck23/agent-cockpit.git
@@ -72,19 +105,9 @@ npm run package
 cp -R release/mac-arm64/Cockpit.app /Applications/
 ```
 
-The build is ad-hoc signed, not notarized, so the first launch may need right-click, then Open.
+The build is ad-hoc signed, not notarized. A copy you built yourself isn't quarantined, so it opens directly; a DMG you send to someone else needs the first-launch steps under [Download](#download).
 
 Prefer a browser? `npm start` serves the same UI at http://127.0.0.1:4317.
-
-### Your first conversation
-
-1. Open Cockpit and choose **Open a project folder…**. Pick a folder on your own Mac.
-2. In **Agent settings**, select the CLI you installed. Leave **Model** blank to use its configured default, or enter a model your account can access. Model access varies by provider and account.
-3. Start with **Ask before acting**, then send a small request. Approval cards let you allow or deny proposed actions.
-
-Every macOS user gets separate state under their own `~/.agent-cockpit/`. No project folders, paired phones, signing keys or accounts ship inside the app. Phone access starts off and is optional. Each user pairs their own devices on their own Tailscale account; the public repository address used as Web Push contact metadata is not a relay or an account dependency.
-
-If a CLI cannot be found, run `npm run doctor` from the source checkout and restart Cockpit after installation. If an agent reports authentication, model-access or usage-limit errors, resolve them in that CLI/account or select your other installed agent.
 
 ## Use it from your phone
 
@@ -135,7 +158,7 @@ Open **Workflows** to save instructions, choose an agent and permissions, and ru
 
 Use `@workflow:daily-review` to include another saved workflow's instructions in the same turn. References stay within the project and cycles are rejected. This combines instructions; it does not create separate dependent agent jobs.
 
-Open **Files**, or use the composer's attachment button, to preview a text file and add it to your draft. `@file:src%2Fhello%20world.ts` is an encoded relative path; the picker handles encoding. Files are read again when sent, including during scheduled workflow runs. Text files are limited to 100 KB each, eight attachments and 200,000 characters per expanded prompt. The conversation keeps your message as written, with each attachment shown by name; the file contents go to the agent only. A reference counts only at the start of a word, so an address like `a@file:x` is sent as plain text. A missing or badly encoded file stops the send with a short message and keeps your draft.
+Open **Files** to edit a text file or add it to your draft, or use the composer's **+** to search the project's files and workflows. `@file:src%2Fhello%20world.ts` is an encoded relative path; the picker handles encoding. Files are read again when sent, including during scheduled workflow runs. Text files are limited to 100 KB each, eight attachments and 200,000 characters per expanded prompt. The conversation keeps your message as written, with each attachment shown by name; the file contents go to the agent only. A reference counts only at the start of a word, so an address like `a@file:x` is sent as plain text. A missing or badly encoded file stops the send with a short message and keeps your draft.
 
 ## Development
 
@@ -153,6 +176,9 @@ Open **Files**, or use the composer's attachment button, to preview a text file 
 | `npm run proof:reliability` | Packaged app with synthetic threads: delayed loads, message routing, completion and reopening; no agent usage |
 | `npm run proof:workflows` | Packaged app: real Codex manual and scheduled workflow runs, editor and schedule controls |
 | `npm run proof:files` | Packaged app: file browsing, draft preservation and a real Haiku attachment check |
+| `npm run proof:edit` | Packaged app: tabs, save, revert, conflicts and Save mine as a copy |
+| `npm run proof:docs` | Packaged app: Markdown Document view; every save compared byte for byte |
+| `npm run proof:context` | Packaged app: the composer's + picker, chips and pre-send checks |
 | `npm run proof:mcp` | Packaged app: agent starts, reads and previews the dev server unprompted; Stop, restart, clean quit |
 | `npm run proof:phone` | Packaged app and real Tailscale on HTTPS 8443: turn on phone access, pair a phone-sized Chrome, and refusals for a login not on the allowlist, the LAN address, no identity, a foreign Origin, an unpaired and a removed phone, each with a control |
 | `npm run proof:phone -- --live` | Also run one real Codex workflow-save approval, answer it through the phone view, and verify the result arrives live; uses the configured small Codex model |
@@ -163,12 +189,12 @@ Some proofs and smokes call real agents and consume your provider allowance. Cod
 
 ## Status and roadmap
 
-Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file attachments, and phone access over Tailscale with pairing and a phone layout.
+Built and proven: Claude and Codex adapters, parallel threads, approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file editing with conflict handling, the Markdown Document view, the composer's context picker, and phone access over Tailscale with pairing and a phone layout. The primary release flow is accepted on a packaged build.
 
 Next:
-1. **Primary release flow.** Walk it on a fresh setup: open a project with the folder picker, ask the agent to run its dev server and check the log, allow the start, open the preview in a real browser, then stop or restart the server.
-2. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
-3. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
+1. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
+2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
+3. **Calendar schedules.** Daily, weekday and weekly runs in local time.
 
 ## Credits
 
