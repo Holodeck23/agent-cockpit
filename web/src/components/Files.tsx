@@ -17,7 +17,7 @@ export function Files({ project, onAttach }: { project?: Project; onAttach: (ref
         onSelect={(path) => void open.open(path)}
         onClose={open.close}
         onChange={open.edit}
-        onSave={(path) => void open.save(path)}
+        onSave={(path, draft) => void open.save(path, { draft })}
         onReload={(path) => void open.reload(path)}
         onOverwrite={(path) => void open.overwrite(path)}
         onSaveCopy={(path) => void open.saveCopy(path)}

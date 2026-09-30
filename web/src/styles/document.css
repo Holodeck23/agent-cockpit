@@ -1,0 +1,33 @@
+/* The Document view of a Markdown file (components/DocumentView.tsx). Loaded with it. */
+.doc-view { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 320px; }
+.doc-toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.doc-toolbar button, .doc-toolbar select { min-width: 32px; height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--body); font-size: 13px; }
+.doc-toolbar select { border-color: var(--border); background: var(--field); }
+.doc-toolbar button:hover { background: var(--field); }
+.doc-toolbar code { font-family: var(--mono); font-size: 12px; }
+.doc-toolbar-gap { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
+.doc-surface { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.doc-surface:focus-within { border-color: color-mix(in srgb, var(--link) 45%, var(--border)); box-shadow: 0 0 0 3px var(--focus-ring); }
+.doc-surface .ProseMirror { min-height: 100%; padding: 22px 28px; outline: none; color: var(--body); font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+.doc-surface .ProseMirror > :first-child { margin-top: 0; }
+.doc-surface h1 { font-size: 26px; margin: 22px 0 10px; }
+.doc-surface h2 { font-size: 21px; margin: 20px 0 8px; }
+.doc-surface h3 { font-size: 17px; margin: 16px 0 6px; }
+.doc-surface p { margin: 8px 0; }
+.doc-surface a { color: var(--link); }
+.doc-surface code { font-family: var(--mono); font-size: 13px; padding: 1px 4px; border-radius: 4px; background: var(--subtle); }
+.doc-surface pre { padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--subtle); overflow: auto; }
+.doc-surface pre code { padding: 0; background: none; }
+.doc-surface blockquote { margin: 10px 0; padding-left: 14px; border-left: 3px solid var(--border); color: var(--secondary); }
+.doc-surface hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+.doc-surface ul, .doc-surface ol { padding-left: 24px; margin: 8px 0; }
+.doc-surface table { border-collapse: collapse; margin: 12px 0; }
+.doc-surface th, .doc-surface td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.doc-surface th { background: var(--subtle); }
+.doc-surface img { max-width: 100%; }
+/* To-do items: the box sits in the item's left padding; task-toggle.ts handles the click. */
+.doc-surface li[data-item-type='task'] { list-style: none; position: relative; margin-left: -20px; padding-left: 26px; }
+.doc-surface li[data-item-type='task']::before { content: ''; position: absolute; left: 2px; top: 0.35em; width: 14px; height: 14px; border: 1.5px solid var(--secondary); border-radius: 4px; cursor: pointer; }
+.doc-surface li[data-item-type='task'][data-checked='true']::before { background: var(--link); border-color: var(--link); }
+.doc-surface li[data-item-type='task'][data-checked='true']::after { content: ''; position: absolute; left: 7px; top: calc(0.35em + 2px); width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); pointer-events: none; }
+.doc-surface li[data-item-type='task'][data-checked='true'] > p { color: var(--muted); text-decoration: line-through; }

@@ -30,7 +30,8 @@
     "proof:agents": "tsx scripts/proof-agents.ts",
     "proof:instructions": "tsx scripts/proof-instructions.ts",
     "proof:discovery": "tsx scripts/proof-discovery.ts",
-    "proof:edit": "tsx scripts/proof-edit.ts"
+    "proof:edit": "tsx scripts/proof-edit.ts",
+    "proof:docs": "tsx scripts/proof-docs.ts"
   },
   "author": "",
   "license": "UNLICENSED",
@@ -38,6 +39,7 @@
   "main": "dist-electron/main.cjs",
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -46,6 +48,7 @@
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
+    "jsdom": "^30.1.1",
     "playwright-core": "^1.63.0",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
@@ -57,5 +60,8 @@
     "web-push": "^3.6.7",
     "zod": "^4.6.5"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@milkdown/kit": "7.22.2"
+  }
 }

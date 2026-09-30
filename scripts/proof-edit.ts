@@ -38,8 +38,9 @@ try {
   await openProject(page, project, 'Garden notes')
   await page.getByRole('tab', { name: 'Files', exact: true }).click()
 
-  // Edit and save with the keyboard.
+  // Edit and save with the keyboard (Markdown opens as a document; this gate covers the source editor).
   await openFile(page, 'README.md')
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Source', exact: true }).click()
   await editor(page).fill('# Garden notes\n\nWater the tomatoes on Mondays and Thursdays.\n')
   check('an edit marks the tab unsaved', await page.locator('.file-tab.active .file-dirty').isVisible())
   await page.screenshot({ path: join(PROOF_DIR, 'checkpoint-5a-editor.png') })

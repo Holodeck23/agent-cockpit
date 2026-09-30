@@ -83,13 +83,14 @@ export function useOpenFiles(projectPath: string | undefined) {
 
   const edit = (path: string, draft: string): void => replace(path, (f) => ({ ...f, draft }))
 
-  const save = async (path: string, expected?: string): Promise<void> => {
+  /** `draft` saves that text instead of the stored draft, for an editor that has just flushed it. */
+  const save = async (path: string, options: { expected?: string; draft?: string } = {}): Promise<void> => {
     const file = current.current.find((f) => f.path === path)
     if (!projectPath || !file?.eol) return
-    const text = forDisk(file.draft, file.eol)
+    const text = forDisk(options.draft ?? file.draft, file.eol)
     setError('')
     try {
-      const saved = await api.writeFile(projectPath, path, text, expected ?? file.version)
+      const saved = await api.writeFile(projectPath, path, text, options.expected ?? file.version)
       // Keep anything typed while the save was in flight.
       replace(path, (f) => ({ ...f, text, version: saved.version, conflict: false }))
     } catch (e) {
@@ -101,7 +102,7 @@ export function useOpenFiles(projectPath: string | undefined) {
   /** Keeps the editor's text over what changed on disk. */
   const overwrite = async (path: string): Promise<void> => {
     if (!projectPath) return
-    try { await save(path, (await api.readFile(projectPath, path)).version) } catch (e) { setError(messageOf(e)) }
+    try { await save(path, { expected: (await api.readFile(projectPath, path)).version }) } catch (e) { setError(messageOf(e)) }
   }
 
   /** Keeps both versions: the draft goes to a new "(copy)" file, the original shows what is on disk. */

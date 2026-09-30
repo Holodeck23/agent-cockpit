@@ -249,3 +249,14 @@ The portability package passed 27 non-agent phone checks through Tailscale. Its 
 
 **Claude re-check.** After Claude's usage limit reset, the checks it had blocked were run on Claude with Haiku: the Claude to Codex switch with handoff (`proof-ui.ts switch`), `proof:files` including the attachment-only answer, and `proof:mcp` 16/16. All passed.
 
+## Checkpoint 5a–5b: editing text and Markdown files (2026-09-30)
+
+**What.** The Files panel became an editor: tabs, explicit save with a version check (a change made on disk meanwhile is a conflict, never overwritten: save mine as a copy, reload, or overwrite), and for Markdown a rich Document view beside Source.
+
+**Spike first.** Before choosing an editor, 397 Markdown files from this machine were round-tripped through two candidates with no edits. Milkdown returned 12 byte-identical; the rest were restyled (table padding, `-` → `*`, `---` → `***`, escaped `~` and `[`). TipTap returned 6 and lost content (tables dropped, `&` → `&amp;`). Writing the whole document back from any rich editor would rewrite nearly every file, so TipTap was ruled out and the design became a splice.
+
+**How.** `web/src/markdown/splice.ts` keeps each top-level block's original source text unless that block changed (matched by longest common subsequence); only edited or new blocks are serialised, in the marker style of the block they replace, and the spacing of the original neighbours is kept. `document.ts` then re-reads what would be written and refuses it unless it matches what is on screen. Re-run on the same corpus: all 397 files write back unchanged, and of 390 single-paragraph edits 379 were written with only that block changed and 11 were refused. None changed text outside the edited block.
+
+**Found on the way.** Milkdown's view gives each heading an id that a plain parse leaves empty, so content comparison ignores it (caught only by the packaged-app proof; unit tests now run through a real view as well). A textarea normalises CRLF to LF and `TextDecoder` drops a byte-order mark; both are restored on save, and files mixing line endings are read-only. macOS inline predictions let Enter accept a guessed word; composer and editors turn writing suggestions off.
+
+**Gates.** `npm run proof:edit` (18 checks) and `npm run proof:docs` (15 checks) on the packaged app, with synthetic files only.

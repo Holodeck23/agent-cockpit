@@ -26,6 +26,7 @@
 .file-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .file-banner span { flex: 1; min-width: 180px; }
 .file-editor .file-help { margin: 0; }
+.doc-host { display: flex; flex: 1; min-height: 320px; }
 .file-text { flex: 1; min-height: 320px; width: 100%; resize: none; font-family: var(--mono); font-size: 13px; line-height: 1.7; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--subtle); color: var(--body); tab-size: 2; }
 .file-text:focus { outline: none; border-color: color-mix(in srgb, var(--link) 45%, var(--border)); box-shadow: 0 0 0 3px var(--focus-ring); }
 .file-text[readonly] { color: var(--secondary); }
@@ -34,5 +35,8 @@
 .file-location code { overflow-wrap: anywhere; }
 .file-new-form { display: flex; gap: 8px; margin: 0 0 12px; }
 .file-new-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--body); }
+.file-views { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); }
+.file-views button { border: none; background: transparent; padding: 5px 12px; border-radius: 6px; color: var(--secondary); font-size: 13px; }
+.file-views button[aria-pressed='true'] { background: var(--panel); color: var(--body); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 @media (max-width: 800px) { .file-preview > header { flex-direction: column; } .file-text { min-height: 240px; } .files-layout { grid-template-columns: 220px minmax(0, 1fr); } }
 @media (max-width: 560px) { .files-layout { display: block; overflow: auto; } .file-list { max-height: 280px; border-bottom: 1px solid var(--border); } }
