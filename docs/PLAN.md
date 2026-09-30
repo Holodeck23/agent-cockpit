@@ -24,6 +24,10 @@ Fresh walkthrough used the packaged app and Codex `gpt-5.6-luna`. Claude's first
 
 **Next acceptance:** walk that flow from the native folder picker through an actual browser opening on a fresh setup. Files and workflows support this flow. Keep physical-phone push visibly pending; preview-pane development remains Phase 7.
 
+## Day 30 release boundary
+
+The prioritized, testable ship gate and explicit exclusions are maintained in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md). P0 is the desktop project → approval → dev server → log → external preview → Stop/restart loop, plus visible provider-limit handling and manual agent switching. Optional phone, workflow, file and future-agent work cannot delay the release unless it regresses that core flow, data safety, approval safety or process cleanup.
+
 ## Scope for the first release
 
 This is an early build. Prioritize a usable demo, clear setup for other builders and feedback from trying it. Ship small verified checkpoints and keep incomplete features visible. Cross-platform packaging, broad onboarding automation and production polish can wait. Physical-phone push acceptance is pending, but it does not block trying the desktop and phone-approval MVP.

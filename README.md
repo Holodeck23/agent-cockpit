@@ -45,6 +45,8 @@ Fresh packaged-app captures from the September 29 inspection, using Codex Luna a
 
 Cockpit is an early, usable build for other builders to try and give feedback on. The current supported target is macOS on Apple silicon; remaining experiments and acceptance checks are listed below.
 
+The canonical Day 30 ship gate is [docs/RELEASE-ACCEPTANCE.md](docs/RELEASE-ACCEPTANCE.md): a prioritized checklist for the desktop dev-server flow, approvals, provider usage limits, process controls and explicit exclusions.
+
 ## Quick start
 
 **Supported MVP:** macOS on Apple silicon. Windows, Linux and Intel Mac packages are not currently supported or verified.
