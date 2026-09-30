@@ -40,6 +40,12 @@ A signed-in Enjoy trial was compared against this source at `b8bc616`. The trial
 
 Checkpoints 1–4 ship together as the first upgrade. **First upgrade complete 2026-09-30.** Later, each its own checkpoint: 5a editable text files, 5b rich Markdown documents, 6 composer context picker, 7 calendar schedules (daily/weekday/weekly, local time, explicit DST and missed-run rules).
 
+Follow-ups from a second Enjoy evidence pass (2026-09-30), each proven on the packaged app:
+
+- **Starter click-through fixed.** Starters fill the message box instead of sending; the composer turns off macOS inline writing suggestions, whose guess Enter accepted instead of sending. (`tsx scripts/proof-b.ts b3`, 20 checks.)
+- **A finished turn reads Ready**, without a check mark; the check is only for marking a conversation complete. Messages that use `@workflow:` keep each referenced workflow's instructions as they were. A thread records the project instructions text its session received. The new-conversation agent choice is remembered per project. (`proof:workflows`, `proof:instructions` 8 checks, `proof:activity` 18, `proof:app` 10.)
+- **5a editable text files — done.** *(`npm run proof:edit`, 16 checks; `proof:files` re-run green.)* Tabs, dirty marker, explicit Save and Cmd+S, Revert. Every save names the version it started from; a change made on disk meanwhile (by the agent or another editor) shows a conflict with Reload from disk / Overwrite with mine, never a silent overwrite. Saves are atomic and keep the file mode; line endings and a byte-order mark are kept, and files that mix line endings stay read-only. Drafts and open tabs persist per project, and closing an unsaved tab asks first. New files go in an existing folder and never replace one. Editing is Mac-only; the phone cannot write files. Autosave is deliberately out: agents write the same files, so saving stays a decision.
+
 **Proposed, not adopted:** let desktop P0 completion gate Phase 7 and track physical-phone push as a separate acceptance item. Phase 7 below keeps its current gate until this is decided.
 
 ## Scope for the first release

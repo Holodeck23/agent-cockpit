@@ -29,7 +29,8 @@
     "proof:activity": "tsx scripts/proof-activity.ts",
     "proof:agents": "tsx scripts/proof-agents.ts",
     "proof:instructions": "tsx scripts/proof-instructions.ts",
-    "proof:discovery": "tsx scripts/proof-discovery.ts"
+    "proof:discovery": "tsx scripts/proof-discovery.ts",
+    "proof:edit": "tsx scripts/proof-edit.ts"
   },
   "author": "",
   "license": "UNLICENSED",

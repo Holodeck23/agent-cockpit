@@ -43,7 +43,7 @@ try {
   console.log('PASS unsupported binary shows an error without an attach action')
   await page.locator('.file-row').filter({ hasText: 'src' }).click()
   await page.locator('.file-row').filter({ hasText: 'hello world.ts' }).click()
-  await page.getByLabel('File contents').filter({ hasText: 'Hello from Cockpit' }).waitFor()
+  await waitUntil(page, 'the file text', async () => (await page.getByLabel('File contents').inputValue()).includes('Hello from Cockpit'), 15_000)
   mkdirSync(PROOF_DIR, { recursive: true })
   await page.screenshot({ path: join(PROOF_DIR, 'phase-5-files.png') })
   await page.getByRole('button', { name: 'Add to conversation', exact: true }).click()

@@ -1,4 +1,5 @@
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
+import type { FileSaved } from '../../server/files/editor.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo } from '../../server/processes/runner.ts'
@@ -23,6 +24,11 @@ export interface ThreadDetail {
   readonly streaming: string
 }
 
+/** An API refusal; `status` 409 means a conflict the person should resolve. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
+
 async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const response = await fetch(path, {
     method: init?.method ?? 'GET',
@@ -30,13 +36,16 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   })
   const payload = (await response.json()) as { data?: T; error?: string }
-  if (!response.ok || payload.data === undefined) throw new Error(payload.error ?? `Request failed (${response.status})`)
+  if (!response.ok || payload.data === undefined) throw new ApiError(payload.error ?? `Request failed (${response.status})`, response.status)
   return payload.data
 }
 
 export const api = {
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   readFile: (projectPath: string, path: string) => request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path })}`),
+  /** `expected` is the version the edit started from; null creates a new file. */
+  writeFile: (projectPath: string, path: string, text: string, expected: string | null) =>
+    request<FileSaved>('/api/files/write', { method: 'PUT', body: { projectPath, path, text, expected } }),
   listWorkflows: (projectPath: string) => request<Workflow[]>(`/api/workflows?projectPath=${encodeURIComponent(projectPath)}`),
   saveWorkflow: (body: WorkflowInput, id?: string) => request<Workflow>(id ? `/api/workflows/${id}/save` : '/api/workflows', { method: 'POST', body }),
   runWorkflow: (id: string) => request<ThreadMeta>(`/api/workflows/${id}/run`, { method: 'POST', body: {} }),
