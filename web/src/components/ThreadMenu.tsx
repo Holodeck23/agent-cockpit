@@ -69,7 +69,8 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
             </details>
           ) : null}
           <p className="menu-note menu-path" title={transcriptPath}>
-            {transcriptPath}
+            {/* The row is rtl so a long path clips at its start; the isolate keeps the leading "/" at the front. */}
+            <bdi dir="ltr">{transcriptPath}</bdi>
           </p>
         </div>
       ) : null}

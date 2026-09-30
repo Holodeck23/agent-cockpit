@@ -80,6 +80,31 @@ try {
   assert.equal(store.get(ids[1]!)?.completed, false)
   console.log('PASS completion, list filtering, and reopening update without reload')
 
+  // Path rows are rtl so long paths clip at their start. The path's last character must
+  // still render rightmost; bidi once moved the leading "/" to the right end instead.
+  const lastCharRightmost = (selector: string) => page.locator(selector).first().evaluate((el) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    const text = walker.nextNode() as Text
+    const [first, last] = [0, text.length - 1].map((offset) => {
+      const range = document.createRange()
+      range.setStart(text, offset)
+      range.setEnd(text, offset + 1)
+      return range.getBoundingClientRect().right
+    })
+    return last! >= first!
+  })
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  assert.ok(await lastCharRightmost('.menu-note.menu-path'), 'Transcript path renders without a trailing slash')
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  if (await page.locator('.project-item-path').count() > 0) {
+    assert.ok(await lastCharRightmost('.project-item-path'), 'Project path renders without a trailing slash')
+    console.log('PASS conversation and project paths keep their leading slash at the front')
+  } else {
+    console.log('PASS conversation path keeps its leading slash at the front (no project rows to check)')
+  }
+  await page.getByRole('button', { name: 'Projects' }).click()
+
   // A pending load must not replace the new-conversation view after deselection.
   await page.unroute(`**/api/threads/${ids[0]}/events`)
   let releaseAgain!: () => void

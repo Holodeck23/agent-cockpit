@@ -75,4 +75,3 @@ The boundary-setting task is complete when this file remains the canonical check
 ## Known issues found during acceptance
 
 - ~~**Starter click-through (P1)**~~ *Fixed 2026-09-30:* the native folder picker's Open button sat over the first-run starter suggestions, which sent on one click. Starters now only fill the message box and focus it; Enter sends. The composer also turns off macOS inline writing suggestions, whose guessed word Enter would otherwise accept instead of sending. Gate: `tsx scripts/proof-b.ts b3` (20 checks) on the packaged app.
-- The transcript path at the bottom of the conversation menu renders with a stray trailing slash.

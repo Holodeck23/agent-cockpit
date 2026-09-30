@@ -73,7 +73,7 @@ export function ProjectsMenu({ projects }: ProjectsMenuProps) {
                   <ProjectAvatar project={project} solid={project.path === projects.active?.path} />
                   <span className="project-item-text">
                     <span className="project-item-name">{project.name}</span>
-                    <span className="project-item-path">{project.path}</span>
+                    <span className="project-item-path"><bdi dir="ltr">{project.path}</bdi></span>
                   </span>
                   {project.pinned ? <PinIcon className="pinned-mark" title="Pinned" /> : null}
                 </button>
