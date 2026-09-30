@@ -1,15 +1,19 @@
+import { createHash } from 'node:crypto'
 import { closeSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { decodeReference, FILE_REFERENCE, MessageReferenceError } from './references.ts'
 
-const HIDDEN = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release'])
-const MAX_BYTES = 100_000
+export const HIDDEN = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release'])
+export const MAX_BYTES = 100_000
 export interface FileEntry { name: string; path: string; kind: 'directory' | 'file' }
 export interface FileListing { path: string; entries: FileEntry[]; truncated: boolean }
-export interface FilePreview { path: string; text: string; bytes: number }
+/** `version` is a hash of the bytes read; a save must name it, so edits made meanwhile are never overwritten. */
+export interface FilePreview { path: string; text: string; bytes: number; version: string }
+
+export const versionOf = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex')
 
 /** Filesystem errors carry absolute paths; callers only ever see the project-relative one. */
-function explained<T>(shown: string, missing: string, read: () => T): T {
+export function explained<T>(shown: string, missing: string, read: () => T): T {
   try {
     return read()
   } catch (error) {
@@ -22,7 +26,7 @@ function explained<T>(shown: string, missing: string, read: () => T): T {
 }
 const realpathOrExplain = (path: string, shown: string, missing: string): string => explained(shown, missing, () => realpathSync(path))
 
-function contained(projectPath: string, path: string): { root: string; target: string } {
+export function contained(projectPath: string, path: string): { root: string; target: string } {
   if (isAbsolute(path) || path.split(/[\\/]/).includes('..')) throw new Error('File must be inside the project')
   const root = realpathOrExplain(projectPath, 'the project folder', 'Project folder is unavailable')
   const target = realpathOrExplain(resolve(root, path), path || 'the project folder', `Not found in this project: ${path}`)
@@ -50,7 +54,12 @@ export function readProjectFile(projectPath: string, path: string): FilePreview 
 
 function readInside(projectPath: string, path: string): FilePreview {
   const { root, target } = contained(projectPath, path)
-  // Bounded read from one descriptor; reject devices, pipes, directories and binary data.
+  const { text, data } = readText(target)
+  return { path: relative(root, target), text, bytes: data.length, version: versionOf(data) }
+}
+
+/** Bounded read from one descriptor; rejects devices, pipes, directories, binary data and invalid UTF-8. */
+export function readText(target: string): { text: string; data: Buffer } {
   if (!statSync(target).isFile()) throw new Error('Choose a text file')
   const fd = openSync(target, 'r')
   try {
@@ -68,8 +77,8 @@ function readInside(projectPath: string, path: string): FilePreview {
     const data = buffer.subarray(0, bytes)
     if (data.includes(0)) throw new Error('Binary files cannot be previewed or attached')
     let text: string
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(data) } catch { throw new Error('Only UTF-8 text files can be previewed or attached') }
-    return { path: relative(root, target), text, bytes }
+    try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(data) } catch { throw new Error('Only UTF-8 text files can be previewed or attached') }
+    return { text, data }
   } finally { closeSync(fd) }
 }
 

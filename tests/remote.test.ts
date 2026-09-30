@@ -53,7 +53,7 @@ describe('phone access guard', () => {
     expect(isRemoteRoute('GET', '/api/threads')).toBe(true)
     expect(isRemoteRoute('POST', '/api/threads/abc/approvals/xyz')).toBe(true)
     expect(isRemoteRoute('POST', '/api/threads/abc/messages')).toBe(true)
-    for (const [method, path] of [['POST', '/api/threads'], ['POST', '/api/projects'], ['GET', '/api/files'], ['POST', '/api/workflows'],
+    for (const [method, path] of [['POST', '/api/threads'], ['POST', '/api/projects'], ['GET', '/api/files'], ['PUT', '/api/files/write'], ['POST', '/api/workflows'],
       ['POST', '/api/processes/p1/stop'], ['POST', '/api/threads/abc/agent'], ['GET', '/api/remote'], ['POST', '/api/mcp/tool']]) {
       expect(isRemoteRoute(method!, path!)).toBe(false)
     }

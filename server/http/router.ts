@@ -1,5 +1,6 @@
 import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
+import { FileConflictError, writeProjectFile } from '../files/editor.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -28,6 +29,13 @@ const createThreadBody = z.object({
 const messageBody = z.object({ text: z.string().min(1).max(200_000) })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 const completedBody = z.object({ completed: z.boolean() })
+const writeFileBody = z.object({
+  projectPath: z.string().min(1).max(1000),
+  path: z.string().min(1).max(1000),
+  text: z.string().max(200_000),
+  /** The version the edit started from; null creates a new file. */
+  expected: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+})
 const switchBody = z.object({ settings: threadSettingsSchema })
 const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
 
@@ -79,6 +87,17 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       if (parts[1] === 'agents' && parts.length === 2 && method === 'GET' && agents) {
         sendJson(res, 200, { data: await agents() })
+        return true
+      }
+      if (parts[1] === 'files' && parts[2] === 'write' && method === 'PUT') {
+        if (viaPhone) throw new HttpError(403, 'Editing files is only available on the Mac')
+        const body = parseBody(writeFileBody, await readJson(req))
+        if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+        try {
+          sendJson(res, 200, { data: writeProjectFile(body.projectPath, body.path, body.text, body.expected) })
+        } catch (error) {
+          throw new HttpError(error instanceof FileConflictError ? 409 : 400, error instanceof Error ? error.message : String(error))
+        }
         return true
       }
       if (parts[1] === 'files' && method === 'GET') {
