@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
+import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
@@ -44,7 +45,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   })
   child.on('error', (error) => {
     exited = true
-    onEvent({ kind: 'error', message: `Could not start claude: ${error.message}` })
+    onEvent({ kind: 'error', message: startErrorMessage('claude', error) })
   })
   child.on('exit', (code) => {
     exited = true

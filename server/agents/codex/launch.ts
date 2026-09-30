@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
+import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
 import { parseCodexNotification } from './parse.ts'
@@ -154,7 +155,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
 
   child.on('error', (error) => {
     exited = true
-    onEvent({ kind: 'error', message: `Could not start codex: ${error.message}` })
+    onEvent({ kind: 'error', message: startErrorMessage('codex', error) })
   })
   child.on('exit', (code) => {
     exited = true
