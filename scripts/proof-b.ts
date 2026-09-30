@@ -244,11 +244,16 @@ async function b3(): Promise<void> {
   await page.locator('.note', { hasText: 'Stopped' }).waitFor({ timeout: 30_000 })
   check('Stop ends the turn with a Stopped note', (await headStatus(page).textContent()) !== 'Working')
 
-  // A suggestion starts a conversation in one click.
+  // A suggestion only fills the message box (a stray click must never start a run); Enter sends it.
   await page.getByRole('tab', { name: /Sprout/ }).click()
   await page.locator('.suggestion').first().click()
+  const message = messageBox(page)
+  check('suggestion fills the message box', (await message.inputValue()) === 'Explain how this project is put together')
+  check('suggestion alone starts nothing', (await page.locator('.card').count()) === 0)
+  check('message box has focus after a suggestion', await message.evaluate((el) => el === document.activeElement))
+  await page.keyboard.press('Enter')
   await page.getByRole('heading', { level: 1, name: 'Explain how this project is put together' }).waitFor({ timeout: 15_000 })
-  check('suggestion started a conversation in Sprout', (await page.locator('.card').count()) === 1)
+  check('Enter then started a conversation in Sprout', (await page.locator('.card').count()) === 1)
 }
 
 if (mode === 'b1') await b1()

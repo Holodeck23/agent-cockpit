@@ -3,7 +3,7 @@ import { api, type Project, type ThreadMeta } from '../api.ts'
 import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
-import { ArrowUpIcon, FolderIcon } from './icons.tsx'
+import { FolderIcon, PlusIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
 
 interface NewConversationProps {
@@ -63,6 +63,9 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
 export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(loadChoice)
   const [starting, setStarting] = useState(false)
+  // Starters fill the composer rather than sending: a stray click (e.g. passing
+  // through from the native folder picker) must never start an agent run.
+  const [prefill, setPrefill] = useState<{ text: string }>()
 
   const changeChoice = (next: AgentChoice): void => {
     setChoice(next)
@@ -104,10 +107,10 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
               </p>
               <div className="suggestions">
                 {SUGGESTIONS.map((suggestion) => (
-                  <button key={suggestion} type="button" className="suggestion" disabled={starting} onClick={() => void start(suggestion).catch(() => undefined)}>
+                  <button key={suggestion} type="button" className="suggestion" disabled={starting} title="Put this in the message box" onClick={() => setPrefill({ text: suggestion })}>
                     <span>{suggestion}</span>
                     <span className="suggestion-go" aria-hidden>
-                      <ArrowUpIcon />
+                      <PlusIcon />
                     </span>
                   </button>
                 ))}
@@ -125,6 +128,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
         onBrowseFiles={onBrowseFiles}
         initialDraft={initialDraft}
         onDraftLoaded={onDraftLoaded}
+        prefill={prefill}
         projectPath={project?.path}
         draftKey={`new:${project?.path ?? ''}`}
         placeholder="Describe what you want…"

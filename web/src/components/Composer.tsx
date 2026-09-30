@@ -7,6 +7,8 @@ interface ComposerProps {
   onBrowseFiles?: () => void
   initialDraft?: string
   onDraftLoaded?: () => void
+  /** Replaces the draft and focuses the box, e.g. from a starter suggestion. A new object each time. */
+  prefill?: { readonly text: string }
   projectPath?: string
   draftKey: string
   placeholder: string
@@ -17,6 +19,9 @@ interface ComposerProps {
 }
 
 const MAX_HEIGHT = 220
+// macOS inline predictions put a guessed word in the box, and Enter accepts the guess
+// instead of sending. A prompt should hold only what the person typed.
+const NO_WRITING_SUGGESTIONS: Record<string, string> = { writingsuggestions: 'false' }
 
 function loadDraft(key: string): string {
   try {
@@ -35,7 +40,7 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, projectPath, draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
@@ -49,6 +54,15 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, projectPa
     setText(next)
     if (shouldAppend) { appliedDraft.current = initialDraft; saveDraft(draftKey, next); onDraftLoaded?.() }
   }, [draftKey, initialDraft, onDraftLoaded])
+
+  useEffect(() => {
+    if (!prefill) return
+    setText(prefill.text)
+    saveDraft(draftKey, prefill.text)
+    const el = box.current
+    if (el) { el.focus(); el.setSelectionRange(prefill.text.length, prefill.text.length) }
+    // Only a new prefill applies; draftKey is read at that moment.
+  }, [prefill])
 
   // Grow with the text, up to a limit, then scroll.
   useLayoutEffect(() => {
@@ -94,6 +108,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, projectPa
             placeholder={placeholder}
             aria-label="Message"
             rows={1}
+            {...NO_WRITING_SUGGESTIONS}
             disabled={disabled}
             onChange={(e) => update(e.target.value)}
             onKeyDown={onKeyDown}
