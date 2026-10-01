@@ -49,7 +49,7 @@
     "dock-frames": "tsx scripts/make-dock-frames.ts"
   },
   "author": "",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "devDependencies": {
