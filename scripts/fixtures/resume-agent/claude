@@ -1,0 +1,19 @@
+#!/bin/sh
+# Stand-in `claude` for `npm run proof:import`: each reply names the session it was resumed with
+# (--resume) or says it is new, so the proof can see an imported conversation continue the same
+# session. Exits on stdin EOF, like the real CLI.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit resume fixture)"; exit 0; }
+session=""; resumed=""; previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id) session="$arg" ;; --resume) session="$arg"; resumed=1 ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"resume-fixture"}\n' "$session"
+turn=0
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  turn=$((turn + 1))
+  if [ -n "$resumed" ]; then text="Resumed Claude session $session."; else text="New Claude session."; fi
+  printf '{"type":"assistant","message":{"id":"resume-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$text"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'
+done

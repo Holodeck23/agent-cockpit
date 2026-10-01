@@ -71,7 +71,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <span className="phone-title">Cockpit</span>
         </header>
       ) : (
-        <ProjectTabBar projects={projects} />
+        <ProjectTabBar projects={projects} onImported={(meta) => { cockpit.refresh(); cockpit.select(meta.id); setSection('conversations') }} />
       )}
       <SubNav
         section={section}

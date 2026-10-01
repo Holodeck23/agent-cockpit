@@ -1,11 +1,13 @@
 import type { Project } from '../api.ts'
 import type { Projects } from '../useProjects.ts'
+import type { ThreadMeta } from '../api.ts'
 import { Bars, ChatIcon, Mark, PinIcon } from './icons.tsx'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 import { ProjectsMenu } from './ProjectsMenu.tsx'
 
 interface ProjectTabBarProps {
   projects: Projects
+  onImported?: (meta: ThreadMeta) => void
 }
 
 function Tab({ project, active, projects }: { project: Project; active: boolean; projects: Projects }) {
@@ -50,7 +52,7 @@ function Tab({ project, active, projects }: { project: Project; active: boolean;
   )
 }
 
-export function ProjectTabBar({ projects }: ProjectTabBarProps) {
+export function ProjectTabBar({ projects, onImported }: ProjectTabBarProps) {
   return (
     <header className="tabbar">
       <Mark className="tabbar-mark" />
@@ -60,7 +62,7 @@ export function ProjectTabBar({ projects }: ProjectTabBarProps) {
         ))}
       </div>
       <div className="tabbar-spacer" />
-      <ProjectsMenu projects={projects} />
+      <ProjectsMenu projects={projects} onImported={onImported} />
     </header>
   )
 }

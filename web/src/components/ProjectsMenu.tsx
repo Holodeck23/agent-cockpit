@@ -2,18 +2,23 @@ import { useState, type FormEvent } from 'react'
 import { native } from '../native.ts'
 import type { Projects } from '../useProjects.ts'
 import { usePopover } from '../usePopover.ts'
-import { ChevronDownIcon, FolderIcon, PinIcon, PlusIcon } from './icons.tsx'
+import { ChatIcon, ChevronDownIcon, FolderIcon, PinIcon, PlusIcon } from './icons.tsx'
+import { ImportConversations } from './ImportConversations.tsx'
+import type { ThreadMeta } from '../api.ts'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 import { ProjectSettings } from './ProjectSettings.tsx'
 
 interface ProjectsMenuProps {
   projects: Projects
+  /** A session was imported as a conversation: show it. */
+  onImported?: (meta: ThreadMeta) => void
 }
 
-export function ProjectsMenu({ projects }: ProjectsMenuProps) {
+export function ProjectsMenu({ projects, onImported }: ProjectsMenuProps) {
   const { open, setOpen, ref: rootRef } = usePopover<HTMLDivElement>()
   const [typedPath, setTypedPath] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const active = projects.active
 
   const openPath = (path: string): void => {
@@ -65,6 +70,12 @@ export function ProjectsMenu({ projects }: ProjectsMenuProps) {
               {active.name} settings…
             </button>
           ) : null}
+          {active && onImported ? (
+            <button type="button" role="menuitem" className="menu-item" onClick={() => { setOpen(false); setImportOpen(true) }}>
+              <ChatIcon />
+              Import conversations…
+            </button>
+          ) : null}
           {projects.all.length > 0 ? <p className="menu-label">Recent</p> : null}
           <ul className="menu-list">
             {projects.all.map((project) => (
@@ -81,6 +92,9 @@ export function ProjectsMenu({ projects }: ProjectsMenuProps) {
             ))}
           </ul>
         </div>
+      ) : null}
+      {importOpen && active && onImported ? (
+        <ImportConversations project={active} onClose={() => setImportOpen(false)} onImported={(meta) => { setImportOpen(false); onImported(meta) }} />
       ) : null}
       {settingsOpen && active ? (
         <ProjectSettings key={active.path} project={active} onSave={(patch) => projects.saveSettings(active, patch)}

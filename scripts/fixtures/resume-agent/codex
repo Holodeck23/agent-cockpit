@@ -1,0 +1,25 @@
+#!/usr/bin/perl
+# Stand-in `codex app-server` for `npm run proof:import`: answers the JSON-RPC calls Cockpit makes and
+# replies naming the thread it was resumed with (thread/resume) or "new", so the proof can see an
+# imported Codex conversation continue the same thread. Perl, because /usr/bin always has it.
+use strict; use warnings;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "codex-cli 0.0.0 (Cockpit resume fixture)\n"; exit 0 }
+my $thread = ''; my $resumed = 0; my $turn = 0;
+while (my $line = <STDIN>) {
+  my ($method) = $line =~ /"method":\s*"([^"]+)"/;
+  my ($id) = $line =~ /"id":\s*(\d+)/;
+  next unless defined $method && defined $id;
+  if ($method eq 'initialize') { print qq({"id":$id,"result":{"userAgent":"fixture"}}\n) }
+  elsif ($method eq 'thread/resume') { ($thread) = $line =~ /"threadId":\s*"([^"]+)"/; $resumed = 1; print qq({"id":$id,"result":{"thread":{"id":"$thread"}}}\n) }
+  elsif ($method eq 'thread/start') { $thread = 'fixture-thread'; print qq({"id":$id,"result":{"thread":{"id":"$thread"}}}\n); print qq({"method":"thread/started","params":{"thread":{"id":"$thread"}}}\n) }
+  elsif ($method eq 'turn/start') {
+    $turn++;
+    my $text = $resumed ? "Resumed Codex thread $thread." : 'New Codex thread.';
+    print qq({"id":$id,"result":{"turn":{"id":"turn-$turn"}}}\n);
+    print qq({"method":"turn/started","params":{"turn":{"id":"turn-$turn"}}}\n);
+    print qq({"method":"item/completed","params":{"item":{"type":"agentMessage","id":"msg-$turn","text":"$text"}}}\n);
+    print qq({"method":"turn/completed","params":{"turn":{"id":"turn-$turn","status":"completed"}}}\n);
+  }
+  else { print qq({"id":$id,"result":{}}\n) }
+}

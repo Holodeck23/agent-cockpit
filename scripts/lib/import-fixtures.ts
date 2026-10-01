@@ -49,14 +49,25 @@ export function codexSessionText(cwd: string): string {
   )
 }
 
-/** Writes both into a fake home: ~/.claude/projects/<encoded>/<id>.jsonl and ~/.codex/sessions/2026/10/01/rollout-….jsonl. */
-export function writeImportHome(home: string, projectPath: string): void {
+/** Moves every timestamp so the earliest is `start` (ms), keeping the gaps between them. */
+function startingAt(text: string, start: number | undefined): string {
+  if (start === undefined) return text
+  const stamps = [...text.matchAll(/"timestamp":"([^"]+)"/g)].map((m) => Date.parse(m[1]!))
+  const shift = start - Math.min(...stamps)
+  return text.replace(/"timestamp":"([^"]+)"/g, (_m, iso: string) => `"timestamp":"${new Date(Date.parse(iso) + shift).toISOString()}"`)
+}
+
+/**
+ * Writes both into a fake home: ~/.claude/projects/<encoded>/<id>.jsonl and ~/.codex/sessions/2026/10/01/rollout-….jsonl.
+ * `start` moves the sessions' times (e.g. to two hours ago), so screenshots show ordinary local times.
+ */
+export function writeImportHome(home: string, projectPath: string, start?: number): void {
   const claude = claudeProjectDir(home, projectPath)
   mkdirSync(claude, { recursive: true })
-  writeFileSync(join(claude, `${CLAUDE_SESSION}.jsonl`), claudeSessionText(projectPath))
+  writeFileSync(join(claude, `${CLAUDE_SESSION}.jsonl`), startingAt(claudeSessionText(projectPath), start))
   const codex = join(home, '.codex', 'sessions', '2026', '10', '01')
   mkdirSync(codex, { recursive: true })
-  writeFileSync(join(codex, `rollout-2026-10-01T08-48-47-${CODEX_SESSION}.jsonl`), codexSessionText(projectPath))
+  writeFileSync(join(codex, `rollout-2026-10-01T08-48-47-${CODEX_SESSION}.jsonl`), startingAt(codexSessionText(projectPath), start))
   // A session from another folder that must never be listed.
   writeFileSync(join(codex, 'rollout-2026-10-01T09-00-00-other.jsonl'), codexSessionText('/some/other/project'))
 }
