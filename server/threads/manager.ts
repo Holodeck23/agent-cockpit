@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { launchAntigravity } from '../agents/antigravity/launch.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
@@ -79,6 +80,15 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       onEvent,
       req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit), env: req.cockpit.secretEnv } : {},
     ),
+  antigravity: (req, onEvent) =>
+    launchAntigravity({
+      cwd: req.cwd,
+      model: req.settings.model,
+      effort: req.settings.effort,
+      permissionMode: req.settings.permissionMode,
+      resume: req.resume,
+      instructions: instructionsFor(req),
+    }, onEvent),
   opencode: (req, onEvent) =>
     launchOpencode(
       {

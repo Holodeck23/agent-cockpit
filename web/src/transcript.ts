@@ -28,7 +28,7 @@ export type TranscriptItem =
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
 
 export function agentName(agent: AgentId): string {
-  return agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : 'Claude Code'
+  return agent === 'codex' ? 'Codex' : agent === 'antigravity' ? 'Antigravity' : agent === 'opencode' ? 'OpenCode' : 'Claude Code'
 }
 
 const basename = (path: string): string => path.split('/').filter(Boolean).pop() ?? path
@@ -40,9 +40,17 @@ function field(input: unknown, key: string): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function firstField(input: unknown, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = field(input, key)
+    if (value) return value
+  }
+  return undefined
+}
+
 /** The main argument of a tool call, for approval cards. */
 export function toolDetail(input: unknown): string {
-  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'id', 'message', 'text']) {
+  for (const key of ['command', 'CommandLine', 'file_path', 'path', 'AbsolutePath', 'pattern', 'Query', 'url', 'Url', 'query', 'description', 'id', 'message', 'text']) {
     const value = field(input, key)
     if (value) return value
   }
@@ -93,24 +101,29 @@ function describeCockpitTool(tool: string, input: unknown): string {
 
 /** A plain-words activity line for a tool call: "Reading README.md", "Running npm test". */
 export function describeTool(name: string, input: unknown): string {
-  const path = field(input, 'file_path') ?? field(input, 'path')
+  const path = firstField(input, 'file_path', 'path', 'AbsolutePath')
   if (name.startsWith('mcp__cockpit__')) return describeCockpitTool(name.slice('mcp__cockpit__'.length), input)
   if (name.startsWith('mcp__')) return `Using ${friendlyToolName(name)}`
   switch (name) {
     case 'Bash':
-    case 'Shell': {
+    case 'Shell':
+    case 'run_command': {
       const description = field(input, 'description')
       if (description) return clip(description)
-      const command = field(input, 'command')
+      const command = firstField(input, 'command', 'CommandLine')
       return command ? `Running ${clip(command, 48)}` : 'Running a command'
     }
     case 'Read':
+    case 'view_file':
       return path ? `Reading ${basename(path)}` : 'Reading a file'
     case 'Write':
+    case 'write_to_file':
       return path ? `Writing ${basename(path)}` : 'Writing a file'
     case 'Edit':
     case 'MultiEdit':
     case 'NotebookEdit':
+    case 'replace_file_content':
+    case 'multi_replace_file_content':
       return path ? `Editing ${clip(path.split(', ').map(basename).join(', '), 48)}` : 'Editing files'
     case 'Glob':
       return `Finding files${field(input, 'pattern') ? ` matching ${clip(field(input, 'pattern') ?? '', 40)}` : ''}`
@@ -125,7 +138,8 @@ export function describeTool(name: string, input: unknown): string {
       }
     }
     case 'WebSearch':
-      return `Searching the web for “${clip(field(input, 'query') ?? '', 40)}”`
+    case 'search_web':
+      return `Searching the web for “${clip(firstField(input, 'query', 'Query') ?? '', 40)}”`
     case 'TodoWrite':
       return 'Updating the plan'
     case 'Task':

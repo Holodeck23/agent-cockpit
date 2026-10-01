@@ -19,6 +19,8 @@ const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
   claude: ['haiku', 'sonnet', 'opus'],
   // Account-specific model ids can be typed; blank uses the user's CLI default.
   codex: [],
+  // Current subscription-backed models reported by `agy models`; blank uses Antigravity's default.
+  antigravity: ['gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high', 'gemini-3.1-pro-low', 'gemini-3.1-pro-high'],
   // OpenRouter through OpenCode: openrouter/<provider>/<model>; blank uses OpenCode's own default.
   opencode: ['openrouter/anthropic/claude-sonnet-4', 'openrouter/openai/gpt-4o', 'openrouter/google/gemini-2.5-pro'],
 }
@@ -134,7 +136,7 @@ export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPi
       {open ? (
         <div className="picker-panel" role="dialog" aria-label="Agent settings">
           <div className="segmented" role="radiogroup" aria-label="Agent">
-            {(['claude', 'codex', 'opencode'] as const).map((agent) => (
+            {(['claude', 'codex', 'antigravity', 'opencode'] as const).map((agent) => (
               <button
                 key={agent}
                 type="button"
@@ -184,6 +186,9 @@ export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPi
               ))}
             </select>
           </label>
+          {current.agent === 'antigravity' && current.permissionMode === 'manual' ? (
+            <p className="picker-note">Antigravity headless cannot pause for approval: workspace edits proceed, while shell commands that need approval are denied.</p>
+          ) : null}
           {onSwitch ? (
             <div className="picker-foot">
               <span className="picker-note">{lockedReason ?? 'The conversation so far goes to the new agent.'}</span>

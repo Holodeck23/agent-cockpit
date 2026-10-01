@@ -76,6 +76,7 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .glyph-you { color: var(--you); }
 .glyph-claude { color: #d97757; }
 .glyph-codex { color: var(--strong); }
+.glyph-antigravity { color: #4285f4; }
 .bubble {
   padding: 13px 18px; border: 1px solid var(--border); border-radius: 18px; background: var(--bubble-in);
   color: var(--strong); font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;

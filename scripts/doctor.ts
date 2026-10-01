@@ -8,7 +8,7 @@ const supported = platform() === 'darwin' && arch() === 'arm64'
 console.log(`${supported ? 'OK' : 'NOTE'} Platform: ${platform()} ${arch()}. Packaged MVP support: macOS Apple silicon.`)
 const env = { ...process.env, PATH: resolveAppPath().path }
 let found = 0
-for (const command of ['claude', 'codex']) {
+for (const command of ['claude', 'codex', 'agy', 'opencode']) {
   try {
     const version = execFileSync(command, ['--version'], { env, encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'pipe'] }).trim().split('\n')[0]
     console.log(`OK ${command}: ${version}`)

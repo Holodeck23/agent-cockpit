@@ -3,7 +3,7 @@ import { EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
 import type { NormalizedEvent } from '../agents/types.ts'
 
 export const threadSettingsSchema = z.object({
-  agent: z.enum(['claude', 'codex', 'opencode']).default('claude'),
+  agent: z.enum(['claude', 'codex', 'antigravity', 'opencode']).default('claude'),
   /** "/" and ":" for OpenCode's provider/model names (openrouter/openai/gpt-4o:free); each agent's launcher checks its own. */
   model: z
     .string()

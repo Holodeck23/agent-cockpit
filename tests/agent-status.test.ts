@@ -56,13 +56,14 @@ describe('createAgentStatus', () => {
     expect(first).toEqual([
       { id: 'claude', installation: { installed: true, version: '2.1.284 (Claude Code)' } },
       { id: 'codex', installation: { installed: false, problem: 'codex is not installed or not on your PATH' } },
+      { id: 'antigravity', installation: { installed: false, problem: 'agy is not installed or not on your PATH' } },
       { id: 'opencode', installation: { installed: false, problem: 'opencode is not installed or not on your PATH' } },
     ])
     await status()
-    expect(probes).toBe(3)
+    expect(probes).toBe(4)
     clock = 61_000
     await status()
-    expect(probes).toBe(6)
+    expect(probes).toBe(8)
   })
 
   it('says plainly when a CLI is missing', async () => {

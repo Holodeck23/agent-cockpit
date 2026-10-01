@@ -80,6 +80,7 @@ describe('startServer', () => {
     expect(JSON.parse(res.body)).toEqual({ data: [
       { id: 'claude', installation: { installed: true, version: 'claude 1.0' } },
       { id: 'codex', installation: { installed: true, version: 'codex 1.0' } },
+      { id: 'antigravity', installation: { installed: true, version: 'agy 1.0' } },
       { id: 'opencode', installation: { installed: true, version: 'opencode 1.0' } },
     ] })
   })

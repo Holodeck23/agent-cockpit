@@ -1,6 +1,6 @@
 # CLI protocol notes
 
-What it takes to drive `claude` and `codex` headless from another app. Everything here was verified by running the real CLIs (claude 2.1.283 to 2.1.284, codex-cli 0.147), and most of it is not obvious from the docs. Recorded wire traffic lives in `tests/fixtures/` and the parsers are tested against it.
+What it takes to drive the supported CLIs headless from another app. Everything here was verified by running the real CLIs, and most of it is not obvious from the docs. Recorded wire traffic lives in `tests/fixtures/` and the parsers are tested against it.
 
 ## Claude Code (`claude -p`)
 
@@ -46,6 +46,24 @@ JSON-RPC over stdio, without the `jsonrpc` field.
 - `turn/completed` with status `interrupted` is a stop; `error` notifications with `willRetry: true` are noise.
 - If `~/.codex/config.toml` pins a model newer than the installed CLI supports, every turn fails with a 400. Set a model on the conversation, or upgrade the CLI.
 - `codex app-server generate-ts --out <dir>` prints TypeScript types for the whole protocol. It's the fastest way to check a field name.
+
+## Antigravity (`agy`)
+
+Cockpit keeps one `agy` print-mode process alive per open session:
+
+```
+agy --input-format stream-json --output-format stream-json --disable-slash-commands
+    [--model <slug>] [--effort low|medium|high] [--conversation <uuid>]
+    [--mode plan | --dangerously-skip-permissions]
+```
+
+- First run emits `init` with a `conversation_id`; later processes resume it with `--conversation`. A real two-process run against the user's cached Google/Antigravity subscription recovered prior context.
+- Each stdin line is `{ "event":"user", "message": { "content":"..." } }`. Stdout carries `init`, `step_update` and terminal `result` objects. Agent response deltas render live; `result.response` becomes the persisted assistant message.
+- Tool steps arrive as `ACTIVE`, then `DONE` or `ERROR`, with parameters and output under `tool_info`. Cockpit uses conversation id plus step index as the stable activity id.
+- The CLI accepts only low, medium and high effort. Cockpit's shared xhigh/max choices clamp to high rather than sending an invalid flag.
+- **Headless approvals are policy-only.** The CLI cannot pause and send a permission request to the host. Its default policy permits workspace file operations and soft-denies shell actions that need review; auto-like Cockpit modes use `--dangerously-skip-permissions`, and Plan uses `--mode plan`. The picker states this limitation.
+- Authentication is cached by `agy`; the adapter never receives a key. The Gemini CLI personal tier returned `UNSUPPORTED_CLIENT`, while `agy` 1.2.14 reused the same user's subscription successfully.
+- Antigravity's global/workspace MCP configuration has no per-launch config flag. Cockpit does not mutate a user's global or project MCP files, so its session-scoped MCP tools are not attached to Antigravity yet.
 
 ## Switching agents
 

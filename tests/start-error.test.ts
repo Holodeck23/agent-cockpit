@@ -20,6 +20,12 @@ describe('startErrorMessage', () => {
     )
   })
 
+  it('explains a missing Antigravity CLI', () => {
+    expect(startErrorMessage('antigravity', spawnError('ENOENT', 'spawn agy ENOENT'))).toBe(
+      "Antigravity isn't installed or isn't on PATH. Install it and sign in, then restart Cockpit.",
+    )
+  })
+
   it('keeps the raw reason for other failures', () => {
     expect(startErrorMessage('claude', spawnError('EACCES', 'spawn claude EACCES'))).toBe(
       'Could not start claude: spawn claude EACCES',

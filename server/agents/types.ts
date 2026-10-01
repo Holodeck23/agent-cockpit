@@ -1,7 +1,7 @@
 // Agent-neutral event model. Every adapter translates its CLI's wire protocol
 // into these events; threads, storage and the UI only ever see this union.
 
-export type AgentId = 'claude' | 'codex' | 'opencode'
+export type AgentId = 'claude' | 'codex' | 'antigravity' | 'opencode'
 
 /** allow_session also applies the agent's own suggested rule for the rest of the session. */
 export type ApprovalBehavior = 'allow' | 'allow_session' | 'deny'

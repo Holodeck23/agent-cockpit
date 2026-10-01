@@ -1,0 +1,32 @@
+#!/usr/bin/perl
+# Stand-in `agy` for the packaged Antigravity proof. It speaks Antigravity CLI's
+# stream-json protocol, including session ids, tool steps, results and resume.
+use strict; use warnings;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "1.2.14 (Cockpit Antigravity fixture)\n"; exit 0 }
+my ($model, $effort, $session) = ('default', 'default', '055a398f-db14-4c5f-abbb-1bf03f8120a7');
+my ($auto, $plan) = (0, 0);
+for (my $i = 0; $i < @ARGV; $i++) {
+  $model = $ARGV[$i + 1] if $ARGV[$i] eq '--model';
+  $effort = $ARGV[$i + 1] if $ARGV[$i] eq '--effort';
+  $session = $ARGV[$i + 1] if $ARGV[$i] eq '--conversation';
+  $auto = 1 if $ARGV[$i] eq '--dangerously-skip-permissions';
+  $plan = 1 if $ARGV[$i] eq '--mode' && ($ARGV[$i + 1] // '') eq 'plan';
+}
+my $loaded = grep { $_ eq '--conversation' } @ARGV;
+my $turn = 0;
+print qq({"event":"init","conversation_id":"$session","init":{"model":"$model","cwd":"$ENV{PWD}","tools":["view_file"],"permission_mode":"request-review"}}\n);
+while (my $line = <STDIN>) {
+  next unless $line =~ /"event":"user"/;
+  $turn++;
+  my $instructions = $line =~ /cockpit-instructions/ ? 'instructions received' : 'no instructions';
+  print qq({"event":"step_update","step_update":{"conversation_id":"$session","step_index":0,"state":"DONE","step_type":"user_input"}}\n);
+  print qq({"event":"step_update","step_update":{"conversation_id":"$session","step_index":1,"state":"ACTIVE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"$ENV{PWD}/README.md"}}}}\n);
+  print qq({"event":"step_update","step_update":{"conversation_id":"$session","step_index":1,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"$ENV{PWD}/README.md"},"output":"1 line"}}}\n);
+  my $resume = $loaded ? " Resumed $session." : '';
+  $loaded = 0;
+  my $policy = $auto ? 'auto' : $plan ? 'plan' : 'headless review';
+  my $reply = "Using $model at $effort effort ($policy, $instructions).$resume";
+  print qq({"event":"step_update","step_update":{"conversation_id":"$session","step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"$reply"}}\n);
+  print qq({"event":"result","result":{"conversation_id":"$session","status":"SUCCESS","response":"$reply","duration_seconds":0.02,"num_turns":$turn}}\n);
+}
