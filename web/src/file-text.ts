@@ -56,3 +56,40 @@ export function copyPath(path: string, attempt: number): string {
 
 export const draftKey = (projectPath: string, path: string): string => `file-draft:${projectPath}:${path}`
 export const tabsKey = (projectPath: string): string => `cockpit:file-tabs:${projectPath}`
+
+/**
+ * Open tabs name a document from "Your documents" as "documents:<name>"; project files keep
+ * their plain relative path. The API helpers split this back into a space and a path.
+ */
+export const DOCUMENTS_PREFIX = 'documents:'
+export type FileSpace = 'project' | 'documents'
+export function spaceOf(path: string): { space: FileSpace; path: string } {
+  return path.startsWith(DOCUMENTS_PREFIX) ? { space: 'documents', path: path.slice(DOCUMENTS_PREFIX.length) } : { space: 'project', path }
+}
+export const inSpace = (space: FileSpace, path: string): string => (space === 'documents' ? `${DOCUMENTS_PREFIX}${path}` : path)
+
+/** The file name a tab shows: no folders, no space prefix. */
+export const fileName = (path: string): string => spaceOf(path).path.split('/').pop() ?? path
+
+/** Words as a reader counts them: runs of letters or digits, apostrophes and hyphens inside a word. */
+export function wordCount(text: string): number {
+  return text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length ?? 0
+}
+
+export const lineCount = (text: string): number => text.split('\n').length
+
+/** New file kinds and their extensions; "other" takes the name as typed. */
+export const NEW_FILE_KINDS = [
+  { id: 'markdown', label: 'Markdown', ext: '.md', starter: '' },
+  { id: 'json', label: 'JSON', ext: '.json', starter: '{\n}\n' },
+  { id: 'text', label: 'Plain text', ext: '.txt', starter: '' },
+  { id: 'other', label: 'Other…', ext: '', starter: '' },
+] as const
+export type NewFileKind = (typeof NEW_FILE_KINDS)[number]['id']
+
+/** "notes" as Markdown → "notes.md"; a name that already ends in the extension is left alone. */
+export function withExtension(name: string, kind: NewFileKind): string {
+  const ext = NEW_FILE_KINDS.find((k) => k.id === kind)?.ext ?? ''
+  const trimmed = name.trim()
+  return !ext || trimmed.toLowerCase().endsWith(ext) ? trimmed : `${trimmed}${ext}`
+}

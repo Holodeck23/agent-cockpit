@@ -2,6 +2,7 @@ import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
 import { FileConflictError, writeProjectFile } from '../files/editor.ts'
 import { checkReferences, searchFiles } from '../files/search.ts'
+import { listDocuments, markDocument, renameFile, spaceRoot, spaceSchema } from '../files/documents.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -39,7 +40,11 @@ const writeFileBody = z.object({
   text: z.string().max(200_000),
   /** The version the edit started from; null creates a new file. */
   expected: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  /** The repository, or the app's own documents folder for the project. */
+  space: spaceSchema,
 })
+const renameBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(1000), name: z.string().min(1).max(255), space: spaceSchema })
+const markBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(255), pinned: z.boolean().optional(), archived: z.boolean().optional() })
 const switchBody = z.object({ settings: threadSettingsSchema })
 const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
 // A data: URL is about 4/3 of the file; the 512 KB limit itself is checked after decoding.
@@ -100,11 +105,35 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         const body = parseBody(writeFileBody, await readJson(req))
         if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
         try {
-          sendJson(res, 200, { data: writeProjectFile(body.projectPath, body.path, body.text, body.expected) })
+          sendJson(res, 200, { data: writeProjectFile(spaceRoot(store.root, body.projectPath, body.space), body.path, body.text, body.expected) })
         } catch (error) {
           throw new HttpError(error instanceof FileConflictError ? 409 : 400, error instanceof Error ? error.message : String(error))
         }
         return true
+      }
+      if (parts[1] === 'files' && parts[2] === 'rename' && method === 'POST') {
+        if (viaPhone) throw new HttpError(403, 'Renaming files is only available on the Mac')
+        const body = parseBody(renameBody, await readJson(req))
+        if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+        try { sendJson(res, 200, { data: { path: renameFile(store.root, body.projectPath, body.space, body.path, body.name) } }) }
+        catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
+      }
+      if (parts[1] === 'documents' && parts.length <= 3) {
+        if (viaPhone) throw new HttpError(403, 'Your documents are only available on the Mac')
+        if (method === 'GET' && parts.length === 2) {
+          const projectPath = url.searchParams.get('projectPath') ?? ''
+          if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+          sendJson(res, 200, { data: listDocuments(store.root, projectPath) })
+          return true
+        }
+        if (method === 'POST' && parts[2] === 'mark') {
+          const body = parseBody(markBody, await readJson(req))
+          if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+          try { markDocument(store.root, body.projectPath, body.path, body) } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+          sendJson(res, 200, { data: listDocuments(store.root, body.projectPath) })
+          return true
+        }
       }
       if (parts[1] === 'files' && parts[2] === 'search' && method === 'GET') {
         const projectPath = url.searchParams.get('projectPath') ?? ''
@@ -124,7 +153,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
         const path = url.searchParams.get('path') ?? ''
         try {
-          const data = parts[2] === 'read' ? readProjectFile(projectPath, path) : parts.length === 2 ? listFiles(projectPath, path) : undefined
+          const space = spaceSchema.parse(url.searchParams.get('space') ?? undefined)
+          if (space === 'documents' && viaPhone) throw new Error('Your documents are only available on the Mac')
+          const base = spaceRoot(store.root, projectPath, space)
+          const data = parts[2] === 'read' ? readProjectFile(base, path) : parts.length === 2 ? listFiles(base, path) : undefined
           if (!data) throw new Error('Unknown file action')
           sendJson(res, 200, { data })
         } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }

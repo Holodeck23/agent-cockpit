@@ -106,12 +106,15 @@ try {
   // New files go in the folder being shown and never replace an existing one.
   await page.locator('.file-row').filter({ hasText: 'docs' }).click()
   await page.getByRole('button', { name: 'New file' }).click()
+  await page.getByRole('menuitem', { name: /^Other/ }).click()
   await page.getByLabel('New file name').fill('planting.md')
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await page.locator('.file-tab.active').filter({ hasText: 'planting.md' }).waitFor()
   check('New file creates an empty file in the current folder', disk('docs/planting.md') === '')
+  // Markdown adds the extension, so "planting" is the same name again.
   await page.getByRole('button', { name: 'New file' }).click()
-  await page.getByLabel('New file name').fill('planting.md')
+  await page.getByRole('menuitem', { name: /^Markdown/ }).click()
+  await page.getByLabel('New file name').fill('planting')
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   check('creating an existing name is refused', await waitFor(page, 'the refusal', async () => (await page.getByRole('alert').filter({ hasText: 'already exists' }).count()) > 0))
 

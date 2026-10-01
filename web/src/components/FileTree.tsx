@@ -1,22 +1,29 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { api, type FileListing, type Project } from '../api.ts'
-import { FileIcon, FolderIcon, PlusIcon } from './icons.tsx'
+import type { NewFileKind } from '../file-text.ts'
+import { FileRow } from './FileRow.tsx'
+import { FolderIcon } from './icons.tsx'
+import { NewFileMenu } from './NewFileMenu.tsx'
 
 interface FileTreeProps {
   project: Project
   selected?: string
+  /** Open files with unsaved changes. */
+  dirty: ReadonlySet<string>
   onOpen: (path: string) => void
-  /** Creates an empty file in the folder being shown; resolves true once it is open. */
-  onCreate: (folder: string, name: string) => Promise<boolean>
+  /** Creates a file in the folder being shown; resolves true once it is open. */
+  onCreate: (folder: string, name: string, kind: NewFileKind) => Promise<boolean>
+  onRenamed: (from: string, to: string) => void
+  onTrashed: (path: string) => void
+  onError: (message: string) => void
 }
 
-export function FileTree({ project, selected, onOpen, onCreate }: FileTreeProps) {
+export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed, onTrashed, onError }: FileTreeProps) {
   const [folder, setFolder] = useState('')
   const [listing, setListing] = useState<FileListing>()
   const [error, setError] = useState('')
-  const [naming, setNaming] = useState(false)
-  const [name, setName] = useState('')
   const [refresh, setRefresh] = useState(0)
+  const reload = (): void => setRefresh((n) => n + 1)
 
   useEffect(() => {
     let active = true
@@ -29,46 +36,27 @@ export function FileTree({ project, selected, onOpen, onCreate }: FileTreeProps)
     return () => { active = false }
   }, [project, folder, refresh])
 
-  const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault()
-    if (await onCreate(folder, name)) {
-      setNaming(false)
-      setName('')
-      setRefresh((n) => n + 1)
-    }
-  }
-
   return (
-    <nav className="file-list" aria-label="Project files">
-      <header>
-        <span className="workflow-kicker">{project.name}</span>
-        <h1>Files</h1>
-        <p>Edit a text file, or add it to a conversation draft.</p>
-      </header>
+    <>
       <div className="file-location">
         <button type="button" disabled={!folder} onClick={() => setFolder(folder.split('/').slice(0, -1).join('/'))}>↑ Up</button>
         <code>{folder || '/'}</code>
-        <button type="button" className="file-new" onClick={() => setNaming(!naming)} aria-expanded={naming}>
-          <PlusIcon /> New file
-        </button>
+        <NewFileMenu onCreate={async (name, kind) => { const ok = await onCreate(folder, name, kind); if (ok) reload(); return ok }} />
       </div>
-      {naming ? (
-        <form className="file-new-form" onSubmit={(e) => void submit(e)}>
-          <input aria-label="New file name" placeholder="notes.md" value={name} autoFocus onChange={(e) => setName(e.target.value)} />
-          <button type="submit" className="button-primary" disabled={!name.trim()}>Create</button>
-        </form>
-      ) : null}
       {!listing ? <p role="status">{error ? 'Folder unavailable' : 'Loading files…'}</p> : listing.entries.length === 0 ? <p>No files in this folder.</p> : null}
-      {listing?.entries.map((entry) => (
-        <button type="button" key={entry.path} className={`file-row ${selected === entry.path ? 'selected' : ''}`}
-          onClick={() => (entry.kind === 'directory' ? setFolder(entry.path) : onOpen(entry.path))}>
-          {entry.kind === 'directory' ? <FolderIcon /> : <FileIcon />}
+      {listing?.entries.map((entry) => entry.kind === 'directory' ? (
+        <button type="button" key={entry.path} className="file-row" onClick={() => setFolder(entry.path)}>
+          <FolderIcon />
           <span>{entry.name}</span>
-          {entry.kind === 'directory' ? <span>›</span> : null}
+          <span>›</span>
         </button>
+      ) : (
+        <FileRow key={entry.path} projectPath={project.path} path={entry.path} selected={selected === entry.path} dirty={dirty.has(entry.path)}
+          onOpen={() => onOpen(entry.path)} onError={onError}
+          onRenamed={(to) => { onRenamed(entry.path, to); reload() }}
+          onTrashed={() => { onTrashed(entry.path); reload() }} />
       ))}
       {listing?.truncated ? <p>Showing the first 500 entries. Open a subfolder to narrow the list.</p> : null}
-      <footer>Generated folders, dependencies and symbolic links are hidden. UTF-8 text files up to 100 KB can be edited.</footer>
-    </nav>
+    </>
   )
 }

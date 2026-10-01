@@ -1,27 +1,59 @@
+import { useMemo, useState } from 'react'
 import type { Project } from '../api.ts'
+import { isDirty, spaceOf } from '../file-text.ts'
 import { useOpenFiles } from '../useOpenFiles.ts'
+import { DocumentList } from './DocumentList.tsx'
 import { FileEditor } from './FileEditor.tsx'
 import { FileTree } from './FileTree.tsx'
 import { FolderIcon } from './icons.tsx'
 
+type Space = 'project' | 'documents'
+const SPACE_KEY = 'cockpit:files-space'
+const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
+
 export function Files({ project, onAttach }: { project?: Project; onAttach: (reference: string) => void }) {
   const open = useOpenFiles(project?.path)
+  const [space, setSpace] = useState<Space>(loadSpace)
+  const dirty = useMemo(() => new Set(open.files.filter(isDirty).map((f) => f.path)), [open.files])
+  const choose = (next: Space): void => {
+    setSpace(next)
+    try { localStorage.setItem(SPACE_KEY, next) } catch { /* not remembered */ }
+  }
   if (!project) return <main className="workflow-empty"><FolderIcon /><h1>Files</h1><p>Open a project to browse its files.</p></main>
+  const shared = {
+    project, selected: open.active, dirty, onOpen: (path: string) => void open.open(path),
+    onRenamed: open.renamed, onTrashed: open.removed, onError: open.setError,
+  }
   return (
     <div className="files-layout">
-      <FileTree project={project} selected={open.active} onOpen={(path) => void open.open(path)} onCreate={open.create} />
+      <nav className="file-list" aria-label={space === 'project' ? 'Project files' : 'Your documents'}>
+        <header>
+          <span className="workflow-kicker">{project.name}</span>
+          <h1>Files</h1>
+          <div className="file-spaces" role="tablist" aria-label="Where">
+            <button type="button" role="tab" aria-selected={space === 'project'} onClick={() => choose('project')}>Project files</button>
+            <button type="button" role="tab" aria-selected={space === 'documents'} onClick={() => choose('documents')}>Your documents</button>
+          </div>
+          <p>{space === 'project' ? 'Edit a text file, or add it to a conversation draft.' : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
+        </header>
+        {space === 'project'
+          ? <FileTree {...shared} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />
+          : <DocumentList {...shared} onCreate={(name, kind) => open.create('', name, kind, 'documents')} />}
+        <footer>Generated folders, dependencies and symbolic links are hidden. UTF-8 text files up to 100 KB can be edited.</footer>
+      </nav>
       <FileEditor
         files={open.files}
         active={open.active}
         error={open.error}
         onSelect={(path) => void open.open(path)}
         onClose={open.close}
+        onCloseMany={open.closeMany}
         onChange={open.edit}
         onSave={(path, draft) => void open.save(path, { draft })}
         onReload={(path) => void open.reload(path)}
         onOverwrite={(path) => void open.overwrite(path)}
         onSaveCopy={(path) => void open.saveCopy(path)}
-        onAttach={(path) => onAttach(`@file:${encodeURIComponent(path)}`)}
+        onAttach={(path) => { if (spaceOf(path).space === 'project') onAttach(`@file:${encodeURIComponent(path)}`) }}
       />
     </div>
   )

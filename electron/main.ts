@@ -5,6 +5,7 @@ import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
+import { fileOnDisk, spaceSchema } from '../server/files/documents.ts'
 import { resolveAppPath } from './shell-path.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
@@ -130,6 +131,23 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
+  })
+  // Open in the default app, show in Finder, or move to the Trash: one file of a known project,
+  // in its folder or in the project's documents. Resolves to an error message, or undefined.
+  ipcMain.handle('cockpit:file-action', async (event, request: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || !running) return 'Not allowed'
+    const { projectPath, space, path, action } = (request ?? {}) as Record<string, unknown>
+    if (typeof projectPath !== 'string' || typeof path !== 'string' || !isProject(projectPath)) return 'Unknown project'
+    if (action !== 'open' && action !== 'reveal' && action !== 'trash') return 'Unknown action'
+    try {
+      const target = fileOnDisk(running.store.root, projectPath, spaceSchema.parse(space ?? undefined), path)
+      if (action === 'reveal') shell.showItemInFolder(target)
+      else if (action === 'open') { const failure = await shell.openPath(target); if (failure) return failure }
+      else await shell.trashItem(target)
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
   })
   // Opens a project's folder in Finder; only folders Cockpit already lists as projects.
   ipcMain.on('cockpit:open-folder', (event, path: unknown) => {

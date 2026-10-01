@@ -1,4 +1,6 @@
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
+import type { DocumentEntry } from '../../server/files/documents.ts'
+import { inSpace, spaceOf } from './file-text.ts'
 import type { FileSaved } from '../../server/files/editor.ts'
 import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
@@ -51,12 +53,29 @@ export const api = {
   createBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch } }),
   pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
-  readFile: (projectPath: string, path: string) => request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path })}`),
+  /** A "documents:" path reads from the project's documents; the result keeps the same naming. */
+  readFile: async (projectPath: string, tabPath: string) => {
+    const { space, path } = spaceOf(tabPath)
+    const read = await request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path, space })}`)
+    return { ...read, path: inSpace(space, read.path) }
+  },
+  listDocuments: (projectPath: string) => request<DocumentEntry[]>(`/api/documents?${new URLSearchParams({ projectPath })}`),
+  markDocument: (projectPath: string, path: string, change: { pinned?: boolean; archived?: boolean }) =>
+    request<DocumentEntry[]>('/api/documents/mark', { method: 'POST', body: { projectPath, path, ...change } }),
+  /** Renames in place; resolves to the new tab path. */
+  renameFile: async (projectPath: string, tabPath: string, name: string) => {
+    const { space, path } = spaceOf(tabPath)
+    const renamed = await request<{ path: string }>('/api/files/rename', { method: 'POST', body: { projectPath, path, name, space } })
+    return inSpace(space, renamed.path)
+  },
   searchFiles: (projectPath: string, q: string) => request<FileSearch>(`/api/files/search?${new URLSearchParams({ projectPath, q })}`),
   checkReferences: (projectPath: string, text: string) => request<ReferenceCheck[]>('/api/references/check', { method: 'POST', body: { projectPath, text } }),
   /** `expected` is the version the edit started from; null creates a new file. */
-  writeFile: (projectPath: string, path: string, text: string, expected: string | null) =>
-    request<FileSaved>('/api/files/write', { method: 'PUT', body: { projectPath, path, text, expected } }),
+  writeFile: async (projectPath: string, tabPath: string, text: string, expected: string | null) => {
+    const { space, path } = spaceOf(tabPath)
+    const saved = await request<FileSaved>('/api/files/write', { method: 'PUT', body: { projectPath, path, text, expected, space } })
+    return { ...saved, path: inSpace(space, saved.path) }
+  },
   listWorkflows: (projectPath: string) => request<Workflow[]>(`/api/workflows?projectPath=${encodeURIComponent(projectPath)}`),
   saveWorkflow: (body: WorkflowInput, id?: string) => request<Workflow>(id ? `/api/workflows/${id}/save` : '/api/workflows', { method: 'POST', body }),
   runWorkflow: (id: string) => request<ThreadMeta>(`/api/workflows/${id}/run`, { method: 'POST', body: {} }),
@@ -122,4 +141,5 @@ export function subscribe({ onUpdate, onProcess, onOpen, onRemote }: StreamHandl
 export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
+export type { DocumentEntry } from '../../server/files/documents.ts'
 export type { FileMatch, ReferenceCheck } from '../../server/files/search.ts'

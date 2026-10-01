@@ -5,6 +5,7 @@ export interface CockpitBridge {
   setTheme(mode: 'system' | 'light' | 'dark'): void
   revealTranscript(path: string): void
   openFolder(path: string): void
+  fileAction(request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined>
   setActivity(activity: { working: number; needs: number }): void
 }
 

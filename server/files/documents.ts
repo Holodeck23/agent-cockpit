@@ -1,0 +1,101 @@
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { z } from 'zod'
+import { contained, explained, HIDDEN } from './browser.ts'
+
+// "Your documents": notes and drafts Cockpit keeps per project in its own folder
+// (<root>/documents/<id>/), never in the repository. The same read and save rules as project
+// files apply; on top, a document can be pinned (listed first) or archived (listed only in
+// the Archived view). Those marks live beside the folder in <root>/documents/<id>.json.
+
+export type Space = 'project' | 'documents'
+export const spaceSchema = z.enum(['project', 'documents']).default('project')
+
+const idOf = (projectPath: string): string => createHash('sha256').update(projectPath).digest('hex').slice(0, 16)
+
+/** The project's documents folder, created on first use. */
+export function documentsDir(root: string, projectPath: string): string {
+  const dir = join(root, 'documents', idOf(projectPath))
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  return dir
+}
+
+/** The folder a file path is relative to, for either space. */
+export const spaceRoot = (root: string, projectPath: string, space: Space): string =>
+  space === 'documents' ? documentsDir(root, projectPath) : projectPath
+
+const marksSchema = z.object({ pinned: z.array(z.string()).default([]), archived: z.array(z.string()).default([]) })
+type Marks = z.output<typeof marksSchema>
+const marksFile = (root: string, projectPath: string): string => join(root, 'documents', `${idOf(projectPath)}.json`)
+
+function readMarks(root: string, projectPath: string): Marks {
+  try {
+    const file = marksFile(root, projectPath)
+    return existsSync(file) ? marksSchema.parse(JSON.parse(readFileSync(file, 'utf8'))) : marksSchema.parse({})
+  } catch {
+    return marksSchema.parse({})
+  }
+}
+function writeMarks(root: string, projectPath: string, marks: Marks): void {
+  const file = marksFile(root, projectPath)
+  writeFileSync(`${file}.tmp`, JSON.stringify(marks, null, 2), { mode: 0o600 })
+  renameSync(`${file}.tmp`, file)
+}
+
+export interface DocumentEntry { name: string; path: string; pinned: boolean; archived: boolean; modifiedAt: string }
+
+/** Files at the top of the documents folder: pinned first, then newest. Marks for vanished files are dropped. */
+export function listDocuments(root: string, projectPath: string): DocumentEntry[] {
+  const dir = documentsDir(root, projectPath)
+  const files = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && !e.name.startsWith('.') && !HIDDEN.has(e.name))
+  const names = new Set(files.map((e) => e.name))
+  const marks = readMarks(root, projectPath)
+  const kept = { pinned: marks.pinned.filter((n) => names.has(n)), archived: marks.archived.filter((n) => names.has(n)) }
+  if (kept.pinned.length !== marks.pinned.length || kept.archived.length !== marks.archived.length) writeMarks(root, projectPath, kept)
+  return files
+    .map((e) => ({ name: e.name, path: e.name, pinned: kept.pinned.includes(e.name), archived: kept.archived.includes(e.name),
+      modifiedAt: statSync(join(dir, e.name)).mtime.toISOString() }))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.modifiedAt.localeCompare(a.modifiedAt) || a.name.localeCompare(b.name))
+}
+
+/** Pins or archives a document; archiving also unpins it. */
+export function markDocument(root: string, projectPath: string, name: string, change: { pinned?: boolean; archived?: boolean }): void {
+  if (!existsSync(join(documentsDir(root, projectPath), name)) || name.includes('/')) throw new Error(`Not found in your documents: ${name}`)
+  const marks = readMarks(root, projectPath)
+  const toggle = (list: string[], on: boolean | undefined): string[] => on === undefined ? list : on ? [...new Set([...list, name])] : list.filter((n) => n !== name)
+  const archived = toggle(marks.archived, change.archived)
+  const pinned = toggle(marks.pinned, change.archived ? false : change.pinned)
+  writeMarks(root, projectPath, { pinned, archived })
+}
+
+/**
+ * Renames a file in its own folder; never replaces another file, never moves it elsewhere.
+ * Returns the new relative path. Pin and archive marks follow a renamed document.
+ */
+export function renameFile(root: string, projectPath: string, space: Space, path: string, name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed || trimmed.startsWith('.') || /[/\\]/.test(trimmed) || HIDDEN.has(trimmed)) throw new Error('Use a plain file name, without folders or a leading dot')
+  const base = spaceRoot(root, projectPath, space)
+  return explained(path, `Not found: ${path}`, () => {
+    const { root: real, target } = contained(base, path)
+    if (!statSync(target).isFile()) throw new Error('Only files can be renamed here')
+    const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''
+    const next = join(real, folder, trimmed)
+    if (existsSync(next)) throw new Error(`${trimmed} already exists`)
+    renameSync(target, next)
+    if (space === 'documents') {
+      const marks = readMarks(root, projectPath)
+      const swap = (list: string[]): string[] => list.map((n) => (n === path ? trimmed : n))
+      writeMarks(root, projectPath, { pinned: swap(marks.pinned), archived: swap(marks.archived) })
+    }
+    return `${folder}${trimmed}`
+  })
+}
+
+/** The absolute path of an existing file in either space, for opening or trashing it from the desktop shell. */
+export function fileOnDisk(root: string, projectPath: string, space: Space, path: string): string {
+  const { target } = contained(spaceRoot(root, projectPath, space), path)
+  if (!statSync(target).isFile()) throw new Error('Not a file')
+  return target
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api.ts'
-import { copyPath, draftKey, forDisk, isDirty, newFilePath, openFile, tabsKey, type OpenFile } from './file-text.ts'
+import { copyPath, draftKey, forDisk, inSpace, isDirty, NEW_FILE_KINDS, newFilePath, openFile, tabsKey, withExtension, type FileSpace, type NewFileKind, type OpenFile } from './file-text.ts'
 
 // The Files panel's open files. Drafts and the open tabs live in localStorage per
 // project, so leaving the panel, switching project or restarting loses nothing.
@@ -140,13 +140,36 @@ export function useOpenFiles(projectPath: string | undefined) {
     if (active === path) setActive(rest[Math.min(index, rest.length - 1)]?.path)
   }
 
-  /** Creates an empty file in `folder`; resolves true once it is open. */
-  const create = async (folder: string, name: string): Promise<boolean> => {
+  /**
+   * Closes every tab except `keep` (or all of them). Tabs with unsaved changes stay open so
+   * nothing typed is lost; resolves to how many stayed for that reason.
+   */
+  const closeMany = (keep?: string): number => {
+    const stays = current.current.filter((f) => f.path === keep || isDirty(f))
+    for (const f of current.current) if (!stays.includes(f) && projectPath) storage.set(draftKey(projectPath, f.path), undefined)
+    setFiles(stays)
+    if (!stays.some((f) => f.path === active)) setActive(stays[0]?.path)
+    return stays.filter((f) => f.path !== keep).length
+  }
+
+  /** After a rename on disk: the open tab follows the file (refused upstream while it has unsaved changes). */
+  const renamed = (from: string, to: string): void => {
+    if (projectPath) storage.set(draftKey(projectPath, from), undefined)
+    setFiles((all) => all.map((f) => (f.path === from ? { ...f, path: to } : f)))
+    if (active === from) setActive(to)
+  }
+
+  /** After a file went to the Trash: its tab closes without asking. */
+  const removed = (path: string): void => close(path)
+
+  /** Creates a file of `kind` in `folder` (or in the documents); resolves true once it is open. */
+  const create = async (folder: string, name: string, kind: NewFileKind = 'other', space: FileSpace = 'project'): Promise<boolean> => {
     if (!projectPath) return false
-    const path = newFilePath(folder, name)
-    if (!path) { setError('Use a plain file name, without folders or a leading dot'); return false }
+    const plain = newFilePath(space === 'documents' ? '' : folder, withExtension(name, kind))
+    if (!plain) { setError('Use a plain file name, without folders or a leading dot'); return false }
+    const path = inSpace(space, plain)
     try {
-      const saved = await api.writeFile(projectPath, path, '', null)
+      const saved = await api.writeFile(projectPath, path, NEW_FILE_KINDS.find((k) => k.id === kind)?.starter ?? '', null)
       await open(saved.path)
       return true
     } catch (e) {
@@ -155,5 +178,5 @@ export function useOpenFiles(projectPath: string | undefined) {
     }
   }
 
-  return { files, active, error, open, edit, save, overwrite, saveCopy, reload, close, create, setActive }
+  return { files, active, error, setError, open, edit, save, overwrite, saveCopy, reload, close, closeMany, renamed, removed, create, setActive }
 }
