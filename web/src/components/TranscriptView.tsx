@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ApprovalBehavior } from '../../../server/agents/types.ts'
+import type { AgentId, ApprovalBehavior } from '../../../server/agents/types.ts'
 import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
@@ -11,7 +11,7 @@ interface TranscriptViewProps {
   openApprovals: ReadonlySet<string>
   running: boolean
   streaming: string
-  streamingAuthor: 'claude' | 'codex'
+  streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
 }
 
@@ -28,7 +28,7 @@ function useTick(active: boolean): number {
   return now
 }
 
-function Author({ author, ts }: { author: 'you' | 'claude' | 'codex'; ts?: string }) {
+function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   return (
     <div className="author">
       <AgentGlyph author={author} />

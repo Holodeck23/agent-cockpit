@@ -6,7 +6,7 @@ import { inSpace, spaceOf } from './file-text.ts'
 import type { FileSaved } from '../../server/files/editor.ts'
 import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
-import type { ApprovalBehavior } from '../../server/agents/types.ts'
+import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo, ProcessRead } from '../../server/processes/runner.ts'
 import type { Project, ProjectPatch } from '../../server/projects/store.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
@@ -67,7 +67,7 @@ export const api = {
   deleteMemory: (id: string) => request<{ removed: string }>(`/api/memory/${id}`, { method: 'DELETE', body: {} }),
   clearMemory: (projectPath: string) => request<{ removed: number }>('/api/memory/clear', { method: 'POST', body: { projectPath } }),
   listImportable: (projectPath: string) => request<ImportableSession[]>(`/api/import?${new URLSearchParams({ projectPath })}`),
-  importSession: (projectPath: string, agent: 'claude' | 'codex', sessionId: string) =>
+  importSession: (projectPath: string, agent: AgentId, sessionId: string) =>
     request<ThreadMeta>('/api/import', { method: 'POST', body: { projectPath, agent, sessionId } }),
   listDocuments: (projectPath: string) => request<DocumentEntry[]>(`/api/documents?${new URLSearchParams({ projectPath })}`),
   markDocument: (projectPath: string, path: string, change: { pinned?: boolean; archived?: boolean }) =>

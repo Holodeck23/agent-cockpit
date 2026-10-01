@@ -28,7 +28,7 @@ export type TranscriptItem =
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
 
 export function agentName(agent: AgentId): string {
-  return agent === 'codex' ? 'Codex' : 'Claude Code'
+  return agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : 'Claude Code'
 }
 
 const basename = (path: string): string => path.split('/').filter(Boolean).pop() ?? path

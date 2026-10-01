@@ -19,6 +19,8 @@ const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
   claude: ['haiku', 'sonnet', 'opus'],
   // Account-specific model ids can be typed; blank uses the user's CLI default.
   codex: [],
+  // OpenRouter through OpenCode: openrouter/<provider>/<model>; blank uses OpenCode's own default.
+  opencode: ['openrouter/anthropic/claude-sonnet-4', 'openrouter/openai/gpt-4o', 'openrouter/google/gemini-2.5-pro'],
 }
 
 export const PERMISSION_LABEL: Record<ThreadSettings['permissionMode'], string> = {
@@ -130,7 +132,7 @@ export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPi
       {open ? (
         <div className="picker-panel" role="dialog" aria-label="Agent settings">
           <div className="segmented" role="radiogroup" aria-label="Agent">
-            {(['claude', 'codex'] as const).map((agent) => (
+            {(['claude', 'codex', 'opencode'] as const).map((agent) => (
               <button
                 key={agent}
                 type="button"

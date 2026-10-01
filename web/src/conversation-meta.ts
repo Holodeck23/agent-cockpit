@@ -29,7 +29,7 @@ export function toneFor(tag: string): TagTone {
 }
 
 export function agentLabel(agent: string): string {
-  return agent === 'codex' ? 'Codex' : 'Claude Code'
+  return agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : 'Claude Code'
 }
 
 /** "Today", "Yesterday", a weekday within the last week, else "12 Sep". */

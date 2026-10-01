@@ -1,6 +1,6 @@
 import type { AgentId } from './types.ts'
 
-const PRODUCT_NAMES: Record<AgentId, string> = { claude: 'Claude Code', codex: 'Codex' }
+const PRODUCT_NAMES: Record<AgentId, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' }
 
 /** Turns a failed spawn into a message a user can act on; a missing CLI is the common case. */
 export function startErrorMessage(agent: AgentId, error: NodeJS.ErrnoException): string {

@@ -1,7 +1,7 @@
 import type { AgentId } from '../../../server/agents/types.ts'
 
 // Author marks for the transcript and the agent picker. Simple generic shapes:
-// a person for you, a spark for Claude Code, a prompt for Codex.
+// a person for you, a spark for Claude Code, a prompt for Codex, open brackets for OpenCode.
 
 export function AgentGlyph({ author }: { author: 'you' | AgentId }) {
   if (author === 'you') {
@@ -9,6 +9,13 @@ export function AgentGlyph({ author }: { author: 'you' | AgentId }) {
       <svg className="glyph glyph-you" viewBox="0 0 24 24" aria-hidden>
         <circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.7" />
         <path d="M5 19.5c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (author === 'opencode') {
+    return (
+      <svg className="glyph glyph-opencode" viewBox="0 0 24 24" aria-hidden>
+        <path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H9M15 5h2.5A1.5 1.5 0 0 1 19 6.5v11a1.5 1.5 0 0 1-1.5 1.5H15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
       </svg>
     )
   }

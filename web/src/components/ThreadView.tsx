@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
 import { openApprovals } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
@@ -181,7 +182,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         onSubmit={(text) => api.send(meta.id, text).then(() => undefined)}
         picker={phone ? (
-          <span className="agent-static">{meta.settings.agent === 'codex' ? 'Codex' : 'Claude Code'}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>
+          <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>
         ) : (
           <AgentPicker
             key={`${meta.id}-${JSON.stringify(choice)}`}

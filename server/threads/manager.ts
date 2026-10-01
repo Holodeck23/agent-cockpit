@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
+import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
-import { COCKPIT_GUIDANCE, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
+import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { deriveStatus, messageCountOf, previewOf } from './status.ts'
@@ -78,6 +79,20 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       onEvent,
       req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit), env: req.cockpit.secretEnv } : {},
     ),
+  opencode: (req, onEvent) =>
+    launchOpencode(
+      {
+        cwd: req.cwd,
+        model: req.settings.model,
+        permissionMode: req.settings.permissionMode,
+        resume: req.resume,
+        instructions: instructionsFor(req),
+        // The token travels in the MCP server's environment (sent over stdio), never in arguments.
+        ...(req.cockpit ? { mcp: { server: { name: MCP_SERVER_NAME, command: req.cockpit.command, args: req.cockpit.args,
+          env: { ...req.cockpit.env, ...req.cockpit.secretEnv } }, env: req.cockpit.secretEnv } } : {}),
+      },
+      onEvent,
+    ),
 }
 
 /** Issues a session's cockpit MCP launch; `release` revokes its token when the session ends. */
@@ -87,7 +102,7 @@ export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaun
 export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
 
 export interface ManagerOptions {
-  readonly launchers?: Record<AgentId, Launcher>
+  readonly launchers?: Partial<Record<AgentId, Launcher>>
   readonly mcp?: McpProvider
   readonly instructions?: InstructionsProvider
 }
@@ -127,7 +142,8 @@ export interface ThreadManager {
 }
 
 export function createThreadManager(store: ThreadStore, options: ManagerOptions = {}): ThreadManager {
-  const launchers = options.launchers ?? defaultLaunchers
+  // Tests replace some launchers; any they leave out keep the real one.
+  const launchers: Record<AgentId, Launcher> = { ...defaultLaunchers, ...options.launchers }
   const live = new Map<string, Live>()
   const listeners = new Set<UpdateListener>()
   const generations = new Map<string, symbol>()

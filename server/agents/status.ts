@@ -21,7 +21,7 @@ export interface AgentStatus {
   readonly usage?: AgentUsage
 }
 
-export const AGENT_COMMANDS: Record<AgentId, string> = { claude: 'claude', codex: 'codex' }
+export const AGENT_COMMANDS: Record<AgentId, string> = { claude: 'claude', codex: 'codex', opencode: 'opencode' }
 const VERSION_TIMEOUT_MS = 10_000
 const CACHE_MS = 60_000
 /** Usage older than this many recently active threads is not worth scanning for. */
@@ -76,11 +76,11 @@ export function createAgentStatus(store: ThreadStore, probe: VersionProbe = prob
   let cached: { at: number; installs: Record<AgentId, Installation> } | undefined
   return async (): Promise<AgentStatus[]> => {
     if (!cached || now() - cached.at > CACHE_MS) {
-      const [claude, codex] = await Promise.all([probe(AGENT_COMMANDS.claude), probe(AGENT_COMMANDS.codex)])
-      cached = { at: now(), installs: { claude, codex } }
+      const [claude, codex, opencode] = await Promise.all([probe(AGENT_COMMANDS.claude), probe(AGENT_COMMANDS.codex), probe(AGENT_COMMANDS.opencode)])
+      cached = { at: now(), installs: { claude, codex, opencode } }
     }
     const usage = latestUsage(store)
-    return (['claude', 'codex'] as const).map((id) => ({
+    return (['claude', 'codex', 'opencode'] as const).map((id) => ({
       id,
       installation: cached!.installs[id],
       ...(usage[id] ? { usage: usage[id] } : {}),

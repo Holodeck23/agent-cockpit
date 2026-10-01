@@ -49,19 +49,20 @@ describe('createAgentStatus', () => {
     let clock = 0
     const probe = async (command: string): Promise<Installation> => {
       probes += 1
-      return command === 'claude' ? { installed: true, version: '2.1.284 (Claude Code)' } : { installed: false, problem: 'codex is not installed or not on your PATH' }
+      return command === 'claude' ? { installed: true, version: '2.1.284 (Claude Code)' } : { installed: false, problem: `${command} is not installed or not on your PATH` }
     }
     const status = createAgentStatus(newStore(), probe, () => clock)
     const first = await status()
     expect(first).toEqual([
       { id: 'claude', installation: { installed: true, version: '2.1.284 (Claude Code)' } },
       { id: 'codex', installation: { installed: false, problem: 'codex is not installed or not on your PATH' } },
+      { id: 'opencode', installation: { installed: false, problem: 'opencode is not installed or not on your PATH' } },
     ])
     await status()
-    expect(probes).toBe(2)
+    expect(probes).toBe(3)
     clock = 61_000
     await status()
-    expect(probes).toBe(4)
+    expect(probes).toBe(6)
   })
 
   it('says plainly when a CLI is missing', async () => {

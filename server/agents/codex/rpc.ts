@@ -1,7 +1,8 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 
-// Minimal JSON-RPC over newline-delimited stdio, as spoken by `codex app-server`.
+// Minimal JSON-RPC over newline-delimited stdio, as spoken by `codex app-server` and by ACP agents
+// (`opencode acp`), which also expect the "jsonrpc": "2.0" member.
 
 export interface ServerRequest {
   readonly id: number | string
@@ -21,16 +22,17 @@ export interface RpcHandlers {
   onProtocolError(message: string): void
 }
 
-export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers: RpcHandlers): RpcClient {
+export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers: RpcHandlers, options: { label?: string; jsonrpc?: boolean } = {}): RpcClient {
+  const label = options.label ?? 'Codex'
   let nextId = 1
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
 
   const write = (message: unknown): void => {
     if (!child.stdin.writable) {
-      handlers.onProtocolError('Codex process is not running')
+      handlers.onProtocolError(`${label} process is not running`)
       return
     }
-    child.stdin.write(`${JSON.stringify(message)}\n`)
+    child.stdin.write(`${JSON.stringify(options.jsonrpc ? { jsonrpc: '2.0', ...(message as object) } : message)}\n`)
   }
 
   createInterface({ input: child.stdout }).on('line', (line) => {
@@ -38,7 +40,7 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
     try {
       message = JSON.parse(line) as Record<string, unknown>
     } catch {
-      handlers.onProtocolError(`Unparseable Codex output: ${line.slice(0, 200)}`)
+      handlers.onProtocolError(`Unparseable ${label} output: ${line.slice(0, 200)}`)
       return
     }
     const { id, method } = message
@@ -51,7 +53,7 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
       pending.delete(id)
       if ('error' in message) {
         const error = message.error as { message?: string } | undefined
-        waiter?.reject(new Error(error?.message ?? 'Codex request failed'))
+        waiter?.reject(new Error(error?.message ?? `${label} request failed`))
       } else {
         waiter?.resolve(message.result)
       }
@@ -59,7 +61,7 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
   })
 
   child.on('exit', () => {
-    for (const waiter of pending.values()) waiter.reject(new Error('Codex process exited'))
+    for (const waiter of pending.values()) waiter.reject(new Error(`${label} process exited`))
     pending.clear()
   })
 
