@@ -24,7 +24,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const theme = useTheme()
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
-  const [section, setSection] = useState<Section>('conversations')
+  const [section, setSectionState] = useState<Section>('conversations')
+  // Set only by the new-conversation pointer; any other way into Workflows opens the list.
+  const [galleryFirst, setGalleryFirst] = useState(false)
+  const setSection = useCallback((next: Section) => { setGalleryFirst(false); setSectionState(next) }, [])
+  const openGallery = useCallback(() => { setGalleryFirst(true); setSectionState('workflows') }, [])
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
 
   const activePath = projects.active?.path
@@ -102,6 +106,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onDraftLoaded={clearFileDraft}
               onBrowseFiles={() => setSection('files')}
               onOpenProject={projects.open}
+              onOpenGallery={openGallery}
               onError={cockpit.reportError}
               onCreated={(meta) => {
                 cockpit.refresh()
@@ -120,7 +125,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       ) : section === 'processes' ? (
         <Processes key={activePath ?? 'no-project'} project={projects.active} processes={cockpit.processes} onError={cockpit.reportError} />
       ) : (
-        <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError}
+        <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError} initialGallery={galleryFirst}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />
       )}
     </div>

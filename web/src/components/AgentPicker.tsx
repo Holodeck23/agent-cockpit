@@ -21,7 +21,7 @@ const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
   codex: [],
 }
 
-const PERMISSION_LABEL: Record<ThreadSettings['permissionMode'], string> = {
+export const PERMISSION_LABEL: Record<ThreadSettings['permissionMode'], string> = {
   manual: 'Ask before acting',
   acceptEdits: 'Edit files without asking',
   plan: 'Plan only, no changes',

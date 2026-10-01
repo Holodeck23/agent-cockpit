@@ -2,9 +2,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createWorkflowStore, expandWorkflows, workflowInputSchema } from '../server/workflows/store.ts'
+import { createWorkflowStore, expandWorkflows } from '../server/workflows/store.ts'
 import { filterWorkflows, groupByCollection } from '../web/src/workflow-list.ts'
-import { freeName, WORKFLOW_STARTERS } from '../web/src/workflow-starters.ts'
 
 const project = mkdtempSync(join(tmpdir(), 'cockpit-wf-project-'))
 const row = (name: string, extra: Partial<{ title: string; collection: string; prompt: string; enabled: boolean }> = {}) =>
@@ -55,31 +54,5 @@ describe('workflow titles and reference names', () => {
     expect(() => store.save({ projectPath: project, name: 'morning-check', prompt: 'Check things' }, saved.id)).toThrow(/reference name/)
     expect(store.save({ projectPath: project, name: 'daily-check', title: '', collection: '', prompt: 'Check things' }, saved.id))
       .toMatchObject({ title: undefined, collection: undefined })
-  })
-})
-
-describe('starters', () => {
-  it('are valid workflows with conservative permissions', () => {
-    expect(WORKFLOW_STARTERS).toHaveLength(5)
-    for (const starter of WORKFLOW_STARTERS) {
-      const parsed = workflowInputSchema.parse({ projectPath: project, name: starter.name, title: starter.title,
-        collection: starter.collection, prompt: starter.prompt, settings: { permissionMode: starter.permissionMode } })
-      expect(parsed.intervalMinutes).toBeNull()
-      expect(starter.permissionMode).toBe(starter.name === 'dev-server-startup' ? 'manual' : 'plan')
-    }
-  })
-
-  it('never collide with an existing name', () => {
-    expect(freeName('focused-review', new Set())).toBe('focused-review')
-    expect(freeName('focused-review', new Set(['focused-review', 'focused-review-2']))).toBe('focused-review-3')
-  })
-
-  it('save paused, unscheduled copies', () => {
-    const store = createWorkflowStore(mkdtempSync(join(tmpdir(), 'cockpit-wf-')))
-    const starter = WORKFLOW_STARTERS[1]!
-    const copy = store.save({ projectPath: project, name: starter.name, title: starter.title, collection: starter.collection,
-      prompt: starter.prompt, settings: { permissionMode: starter.permissionMode } })
-    expect(copy).toMatchObject({ enabled: false, nextRunAt: null, intervalMinutes: null })
-    expect(copy.lastThreadId).toBeUndefined()
   })
 })

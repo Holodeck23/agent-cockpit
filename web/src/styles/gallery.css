@@ -1,0 +1,51 @@
+/* Workflow gallery (components/WorkflowGallery.tsx) and its pointers. Existing tokens, both themes. */
+.gallery { padding: 30px clamp(24px, 4vw, 56px) 48px; overflow: auto; background: var(--content); min-width: 0; }
+.gallery-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.gallery h1 { margin: 6px 0 8px; font-size: 29px; }
+.gallery-head p, .gallery-detail header p { max-width: 560px; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+.gallery-head .button-soft { flex: none; font-size: 13px; }
+.gallery-search { max-width: 420px; margin-top: 20px; }
+.gallery-categories { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 6px; }
+.gallery-categories button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--secondary); font-size: 12.5px; font-weight: 500; }
+.gallery-categories button span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gallery-categories button[aria-selected='true'] { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, var(--panel)); color: var(--strong); }
+.gallery-section { margin-top: 26px; }
+.gallery-section h2, .gallery-related h2 { margin: 0 0 12px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.gallery-section h2 span { font-variant-numeric: tabular-nums; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.gallery-grid.featured { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.gallery-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; text-align: left; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--body); min-width: 0; }
+.gallery-card:hover { border-color: var(--input-border); box-shadow: 0 6px 18px -14px rgb(0 0 0 / 0.5); }
+.gallery-card.large { padding: 20px; background: color-mix(in srgb, var(--blue) 5%, var(--panel)); }
+.gallery-card strong { font-size: 14.5px; color: var(--strong); }
+.gallery-card.large strong { font-size: 16px; }
+.gallery-card > span:not(.gallery-card-category) { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.gallery-card-category { font-size: 11px; font-weight: 600; color: var(--muted); }
+.gallery-card small { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 6px; font-size: 11.5px; color: var(--secondary); }
+.gallery-tool, .gallery-added { padding: 1px 7px; border-radius: 999px; background: var(--field); color: var(--secondary); }
+.gallery-added { background: color-mix(in srgb, var(--success) 14%, var(--panel)); color: var(--success); font-weight: 600; }
+.gallery-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 2px; border: 0; background: none; color: var(--link); font-size: 13px; }
+.gallery-back .icon { width: 16px; height: 16px; }
+.gallery-detail header { margin-top: 14px; }
+.gallery-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0 0; }
+.gallery-facts div { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.gallery-facts dt { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.gallery-facts dd { margin: 4px 0 0; font-size: 13.5px; color: var(--strong); overflow-wrap: anywhere; }
+.gallery-needs { display: grid; gap: 4px; margin-top: 14px; padding: 12px 16px; border: 1px solid var(--needs-border); background: var(--needs-bg); border-radius: 10px; color: var(--needs-ink); font-size: 13px; line-height: 1.55; }
+.gallery-file { margin: 22px 0 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--panel); }
+.gallery-file figcaption { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--field); font: 12.5px var(--mono); color: var(--secondary); }
+.gallery-file figcaption .icon { width: 15px; height: 15px; }
+.gallery-file pre { margin: 0; padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.65 var(--mono); color: var(--strong); }
+.gallery-add { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 20px; }
+.gallery-add p { flex: 1; min-width: 220px; margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.gallery-related { margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--border); }
+.workflow-gallery-link { display: grid; gap: 2px; width: 100%; margin: 0 0 14px; padding: 11px 14px; text-align: left; border: 1px dashed var(--input-border); border-radius: 10px; background: var(--panel); color: var(--strong); }
+.workflow-gallery-link span { font-size: 13.5px; font-weight: 600; }
+.workflow-gallery-link small { font-size: 12px; color: var(--muted); }
+.workflow-gallery-link[aria-pressed='true'] { border-style: solid; border-color: var(--blue); box-shadow: 0 0 0 2px var(--halo-soft); }
+.gallery-pointer { display: flex; align-items: center; gap: 12px; width: min(100%, 560px); margin-top: 18px; padding: 12px 16px; text-align: left; border: 1px dashed var(--input-border); border-radius: 12px; background: none; color: var(--secondary); font-size: 13px; line-height: 1.5; }
+.gallery-pointer:hover { background: var(--panel); }
+.gallery-pointer > .icon { flex: none; width: 20px; height: 20px; color: var(--blue); }
+.gallery-pointer strong { color: var(--strong); }
+.gallery-pointer-go { margin-left: auto; color: var(--muted); }
+@media (max-width: 800px) { .gallery-facts { grid-template-columns: 1fr; } .gallery-head { flex-direction: column; } }

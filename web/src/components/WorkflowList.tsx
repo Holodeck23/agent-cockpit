@@ -2,7 +2,7 @@ import { describeCalendar } from '../../../server/workflows/calendar.ts'
 import { useMemo, useState } from 'react'
 import type { Project, Workflow } from '../api.ts'
 import { displayTitle, filterWorkflows, groupByCollection, type WorkflowView } from '../workflow-list.ts'
-import { WORKFLOW_STARTERS, type WorkflowStarter } from '../workflow-starters.ts'
+import { GALLERY } from '../gallery/catalog.ts'
 import { PlusIcon, SearchIcon, WorkflowIcon } from './icons.tsx'
 
 interface WorkflowListProps {
@@ -13,7 +13,8 @@ interface WorkflowListProps {
   busy: boolean
   onSelect: (id: string) => void
   onCreate: () => void
-  onAddStarter: (starter: WorkflowStarter) => void
+  galleryOpen: boolean
+  onOpenGallery: () => void
 }
 
 const VIEWS: ReadonlyArray<{ id: WorkflowView; label: string }> = [
@@ -22,14 +23,12 @@ const VIEWS: ReadonlyArray<{ id: WorkflowView; label: string }> = [
   { id: 'manual', label: 'Manual' },
 ]
 
-export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, onCreate, onAddStarter }: WorkflowListProps) {
+export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, onCreate, galleryOpen, onOpenGallery }: WorkflowListProps) {
   const [query, setQuery] = useState('')
   const [view, setView] = useState<WorkflowView>('all')
-  const [startersOpen, setStartersOpen] = useState(false)
   const groups = useMemo(() => groupByCollection(filterWorkflows(rows, query, view)), [rows, query, view])
   const count = (id: WorkflowView): number => filterWorkflows(rows, '', id).length
   const shown = groups.reduce((n, g) => n + g.rows.length, 0)
-  const taken = useMemo(() => new Set(rows.map((w) => w.name)), [rows])
 
   return (
     <nav className="workflow-list" aria-label="Saved workflows">
@@ -38,6 +37,9 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
         <button type="button" className="new-button" aria-label="New workflow" disabled={busy} onClick={onCreate}><PlusIcon /></button>
       </header>
       <p className="workflow-intro">Save a job once. Run it when you need it.</p>
+      <button type="button" className="workflow-gallery-link" aria-pressed={galleryOpen} onClick={onOpenGallery}>
+        <span>Workflow gallery</span><small>{GALLERY.length} ready-made jobs to copy</small>
+      </button>
       <label className="workflow-search">
         <SearchIcon />
         <input type="search" aria-label="Search workflows" placeholder="Search workflows…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -51,7 +53,7 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
       </div>
       {!loaded ? <p role="status">Loading workflows…</p> : null}
       {loaded && rows.length === 0 ? (
-        <div className="workflow-list-empty"><WorkflowIcon /><strong>No workflows yet</strong><span>Start from one of the starters below, or write your own.</span></div>
+        <div className="workflow-list-empty"><WorkflowIcon /><strong>No workflows yet</strong><span>Copy one from the workflow gallery, or write your own.</span></div>
       ) : null}
       {loaded && rows.length > 0 && shown === 0 ? <p className="workflow-none" role="status">No workflows match.</p> : null}
       {groups.map((group) => (
@@ -63,35 +65,12 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
               <strong>{displayTitle(w)}</strong>
               <code className="workflow-slug">@workflow:{w.name}</code>
               <span>{w.prompt.slice(0, 100)}</span>
-              <small className={w.lastError ? 'workflow-error' : ''}>{w.lastError ? 'Needs attention' : w.enabled ? (w.calendar ? describeCalendar(w.calendar) : `Every ${w.intervalMinutes} min`) : 'Manual / paused'}</small>
+              <small className={w.lastError ? 'workflow-error' : ''}>{w.lastError ? 'Needs attention' : w.enabled ? (w.calendar ? describeCalendar(w.calendar) : `Every ${w.intervalMinutes} min`)
+                : w.calendar ? `Paused · ${describeCalendar(w.calendar)}` : 'Manual / paused'}</small>
             </button>
           ))}
         </section>
       ))}
-      <section className="workflow-starters" aria-label="Starters">
-        <button type="button" className="workflow-starters-toggle" aria-expanded={startersOpen} onClick={() => setStartersOpen(!startersOpen)}>
-          Starters <span>{WORKFLOW_STARTERS.length}</span>
-        </button>
-        {startersOpen ? (
-          <ul>
-            {WORKFLOW_STARTERS.map((starter) => {
-              const added = taken.has(starter.name)
-              return (
-                <li key={starter.name} className="workflow-starter">
-                  <div>
-                    <strong>{starter.title}</strong>
-                    <span>{starter.summary}</span>
-                  </div>
-                  <button type="button" disabled={busy} aria-label={`Add ${starter.title}`} onClick={() => onAddStarter(starter)}>
-                    {added ? 'Add another' : 'Add'}
-                  </button>
-                </li>
-              )
-            })}
-            <li className="workflow-starter-note">Added starters are saved paused, never run or scheduled until you choose to.</li>
-          </ul>
-        ) : null}
-      </section>
       <footer>Schedules run while Cockpit is open. Missed runs resume once, without a backlog.</footer>
     </nav>
   )

@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api, type Project, type ThreadMeta } from '../api.ts'
 import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
-import { FolderIcon, PlusIcon } from './icons.tsx'
+import { FolderIcon, PlusIcon, WorkflowIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
 
 interface NewConversationProps {
@@ -14,6 +14,8 @@ interface NewConversationProps {
   onOpenProject: (path: string) => Promise<void>
   onCreated: (meta: ThreadMeta) => void
   onError: (message: string) => void
+  /** Shown while the project has no workflows yet. */
+  onOpenGallery?: () => void
 }
 
 // Last choice per project, falling back to the last choice anywhere. A default for new
@@ -63,12 +65,21 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
   // through from the native folder picker) must never start an agent run.
   const [prefill, setPrefill] = useState<{ text: string }>()
+  // Unknown until loaded; a failed check just leaves the pointer out.
+  const [noWorkflows, setNoWorkflows] = useState(false)
+  const projectPath = project?.path
+  useEffect(() => {
+    if (!projectPath || !onOpenGallery) return
+    let live = true
+    api.listWorkflows(projectPath).then((rows) => { if (live) setNoWorkflows(rows.length === 0) }, () => undefined)
+    return () => { live = false }
+  }, [projectPath, onOpenGallery])
 
   const changeChoice = (next: AgentChoice): void => {
     setChoice(next)
@@ -119,6 +130,13 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
                   </button>
                 ))}
               </div>
+              {noWorkflows && onOpenGallery ? (
+                <button type="button" className="gallery-pointer" onClick={onOpenGallery}>
+                  <WorkflowIcon />
+                  <span><strong>Doing the same job often?</strong> Copy a ready-made workflow from the gallery.</span>
+                  <span className="gallery-pointer-go" aria-hidden>→</span>
+                </button>
+              ) : null}
             </>
           ) : (
             <>

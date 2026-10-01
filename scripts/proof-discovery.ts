@@ -1,6 +1,6 @@
 // Checkpoint 4 gate (workflow discovery), PACKAGED app: `npm run proof:discovery`. No agent usage.
 // Seeds an old-format workflow (no title), a scheduled one and a titled one; then search, views,
-// collections, adding starters (saved paused, never run), and renaming a title without breaking
+// collections, adding from the gallery (saved paused, never run), and renaming a title without breaking
 // the @workflow: reference.
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
@@ -48,17 +48,21 @@ try {
   check('Manual shows the rest', (await titles()).length === 2 && !(await titles()).includes('Nightly check'))
   await list.getByRole('tab', { name: /All/ }).click()
 
-  await list.getByRole('button', { name: /Starters/ }).click()
-  await list.getByRole('button', { name: 'Add Focused review' }).click()
+  const addFocusedReview = async (button: string): Promise<void> => {
+    await list.getByRole('button', { name: /^Workflow gallery/ }).click()
+    await page.locator('.gallery-section[aria-label="Quality"] .gallery-card').filter({ hasText: 'Focused review' }).click()
+    await page.getByRole('button', { name: button, exact: true }).click()
+  }
+  await addFocusedReview('Add to Workflows')
   await list.locator('.workflow-row').filter({ hasText: 'Focused review' }).waitFor()
-  await list.getByRole('button', { name: 'Add Focused review' }).click()
+  await addFocusedReview('Add another copy')
   await list.locator('.workflow-slug').filter({ hasText: '@workflow:focused-review-2' }).waitFor()
   const store = createWorkflowStore(state)
   const copies = store.list(project).filter((w) => w.name.startsWith('focused-review'))
-  check('adding a starter twice makes two copies with distinct reference names', JSON.stringify(copies.map((w) => w.name).sort()) === JSON.stringify(['focused-review', 'focused-review-2']))
-  check('starter copies are saved paused and unscheduled', copies.every((w) => !w.enabled && w.nextRunAt === null && w.intervalMinutes === null && w.settings.permissionMode === 'plan'))
+  check('adding from the gallery twice makes two copies with distinct reference names', JSON.stringify(copies.map((w) => w.name).sort()) === JSON.stringify(['focused-review', 'focused-review-2']))
+  check('gallery copies are saved paused and unscheduled', copies.every((w) => !w.enabled && w.nextRunAt === null && w.intervalMinutes === null && w.settings.permissionMode === 'plan'))
   const threads = await page.evaluate(async () => ((await (await fetch('/api/threads')).json()) as { data: unknown[] }).data.length)
-  check('adding starters never runs them', threads === 0 && copies.every((w) => !w.lastThreadId), `${threads} conversations`)
+  check('adding from the gallery never runs them', threads === 0 && copies.every((w) => !w.lastThreadId), `${threads} conversations`)
   await page.screenshot({ path: join(PROOF_DIR, 'checkpoint-4-workflows.png') })
 
   await list.locator('.workflow-row').filter({ hasText: 'Bug hunt' }).click()

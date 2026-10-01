@@ -11,6 +11,7 @@ import './styles/thread.css'
 import './styles/activity.css'
 import './styles.css'
 import './styles/workflows.css'
+import './styles/gallery.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root element')

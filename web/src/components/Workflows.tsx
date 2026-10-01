@@ -3,24 +3,29 @@ import { api, type Project, type Workflow, type WorkflowInput } from '../api.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { WorkflowIcon } from './icons.tsx'
 import { RepeatPicker } from './RepeatPicker.tsx'
+import { WorkflowGallery } from './WorkflowGallery.tsx'
 import { WorkflowList } from './WorkflowList.tsx'
-import { canSchedule, repeatFrom, repeatInput } from '../repeat.ts'
+import { canSchedule, localZone, repeatFrom, repeatInput } from '../repeat.ts'
 import { describeCalendar } from '../../../server/workflows/calendar.ts'
 import { displayTitle } from '../workflow-list.ts'
-import { freeName, type WorkflowStarter } from '../workflow-starters.ts'
+import type { GalleryWorkflow } from '../gallery/catalog.ts'
+import { copyInput } from '../gallery/gallery.ts'
 
 interface Props {
   project: Project | undefined
   onError: (message: string) => void
   onOpenThread: (id: string) => void
+  /** Open on the gallery, e.g. from the new-conversation screen. */
+  initialGallery?: boolean
 }
 type Intent = 'save' | 'run' | 'schedule'
 const when = (value?: string | null) => value ? new Date(value).toLocaleString() : '—'
 
-export function Workflows({ project, onError, onOpenThread }: Props) {
+export function Workflows({ project, onError, onOpenThread, initialGallery = false }: Props) {
   const [rows, setRows] = useState<Workflow[]>([])
   const [selected, setSelected] = useState<string>()
   const [creating, setCreating] = useState(false)
+  const [gallery, setGallery] = useState(initialGallery)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const projectPath = project?.path
@@ -48,27 +53,30 @@ export function Workflows({ project, onError, onOpenThread }: Props) {
     if (intent === 'schedule') { await api.enableWorkflow(saved.id, true); await refresh() }
     if (intent === 'run') { const thread = await api.runWorkflow(saved.id); onOpenThread(thread.id) }
   })
-  // A starter becomes a paused copy in this project: saved, never run or scheduled here.
-  const addStarter = (starter: WorkflowStarter) => perform(async () => {
+  const taken = new Set(rows.map((w) => w.name))
+  // A gallery workflow becomes a paused copy in this project: saved, never run or scheduled here.
+  const addFromGallery = (entry: GalleryWorkflow) => perform(async () => {
     if (!projectPath) return
-    const saved = await api.saveWorkflow({ projectPath, name: freeName(starter.name, new Set(rows.map((w) => w.name))),
-      title: starter.title, collection: starter.collection, prompt: starter.prompt, intervalMinutes: null, calendar: null,
-      settings: { agent: 'claude', permissionMode: starter.permissionMode, useHooks: false } })
+    const saved = await api.saveWorkflow(copyInput(entry, projectPath, taken, localZone()))
     await refresh()
-    setSelected(saved.id); setCreating(false)
+    setSelected(saved.id); setCreating(false); setGallery(false)
   })
   if (!project) return <main className="workflow-empty"><WorkflowIcon /><h1>Workflows</h1><p>Open a project to save repeatable jobs.</p></main>
   return <div className="workflows-layout">
     <WorkflowList project={project} rows={rows} loaded={loaded} selected={selected} busy={busy}
-      onSelect={(id) => { setSelected(id); setCreating(false) }}
-      onCreate={() => { setSelected(undefined); setCreating(true) }}
-      onAddStarter={(starter) => void addStarter(starter)} />
-    {creating || current ? <WorkflowEditor key={current?.id ?? 'new'} workflow={current} projectPath={project.path} busy={busy} onSave={save}
+      galleryOpen={gallery}
+      onSelect={(id) => { setSelected(id); setCreating(false); setGallery(false) }}
+      onCreate={() => { setSelected(undefined); setCreating(true); setGallery(false) }}
+      onOpenGallery={() => setGallery(true)} />
+    {gallery ? <WorkflowGallery projectName={project.name} taken={taken} busy={busy} onAdd={(entry) => void addFromGallery(entry)}
+      onClose={() => setGallery(false)} />
+    : creating || current ? <WorkflowEditor key={current?.id ?? 'new'} workflow={current} projectPath={project.path} busy={busy} onSave={save}
       onPause={() => perform(async () => { if (current) await api.enableWorkflow(current.id, false); await refresh() })}
       onArchive={() => perform(async () => { if (current) await api.archiveWorkflow(current.id); setSelected(undefined); await refresh() })}
       onOpenThread={onOpenThread} /> : <main className="workflow-empty"><WorkflowIcon /><h2>Make the repeatable work easy.</h2>
         <p>Choose a workflow to edit its instructions, run it, or set a schedule. Each run opens a conversation with your agent.</p>
-        <button type="button" className="button-primary" onClick={() => setCreating(true)}>Create a workflow</button></main>}
+        <div className="workflow-actions"><button type="button" className="button-primary" onClick={() => setCreating(true)}>Create a workflow</button>
+          <button type="button" onClick={() => setGallery(true)}>Browse the gallery</button></div></main>}
   </div>
 }
 
