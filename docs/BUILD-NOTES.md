@@ -278,3 +278,9 @@ The portability package passed 27 non-agent phone checks through Tailscale. Its 
 Agents with Cockpit MCP receive a new read-only `inspect_preview` tool. It loads only a loopback HTTP(S) URL in a short-lived sandboxed Chromium window with no Node access, captures the page, normalizes Retina output to 1280×800, and returns the PNG as image content. The visible frame is also confined to loopback navigation. Antigravity cannot receive this tool because its headless CLI still has no per-launch MCP configuration.
 
 Gate: `npm run verify` passed 303 tests, typecheck and both builds. `npm run proof:preview` passed 8 checks on the packaged app: embedded rendering, local address, PNG inspection, resize, reload, close and reopen from Processes. Screenshot: `proof/phase-7-preview.png`.
+
+## Phase 8 closure: subscription agents (2026-10-01)
+
+The requested Google route is Antigravity, not standalone Gemini CLI. The Phase 7 package passed `proof:antigravity` 6/6 and `proof:opencode` 10/10. A real `smoke:antigravity` run used the cached Google/Antigravity subscription and preserved a codeword across two separate `agy` processes, proving conversation resume. OpenRouter models are configured through OpenCode; the adapter is packaged and proven against its protocol stand-in, while live OpenRouter billing/account access was not available and is not claimed.
+
+This closes Phase 8 for the requested set: Claude Code, Codex, OpenCode and Antigravity. Grok Build remains a possible future adapter; it was not requested and no Grok CLI is installed on this Mac.

@@ -200,8 +200,9 @@ Built and proven: Claude, Codex and Antigravity adapters; OpenCode through ACP; 
 
 Next:
 1. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
-2. **Phase 8 boundary.** Decide whether Grok Build belongs in the supported set; live OpenRouter validation still needs an account/key.
-3. **Fresh-user acceptance.** Run the packaged app from a second macOS account with that user's own CLI sign-ins.
+2. **Fresh-user acceptance.** Run the packaged app from a second macOS account with that user's own CLI sign-ins.
+
+Optional later work, not an unfinished phase: a Grok Build adapter, live OpenRouter-account validation, notarization, and non-Apple-silicon platforms.
 
 ## Credits
 

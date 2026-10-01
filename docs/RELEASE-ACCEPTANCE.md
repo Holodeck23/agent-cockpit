@@ -59,7 +59,7 @@ These features may remain in the build, but unfinished polish or optional accept
 - Simultaneous multi-agent stress acceptance.
 - A second-Mac onboarding pass, notarization and automatic installation.
 - Windows, Linux and Intel Mac support.
-- Live OpenRouter account validation and a Grok Build adapter (Phase 8); OpenCode and Antigravity are implemented.
+- Live OpenRouter account validation and a Grok Build adapter; Phase 8's requested OpenCode and Antigravity routes are implemented.
 - Production accounts, billing, a public relay or cloud-hosted conversation storage.
 
 Phase 7 landed after this Day 30 boundary was accepted. `open_preview` now targets the embedded pane, with **Browser ↗** retaining the external-browser option; `inspect_preview` gives compatible agents a loopback-only PNG. Its separate packaged gate is `proof:preview` (8/8, 2026-10-01).

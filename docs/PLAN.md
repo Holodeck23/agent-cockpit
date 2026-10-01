@@ -163,14 +163,15 @@ Scope as agreed: there was no process runner, preview pane or workflow store yet
 
 `open_preview` now targets a resizable in-app pane with reload, open-in-browser and close controls; a process URL opens the same pane. The read-only `inspect_preview` MCP tool renders the local page in an isolated Chromium window and returns a normalized 1280×800 PNG so Claude Code, Codex and OpenCode can inspect their own UI work. Both routes accept loopback HTTP(S) only, and preview frames cannot navigate the embedded pane to a remote origin. `npm run proof:preview` passed 8 packaged checks; screenshot: `docs/proof/phase-7-preview.png`. The user explicitly advanced Phase 7 while the separate physical-phone notification acceptance remains open.
 
-## Phase 8: more agents (requested 2026-09-29, U10 implemented 2026-10-01)
+## Phase 8: more agents (done for the requested set 2026-10-01)
 
-Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Requested order (2026-10-01): Gemini CLI, Antigravity, OpenRouter via OpenCode; scheduled as U10 in the second upgrade. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
+Cockpit now supports the four agents requested for this build: Claude Code, Codex, OpenCode and Google Antigravity, behind the same `NormalizedEvent` model. The user corrected the Google route on 2026-10-01: use the Antigravity subscription, not standalone Gemini CLI. Grok Build appears in Enjoy but was not requested and is not part of this completed boundary.
 - **Antigravity:** `agy` with stream-json output and `--conversation` for resume. Built and proven against the user's cached subscription; first-time users still sign in once in the CLI.
 - **OpenCode:** `opencode acp --hostname 127.0.0.1 --port 0` (Agent Client Protocol), config passed through the environment.
-- **OpenRouter:** an API, not an agent CLI. The likely route is OpenCode, which supports OpenRouter as a model provider, so OpenRouter models arrive with the OpenCode adapter and no separate agent loop. Verify against current OpenCode docs before building.
-- **Grok Build:** in Enjoy's list; not requested yet.
+- **OpenRouter:** an API, not an agent CLI. OpenRouter models arrive through the OpenCode adapter and need no separate agent loop. The packaged stand-in proves model/config/approval/session behavior; a live OpenRouter account was not available and is not claimed.
+- **Grok Build:** optional future adapter, not requested for this phase and not installed on this Mac.
 - Known Antigravity boundary: headless permissions are policy-only rather than host approvals, and its MCP config is global/workspace rather than per launch, so Cockpit does not mutate or inject it.
+- **Gate on the Phase 7 package:** `proof:antigravity` 6/6, `proof:opencode` 10/10, and a real `smoke:antigravity` two-process resume passed on the user's Google/Antigravity subscription.
 
 ## Verification
 - Every checkpoint: `npm run verify` (typecheck + unit/integration tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
