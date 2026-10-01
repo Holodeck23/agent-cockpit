@@ -18,7 +18,8 @@ export interface ThreadStore {
   list(): ThreadMeta[]
   get(id: string): ThreadMeta | undefined
   update(id: string, patch: Partial<Omit<ThreadMeta, 'id' | 'createdAt'>>): ThreadMeta
-  append(id: string, event: NormalizedEvent): StoredEvent
+  /** `ts` keeps an imported event's original time; new events are stamped now. */
+  append(id: string, event: NormalizedEvent, ts?: string): StoredEvent
   events(id: string): StoredEvent[]
   transcriptPath(id: string): string
   /** Deletes the conversation's folder: metadata, events and transcript. */
@@ -80,8 +81,8 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
       writeMeta(next)
       return next
     },
-    append(id, event) {
-      const stored: StoredEvent = { ts: new Date().toISOString(), event }
+    append(id, event, ts) {
+      const stored: StoredEvent = { ts: ts ?? new Date().toISOString(), event }
       appendFileSync(join(dirOf(id), 'events.jsonl'), `${JSON.stringify(stored)}\n`)
       const md = markdownFor(event, stored.ts)
       if (md) appendFileSync(join(dirOf(id), 'messages.md'), md)

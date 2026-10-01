@@ -10,6 +10,9 @@ import type { ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
 import { MAX_MEMORY_CHARS, memoryScope, type MemoryStore } from '../memory/store.ts'
+import { listSessions } from '../import/sessions.ts'
+import { homedir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
@@ -71,9 +74,11 @@ export interface ApiDeps {
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
   readonly memory?: MemoryStore
+  /** Where the CLIs keep their sessions (~), for Import conversations; tests point it elsewhere. */
+  readonly importHome?: string
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[]) {
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
   const expandedFor = (text: string, projectPath: string): { agentText: string; workflows?: WorkflowSnapshot[] } => {
@@ -157,6 +162,32 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         } catch (error) {
           if (error instanceof HttpError) throw error
           throw new HttpError(400, error instanceof Error ? error.message : String(error))
+        }
+      }
+      // Import conversations: the project's own Claude Code and Codex sessions, read-only.
+      if (parts[1] === 'import' && parts.length === 2) {
+        if (viaPhone) throw new HttpError(403, 'Importing is only available on the Mac')
+        const known = new Set(store.list().map((m) => `${m.settings.agent}:${m.sessionId}`))
+        if (method === 'GET') {
+          const projectPath = url.searchParams.get('projectPath') ?? ''
+          if (!projects.list().some((p) => p.path === projectPath)) throw new HttpError(404, 'Open this project first')
+          sendJson(res, 200, { data: listSessions(importHome, projectPath).map(({ events: _events, ...s }) => ({ ...s, inCockpit: known.has(`${s.agent}:${s.sessionId}`) })) })
+          return true
+        }
+        if (method === 'POST') {
+          const body = parseBody(z.object({ projectPath: z.string().min(1).max(1000), agent: z.enum(['claude', 'codex']), sessionId: z.string().min(1).max(200) }), await readJson(req))
+          if (!projects.list().some((p) => p.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+          if (known.has(`${body.agent}:${body.sessionId}`)) throw new HttpError(409, 'That session is already a conversation in Cockpit')
+          // Found again on disk, never from a path the page sends.
+          const session = listSessions(importHome, body.projectPath).find((s) => s.agent === body.agent && s.sessionId === body.sessionId)
+          if (!session) throw new HttpError(404, 'That session is not in this project')
+          const now = new Date().toISOString()
+          const meta = store.create({ id: randomUUID(), title: session.firstPrompt.slice(0, 80), projectPath: body.projectPath,
+            settings: threadSettingsSchema.parse({ agent: session.agent }), sessionId: session.sessionId, sessionStarted: true,
+            completed: false, createdAt: session.startedAt, updatedAt: now })
+          for (const e of session.events) store.append(meta.id, e.event, e.ts)
+          sendJson(res, 201, { data: meta })
+          return true
         }
       }
       if (parts[1] === 'documents' && parts.length <= 3) {
