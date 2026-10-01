@@ -145,6 +145,22 @@ describe('process runner', () => {
     expect(runner.list(dir).map((p: ProcessInfo) => p.id)).toEqual([again.process.id])
   })
 
+  it('restarts a running process as a new one with the same command and name, and an exited one too', async () => {
+    runner = createProcessRunner()
+    const dir = project()
+    const long = script(dir, 'long.js', 'setInterval(() => {}, 1000)')
+    const first = runner.start({ projectPath: dir, command: long, name: 'dev' }).process
+    const second = await runner.restart(first.id)
+    expect(second).toMatchObject({ name: 'dev', command: long, status: 'running' })
+    expect(second.id).not.toBe(first.id)
+    expect(alive(first.pid!)).toBe(false)
+    expect(runner.list(dir).map((p: ProcessInfo) => p.id)).toEqual([second.id])
+    await runner.stop(second.id)
+    const third = await runner.restart(second.id)
+    expect(third.status).toBe('running')
+    await expect(runner.restart('proc-nope')).rejects.toThrow('No process with id proc-nope')
+  })
+
   it('rejects a project path that is not a folder, and unknown ids', () => {
     runner = createProcessRunner()
     expect(() => runner?.start({ projectPath: join(project(), 'missing'), command: 'true' })).toThrow(/Not a folder/)

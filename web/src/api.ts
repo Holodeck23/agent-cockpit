@@ -3,7 +3,7 @@ import type { FileSaved } from '../../server/files/editor.ts'
 import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
-import type { ProcessInfo } from '../../server/processes/runner.ts'
+import type { ProcessInfo, ProcessRead } from '../../server/processes/runner.ts'
 import type { Project, ProjectPatch } from '../../server/projects/store.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
@@ -11,7 +11,7 @@ import type { RemoteStatus } from '../../server/remote/service.ts'
 import type { AgentStatus } from '../../server/agents/status.ts'
 import type { GitState } from '../../server/git/branches.ts'
 
-export type { AgentStatus, ProcessInfo, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+export type { AgentStatus, ProcessInfo, ProcessRead, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
 export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean; notifications: boolean }
@@ -80,6 +80,10 @@ export const api = {
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
+  restartProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/restart`, { method: 'POST', body: {} }),
+  /** Output lines after `since`, or the last `tail` lines. */
+  readProcess: (id: string, options: { since?: number; tail?: number }) =>
+    request<ProcessRead>(`/api/processes/${id}/output?${new URLSearchParams(Object.entries(options).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
   pageMode: () => request<PageMode>('/api/remote/me'),
   remoteStatus: () => request<RemoteStatus>('/api/remote'),
   setRemote: (enabled: boolean) => request<RemoteStatus>('/api/remote', { method: 'POST', body: { enabled } }),

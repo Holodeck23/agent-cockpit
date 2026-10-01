@@ -4,6 +4,7 @@ import { ConversationList } from './components/ConversationList.tsx'
 import { Files } from './components/Files.tsx'
 import { NewConversation } from './components/NewConversation.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
+import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
@@ -57,6 +58,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         theme={theme.mode}
         onCycleTheme={theme.cycle}
         conversationsOnly={phone}
+        runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}
         tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
           : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
       />
@@ -115,6 +117,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
           setSection('conversations')
         }} />
+      ) : section === 'processes' ? (
+        <Processes key={activePath ?? 'no-project'} project={projects.active} processes={cockpit.processes} onError={cockpit.reportError} />
       ) : (
         <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />

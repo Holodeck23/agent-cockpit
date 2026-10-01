@@ -42,6 +42,8 @@ export type ProcessListener = (info: ProcessInfo) => void
 export interface ProcessRunner {
   start(input: StartProcessInput): { process: ProcessInfo; reused: boolean }
   stop(id: string): Promise<ProcessInfo>
+  /** Stops it if needed and starts the same command again under the same name; returns the new process. */
+  restart(id: string): Promise<ProcessInfo>
   get(id: string): ProcessInfo | undefined
   list(projectPath?: string): ProcessInfo[]
   read(id: string, options?: { since?: number; tail?: number }): ProcessRead
@@ -114,7 +116,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
     return entryOf(id).info
   }
 
-  return {
+  const runner: ProcessRunner = {
     start(input) {
       const { projectPath, command, name: givenName } = startProcessSchema.parse(input)
       if (!isDirectory(projectPath)) throw new Error(`Not a folder on this computer: ${projectPath}`)
@@ -163,6 +165,12 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
 
     stop,
 
+    async restart(id) {
+      const { projectPath, command, name } = entryOf(id).info
+      await stop(id)
+      return runner.start({ projectPath, command, name }).process
+    },
+
     get: (id) => entries.get(id)?.info,
 
     list(projectPath) {
@@ -186,6 +194,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
       await Promise.all([...entries.keys()].map((id) => stop(id)))
     },
   }
+  return runner
 }
 
 function isDirectory(path: string): boolean {

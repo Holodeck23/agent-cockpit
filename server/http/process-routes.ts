@@ -38,5 +38,9 @@ export async function handleProcessRoute(
     sendJson(res, 200, { data: await runner.stop(id) })
     return
   }
+  if (method === 'POST' && action === 'restart') {
+    sendJson(res, 200, { data: await runner.restart(id) })
+    return
+  }
   throw new HttpError(404, 'Not found')
 }

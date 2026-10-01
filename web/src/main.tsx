@@ -32,4 +32,5 @@ void boot(root)
 import './styles/files.css'
 import './styles/picker.css'
 import './styles/git.css'
+import './styles/processes.css'
 import './styles/phone.css'

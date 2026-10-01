@@ -12,7 +12,7 @@ interface ProcessChipProps {
 }
 
 /** ":5173" for a local URL, else the process name. */
-function shortLabel(info: ProcessInfo): string {
+export function shortLabel(info: ProcessInfo): string {
   if (!info.url) return info.name
   try {
     const { port } = new URL(info.url)
@@ -22,7 +22,7 @@ function shortLabel(info: ProcessInfo): string {
   }
 }
 
-function stateText(info: ProcessInfo): string {
+export function stateText(info: ProcessInfo): string {
   if (info.status === 'running') return 'Running'
   if (info.status === 'stopping') return 'Stopping…'
   if (info.signal) return `Stopped (${info.signal})`

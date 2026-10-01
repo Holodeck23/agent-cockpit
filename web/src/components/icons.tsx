@@ -161,3 +161,9 @@ export const BranchIcon = (p: IconProps) => (
     <path d="M7 7.5v9M17 10c0 4-10 2.5-10 6.5" />
   </Svg>
 )
+export const TerminalIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <path d="M7.5 9.5l3 2.5-3 2.5M12.5 15h4" />
+  </Svg>
+)

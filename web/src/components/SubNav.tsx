@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import type { ThemeMode } from '../theme.ts'
-import { Bars, ChatIcon, FolderIcon, MonitorIcon, MoonIcon, SunIcon, WorkflowIcon } from './icons.tsx'
+import { Bars, ChatIcon, FolderIcon, MonitorIcon, MoonIcon, SunIcon, TerminalIcon, WorkflowIcon } from './icons.tsx'
 
-export type Section = 'conversations' | 'files' | 'workflows'
+export type Section = 'conversations' | 'files' | 'workflows' | 'processes'
 
 interface SubNavProps {
   section: Section
@@ -12,13 +12,15 @@ interface SubNavProps {
   onCycleTheme: () => void
   /** Extra tools on the right, e.g. the phone access button. */
   tools?: ReactNode
-  /** Phone: only Conversations; files and workflows stay on the Mac. */
+  /** Phone: only Conversations; files, workflows and processes stay on the Mac. */
   conversationsOnly?: boolean
+  /** Running processes in the active project, shown on the Processes button. */
+  runningProcesses?: number
 }
 
 const THEME_LABEL: Record<ThemeMode, string> = { system: 'Theme: match system', light: 'Theme: light', dark: 'Theme: dark' }
 
-export function SubNav({ section, onSection, working, theme, onCycleTheme, tools, conversationsOnly = false }: SubNavProps) {
+export function SubNav({ section, onSection, working, theme, onCycleTheme, tools, conversationsOnly = false, runningProcesses = 0 }: SubNavProps) {
   const item = (id: Section, icon: ReactNode, label: string, extra?: ReactNode) => (
     <button type="button" role="tab" aria-selected={section === id} className="subnav-item" onClick={() => onSection(id)}>
       {icon}
@@ -45,6 +47,14 @@ export function SubNav({ section, onSection, working, theme, onCycleTheme, tools
         {conversationsOnly ? null : item('workflows', <WorkflowIcon />, 'Workflows')}
       </div>
       <div className="subnav-tools">
+        {conversationsOnly ? null : (
+          <button type="button" className={`icon-button processes-button${runningProcesses ? ' has-running' : ''}`} aria-pressed={section === 'processes'}
+            aria-label={runningProcesses ? `Processes (${runningProcesses} running)` : 'Processes'} title="Processes"
+            onClick={() => onSection(section === 'processes' ? 'conversations' : 'processes')}>
+            <TerminalIcon />
+            {runningProcesses ? <span className="processes-badge">{runningProcesses}</span> : null}
+          </button>
+        )}
         {tools}
         <button type="button" className="icon-button" aria-label={THEME_LABEL[theme]} title={THEME_LABEL[theme]} onClick={onCycleTheme}>
           {theme === 'light' ? <SunIcon /> : theme === 'dark' ? <MoonIcon /> : <MonitorIcon />}
