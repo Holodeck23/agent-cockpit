@@ -56,6 +56,8 @@ const COCKPIT_TOOLS: Record<string, string> = {
   list_processes: 'List processes',
   read_process_output: 'Read process output',
   open_preview: 'Open a preview',
+  recall: 'Search memory',
+  remember: 'Remember',
 }
 
 /** "mcp__cockpit__start_process" → "Start a process"; other MCP tools → "tool (server)". */
@@ -78,6 +80,10 @@ function describeCockpitTool(tool: string, input: unknown): string {
       return 'Checking running processes'
     case 'read_process_output':
       return `Reading the ${field(input, 'id') ?? 'process'} log`
+    case 'recall':
+      return `Searching memory${field(input, 'query') ? ` for “${clip(field(input, 'query') ?? '', 40)}”` : ''}`
+    case 'remember':
+      return `Remembering: ${clip(field(input, 'text') ?? '', 48)}`
     case 'open_preview':
       return `Opening the preview${field(input, 'url') ? ` at ${clip(field(input, 'url') ?? '', 40)}` : ''}`
     default:

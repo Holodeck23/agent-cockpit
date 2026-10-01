@@ -10,6 +10,7 @@ import { createAgentStatus, type VersionProbe } from './agents/status.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
+import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
 import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
@@ -118,6 +119,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       : {}),
   })
   const workflowStore = createWorkflowStore(root)
+  const memory = createMemoryStore(root)
   const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
   const remoteStore = createRemoteStore(root)
   const push = createPushStore(root)
@@ -153,7 +155,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
-  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, mcp: { sessions, processes, openUrl, workflows: workflows.store } }, [port, ...(options.trustedPorts ?? [])])
+  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, mcp: { sessions, processes, openUrl, workflows: workflows.store, memory } }, [port, ...(options.trustedPorts ?? [])])
   remote.attach(api)
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {

@@ -71,11 +71,11 @@ function devProject(): string {
 }
 
 describe('cockpit MCP tools', () => {
-  it('lists the six cockpit tools', async () => {
+  it('lists the eight cockpit tools', async () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['list_processes', 'open_preview', 'read_process_output', 'save_workflow', 'start_process', 'stop_process'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['list_processes', 'open_preview', 'read_process_output', 'recall', 'remember', 'save_workflow', 'start_process', 'stop_process'])
   })
 
   it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
@@ -163,7 +163,7 @@ describe('MCP wiring per CLI', () => {
   it('gives Claude a stdio server, pre-allows the read-only tools, and keeps the token out of the config', () => {
     const options = claudeMcpOptions(launch)
     expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: launch.env })
-    expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview'])
+    expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__recall'])
     expect(JSON.stringify(options.mcpConfig)).not.toContain('secret')
     expect(options.env).toEqual(launch.secretEnv)
   })

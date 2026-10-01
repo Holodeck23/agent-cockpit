@@ -15,6 +15,8 @@ export interface CockpitApi {
   read(id: string, options: { since?: number; tail?: number }): Promise<ProcessRead>
   stop(id: string): Promise<ProcessInfo>
   preview(url: string): Promise<{ opened: string }>
+  recall(query: string): Promise<{ text: string }>
+  remember(body: { text: string; scope: 'project' | 'everywhere' }): Promise<{ id: string }>
 }
 
 export function createCockpitApi(baseUrl: string, token: string): CockpitApi {
@@ -41,6 +43,8 @@ export function createCockpitApi(baseUrl: string, token: string): CockpitApi {
     read: (id, options) => call('GET', `/processes/${encodeURIComponent(id)}/output${query(options)}`),
     stop: (id) => call('POST', `/processes/${encodeURIComponent(id)}/stop`, {}),
     preview: (url) => call('POST', '/preview', { url }),
+    recall: (q) => call('GET', `/memory?${new URLSearchParams({ q })}`),
+    remember: (body) => call('POST', '/memory', body),
   }
 }
 
@@ -206,6 +210,30 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
     try {
       const saved = await api.saveWorkflow(input)
       return text(`Saved ${saved.name}. Review it in Workflows; its schedule is paused.`)
+    } catch (error) { return failure(error) }
+  })
+
+  server.registerTool('recall', {
+    title: 'Search memory',
+    description: 'Search Cockpit memory: notes kept from earlier conversations in this project, and the user\'s preferences. ' +
+      'Use it when the task depends on something decided or learned before. Entries are dated and may be out of date; check them.',
+    inputSchema: { query: z.string().max(200).describe('Words to look for; empty lists the newest entries') },
+  }, async ({ query }) => {
+    try { return text((await api.recall(query)).text) } catch (error) { return failure(error) }
+  })
+
+  server.registerTool('remember', {
+    title: 'Remember',
+    description: 'Keep a short fact for later conversations: a decision, a project convention, or (scope "everywhere") a preference of the user. ' +
+      'The user approves each one. Keep it to one or two sentences; do not store secrets.',
+    inputSchema: {
+      text: z.string().trim().min(1).max(1000),
+      scope: z.enum(['project', 'everywhere']).default('project').describe('"project" for this project, "everywhere" for the user\'s preferences'),
+    },
+  }, async (input) => {
+    try {
+      await api.remember(input)
+      return text(`Remembered for ${input.scope === 'everywhere' ? 'every project' : 'this project'}.`)
     } catch (error) { return failure(error) }
   })
   return server

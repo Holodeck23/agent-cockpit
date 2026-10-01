@@ -5,6 +5,7 @@ import type { ProcessRunner } from '../processes/runner.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { workflowInputSchema, type WorkflowStore } from '../workflows/store.ts'
 import { readCursor } from './process-routes.ts'
+import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
 // Every call carries that session's bearer token, and everything it can see or
@@ -34,6 +35,7 @@ export interface McpRouteDeps {
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
   readonly openUrl: (url: string) => Promise<void> | void
+  readonly memory?: MemoryStore
 }
 
 export async function handleMcpRoute(
@@ -41,7 +43,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl, workflows }: McpRouteDeps,
+  { sessions, processes, openUrl, workflows, memory }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -53,6 +55,16 @@ export async function handleMcpRoute(
     if (!workflows) throw new HttpError(503, 'Workflows unavailable')
     const body = parseBody(workflowInputSchema.pick({ name: true, prompt: true }), await readJson(req))
     return sendJson(res, 201, { data: workflows.save({ ...body, projectPath }) })
+  }
+  // Memory: recall searches this project's and the everywhere entries; remember (approved by the
+  // user before the agent can call it) records which conversation it came from.
+  if (parts[2] === 'memory') {
+    if (!memory) throw new HttpError(503, 'Memory unavailable')
+    if (method === 'GET') return sendJson(res, 200, { data: { text: recallText(memory.search(projectPath, (url.searchParams.get('q') ?? '').slice(0, 200))) } })
+    if (method === 'POST') {
+      const body = parseBody(z.object({ text: z.string().trim().min(1).max(MAX_MEMORY_CHARS), scope: memoryScope.default('project') }), await readJson(req))
+      return sendJson(res, 201, { data: memory.add({ ...body, projectPath, source: { kind: 'conversation', threadId: grant.threadId } }) })
+    }
   }
   if (parts[2] === 'preview' && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)

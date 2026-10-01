@@ -9,6 +9,7 @@ import { z } from 'zod'
 import type { ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
+import { MAX_MEMORY_CHARS, memoryScope, type MemoryStore } from '../memory/store.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
@@ -69,9 +70,10 @@ export interface ApiDeps {
   readonly remote: RemoteAccess
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
+  readonly memory?: MemoryStore
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory }: ApiDeps, allowedPorts: readonly number[]) {
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
   const expandedFor = (text: string, projectPath: string): { agentText: string; workflows?: WorkflowSnapshot[] } => {
@@ -118,6 +120,44 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         try { sendJson(res, 200, { data: { path: renameFile(store.root, body.projectPath, body.space, body.path, body.name) } }) }
         catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
         return true
+      }
+      // The Memory view: read, add, edit, delete and clear. Your own entries are marked as from you.
+      if (parts[1] === 'memory' && memory) {
+        if (viaPhone) throw new HttpError(403, 'Memory is only available on the Mac')
+        const known = (path: string): void => { if (!projects.list().some((p) => p.path === path)) throw new HttpError(404, 'Open this project first') }
+        const text = z.string().trim().min(1).max(MAX_MEMORY_CHARS)
+        try {
+          if (parts.length === 2 && method === 'GET') {
+            const projectPath = url.searchParams.get('projectPath') ?? ''
+            known(projectPath)
+            sendJson(res, 200, { data: memory.list(projectPath) })
+            return true
+          }
+          if (parts.length === 2 && method === 'POST') {
+            const body = parseBody(z.object({ projectPath: z.string().min(1).max(1000), scope: memoryScope, text }), await readJson(req))
+            known(body.projectPath)
+            sendJson(res, 201, { data: memory.add({ ...body, source: { kind: 'you' } }) })
+            return true
+          }
+          if (parts[2] === 'clear' && method === 'POST') {
+            const { projectPath } = parseBody(z.object({ projectPath: z.string().min(1).max(1000) }), await readJson(req))
+            known(projectPath)
+            sendJson(res, 200, { data: { removed: memory.clearProject(projectPath) } })
+            return true
+          }
+          if (parts.length === 3 && method === 'POST') {
+            sendJson(res, 200, { data: memory.update(parts[2]!, parseBody(z.object({ text }), await readJson(req)).text) })
+            return true
+          }
+          if (parts.length === 3 && method === 'DELETE') {
+            memory.remove(parts[2]!)
+            sendJson(res, 200, { data: { removed: parts[2] } })
+            return true
+          }
+        } catch (error) {
+          if (error instanceof HttpError) throw error
+          throw new HttpError(400, error instanceof Error ? error.message : String(error))
+        }
       }
       if (parts[1] === 'documents' && parts.length <= 3) {
         if (viaPhone) throw new HttpError(403, 'Your documents are only available on the Mac')
