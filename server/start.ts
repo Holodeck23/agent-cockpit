@@ -37,8 +37,10 @@ export interface StartOptions {
   readonly stateRoot?: string
   /** How to start the cockpit MCP server; without it, agent sessions get no cockpit tools. */
   readonly mcp?: McpCommand
-  /** Opens a preview for the user; defaults to macOS `open`. The app passes shell.openExternal. */
+  /** Opens a preview for the user; defaults to macOS `open`. The app retargets this to its preview pane. */
   readonly openUrl?: (url: string) => Promise<void> | void
+  /** Captures a local preview for an agent to inspect. Available in the desktop shell. */
+  readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
   /** How agent CLIs are checked for the picker; a fake in tests. */
@@ -155,7 +157,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
-  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, importHome: process.env.COCKPIT_IMPORT_HOME, mcp: { sessions, processes, openUrl, workflows: workflows.store, memory } }, [port, ...(options.trustedPorts ?? [])])
+  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, importHome: process.env.COCKPIT_IMPORT_HOME,
+    mcp: { sessions, processes, openUrl, ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory } },
+  [port, ...(options.trustedPorts ?? [])])
   remote.attach(api)
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {

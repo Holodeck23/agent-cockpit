@@ -53,7 +53,7 @@ export const MCP_URL_ENV = 'COCKPIT_MCP_URL'
 export const MCP_TOKEN_ENV = 'COCKPIT_MCP_TOKEN'
 
 /** Read-only or harmless tools the agent may call without an approval card. */
-export const AUTO_ALLOWED_TOOLS = ['list_processes', 'read_process_output', 'open_preview', 'recall'] as const
+export const AUTO_ALLOWED_TOOLS = ['list_processes', 'read_process_output', 'open_preview', 'inspect_preview', 'recall'] as const
 export const ALL_TOOLS = ['start_process', 'stop_process', 'save_workflow', 'remember', ...AUTO_ALLOWED_TOOLS] as const
 
 /** Appended to the agent's system prompt so it reaches for the tools on its own. */
@@ -61,7 +61,8 @@ export const COCKPIT_GUIDANCE = [
   'You are running inside Cockpit, which manages long-running processes for this project.',
   'For anything that keeps running (a dev server, a watcher, `npm run dev`), use the cockpit `start_process` tool instead of',
   'running it in the shell or backgrounding it with `&`. Then use `read_process_output` to confirm it started (and later to',
-  'check its logs for errors), and `open_preview` to show the user the running app.',
+  'check its logs for errors), and `open_preview` to show the user the running app. After a UI change, use `inspect_preview`',
+  'to look at a screenshot of the local app and check the result yourself.',
   'Cockpit keeps memory across conversations: use `recall` when the task depends on something decided before, and `remember` (the user approves it) for a fact worth keeping.',
   TURN_GUIDANCE,
 ].join(' ')

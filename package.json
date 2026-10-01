@@ -50,6 +50,7 @@
     "proof:import": "tsx scripts/proof-import.ts",
     "proof:opencode": "tsx scripts/proof-opencode.ts",
     "proof:antigravity": "tsx scripts/proof-antigravity.ts",
+    "proof:preview": "tsx scripts/proof-preview.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts"
   },
   "author": "",

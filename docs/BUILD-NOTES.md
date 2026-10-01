@@ -270,3 +270,11 @@ The portability package passed 27 non-agent phone checks through Tailscale. Its 
 **Found on the way.** Search results arrive after typing; Enter could pick a row left over from the previous query, so results now carry the query they answer. A chip checked once stayed green after its file was deleted; chips re-check every few seconds while the draft waits. A send error stayed on screen after the draft changed; editing clears it.
 
 **Gate.** `npm run proof:context` (13 checks) on the packaged app, synthetic files, no agent runs.
+
+## Phase 7: embedded preview and agent inspection (2026-10-01)
+
+`open_preview` now opens the running local app beside Cockpit instead of sending it straight to the default browser. The pane is resizable and has reload, open-in-browser and close controls; clicking a live URL on the Processes page opens the same pane.
+
+Agents with Cockpit MCP receive a new read-only `inspect_preview` tool. It loads only a loopback HTTP(S) URL in a short-lived sandboxed Chromium window with no Node access, captures the page, normalizes Retina output to 1280×800, and returns the PNG as image content. The visible frame is also confined to loopback navigation. Antigravity cannot receive this tool because its headless CLI still has no per-launch MCP configuration.
+
+Gate: `npm run verify` passed 303 tests, typecheck and both builds. `npm run proof:preview` passed 8 checks on the packaged app: embedded rendering, local address, PNG inspection, resize, reload, close and reopen from Processes. Screenshot: `proof/phase-7-preview.png`.

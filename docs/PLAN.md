@@ -5,7 +5,7 @@
 - **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
 - **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
 - **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
-- **Next:** stranger install on a second macOS user (see RELEASE-ACCEPTANCE), physical-phone push acceptance, then Phase 7 preview pane. Calendar schedules (checkpoint 7) and more agent adapters (Phase 8) are after the first release.
+- **Next:** stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
 
 
 ## MVP inspection (2026-09-29)
@@ -159,9 +159,9 @@ Scope as agreed: there was no process runner, preview pane or workflow store yet
 - **6c–6d Notifications and live approval:** encrypted Web Push subscriptions, approval notifications, notification-to-conversation routing, and a real Codex workflow approval completed from the paired phone view.
 - **Gate:** 32 packaged phone checks passed through real Tailscale. The remaining manual acceptance item is actual notification delivery and tap routing on a physical phone; implementation and browser-side routing are complete.
 
-## Phase 7: embedded preview pane (not started)
+## Phase 7: embedded preview pane (done 2026-10-01)
 
-Retarget `open_preview` from the external browser to an in-app preview pane, then let the agent inspect its own UI change with a screenshot. Start only after the physical-phone notification acceptance check.
+`open_preview` now targets a resizable in-app pane with reload, open-in-browser and close controls; a process URL opens the same pane. The read-only `inspect_preview` MCP tool renders the local page in an isolated Chromium window and returns a normalized 1280×800 PNG so Claude Code, Codex and OpenCode can inspect their own UI work. Both routes accept loopback HTTP(S) only, and preview frames cannot navigate the embedded pane to a remote origin. `npm run proof:preview` passed 8 packaged checks; screenshot: `docs/proof/phase-7-preview.png`. The user explicitly advanced Phase 7 while the separate physical-phone notification acceptance remains open.
 
 ## Phase 8: more agents (requested 2026-09-29, U10 implemented 2026-10-01)
 

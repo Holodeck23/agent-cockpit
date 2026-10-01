@@ -19,6 +19,7 @@ interface Harness {
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
   readonly opened: string[]
+  readonly inspected: string[]
   connect(token: string): Promise<Client>
 }
 
@@ -37,10 +38,12 @@ async function harness(): Promise<Harness> {
   const processes = createProcessRunner({ graceMs: 500 })
   runner = processes
   const opened: string[] = []
+  const inspected: string[] = []
   const workflows = createWorkflowStore(mkdtempSync(join(tmpdir(), 'cockpit-workflows-mcp-')))
   server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, workflows, openUrl: (u) => void opened.push(u) }).catch(
+    handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, workflows, openUrl: (u) => void opened.push(u),
+      capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } } }).catch(
       (error: unknown) => sendJson(res, error instanceof HttpError ? error.status : 500, { error: (error as Error).message }),
     )
   })
@@ -51,6 +54,7 @@ async function harness(): Promise<Harness> {
     sessions,
     processes,
     opened,
+    inspected,
     async connect(token) {
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
       await createCockpitMcpServer(createCockpitApi(url, token)).connect(serverSide)
@@ -71,11 +75,11 @@ function devProject(): string {
 }
 
 describe('cockpit MCP tools', () => {
-  it('lists the eight cockpit tools', async () => {
+  it('lists the nine cockpit tools', async () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['list_processes', 'open_preview', 'read_process_output', 'recall', 'remember', 'save_workflow', 'start_process', 'stop_process'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['inspect_preview', 'list_processes', 'open_preview', 'read_process_output', 'recall', 'remember', 'save_workflow', 'start_process', 'stop_process'])
   })
 
   it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
@@ -113,6 +117,14 @@ describe('cockpit MCP tools', () => {
 
     expect(textOf(await client.callTool({ name: 'open_preview', arguments: {} }))).toContain('Opened http://localhost:5199/')
     expect(h.opened).toEqual(['http://localhost:5199/'])
+
+    const inspected = await client.callTool({ name: 'inspect_preview', arguments: {} })
+    expect(inspected.isError).not.toBe(true)
+    expect(inspected.content).toEqual([
+      { type: 'text', text: 'Screenshot of http://localhost:5199/ (1280×800).' },
+      { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+    ])
+    expect(h.inspected).toEqual(['http://localhost:5199/'])
 
     const stopped = textOf(await client.callTool({ name: 'stop_process', arguments: { id: proc?.id } }))
     expect(stopped).toContain('exited')
@@ -163,7 +175,7 @@ describe('MCP wiring per CLI', () => {
   it('gives Claude a stdio server, pre-allows the read-only tools, and keeps the token out of the config', () => {
     const options = claudeMcpOptions(launch)
     expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: launch.env })
-    expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__recall'])
+    expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__inspect_preview', 'mcp__cockpit__recall'])
     expect(JSON.stringify(options.mcpConfig)).not.toContain('secret')
     expect(options.env).toEqual(launch.secretEnv)
   })
@@ -176,6 +188,7 @@ describe('MCP wiring per CLI', () => {
     expect(values).toContain('mcp_servers.cockpit.env_vars=["COCKPIT_MCP_URL","COCKPIT_MCP_TOKEN"]')
     expect(values).toContain('mcp_servers.cockpit.env={"ELECTRON_RUN_AS_NODE"="1"}')
     expect(values).toContain('mcp_servers.cockpit.tools.read_process_output.approval_mode="approve"')
+    expect(values).toContain('mcp_servers.cockpit.tools.inspect_preview.approval_mode="approve"')
     expect(values.join(' ')).not.toContain('secret')
   })
 })

@@ -21,6 +21,7 @@ import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { PhoneNotify } from './components/PhoneNotify.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
+import { PreviewPane } from './components/PreviewPane.tsx'
 
 const NO_THREADS: never[] = []
 
@@ -48,6 +49,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const setSection = useCallback((next: Section) => { setGalleryFirst(false); setSectionState(next) }, [])
   const openGallery = useCallback(() => { setGalleryFirst(true); setSectionState('workflows') }, [])
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string>()
+  useEffect(() => local ? native?.onPreviewOpen(setPreviewUrl) : undefined, [local])
 
   const activePath = projects.active?.path
   const visible = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
@@ -96,6 +99,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           </button>
         </div>
       ) : null}
+      <div className={`workspace${local && previewUrl ? ' has-preview' : ''}`}>
+        <div className="workspace-main">
       {section === 'conversations' ? (
         <div className={`layout${selectedId ? ' has-selection' : ''}`}>
           <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
@@ -150,6 +155,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError} initialGallery={galleryFirst}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />
       )}
+        </div>
+        {local && previewUrl ? <PreviewPane url={previewUrl} onClose={() => setPreviewUrl(undefined)} /> : null}
+      </div>
     </div>
   )
 }

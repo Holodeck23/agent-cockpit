@@ -55,7 +55,7 @@ Cockpit is a local Node server that drives the agent CLIs, a React page that tal
 
 **The cockpit MCP talks back over HTTP with a session token.** The MCP server is a separate process the CLI spawns, so it needs a way home. It gets the server URL and a token through its environment. The token is about identity and scope, not secrecy: the loopback API is reachable by any local process anyway. What it adds is that a session's tools see only that session's project, and stop working when the session ends. It is never on a command line: Claude passes its environment to MCP servers, and Codex forwards named variables through `env_vars`.
 
-**Cheap tools don't ask, costly ones do.** Listing, reading logs and opening a localhost preview are pre-allowed. Starting or stopping a process goes through the same approval card as a shell command.
+**Cheap tools don't ask, costly ones do.** Listing, reading logs, opening a localhost preview and capturing its screenshot are pre-allowed. `open_preview` sends the loopback URL to a resizable iframe in the sandboxed page. `inspect_preview` uses a short-lived sandboxed Chromium window and returns a normalized 1280×800 PNG to the agent. Both reject non-loopback targets; the embedded frame cannot navigate to a remote origin. Starting or stopping a process goes through the same approval card as a shell command.
 
 **Quit leaves nothing behind.** Closing the window keeps the app and its agents running (macOS convention). Quitting stops every agent session and every process group before exit, and the packaged-app proofs check for survivors by pid.
 

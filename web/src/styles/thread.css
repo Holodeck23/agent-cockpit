@@ -41,7 +41,7 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .process-exited .process-name { color: var(--muted); }
 .process-meta { display: flex; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); }
 .process-meta code { font: 11.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.process-url { font: 12px var(--mono); color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-url { width: fit-content; max-width: 100%; padding: 0; border: 0; background: none; text-align: left; font: 12px var(--mono); color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .process-url:hover { text-decoration: underline; }
 .process-stop {
   display: grid; place-items: center; width: 28px; height: 28px; flex: none; padding: 0;

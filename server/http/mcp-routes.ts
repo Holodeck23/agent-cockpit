@@ -35,6 +35,7 @@ export interface McpRouteDeps {
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
   readonly openUrl: (url: string) => Promise<void> | void
+  readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   readonly memory?: MemoryStore
 }
 
@@ -43,7 +44,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl, workflows, memory }: McpRouteDeps,
+  { sessions, processes, openUrl, capturePreview, workflows, memory }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -66,7 +67,12 @@ export async function handleMcpRoute(
       return sendJson(res, 201, { data: memory.add({ ...body, projectPath, source: { kind: 'conversation', threadId: grant.threadId } }) })
     }
   }
-  if (parts[2] === 'preview' && method === 'POST') {
+  if (parts[2] === 'preview' && parts[3] === 'screenshot' && method === 'POST') {
+    if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')
+    const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
+    return sendJson(res, 200, { data: { inspected: target, ...(await capturePreview(target)) } })
+  }
+  if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
     await openUrl(target)
     sendJson(res, 200, { data: { opened: target } })

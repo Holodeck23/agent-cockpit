@@ -15,6 +15,7 @@ export interface CockpitApi {
   read(id: string, options: { since?: number; tail?: number }): Promise<ProcessRead>
   stop(id: string): Promise<ProcessInfo>
   preview(url: string): Promise<{ opened: string }>
+  inspect(url: string): Promise<{ inspected: string; data: string; mimeType: 'image/png'; width: number; height: number }>
   recall(query: string): Promise<{ text: string }>
   remember(body: { text: string; scope: 'project' | 'everywhere' }): Promise<{ id: string }>
 }
@@ -43,6 +44,7 @@ export function createCockpitApi(baseUrl: string, token: string): CockpitApi {
     read: (id, options) => call('GET', `/processes/${encodeURIComponent(id)}/output${query(options)}`),
     stop: (id) => call('POST', `/processes/${encodeURIComponent(id)}/stop`, {}),
     preview: (url) => call('POST', '/preview', { url }),
+    inspect: (url) => call('POST', '/preview/screenshot', { url }),
     recall: (q) => call('GET', `/memory?${new URLSearchParams({ q })}`),
     remember: (body) => call('POST', '/memory', body),
   }
@@ -69,6 +71,18 @@ function formatRead(read: ProcessRead): string {
 
 const text = (value: string) => ({ content: [{ type: 'text' as const, text: value }] })
 const failure = (error: unknown) => ({ ...text(error instanceof Error ? error.message : String(error)), isError: true })
+
+async function previewTarget(api: CockpitApi, url?: string, id?: string): Promise<string> {
+  if (url) return url
+  const all = await api.list()
+  const candidates = all.filter((p) => p.status === 'running' && p.url && (!id || p.id === id))
+  if (candidates.length !== 1) {
+    throw new Error(candidates.length
+      ? `Several running processes have URLs (${candidates.map((p) => p.id).join(', ')}); pass id or url.`
+      : 'No running process has printed a local URL yet; pass url, or check read_process_output.')
+  }
+  return candidates[0]!.url!
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -181,21 +195,34 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
     },
     async ({ url, id }) => {
       try {
-        let target = url
-        if (!target) {
-          const all = await api.list()
-          const candidates = all.filter((p) => p.status === 'running' && p.url && (!id || p.id === id))
-          if (candidates.length !== 1) {
-            return failure(
-              candidates.length
-                ? `Several running processes have URLs (${candidates.map((p) => p.id).join(', ')}); pass id or url.`
-                : 'No running process has printed a local URL yet; pass url, or check read_process_output.',
-            )
-          }
-          target = candidates[0]?.url
-        }
-        const { opened } = await api.preview(target ?? '')
+        const { opened } = await api.preview(await previewTarget(api, url, id))
         return text(`Opened ${opened} for the user.`)
+      } catch (error) {
+        return failure(error)
+      }
+    },
+  )
+
+  server.registerTool(
+    'inspect_preview',
+    {
+      title: 'Inspect a preview screenshot',
+      description:
+        'Capture and inspect a screenshot of the local app preview after a UI change. Give a url, or a process id to use the URL it printed; ' +
+        'with neither, uses the one running process that printed a URL. Read-only and localhost only.',
+      inputSchema: {
+        url: z.string().min(1).max(2000).optional().describe('e.g. "http://localhost:5173/"'),
+        id: z.string().min(1).max(40).optional().describe('Process id whose URL to inspect'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ url, id }) => {
+      try {
+        const shot = await api.inspect(await previewTarget(api, url, id))
+        return { content: [
+          { type: 'text' as const, text: `Screenshot of ${shot.inspected} (${shot.width}×${shot.height}).` },
+          { type: 'image' as const, data: shot.data, mimeType: shot.mimeType },
+        ] }
       } catch (error) {
         return failure(error)
       }

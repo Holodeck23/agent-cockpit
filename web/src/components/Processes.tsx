@@ -3,6 +3,7 @@ import type { OutputLine } from '../../../server/processes/output.ts'
 import { api, type ProcessInfo, type Project } from '../api.ts'
 import { SearchIcon, TerminalIcon } from './icons.tsx'
 import { shortLabel, stateText } from './ProcessChip.tsx'
+import { native } from '../native.ts'
 
 // Every process the cockpit runner started in this project (dev servers, watchers),
 // with a live log beside the selected one. Agents start them through the cockpit MCP;
@@ -121,7 +122,10 @@ export function Processes({ project, processes, onError }: ProcessesProps) {
                 <h2>{selected.name}</h2>
                 <code title={selected.command}>{selected.command}</code>
                 <span className={`process-state process-${selected.status}`}><span className="process-dot" aria-hidden />{stateText(selected)}</span>
-                {selected.url && selected.status !== 'exited' ? <a className="process-url" href={selected.url} target="_blank" rel="noreferrer">{selected.url}</a> : null}
+                {selected.url && selected.status !== 'exited' ? <button type="button" className="process-url" onClick={() => {
+                  if (native) native.openPreview(selected.url!)
+                  else window.open(selected.url, '_blank', 'noopener,noreferrer')
+                }}>{selected.url}</button> : null}
               </div>
               <div className="process-actions">
                 <button type="button" disabled={Boolean(pending)} onClick={() => void act('restart', selected)}>

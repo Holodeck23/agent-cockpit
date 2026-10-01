@@ -1,0 +1,34 @@
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
+.workspace.has-preview { grid-template-columns: minmax(420px, 1fr) auto; }
+.workspace-main { display: grid; min-width: 0; min-height: 0; overflow: hidden; }
+.workspace-main > * { min-height: 0; }
+
+.preview-pane {
+  position: relative; display: grid; grid-template-rows: 45px 34px minmax(0, 1fr); min-width: 360px; max-width: 72vw;
+  min-height: 0; overflow: hidden; border-left: 1px solid var(--border); background: var(--canvas-app);
+}
+.preview-resizer {
+  position: absolute; z-index: 3; inset: 0 auto 0 -5px; width: 10px; padding: 0; border: 0; background: transparent; cursor: col-resize;
+}
+.preview-resizer::after { content: ''; position: absolute; left: 4px; inset-block: 0; width: 1px; background: transparent; }
+.preview-resizer:hover::after { background: var(--blue); }
+.preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--border); }
+.preview-heading, .preview-actions { display: flex; align-items: center; gap: 8px; }
+.preview-heading strong { color: var(--strong); font-size: 13px; }
+.preview-light { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.preview-light.live { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 14%, transparent); }
+.preview-actions button, .preview-actions a {
+  padding: 5px 7px; border: 0; border-radius: 6px; background: transparent; color: var(--secondary); font-size: 12px; text-decoration: none;
+}
+.preview-actions button:hover, .preview-actions a:hover { background: var(--field); color: var(--strong); }
+.preview-actions .preview-close { font-size: 19px; line-height: 1; }
+.preview-address { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--field); }
+.preview-address span { flex: none; padding: 2px 6px; border-radius: 999px; background: var(--tag-green-bg); color: var(--tag-green-ink); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.preview-address code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--secondary); font-size: 11.5px; }
+.preview-pane iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+
+@media (max-width: 1120px) {
+  .workspace.has-preview { grid-template-columns: minmax(360px, 1fr) auto; }
+  .preview-pane { min-width: 340px; }
+  .layout { grid-template-columns: 260px minmax(0, 1fr); }
+}

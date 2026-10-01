@@ -54,14 +54,15 @@ These features may remain in the build, but unfinished polish or optional accept
 ## Explicitly deferred or excluded
 
 - Physical-phone Web Push delivery and notification-tap acceptance.
-- The embedded preview pane and agent screenshot inspection (Phase 7); the external browser is the release behavior.
 - Automatic usage-limit failover or automatic agent selection.
 - Treating **Deny** or **Allow for this session** as release-critical acceptance paths.
 - Simultaneous multi-agent stress acceptance.
 - A second-Mac onboarding pass, notarization and automatic installation.
 - Windows, Linux and Intel Mac support.
-- Antigravity, OpenCode, OpenRouter and Grok Build adapters (Phase 8).
+- Live OpenRouter account validation and a Grok Build adapter (Phase 8); OpenCode and Antigravity are implemented.
 - Production accounts, billing, a public relay or cloud-hosted conversation storage.
+
+Phase 7 landed after this Day 30 boundary was accepted. `open_preview` now targets the embedded pane, with **Browser ↗** retaining the external-browser option; `inspect_preview` gives compatible agents a loopback-only PNG. Its separate packaged gate is `proof:preview` (8/8, 2026-10-01).
 
 ## Release decision
 

@@ -4,7 +4,7 @@
 
 Cockpit does no AI inference itself. It drives the agents' own CLIs headless, so usage counts against your own subscriptions or provider account, and every conversation stays on your own disk as plain files.
 
-![A Cockpit conversation: the agent started the dev server, read its log and opened the preview; the running process shows under the title](docs/proof/phase-4-thread.png)
+![Cockpit with a conversation and its live app open in the embedded preview pane](docs/proof/phase-7-preview.png)
 
 ## Download
 
@@ -71,7 +71,7 @@ Packaged-app captures with synthetic projects. The primary flow is: open a proje
 - **Several agents, one thread.** Pick Claude Code, Codex, Antigravity or OpenCode, plus model, effort and permission mode per conversation. Switch agent mid-thread and the transcript is handed over to the new one.
 - **Google subscription through Antigravity.** Install `agy`, sign in once, then pick Antigravity. Cockpit uses the cached Google/Antigravity credentials, streams its tool steps and resumes its conversation id. This path is proven against a real subscription. Antigravity currently uses its own file/shell tools; its headless CLI has no per-launch MCP flag, so Cockpit's process, preview and memory tools are not attached to it.
 - **OpenRouter through OpenCode (optional).** Install [OpenCode](https://opencode.ai) (`opencode`), run `opencode auth login` once and add your OpenRouter key, then pick OpenCode in the agent picker and type a model such as `openrouter/anthropic/claude-sonnet-4`. Cockpit runs it as `opencode acp`; approvals, steps and the cockpit tools work as with the other agents. This path is tested against a stand-in agent, not yet against a live OpenRouter account.
-- **Dev servers the agent can see.** Claude Code, Codex and OpenCode sessions get a built-in `cockpit` MCP server. The agent starts long-running commands through it, reads their output, and opens the local preview for you. Running processes show under the conversation title, with the URL and a Stop button.
+- **Dev servers the agent can see.** Claude Code, Codex and OpenCode sessions get a built-in `cockpit` MCP server. The agent starts long-running commands through it, reads their output, opens the local app in a resizable preview pane, and can inspect a screenshot of its own UI change. Running processes show under the conversation title, with the URL and a Stop button.
 - **Repeatable workflows.** Save project instructions and agent settings, run them manually or on a repeating interval, and open each run as a conversation. Schedules run while Cockpit is open and pause on failure.
 - **Edit project files.** The Files panel opens text files in tabs with Save (Cmd+S) and Revert. If an agent or another editor changes a file while you edit it, you get a conflict with Save mine as a copy, Reload from disk or Overwrite with mine. Nothing is overwritten silently.
 - **Markdown as a document.** Markdown files open in a Document view with a small formatting toolbar and clickable to-do boxes, and a Source switch for the raw text. Blocks you didn't touch are saved byte for byte.
@@ -151,7 +151,8 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The CLI protocol details t
 | `stop_process` | Stops it and everything it spawned | Yes |
 | `list_processes` | The project's processes, status and URL | No |
 | `read_process_output` | The log, incrementally | No |
-| `open_preview` | Opens a local page (localhost only) for you | No |
+| `open_preview` | Opens a local page (localhost only) in the preview pane | No |
+| `inspect_preview` | Returns a screenshot of the local page to the agent | No |
 | `save_workflow` | Saves reusable instructions in the current project, with scheduling off | Yes |
 
 Each session's tools are scoped to that session's project by a token that ends with the session. The token is passed through the agent's environment, never on a command line.
@@ -187,6 +188,7 @@ Open **Files** to edit a text file or add it to your draft, or use the composer'
 | `npm run proof:phone` | Packaged app and real Tailscale on HTTPS 8443: turn on phone access, pair a phone-sized Chrome, and refusals for a login not on the allowlist, the LAN address, no identity, a foreign Origin, an unpaired and a removed phone, each with a control |
 | `npm run proof:phone -- --live` | Also run one real Codex workflow-save approval, answer it through the phone view, and verify the result arrives live; uses the configured small Codex model |
 | `npm run proof:antigravity` | Packaged app: picker, model/instructions, tool activity and resume against an `agy` protocol stand-in; no agent usage |
+| `npm run proof:preview` | Packaged app: embedded local page, agent PNG inspection, resize, reload, close and reopen |
 
 Use `npm run proof:files -- --codex` and `npm run proof:mcp -- --codex` to run the packaged file/process checks with Codex instead of Claude. Set `COCKPIT_CODEX_MODEL` to choose an available model.
 
@@ -194,12 +196,12 @@ Some proofs and smokes call real agents and consume your provider allowance. Cod
 
 ## Status and roadmap
 
-Built and proven: Claude, Codex and Antigravity adapters; OpenCode through ACP; parallel threads, supported approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, workflows and schedules, file editing with conflict handling, the Markdown Document view, the composer's context picker, and phone access over Tailscale with pairing and a phone layout. The primary release flow is accepted on a packaged build.
+Built and proven: Claude, Codex and Antigravity adapters; OpenCode through ACP; parallel threads, supported approvals, stop, agent switching with handoff, the desktop app, the full conversation UI, the cockpit MCP with the process runner, embedded preview and screenshot inspection, workflows and calendar schedules, file editing with conflict handling, the Markdown Document view, the composer's context picker, and phone access over Tailscale with pairing and a phone layout. The primary release flow is accepted on a packaged build.
 
 Next:
 1. **Phone acceptance.** Web Push is implemented; confirm notification delivery and tapping on a physical phone.
-2. **Preview pane.** `open_preview` opens inside the app, and the agent can check its own UI change with a screenshot.
-3. **Calendar schedules.** Daily, weekday and weekly runs in local time.
+2. **Phase 8 boundary.** Decide whether Grok Build belongs in the supported set; live OpenRouter validation still needs an account/key.
+3. **Fresh-user acceptance.** Run the packaged app from a second macOS account with that user's own CLI sign-ins.
 
 ## Credits
 

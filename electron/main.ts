@@ -7,6 +7,7 @@ import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
 import { fileOnDisk, spaceSchema } from '../server/files/documents.ts'
 import { resolveAppPath } from './shell-path.ts'
+import { assertLocalUrl } from '../server/http/mcp-routes.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -55,8 +56,8 @@ async function boot(): Promise<void> {
       args: [join(app.getAppPath(), 'dist-electron', 'mcp.cjs')],
       env: { ELECTRON_RUN_AS_NODE: '1' },
     },
-    // Late-bound so the preview target can be swapped (Phase 7 pane, or a proof stub).
-    openUrl: (url) => shell.openExternal(url),
+    openUrl: showPreview,
+    capturePreview,
   })
   writeAppPort(portFile, running.port)
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
@@ -65,6 +66,54 @@ async function boot(): Promise<void> {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
   })
+}
+
+/** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
+function showPreview(url: string): void {
+  const target = assertLocalUrl(url)
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!running) return
+    mainWindow = createWindow(running.url)
+    const reopened = mainWindow
+    reopened.webContents.once('did-finish-load', () => {
+      if (!reopened.isDestroyed()) reopened.webContents.send('cockpit:preview-open', target)
+    })
+    return
+  }
+  mainWindow.webContents.send('cockpit:preview-open', target)
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+}
+
+/**
+ * Render the same local URL in an isolated, hidden Chromium window so an agent receives the
+ * preview itself—not a screenshot of Cockpit chrome. The window is short-lived and has no Node API.
+ */
+async function capturePreview(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
+  const target = assertLocalUrl(url)
+  const preview = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 800,
+    useContentSize: true,
+    backgroundColor: '#ffffff',
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+  })
+  preview.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  preview.webContents.on('will-redirect', (event, next) => {
+    try { assertLocalUrl(next) } catch { event.preventDefault() }
+  })
+  try {
+    await preview.loadURL(target)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    // capturePage returns physical pixels on Retina displays. Normalise the tool payload so
+    // agents get a predictable, detailed image without a needlessly large base64 response.
+    const image = (await preview.webContents.capturePage()).resize({ width: 1280, height: 800, quality: 'best' })
+    const size = image.getSize()
+    return { data: image.toPNG().toString('base64'), mimeType: 'image/png', width: size.width, height: size.height }
+  } finally {
+    if (!preview.isDestroyed()) preview.destroy()
+  }
 }
 
 function createWindow(url: string): BrowserWindow {
@@ -100,6 +149,13 @@ function createWindow(url: string): BrowserWindow {
     event.preventDefault()
     openOutside(target)
   })
+  // A preview iframe may navigate within the local app, but it cannot turn the embedded pane
+  // into an arbitrary remote browser surface. Remote links can still use target=_blank, which
+  // the handler above sends to the person's default browser.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) return
+    try { assertLocalUrl(details.url) } catch { details.preventDefault() }
+  })
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
 
   win.once('ready-to-show', () => win.show())
@@ -131,6 +187,10 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
+  })
+  ipcMain.on('cockpit:open-preview', (event, target: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || typeof target !== 'string') return
+    try { showPreview(target) } catch { /* The server remains the authority for preview URLs. */ }
   })
   // Open in the default app, show in Finder, or move to the Trash: one file of a known project,
   // in its folder or in the project's documents. Resolves to an error message, or undefined.

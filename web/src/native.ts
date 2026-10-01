@@ -7,6 +7,8 @@ export interface CockpitBridge {
   openFolder(path: string): void
   fileAction(request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined>
   setActivity(activity: { working: number; needs: number }): void
+  openPreview(url: string): void
+  onPreviewOpen(listener: (url: string) => void): () => void
 }
 
 export const native: CockpitBridge | undefined = (window as { cockpit?: CockpitBridge }).cockpit

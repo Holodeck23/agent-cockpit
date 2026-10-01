@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 // The only native surface the page gets. Everything else goes through the
 // loopback HTTP API, exactly as in the browser.
@@ -16,6 +16,14 @@ const cockpit = {
     ipcRenderer.invoke('cockpit:file-action', request) as Promise<string | undefined>,
   /** Drives the Dock icon: animated while agents work, badged with how many need you. */
   setActivity: (activity: { working: number; needs: number }): void => ipcRenderer.send('cockpit:activity', activity),
+  /** Opens a local dev-server URL in Cockpit's embedded preview pane. */
+  openPreview: (url: string): void => ipcRenderer.send('cockpit:open-preview', url),
+  /** The process runner's open_preview tool reaches the page through this event. */
+  onPreviewOpen: (listener: (url: string) => void): (() => void) => {
+    const receive = (_event: IpcRendererEvent, url: unknown): void => { if (typeof url === 'string') listener(url) }
+    ipcRenderer.on('cockpit:preview-open', receive)
+    return () => ipcRenderer.removeListener('cockpit:preview-open', receive)
+  },
 }
 
 contextBridge.exposeInMainWorld('cockpit', cockpit)
