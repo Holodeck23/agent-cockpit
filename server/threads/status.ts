@@ -1,4 +1,5 @@
 import type { StoredEvent, ThreadStatus } from './types.ts'
+import { parseConclusion, turnRoles } from './turns.ts'
 
 /** Approval requests that have not been answered yet, oldest first. */
 export function openApprovals(events: readonly StoredEvent[]): string[] {
@@ -31,11 +32,16 @@ export function messageCountOf(events: readonly StoredEvent[]): number {
   return events.filter(({ event }) => event.kind === 'user_text' || event.kind === 'assistant_text').length
 }
 
-/** Last assistant (or user) text, for the thread list. */
+/**
+ * For the thread list: your latest message or the agent's latest conclusion, whichever is newer.
+ * Acknowledgements and updates are skipped (U12), and a conclusion's Question:/Blocked: marker is dropped.
+ */
 export function previewOf(events: readonly StoredEvent[]): string {
+  const roles = turnRoles(events)
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]?.event
-    if (event?.kind === 'assistant_text' || event?.kind === 'user_text') return event.text.slice(0, 140)
+    if (event?.kind === 'user_text') return event.text.slice(0, 140)
+    if (event?.kind === 'assistant_text' && roles.get(i) === 'conclusion') return parseConclusion(event.text).text.slice(0, 140)
   }
   return ''
 }

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { TURN_GUIDANCE } from '../threads/turns.ts'
 
 // Every agent session gets its own cockpit MCP token. The loopback guard only
 // keeps browser pages out; any local process can already reach the API. So
@@ -61,4 +62,5 @@ export const COCKPIT_GUIDANCE = [
   'For anything that keeps running (a dev server, a watcher, `npm run dev`), use the cockpit `start_process` tool instead of',
   'running it in the shell or backgrounding it with `&`. Then use `read_process_output` to confirm it started (and later to',
   'check its logs for errors), and `open_preview` to show the user the running app.',
+  TURN_GUIDANCE,
 ].join(' ')

@@ -52,4 +52,6 @@ export interface ThreadSummary {
   readonly messageCount: number
   /** Time of the latest event, or the metadata's updatedAt if there are none. */
   readonly lastActivityAt: string
+  /** The last turn ended with a question or a blocker you haven't answered (U12). */
+  readonly awaiting?: 'question' | 'blocker'
 }

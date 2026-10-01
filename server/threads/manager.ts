@@ -6,6 +6,7 @@ import { COCKPIT_GUIDANCE, type CockpitMcpLaunch, type McpGrant } from '../mcp/s
 import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { deriveStatus, messageCountOf, previewOf } from './status.ts'
+import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
 
@@ -321,6 +322,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
           preview: previewOf(events),
           messageCount: messageCountOf(events),
           lastActivityAt: events.at(-1)?.ts ?? meta.updatedAt,
+          ...(awaitingOf(events) ? { awaiting: awaitingOf(events) } : {}),
         }
       })
       return all.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
