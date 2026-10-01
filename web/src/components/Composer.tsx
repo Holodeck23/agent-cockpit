@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { MAX_ATTACHED_FILES } from '../../../server/files/references.ts'
 import { addReference, referencesIn, removeReference, tokenFor } from '../draft-references.ts'
+import { BranchPicker } from './BranchPicker.tsx'
 import { ContextPicker } from './ContextPicker.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
 import { ArrowUpIcon } from './icons.tsx'
@@ -18,6 +19,8 @@ interface ComposerProps {
   disabled?: boolean
   /** The agent picker, shown in the bottom row. */
   picker: ReactNode
+  /** Re-reads the branch pill when it changes, e.g. the conversation's status. */
+  branchRefreshKey?: string
   onSubmit: (text: string) => Promise<void>
 }
 
@@ -43,7 +46,7 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, draftKey, placeholder, disabled, picker, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, draftKey, placeholder, disabled, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
@@ -130,6 +133,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
               onBrowseFiles={onBrowseFiles} onPick={(token) => { update(addReference(text, token)); box.current?.focus() }} />
           ) : null}
           {picker}
+          {projectPath ? <BranchPicker projectPath={projectPath} refreshKey={branchRefreshKey} /> : null}
           <span className="composer-spacer" />
           <button type="submit" className="send" aria-label="Send" disabled={disabled || sending || !text.trim()}>
             <ArrowUpIcon />

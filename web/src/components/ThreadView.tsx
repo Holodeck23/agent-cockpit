@@ -163,6 +163,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         onBrowseFiles={phone ? undefined : onBrowseFiles}
         projectPath={phone ? undefined : meta.projectPath}
         draftKey={meta.id}
+        branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         onSubmit={(text) => api.send(meta.id, text).then(() => undefined)}
         picker={phone ? (

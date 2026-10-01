@@ -9,6 +9,7 @@ import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 import type { RemoteStatus } from '../../server/remote/service.ts'
 import type { AgentStatus } from '../../server/agents/status.ts'
+import type { GitState } from '../../server/git/branches.ts'
 
 export type { AgentStatus, ProcessInfo, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
@@ -41,7 +42,14 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
   return payload.data
 }
 
+/** The project's branch state plus the conversations that would block a switch. */
+export type GitView = GitState & { readonly busy: readonly string[]; readonly pushedTo?: string }
+
 export const api = {
+  gitState: (projectPath: string) => request<GitView>(`/api/git?${new URLSearchParams({ projectPath })}`),
+  switchBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch } }),
+  createBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch } }),
+  pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   readFile: (projectPath: string, path: string) => request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path })}`),
   searchFiles: (projectPath: string, q: string) => request<FileSearch>(`/api/files/search?${new URLSearchParams({ projectPath, q })}`),

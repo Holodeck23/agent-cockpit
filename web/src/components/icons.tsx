@@ -153,3 +153,11 @@ export const ActivityIcon = (p: IconProps) => (
     <path d="M3.5 12h4l2.5-6 4 12 2.5-6h4" />
   </Svg>
 )
+export const BranchIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="7" cy="5.5" r="2" />
+    <circle cx="7" cy="18.5" r="2" />
+    <circle cx="17" cy="8" r="2" />
+    <path d="M7 7.5v9M17 10c0 4-10 2.5-10 6.5" />
+  </Svg>
+)

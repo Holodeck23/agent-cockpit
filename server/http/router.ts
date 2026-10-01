@@ -12,6 +12,7 @@ import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
+import { handleGitRoute } from './git-routes.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
@@ -136,6 +137,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       if (parts[1] === 'mcp') {
         await handleMcpRoute(req, res, url, parts, mcp)
+        return true
+      }
+      if (parts[1] === 'git') {
+        await handleGitRoute(req, res, url, parts, { projects, manager }, viaPhone)
         return true
       }
       if (parts[1] === 'processes') {
