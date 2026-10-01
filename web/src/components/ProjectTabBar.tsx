@@ -11,7 +11,7 @@ interface ProjectTabBarProps {
 function Tab({ project, active, projects }: { project: Project; active: boolean; projects: Projects }) {
   const { working, needsYou } = projects.countsFor(project.path)
   return (
-    <div className={`tab${active ? ' active' : ''}`} role="presentation">
+    <div className={`tab tint-${project.color}${active ? ' active' : ''}`} role="presentation">
       <button
         type="button"
         role="tab"

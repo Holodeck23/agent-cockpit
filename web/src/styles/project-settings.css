@@ -1,0 +1,29 @@
+/* Project settings (components/ProjectSettings.tsx), project pictures and tab tints. */
+.project-settings { gap: 14px; }
+.project-settings-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.project-settings-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-settings-body { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.avatar.large { width: 40px; height: 40px; border-radius: 11px; font-size: 21px; }
+.avatar.has-image { overflow: hidden; background: var(--field); }
+.avatar.has-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tint-swatches { display: flex; gap: 8px; }
+.tint-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid var(--panel); border-radius: 50%; background: var(--avatar); box-shadow: 0 0 0 1px var(--border); }
+.tint-swatch[aria-checked='true'] { box-shadow: 0 0 0 2px var(--avatar); }
+.project-picture, .project-folder { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.project-picture small { flex-basis: 100%; font-size: 12px; font-weight: 400; color: var(--muted); }
+.project-picture .button-soft, .project-folder .button-soft { font-size: 13px; padding: 5px 12px; }
+.project-folder .modal-path { flex: 1; min-width: 0; margin: 0; }
+.button-quiet-danger { padding: 7px 6px; border: 0; background: none; color: var(--danger); font-size: 13px; font-weight: 500; }
+.remove-confirm { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--danger); border-radius: var(--r-md); background: color-mix(in srgb, var(--danger) 6%, var(--panel)); }
+.remove-confirm strong { color: var(--strong); font-size: 14px; }
+.remove-confirm p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--secondary); }
+
+/* Tab tint: an inactive tab carries a wash of its project colour, the active one a stripe on top. */
+.tab.tint-blue { --tab-tint: var(--p-blue); }
+.tab.tint-pink { --tab-tint: var(--p-pink); }
+.tab.tint-orange { --tab-tint: var(--p-orange); }
+.tab.tint-green { --tab-tint: var(--p-green); }
+.tab.tint-purple { --tab-tint: var(--p-purple); }
+.tab.tint-gray { --tab-tint: var(--p-gray); }
+.tab:not(.active) { background: color-mix(in srgb, var(--tab-tint, transparent) 9%, transparent); }
+.tab.active { box-shadow: inset 0 3px 0 -1px var(--tab-tint, transparent); }

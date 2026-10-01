@@ -20,6 +20,10 @@ const projectSchema = z.object({
   instructions: z.string().max(MAX_INSTRUCTIONS_CHARS).optional(),
   /** Bumped on every change, so a session can say which version it started with. */
   instructionsRevision: z.number().int().min(0).optional(),
+  /** File name of the project's picture in <root>/project-images, if one was chosen. */
+  image: z.string().regex(/^[a-f0-9]{16}-\d+\.(png|jpg|gif|webp)$/).optional(),
+  /** Removed from Cockpit: off the tabs and the menu, folder and conversations untouched. Opening it again brings it back. */
+  hidden: z.boolean().optional(),
 })
 export type Project = z.output<typeof projectSchema>
 
@@ -33,12 +37,16 @@ export const projectPatchSchema = z.object({
 export type ProjectPatch = z.output<typeof projectPatchSchema>
 
 export interface ProjectStore {
-  /** Most recently opened first. */
-  list(): Project[]
+  /** Most recently opened first. Removed projects only with `includeHidden`. */
+  list(options?: { includeHidden?: boolean }): Project[]
   /** Registers folders not yet known (unpinned), dated by their latest thread; leaves known ones alone. */
   ensure(seen: ReadonlyArray<{ path: string; at: string }>): void
   /** Creates or updates a project and marks it opened now. */
   open(path: string, patch?: ProjectPatch): Project
+  /** Sets or clears the picture's file name; the caller stores the file. */
+  setImage(path: string, image: string | undefined): Project
+  /** Takes a project off the tabs and the menu. Never touches the folder. */
+  hide(path: string): Project
 }
 
 /** Stable colour per folder, so a project keeps its colour before anyone picks one. */
@@ -81,8 +89,8 @@ export function createProjectStore(root: string): ProjectStore {
   }
 
   return {
-    list() {
-      return read().sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt))
+    list(options = {}) {
+      return read().filter((p) => options.includeHidden || !p.hidden).sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt))
     },
     ensure(seen) {
       const current = read()
@@ -101,8 +109,25 @@ export function createProjectStore(root: string): ProjectStore {
       const now = new Date().toISOString()
       const existing = current.find((p) => p.path === path) ?? fresh(path, now)
       const { instructions: rawInstructions, ...rest } = patch
-      const next: Project = { ...existing, ...rest, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions) }
+      // Opening a removed project on purpose brings it back.
+      const next: Project = { ...existing, ...rest, hidden: undefined, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions) }
       write([...current.filter((p) => p.path !== path), next])
+      return next
+    },
+    setImage(path, image) {
+      const current = read()
+      const existing = current.find((p) => p.path === path && !p.hidden)
+      if (!existing) throw new Error('Unknown project')
+      const next = projectSchema.parse({ ...existing, image })
+      write(current.map((p) => (p.path === path ? next : p)))
+      return next
+    },
+    hide(path) {
+      const current = read()
+      const existing = current.find((p) => p.path === path && !p.hidden)
+      if (!existing) throw new Error('Unknown project')
+      const next: Project = { ...existing, hidden: true, pinned: false }
+      write(current.map((p) => (p.path === path ? next : p)))
       return next
     },
   }

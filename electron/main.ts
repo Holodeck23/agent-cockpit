@@ -59,7 +59,7 @@ async function boot(): Promise<void> {
   })
   writeAppPort(portFile, running.port)
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
-  registerIpc(running.url, join(running.store.root, 'threads'))
+  registerIpc(running.url, join(running.store.root, 'threads'), (path) => running?.projects.list().some((p) => p.path === path) ?? false)
   mainWindow = createWindow(running.url)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
@@ -120,7 +120,7 @@ const dock = process.platform === 'darwin' ? createDockActivity({
   clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
 }) : undefined
 
-function registerIpc(url: string, threadsDir: string): void {
+function registerIpc(url: string, threadsDir: string, isProject: (path: string) => boolean): void {
   const origin = new URL(url).origin
   ipcMain.on('cockpit:activity', (event, value: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
@@ -130,6 +130,11 @@ function registerIpc(url: string, threadsDir: string): void {
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
+  })
+  // Opens a project's folder in Finder; only folders Cockpit already lists as projects.
+  ipcMain.on('cockpit:open-folder', (event, path: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || typeof path !== 'string') return
+    if (isProject(path) && existsSync(path)) void shell.openPath(path)
   })
   ipcMain.on('cockpit:reveal-transcript', (event, path: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || typeof path !== 'string') return

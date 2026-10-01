@@ -9,7 +9,7 @@ import { createApiHandler } from './http/router.ts'
 import { createAgentStatus, type VersionProbe } from './agents/status.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
-import { createProjectStore } from './projects/store.ts'
+import { createProjectStore, type ProjectStore } from './projects/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
 import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
@@ -59,6 +59,8 @@ export interface RunningServer {
   readonly manager: ThreadManager
   readonly processes: ProcessRunner
   readonly remote: RemoteAccess
+  /** Known project folders; the desktop shell checks these before opening one in Finder. */
+  readonly projects: ProjectStore
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -99,7 +101,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const mcpCommand = options.mcp
   const manager = createThreadManager(store, {
     instructions: (projectPath) => {
-      const project = projects.list().find((p) => p.path === projectPath)
+      const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
     },
     ...(options.launchers ? { launchers: options.launchers } : {}),
@@ -125,7 +127,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const stopNotifier = startNotifier({ push, manager, threads: store,
     active: () => remote.status().running,
     paired: (deviceId) => remoteStore.devices().some((d) => d.id === deviceId),
-    projectName: (path) => projects.list().find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path,
+    projectName: (path) => projects.list({ includeHidden: true }).find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path,
     ...(options.remote?.sendPush ? { send: options.remote.sendPush } : {}) })
   const server = createServer()
 
@@ -176,5 +178,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, close }
 }

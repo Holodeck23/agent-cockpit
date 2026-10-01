@@ -65,6 +65,8 @@ export const api = {
   agents: () => request<AgentStatus[]>('/api/agents'),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
+  setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
+  removeProject: (path: string) => request<{ project: Project; pausedSchedules: number }>('/api/projects/remove', { method: 'POST', body: { path } }),
   openProject: (path: string, patch: ProjectPatch = {}) =>
     request<Project>('/api/projects', { method: 'POST', body: { path, ...patch } }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),

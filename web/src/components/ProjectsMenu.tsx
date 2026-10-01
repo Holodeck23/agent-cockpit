@@ -83,7 +83,8 @@ export function ProjectsMenu({ projects }: ProjectsMenuProps) {
         </div>
       ) : null}
       {settingsOpen && active ? (
-        <ProjectSettings key={active.path} project={active} onSave={(text) => projects.saveInstructions(active, text)} onClose={() => setSettingsOpen(false)} />
+        <ProjectSettings key={active.path} project={active} onSave={(patch) => projects.saveSettings(active, patch)}
+          onImage={(image) => projects.setImage(active, image)} onRemove={() => projects.remove(active)} onClose={() => setSettingsOpen(false)} />
       ) : null}
     </div>
   )

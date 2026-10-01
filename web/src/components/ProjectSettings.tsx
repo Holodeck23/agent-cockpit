@@ -1,25 +1,41 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../api.ts'
+import { native } from '../native.ts'
+import { avatarDataUrl } from '../project-image.ts'
+import { ProjectAvatar } from './ProjectAvatar.tsx'
 
-// Per-project instructions, added to every agent session started in that folder.
-// The limit matches the server's (MAX_INSTRUCTIONS_CHARS in server/projects/store.ts).
+// Name, tab tint, picture, instructions and the folder, for one project.
+// The instructions limit matches the server's (MAX_INSTRUCTIONS_CHARS in server/projects/store.ts).
 const MAX_CHARS = 8000
+const TINTS: ReadonlyArray<{ id: Project['color']; label: string }> = [
+  { id: 'blue', label: 'Blue' }, { id: 'pink', label: 'Pink' }, { id: 'orange', label: 'Orange' },
+  { id: 'green', label: 'Green' }, { id: 'purple', label: 'Purple' }, { id: 'gray', label: 'Gray' },
+]
 
 interface ProjectSettingsProps {
   project: Project
-  onSave: (instructions: string) => Promise<unknown>
+  onSave: (patch: { name: string; color: Project['color']; instructions: string }) => Promise<unknown>
+  onImage: (image: string | null) => Promise<unknown>
+  /** Resolves to how many schedules were paused. */
+  onRemove: () => Promise<number>
   onClose: () => void
 }
 
-export function ProjectSettings({ project, onSave, onClose }: ProjectSettingsProps) {
-  const [text, setText] = useState(project.instructions ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | undefined>(undefined)
-  const [saved, setSaved] = useState(false)
-  const box = useRef<HTMLTextAreaElement>(null)
-  const changed = text.trim() !== (project.instructions ?? '')
+const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
-  useEffect(() => box.current?.focus(), [])
+export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }: ProjectSettingsProps) {
+  const [name, setName] = useState(project.name)
+  const [color, setColor] = useState(project.color)
+  const [text, setText] = useState(project.instructions ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const [saved, setSaved] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const nameBox = useRef<HTMLInputElement>(null)
+  const filePicker = useRef<HTMLInputElement>(null)
+  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '')
+
+  useEffect(() => nameBox.current?.focus(), [])
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -28,51 +44,95 @@ export function ProjectSettings({ project, onSave, onClose }: ProjectSettingsPro
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const save = (): void => {
-    setSaving(true)
+  const run = (action: () => Promise<unknown>, after?: () => void): void => {
+    setBusy(true)
     setError(undefined)
-    onSave(text)
-      .then(() => setSaved(true))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setSaving(false))
+    action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
+  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text }), () => setSaved(true))
+  const pick = (file: File | undefined): void => {
+    if (file) run(async () => onImage(await avatarDataUrl(file)))
+    if (filePicker.current) filePicker.current.value = ''
+  }
+  const remove = (): void => run(onRemove, onClose)
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="project-settings-title">
+      <div className="modal project-settings" role="dialog" aria-modal="true" aria-labelledby="project-settings-title">
         <header className="modal-head">
-          <h2 id="project-settings-title">{project.name}</h2>
+          <div className="project-settings-title">
+            <ProjectAvatar project={{ ...project, name: name || project.name, color }} solid large />
+            <h2 id="project-settings-title">{project.name}</h2>
+          </div>
           <button type="button" className="activity-close" aria-label="Close" onClick={onClose}>×</button>
         </header>
-        <p className="modal-path" title={project.path}>{project.path}</p>
-        <label className="field modal-field">
-          Project instructions
-          <textarea
-            ref={box}
-            value={text}
-            maxLength={MAX_CHARS}
-            rows={10}
-            placeholder="For example: Use pnpm, not npm. Run the tests before saying a change is done."
-            onChange={(e) => { setText(e.target.value); setSaved(false) }}
-          />
-        </label>
-        <p className="modal-note">
-          Added to every agent session in this folder, alongside the repository&apos;s own instruction files, which Cockpit
-          never edits. They apply when an agent next starts: a new conversation, a switch, or a conversation resuming.
-          They never change permissions.
-        </p>
+        <fieldset className="project-settings-body" disabled={busy}>
+          <label className="field">
+            Name
+            <input ref={nameBox} aria-label="Project name" maxLength={80} value={name} onChange={(e) => { setName(e.target.value); setSaved(false) }} />
+          </label>
+          <div className="field">
+            <span id="tint-label">Tab tint</span>
+            <div className="tint-swatches" role="radiogroup" aria-labelledby="tint-label">
+              {TINTS.map((t) => (
+                <button key={t.id} type="button" role="radio" aria-checked={color === t.id} aria-label={t.label} title={t.label}
+                  className={`tint-swatch avatar-${t.id}`} onClick={() => { setColor(t.id); setSaved(false) }} />
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <span>Picture</span>
+            <div className="project-picture">
+              <input ref={filePicker} type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture"
+                className="visually-hidden" onChange={(e) => pick(e.target.files?.[0])} />
+              <button type="button" className="button-soft" onClick={() => filePicker.current?.click()}>{project.image ? 'Change picture…' : 'Choose picture…'}</button>
+              {project.image ? <button type="button" className="button-soft" onClick={() => run(() => onImage(null))}>Remove picture</button> : null}
+              <small>Shown instead of the letter. Kept by Cockpit, not in the project folder.</small>
+            </div>
+          </div>
+          <label className="field modal-field">
+            Project instructions
+            <textarea value={text} maxLength={MAX_CHARS} rows={7}
+              placeholder="For example: Use pnpm, not npm. Run the tests before saying a change is done."
+              onChange={(e) => { setText(e.target.value); setSaved(false) }} />
+          </label>
+          <p className="modal-note">
+            Added to every agent session in this folder, alongside the repository&apos;s own instruction files, which Cockpit
+            never edits. They apply when an agent next starts, and never change permissions.
+          </p>
+          <div className="field">
+            <span>Folder</span>
+            <div className="project-folder">
+              <p className="modal-path" title={project.path}>{project.path}</p>
+              {native ? <button type="button" className="button-soft" onClick={() => native?.openFolder(project.path)}>Open in Finder</button> : null}
+            </div>
+          </div>
+        </fieldset>
         {error ? <p className="modal-error" role="alert">{error}</p> : null}
-        <footer className="modal-foot">
-          <span className="modal-count">
-            {text.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
-            {project.instructionsRevision ? ` · revision ${project.instructionsRevision}` : ''}
-            {saved && !changed ? ' · saved' : ''}
-          </span>
-          <button type="button" className="button-soft" onClick={onClose}>Done</button>
-          <button type="button" className="button-primary" disabled={!changed || saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </footer>
+        {confirmRemove ? (
+          <div className="remove-confirm" role="alertdialog" aria-labelledby="remove-title" aria-describedby="remove-detail">
+            <strong id="remove-title">Remove {project.name} from Cockpit?</strong>
+            <p id="remove-detail">The folder and its files are not touched. Its conversations stay saved and come back if you open the folder again. Any schedules in it are paused.</p>
+            <div className="modal-foot">
+              <span className="modal-count" />
+              <button type="button" className="button-soft" disabled={busy} onClick={() => setConfirmRemove(false)}>Cancel</button>
+              <button type="button" className="button-danger" disabled={busy} onClick={remove}>Remove from Cockpit</button>
+            </div>
+          </div>
+        ) : (
+          <footer className="modal-foot">
+            <button type="button" className="button-quiet-danger" disabled={busy} onClick={() => setConfirmRemove(true)}>Remove from Cockpit…</button>
+            <span className="modal-count">
+              {text.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
+              {project.instructionsRevision ? ` · revision ${project.instructionsRevision}` : ''}
+              {saved && !changed ? ' · saved' : ''}
+            </span>
+            <button type="button" className="button-soft" onClick={onClose}>Done</button>
+            <button type="button" className="button-primary" disabled={!changed || !name.trim() || busy} onClick={save}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </footer>
+        )}
       </div>
     </div>
   )

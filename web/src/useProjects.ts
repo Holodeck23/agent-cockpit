@@ -21,6 +21,12 @@ export interface Projects {
   togglePin(project: Project): Promise<void>
   /** Saves a project's instructions; rejects with the server's message so the editor can show it. */
   saveInstructions(project: Project, instructions: string): Promise<Project>
+  /** Saves name, tint and instructions together; rejects with the server's message. */
+  saveSettings(project: Project, patch: { name: string; color: Project['color']; instructions: string }): Promise<Project>
+  /** Sets (a data: URL) or clears (null) the project's picture. */
+  setImage(project: Project, image: string | null): Promise<Project>
+  /** Takes the project off the tabs and the menu; the folder is never touched. Resolves to the schedules paused. */
+  remove(project: Project): Promise<number>
 }
 
 function loadActive(): string | undefined {
@@ -100,6 +106,26 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     return saved
   }
 
+  const saveSettings = async (project: Project, patch: { name: string; color: Project['color']; instructions: string }): Promise<Project> => {
+    const saved = await api.openProject(project.path, patch)
+    await refresh()
+    return saved
+  }
+
+  const setImage = async (project: Project, image: string | null): Promise<Project> => {
+    const saved = await api.setProjectImage(project.path, image)
+    await refresh()
+    return saved
+  }
+
+  const remove = async (project: Project): Promise<number> => {
+    const { pausedSchedules } = await api.removeProject(project.path)
+    const next = all.find((p) => p.path !== project.path)
+    if (next) select(next.path)
+    await refresh()
+    return pausedSchedules
+  }
+
   return {
     all,
     tabs,
@@ -109,5 +135,8 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     open,
     togglePin,
     saveInstructions,
+    saveSettings,
+    setImage,
+    remove,
   }
 }

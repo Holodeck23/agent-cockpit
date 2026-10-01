@@ -42,6 +42,7 @@
     "proof:appearance": "tsx scripts/proof-appearance.ts",
     "proof:settings": "tsx scripts/proof-settings.ts",
     "proof:dock": "tsx scripts/proof-dock.ts",
+    "proof:project-settings": "tsx scripts/proof-project-settings.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts"
   },
   "author": "",

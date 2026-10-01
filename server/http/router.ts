@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
+import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
@@ -41,6 +42,8 @@ const writeFileBody = z.object({
 })
 const switchBody = z.object({ settings: threadSettingsSchema })
 const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
+// A data: URL is about 4/3 of the file; the 512 KB limit itself is checked after decoding.
+const imageBody = z.object({ path: z.string().min(1).max(1000), image: z.string().max(750_000).nullable() })
 
 function assertDirectory(path: string): void {
   try {
@@ -145,6 +148,40 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       if (parts[1] === 'processes') {
         await handleProcessRoute(req, res, url, parts, processes)
+        return true
+      }
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'image') {
+        if (method === 'GET') {
+          const project = projects.list().find((p) => p.path === url.searchParams.get('path'))
+          const image = project?.image ? readProjectImage(store.root, project.image) : undefined
+          if (!image) throw new HttpError(404, 'No picture')
+          res.writeHead(200, { 'content-type': image.mime, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' })
+          res.end(image.bytes)
+          return true
+        }
+        if (method === 'POST') {
+          const body = parseBody(imageBody, await readJson(req))
+          if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
+          try {
+            const name = body.image ? saveProjectImage(store.root, body.path, body.image) : undefined
+            if (!name) removeProjectImages(store.root, body.path)
+            sendJson(res, 200, { data: projects.setImage(body.path, name) })
+          } catch (error) {
+            if (error instanceof ImageError) throw new HttpError(400, error.message)
+            throw error
+          }
+          return true
+        }
+      }
+      // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'remove' && method === 'POST') {
+        const { path } = parseBody(z.object({ path: z.string().min(1).max(1000) }), await readJson(req))
+        if (!projects.list().some((p) => p.path === path)) throw new HttpError(404, 'Unknown project')
+        const busy = manager.summaries().filter((t) => t.meta.projectPath === path && (t.status === 'working' || t.status === 'needs_input')).length
+        if (busy > 0) throw new HttpError(409, `${busy === 1 ? 'A conversation' : `${busy} conversations`} in this project ${busy === 1 ? 'is' : 'are'} still working or waiting for you. Stop or answer ${busy === 1 ? 'it' : 'them'} first.`)
+        const scheduled = workflows.store.list(path).filter((w) => w.enabled)
+        for (const w of scheduled) workflows.store.update(w.id, { enabled: false, nextRunAt: null })
+        sendJson(res, 200, { data: { project: projects.hide(path), pausedSchedules: scheduled.length } })
         return true
       }
       if (parts[1] === 'projects' && parts.length === 2) {

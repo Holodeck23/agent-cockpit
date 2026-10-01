@@ -4,6 +4,7 @@ export interface CockpitBridge {
   pickFolder(): Promise<string | undefined>
   setTheme(mode: 'system' | 'light' | 'dark'): void
   revealTranscript(path: string): void
+  openFolder(path: string): void
   setActivity(activity: { working: number; needs: number }): void
 }
 
