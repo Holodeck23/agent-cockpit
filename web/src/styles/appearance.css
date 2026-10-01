@@ -1,0 +1,34 @@
+/* Appearance popover (components/AppearanceMenu.tsx) and the density it sets on <html>. */
+.appearance { position: relative; }
+.appearance-panel {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; width: min(320px, calc(100vw - 32px));
+  display: grid; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md, 10px);
+  background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+}
+.appearance-row { display: grid; gap: 7px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.appearance-row > span, .appearance-row legend { padding: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.appearance-row legend { margin-bottom: 7px; }
+.appearance-row .segmented { grid-auto-flow: column; grid-auto-columns: 1fr; grid-template-columns: none; }
+.appearance-row .segmented button { font-size: 13px; padding: 6px 8px; }
+.appearance-row .check { font-size: 13.5px; padding: 3px 0; }
+.appearance-note { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* Row extras */
+.card-preview { color: var(--secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Compact conversation list */
+[data-list-density='compact'] .cards { gap: 2px; padding: 6px 8px; }
+[data-list-density='compact'] .card { gap: 3px; padding: 7px 11px; border-radius: var(--r-md); }
+[data-list-density='compact'] .card-title { font-size: 14px; -webkit-line-clamp: 1; }
+[data-list-density='compact'] .card .tag { font-size: 11.5px; padding: 1px 6px; }
+[data-list-density='compact'] .card-foot { min-height: 20px; }
+[data-list-density='compact'] .card-meta, [data-list-density='compact'] .card-preview { font-size: 12px; }
+[data-list-density='compact'] .card-preview { -webkit-line-clamp: 1; }
+
+/* Compact messages */
+[data-message-density='compact'] .transcript { gap: 8px; }
+[data-message-density='compact'] .message { gap: 5px; }
+[data-message-density='compact'] .bubble { padding: 8px 13px; border-radius: 13px; font-size: 14px; line-height: 1.5; }
+[data-message-density='compact'] .author .glyph { width: 18px; height: 18px; }
+[data-message-density='compact'] .author-name { font-size: 12.5px; }

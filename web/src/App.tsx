@@ -8,6 +8,8 @@ import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
+import { useAppearance } from './appearance.ts'
+import { AppearanceMenu } from './components/AppearanceMenu.tsx'
 import { Mark } from './components/icons.tsx'
 import type { PageMode } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
@@ -22,6 +24,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const cockpit = useCockpit(local)
   const projects = useProjects(cockpit.threads, cockpit.reportError)
   const theme = useTheme()
+  const { appearance, update: updateAppearance } = useAppearance()
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
   const [section, setSectionState] = useState<Section>('conversations')
@@ -59,8 +62,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         section={section}
         onSection={setSection}
         working={visible.filter((t) => t.status === 'working').length}
-        theme={theme.mode}
-        onCycleTheme={theme.cycle}
+        appearance={<AppearanceMenu theme={theme.mode} onTheme={theme.set} appearance={appearance} onChange={updateAppearance} />}
         conversationsOnly={phone}
         runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}
         tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
@@ -79,7 +81,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       ) : null}
       {section === 'conversations' ? (
         <div className={`layout${selectedId ? ' has-selection' : ''}`}>
-          <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select}
+          <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
             {...(phone ? { projectName, canCreate: false } : {})} />
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (
             <ThreadView

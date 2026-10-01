@@ -46,3 +46,10 @@ export async function startConversation(page: Page, prompt: string): Promise<voi
 export function headStatus(page: Page): Locator {
   return page.locator('.thread-status .status-text')
 }
+
+/** Picks a theme in the top bar's Appearance popover, then closes it. */
+export async function setTheme(page: Page, theme: 'System' | 'Light' | 'Dark'): Promise<void> {
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Appearance' }).getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: theme, exact: true }).click()
+  await page.keyboard.press('Escape')
+}

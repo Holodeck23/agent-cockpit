@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR } from './lib/launch-app.ts'
-import { apiPost, chooseAgent, headStatus, messageBox } from './lib/ui.ts'
+import { apiPost, chooseAgent, headStatus, messageBox, setTheme } from './lib/ui.ts'
 
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
@@ -118,8 +118,7 @@ async function b1(): Promise<void> {
   check('switching tabs filters conversations to that project', (await page.locator('.card').count()) === 2)
   check('sub-nav shows the working count', (await page.locator('.subnav').getByLabel('1 working').count()) === 1)
 
-  const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')
-  while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
+  await setTheme(page, 'Dark')
   const dark = await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors)
   const darkBg = await page.locator('.tabbar').evaluate((el) => getComputedStyle(el).backgroundColor)
   check('dark toggle switches tokens and native chrome', dark && darkBg === 'rgb(23, 23, 23)', `native dark=${dark}, tabbar ${darkBg}`)
@@ -127,7 +126,7 @@ async function b1(): Promise<void> {
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B1-dark.png') })
   await page.getByRole('tab', { name: 'Files' }).click()
   check('Files section shows its placeholder', await page.getByRole('heading', { name: 'Files' }).isVisible())
-  await themeButton.click() // back to system for the next run
+  await setTheme(page, 'System')
 }
 
 async function b2(): Promise<void> {
@@ -170,10 +169,9 @@ async function b2(): Promise<void> {
   await page.getByRole('tablist', { name: 'Filter conversations' }).getByRole('tab', { name: /^All/ }).click()
   await cards.filter({ hasText: 'essay' }).click()
 
-  const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')
-  while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
+  await setTheme(page, 'Dark')
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B2-dark.png') })
-  await themeButton.click()
+  await setTheme(page, 'System')
 
   await page.getByRole('tab', { name: /Sprout/ }).click()
   check('empty project shows the empty state', await page.getByText('No conversations yet').isVisible())
@@ -236,11 +234,10 @@ async function b3(): Promise<void> {
     && (await page.locator('details.decisions li', { hasText: 'Write' }).count()) === 1)
 
   // Dark mode on the running turn.
-  const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')
-  while ((await themeButton.getAttribute('aria-label')) !== 'Theme: dark') await themeButton.click()
+  await setTheme(page, 'Dark')
   await page.locator('.card').filter({ hasText: 'essay' }).click()
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-dark.png') })
-  await themeButton.click()
+  await setTheme(page, 'System')
 
   // Stop.
   await page.getByRole('button', { name: 'Stop' }).click()

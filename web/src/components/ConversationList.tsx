@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import type { RowShows } from '../appearance.ts'
 import type { ThreadSummary } from '../api.ts'
 import { filterConversations, type ListFilter } from '../conversation-meta.ts'
 import { useSeen } from '../useSeen.ts'
@@ -13,6 +14,8 @@ interface ConversationListProps {
   /** Phone: conversations from every project, labelled with the project, and no New button. */
   projectName?: (path: string) => string
   canCreate?: boolean
+  /** What each row shows besides the title (Appearance). */
+  rowShows?: RowShows
 }
 
 const SHOW_COMPLETED_KEY = 'cockpit:show-completed'
@@ -25,7 +28,7 @@ function loadShowCompleted(): boolean {
   }
 }
 
-export function ConversationList({ threads, selectedId, onSelect, projectName, canCreate = true }: ConversationListProps) {
+export function ConversationList({ threads, selectedId, onSelect, projectName, canCreate = true, rowShows }: ConversationListProps) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ListFilter>('all')
   const [showCompleted, setShowCompleted] = useState(loadShowCompleted)
@@ -88,6 +91,7 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
               selected={thread.meta.id === selectedId}
               unread={isUnread(thread)}
               onSelect={onSelect}
+              shows={rowShows}
             />
           ))
         )}

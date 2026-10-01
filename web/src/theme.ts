@@ -4,7 +4,6 @@ import { native } from './native.ts'
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 const KEY = 'cockpit:theme'
-const ORDER: readonly ThemeMode[] = ['system', 'light', 'dark']
 
 function load(): ThemeMode {
   try {
@@ -22,7 +21,7 @@ function apply(mode: ThemeMode): void {
   native?.setTheme(mode)
 }
 
-export function useTheme(): { mode: ThemeMode; cycle: () => void } {
+export function useTheme(): { mode: ThemeMode; set: (mode: ThemeMode) => void } {
   const [mode, setMode] = useState<ThemeMode>(load)
 
   useEffect(() => {
@@ -34,6 +33,5 @@ export function useTheme(): { mode: ThemeMode; cycle: () => void } {
     }
   }, [mode])
 
-  const cycle = (): void => setMode((current) => ORDER[(ORDER.indexOf(current) + 1) % ORDER.length] ?? 'system')
-  return { mode, cycle }
+  return { mode, set: setMode }
 }

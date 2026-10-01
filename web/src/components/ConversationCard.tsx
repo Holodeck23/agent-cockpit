@@ -1,4 +1,5 @@
 import type { ThreadSummary } from '../api.ts'
+import { DEFAULT_APPEARANCE, rowMeta, type RowShows } from '../appearance.ts'
 import { agentLabel, dayLabel, tagFor, toneFor } from '../conversation-meta.ts'
 import { ChatIcon } from './icons.tsx'
 import { StatusPill } from './StatusPill.tsx'
@@ -10,9 +11,11 @@ interface ConversationCardProps {
   onSelect: (id: string) => void
   /** Shown when the list mixes projects (the phone). */
   project?: string
+  /** What the row shows besides the title (Appearance). */
+  shows?: RowShows
 }
 
-export function ConversationCard({ thread, selected, unread, onSelect, project }: ConversationCardProps) {
+export function ConversationCard({ thread, selected, unread, onSelect, project, shows = DEFAULT_APPEARANCE.rows }: ConversationCardProps) {
   const tag = tagFor(thread.meta.title)
   const classes = ['card', selected ? 'selected' : '', thread.meta.completed ? 'completed' : '', unread ? 'unread' : '']
   return (
@@ -31,9 +34,10 @@ export function ConversationCard({ thread, selected, unread, onSelect, project }
         </span>
       </span>
       <span className="card-title">{thread.meta.title}</span>
+      {shows.preview && thread.preview ? <span className="card-preview">{thread.preview}</span> : null}
       <span className="card-foot">
         <span className="card-meta">
-          {project ? `${project} · ` : ''}{agentLabel(thread.meta.settings.agent)} · {dayLabel(thread.lastActivityAt)}
+          {rowMeta({ project, agent: agentLabel(thread.meta.settings.agent), date: dayLabel(thread.lastActivityAt) }, shows)}
         </span>
         <StatusPill status={thread.status} />
       </span>
