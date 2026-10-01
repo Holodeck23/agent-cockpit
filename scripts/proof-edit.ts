@@ -46,7 +46,7 @@ try {
   await page.screenshot({ path: join(PROOF_DIR, 'checkpoint-5a-editor.png') })
   await editor(page).press('Meta+s')
   check('Cmd+S saves to disk', await waitFor(page, 'the save', () => disk('README.md').includes('Thursdays')))
-  check('the tab reads Saved afterwards', await waitFor(page, 'Saved', async () => (await page.locator('.file-editor header span').textContent()) === 'Saved'))
+  check('the tab reads Saved afterwards', await waitFor(page, 'Saved', async () => (await page.locator('.file-status span').first().textContent()) === 'Saved'))
 
   // A change made on disk meanwhile is never overwritten silently.
   writeFileSync(join(project, 'README.md'), '# Garden notes\n\nThe agent rewrote this line.\n')

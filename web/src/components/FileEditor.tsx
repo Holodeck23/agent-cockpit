@@ -83,7 +83,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
           <header>
             <div>
               <h2>{inDocuments ? <><span className="file-space">Your documents /</span> {nameOf(file.path)}</> : file.path}</h2>
-              <span>{dirty ? 'Unsaved changes' : 'Saved'}{file.eol === '\r\n' ? ' · Windows line endings' : ''}</span>
+              {file.eol === '\r\n' ? <span>Windows line endings</span> : null}
             </div>
             <div className="file-actions">
               {isMarkdown(file.path) ? (
