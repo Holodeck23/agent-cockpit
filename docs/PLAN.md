@@ -48,7 +48,7 @@ Follow-ups from a second Enjoy evidence pass (2026-09-30), each proven on the pa
 
 ## Second upgrade (agreed 2026-10-01)
 
-Source: one recorded Enjoy walkthrough analysed separately by Gemini and by Antigravity (a frame-by-frame specification), checked against the private 2026-09-30 trial evidence and this source. An item is listed only if both analyses agree or the trial evidence shows it; order is daily-use value first, account and paid features last. Antigravity's suggested build plan (Tauri, SQLite, direct model API calls) is not adopted: Cockpit drives the installed agent CLIs on the user's own subscriptions, and its Electron shell and stores stay.
+Source: one recorded Enjoy walkthrough analysed separately by Gemini and by Antigravity (a frame-by-frame specification), checked against the private 2026-09-30 trial evidence and this source. An item is listed only if both analyses agree or the trial evidence shows it; order is daily-use value first, account and paid features last (U11). Antigravity's suggested build plan (Tauri, SQLite, direct model API calls) is not adopted: Cockpit drives the installed agent CLIs on the user's own subscriptions, and its Electron shell and stores stay.
 
 Cockpit may become a paid product later. Paid features come last and start as clearly labelled placeholders: no payment code, no prices, nothing that looks like a working purchase.
 
@@ -63,7 +63,8 @@ Each checkpoint is its own commit with a packaged-app proof, pushed when green.
 - **U7 App settings and sounds.** An app settings panel; optional sounds when an agent replies and when it needs a decision.
 - **U8 Project settings.** Project name, tab tint (a few presets), project image, Open folder in Finder, Remove from Cockpit (never touches the folder). Importing conversations is left out until there is something to import from.
 - **U9 Files extras.** Your documents (kept by the app per project, outside the repository) beside Project files; New file choices (Markdown, JSON, plain text, other); rename, pin, archive with an Archived view, delete; Open in default app, Reveal in Finder; an open-tabs menu with Close other tabs and Close all tabs; a footer with Saved state and word count; line numbers in Source view.
-- **U10 Account and plan placeholders.** An account panel that says the preview is free, with a plan card and licence field shown as "coming later". Needs a decision first: this repository has no licence file (all rights reserved by default), and what, if anything, is paid.
+- **U10 More agents** (requested 2026-10-01; detail under Phase 8). Gemini CLI first: installed here (0.42), so its headless JSON output or its agent protocol mode can be recorded and parsed like the others. Then Antigravity, only if it offers a headless agent Cockpit can drive (here it is installed as desktop apps; check before planning). OpenRouter through OpenCode's provider support. One adapter per checkpoint, each with recorded-traffic parser tests and a smoke run.
+- **U11 Account and plan placeholders.** An account panel that says the preview is free, with a plan card and licence field shown as "coming later". Needs a decision first: this repository has no licence file (all rights reserved by default), and what, if anything, is paid.
 
 Left out, as features that only make sense for a hosted service: Google sign-in, team invites, a keychain for API keys (Cockpit stores none; it uses each CLI's own login), feedback and testimonial forms, community links.
 
@@ -159,7 +160,7 @@ Retarget `open_preview` from the external browser to an in-app preview pane, the
 
 ## Phase 8: more agents (requested 2026-09-29, not scheduled)
 
-Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
+Enjoy drives five CLIs: Claude Code, Codex, Grok Build, OpenCode and Antigravity. Requested order (2026-10-01): Gemini CLI, Antigravity, OpenRouter via OpenCode; scheduled as U10 in the second upgrade. Add the remaining three as adapters behind the same `NormalizedEvent` model, one per checkpoint, each with a smoke and a parser test against recorded traffic.
 - **Antigravity:** `agy` with stream-json output and `--conversation` for resume. Its Google sign-in is a terminal prompt, so first-run login needs its own flow.
 - **OpenCode:** `opencode acp --hostname 127.0.0.1 --port 0` (Agent Client Protocol), config passed through the environment.
 - **OpenRouter:** an API, not an agent CLI. The likely route is OpenCode, which supports OpenRouter as a model provider, so OpenRouter models arrive with the OpenCode adapter and no separate agent loop. Verify against current OpenCode docs before building.
