@@ -47,6 +47,7 @@
     "proof:lifecycle": "tsx scripts/proof-lifecycle.ts",
     "proof:memory": "tsx scripts/proof-memory.ts",
     "proof:import": "tsx scripts/proof-import.ts",
+    "proof:opencode": "tsx scripts/proof-opencode.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts"
   },
   "author": "",

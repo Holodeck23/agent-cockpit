@@ -35,7 +35,9 @@ export const PERMISSION_LABEL: Record<ThreadSettings['permissionMode'], string> 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
 
 export function choiceSummary(choice: AgentChoice): string {
-  return `${choice.model ? capitalize(choice.model) : 'Default model'} · ${choice.effort ? capitalize(choice.effort) : 'Default effort'}`
+  // Provider/model names (openrouter/…) are shown as typed; OpenCode has no effort setting of its own.
+  const model = choice.model ? (choice.model.includes('/') ? choice.model : capitalize(choice.model)) : 'Default model'
+  return choice.agent === 'opencode' ? model : `${model} · ${choice.effort ? capitalize(choice.effort) : 'Default effort'}`
 }
 
 export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): Partial<ThreadSettings> {

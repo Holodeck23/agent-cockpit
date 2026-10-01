@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+# Stand-in `opencode` for `npm run proof:opencode`: `opencode acp` answering Cockpit over the Agent
+# Client Protocol (newline-delimited JSON-RPC 2.0). Each turn: an acknowledgement naming the model it
+# was configured with (OPENCODE_CONFIG_CONTENT), whether instructions and the cockpit MCP arrived, then
+# a shell step that asks permission, then a conclusion. session/load answers "Loaded <id>." on the next
+# turn and replays one old message, which Cockpit must not show again. Perl: /usr/bin always has it.
+use strict; use warnings;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "0.0.0 (Cockpit opencode fixture)\n"; exit 0 }
+my ($model) = ($ENV{OPENCODE_CONFIG_CONTENT} // '') =~ /"model":"([^"]+)"/;
+my ($bash) = ($ENV{OPENCODE_CONFIG_CONTENT} // '') =~ /"bash":"([^"]+)"/;
+$model //= 'the default model'; $bash //= 'unset';
+my $session = ''; my $loaded = 0; my $cockpit = 0; my $turn = 0;
+sub send_line { print "$_[0]\n" }
+sub chunk { my ($text) = @_; send_line(qq({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"$session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"$text"}}}})) }
+while (my $line = <STDIN>) {
+  my ($method) = $line =~ /"method":"([^"]+)"/;
+  my ($id) = $line =~ /"id":(\d+)/;
+  next unless defined $method;
+  if ($method eq 'initialize') { send_line(qq({"jsonrpc":"2.0","id":$id,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true},"authMethods":[]}})) }
+  elsif ($method eq 'session/new') {
+    $session = 'oc-session-1'; $cockpit = $line =~ /"name":"cockpit"/ ? 1 : 0;
+    send_line(qq({"jsonrpc":"2.0","id":$id,"result":{"sessionId":"$session"}}));
+  }
+  elsif ($method eq 'session/load') {
+    ($session) = $line =~ /"sessionId":"([^"]+)"/; $loaded = 1; $cockpit = $line =~ /"name":"cockpit"/ ? 1 : 0;
+    chunk('replayed history that must not show twice');
+    send_line(qq({"jsonrpc":"2.0","id":$id,"result":{}}));
+  }
+  elsif ($method eq 'session/prompt') {
+    $turn++;
+    my $instructions = $line =~ /cockpit-instructions/ ? 'instructions received' : 'no instructions';
+    my $tools = $cockpit ? 'cockpit tools attached' : 'no cockpit tools';
+    if ($loaded) { chunk("Loaded $session."); $loaded = 0 }
+    chunk("Using $model ($instructions, $tools, bash $bash).");
+    send_line(qq({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"$session","update":{"sessionUpdate":"tool_call","toolCallId":"call-$turn","title":"npm test","kind":"execute","status":"pending","rawInput":{"command":"npm test"}}}}));
+    my $ask = 900 + $turn;
+    send_line(qq({"jsonrpc":"2.0","id":$ask,"method":"session/request_permission","params":{"sessionId":"$session","toolCall":{"toolCallId":"call-$turn","title":"npm test","kind":"execute","rawInput":{"command":"npm test"}},"options":[{"optionId":"once","name":"Allow once","kind":"allow_once"},{"optionId":"always","name":"Always allow","kind":"allow_always"},{"optionId":"no","name":"Reject","kind":"reject_once"}]}}));
+    my $answer = '';
+    while (my $reply = <STDIN>) { if ($reply =~ /"id":$ask\b/) { $answer = $reply; last } }
+    if ($answer =~ /"optionId":"(once|always)"/) {
+      send_line(qq({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"$session","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-$turn","status":"completed","content":[{"type":"content","content":{"type":"text","text":"3 passed"}}]}}}));
+      chunk('All 3 tests pass.');
+    } else {
+      send_line(qq({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"$session","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-$turn","status":"failed","rawOutput":"Permission denied"}}}));
+      chunk('Skipped the tests: you said no.');
+    }
+    send_line(qq({"jsonrpc":"2.0","id":$id,"result":{"stopReason":"end_turn"}}));
+  }
+}
