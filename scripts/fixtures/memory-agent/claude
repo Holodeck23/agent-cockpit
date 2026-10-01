@@ -1,0 +1,50 @@
+#!/bin/sh
+# Stand-in `claude` for `npm run proof:memory`. It uses Cockpit memory the way a real agent would:
+# a message mentioning "remember" asks permission for mcp__cockpit__remember (Claude Code's
+# can_use_tool format), and once answered stores the fact through the cockpit MCP API with this
+# session's token; a message mentioning "recall" searches memory (pre-allowed, no prompt) and
+# quotes what came back. Exits on stdin EOF, like the real CLI.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit memory fixture)"; exit 0; }
+session=""
+previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"memory-fixture"}\n' "$session"
+turn=0
+waiting=""
+FACT='Deploys go to staging first; production needs a tagged release.'
+say() { printf '{"type":"assistant","message":{"id":"mem-%s-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$1" "$2"; }
+finish() { printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'; }
+while IFS= read -r line; do
+  case "$line" in
+    *'"type":"control_response"'*)
+      [ "$waiting" = remember ] || continue
+      waiting=""
+      case "$line" in
+        *'"behavior":"deny"'*) say end "Not remembered: you said no." ;;
+        *) curl -s -o /dev/null -X POST "$COCKPIT_MCP_URL/api/mcp/memory" -H "authorization: Bearer $COCKPIT_MCP_TOKEN" \
+             -H 'content-type: application/json' -d "{\"text\":\"$FACT\",\"scope\":\"project\"}"
+           printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_rem_%s","type":"tool_result","content":"Remembered for this project."}]}}\n' "$turn"
+           say end "Remembered for this project: $FACT" ;;
+      esac
+      finish ;;
+    *'"type":"user"'*)
+      turn=$((turn + 1))
+      case "$line" in
+        *remember*)
+          printf '{"type":"assistant","message":{"id":"mem-%s-tool","role":"assistant","content":[{"type":"tool_use","id":"toolu_rem_%s","name":"mcp__cockpit__remember","input":{"text":"%s","scope":"project"}}]}}\n' "$turn" "$turn" "$FACT"
+          printf '{"type":"control_request","request_id":"req-rem-%s","request":{"subtype":"can_use_tool","tool_name":"mcp__cockpit__remember","display_name":"remember","input":{"text":"%s","scope":"project"},"permission_suggestions":[]}}\n' "$turn" "$FACT"
+          waiting=remember ;;
+        *recall*)
+          printf '{"type":"assistant","message":{"id":"mem-%s-tool","role":"assistant","content":[{"type":"tool_use","id":"toolu_rec_%s","name":"mcp__cockpit__recall","input":{"query":"staging deploy"}}]}}\n' "$turn" "$turn"
+          # The API answer is JSON already; its text field is reused as-is (already escaped).
+          found=$(curl -s "$COCKPIT_MCP_URL/api/mcp/memory?q=staging+deploy" -H "authorization: Bearer $COCKPIT_MCP_TOKEN" | sed -n 's/.*"text":"\(.*\)"}}.*/\1/p')
+          printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_rec_%s","type":"tool_result","content":"%s"}]}}\n' "$turn" "$found"
+          say end "Here is what memory says:\\n$found"
+          finish ;;
+        *) say end "Nothing to remember or recall."; finish ;;
+      esac ;;
+  esac
+done

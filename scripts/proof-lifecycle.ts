@@ -34,8 +34,11 @@ await page.waitForLoadState('domcontentloaded')
 page.setDefaultTimeout(15_000)
 
 try {
-  await page.evaluate(() => localStorage.setItem('cockpit:sounds', JSON.stringify({ reply: true, decision: true })))
   await openProject(page, project, 'Landing page')
+  // Set once the app has mounted (it saves its own defaults on first render), then reload to read them.
+  await page.evaluate(() => localStorage.setItem('cockpit:sounds', JSON.stringify({ reply: true, decision: true })))
+  await page.reload()
+  await page.getByRole('tab', { selected: true }).first().waitFor()
   await page.evaluate(() => {
     const w = window as unknown as { heard: string[] }
     w.heard = []
@@ -54,7 +57,7 @@ try {
     bubbles.at(-1)?.startsWith('Done. The page now loads') === true && await transcript(page).locator('.conclusion-tag').count() === 0)
   const answered = await summary(page, 'Speed up')
   check('the list preview is the conclusion, not an update', answered?.preview === 'Done. The page now loads in under a second.' && !answered.awaiting, answered?.preview)
-  check('a finished answer plays the reply sound', JSON.stringify(await heard(page)) === '["reply"]', (await heard(page)).join(', '))
+  check('a finished answer plays the reply sound', JSON.stringify(await heard(page)) === '["reply"]', `${(await heard(page)).join(', ')} | stored ${await page.evaluate(() => localStorage.getItem('cockpit:sounds'))} | listening ${await page.evaluate(() => Array.isArray((window as unknown as { heard?: unknown }).heard))}`)
 
   // A question: it ends the turn and waits on you.
   await start(page, 'Deploy it, ask me a question if unsure')

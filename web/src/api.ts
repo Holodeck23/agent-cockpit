@@ -1,5 +1,6 @@
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
 import type { DocumentEntry } from '../../server/files/documents.ts'
+import type { MemoryEntry } from '../../server/memory/store.ts'
 import { inSpace, spaceOf } from './file-text.ts'
 import type { FileSaved } from '../../server/files/editor.ts'
 import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
@@ -59,6 +60,11 @@ export const api = {
     const read = await request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path, space })}`)
     return { ...read, path: inSpace(space, read.path) }
   },
+  listMemory: (projectPath: string) => request<MemoryEntry[]>(`/api/memory?${new URLSearchParams({ projectPath })}`),
+  addMemory: (projectPath: string, scope: 'project' | 'everywhere', text: string) => request<MemoryEntry>('/api/memory', { method: 'POST', body: { projectPath, scope, text } }),
+  updateMemory: (id: string, text: string) => request<MemoryEntry>(`/api/memory/${id}`, { method: 'POST', body: { text } }),
+  deleteMemory: (id: string) => request<{ removed: string }>(`/api/memory/${id}`, { method: 'DELETE', body: {} }),
+  clearMemory: (projectPath: string) => request<{ removed: number }>('/api/memory/clear', { method: 'POST', body: { projectPath } }),
   listDocuments: (projectPath: string) => request<DocumentEntry[]>(`/api/documents?${new URLSearchParams({ projectPath })}`),
   markDocument: (projectPath: string, path: string, change: { pinned?: boolean; archived?: boolean }) =>
     request<DocumentEntry[]>('/api/documents/mark', { method: 'POST', body: { projectPath, path, ...change } }),
@@ -142,4 +148,5 @@ export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
 export type { DocumentEntry } from '../../server/files/documents.ts'
+export type { MemoryEntry } from '../../server/memory/store.ts'
 export type { FileMatch, ReferenceCheck } from '../../server/files/search.ts'

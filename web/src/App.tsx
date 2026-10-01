@@ -1,4 +1,5 @@
 import { Workflows } from './components/Workflows.tsx'
+import { Memory } from './components/Memory.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
 import { Files } from './components/Files.tsx'
@@ -140,6 +141,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
           setSection('conversations')
         }} />
+      ) : section === 'memory' ? (
+        <Memory key={activePath ?? 'no-project'} project={projects.active} threads={cockpit.threads} onError={cockpit.reportError}
+          onOpenThread={(id) => { cockpit.select(id); setSection('conversations') }} />
       ) : section === 'processes' ? (
         <Processes key={activePath ?? 'no-project'} project={projects.active} processes={cockpit.processes} onError={cockpit.reportError} />
       ) : (

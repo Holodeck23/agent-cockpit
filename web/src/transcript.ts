@@ -42,7 +42,7 @@ function field(input: unknown, key: string): string | undefined {
 
 /** The main argument of a tool call, for approval cards. */
 export function toolDetail(input: unknown): string {
-  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'id', 'message']) {
+  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'id', 'message', 'text']) {
     const value = field(input, key)
     if (value) return value
   }

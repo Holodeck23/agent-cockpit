@@ -179,3 +179,9 @@ export const SlidersIcon = (p: IconProps) => (
     <circle cx="9.5" cy="17" r="2" />
   </Svg>
 )
+export const MemoryIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 4.5h10.5a1.5 1.5 0 0 1 1.5 1.5v13.5H7.5A1.5 1.5 0 0 1 6 18V4.5Z" />
+    <path d="M6 18a1.5 1.5 0 0 1 1.5-1.5H18M9.5 8.5h5M9.5 11.5h3.5" />
+  </Svg>
+)

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Bars, ChatIcon, FolderIcon, TerminalIcon, WorkflowIcon } from './icons.tsx'
+import { Bars, ChatIcon, FolderIcon, MemoryIcon, TerminalIcon, WorkflowIcon } from './icons.tsx'
 
-export type Section = 'conversations' | 'files' | 'workflows' | 'processes'
+export type Section = 'conversations' | 'files' | 'workflows' | 'memory' | 'processes'
 
 interface SubNavProps {
   section: Section
@@ -42,6 +42,7 @@ export function SubNav({ section, onSection, working, appearance, tools, convers
         )}
         {conversationsOnly ? null : item('files', <FolderIcon />, 'Files')}
         {conversationsOnly ? null : item('workflows', <WorkflowIcon />, 'Workflows')}
+        {conversationsOnly ? null : item('memory', <MemoryIcon />, 'Memory')}
       </div>
       <div className="subnav-tools">
         {conversationsOnly ? null : (

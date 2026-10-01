@@ -45,6 +45,7 @@
     "proof:project-settings": "tsx scripts/proof-project-settings.ts",
     "proof:files-extras": "tsx scripts/proof-files-extras.ts",
     "proof:lifecycle": "tsx scripts/proof-lifecycle.ts",
+    "proof:memory": "tsx scripts/proof-memory.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts"
   },
   "author": "",
