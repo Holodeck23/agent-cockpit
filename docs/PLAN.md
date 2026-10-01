@@ -46,6 +46,27 @@ Follow-ups from a second Enjoy evidence pass (2026-09-30), each proven on the pa
 - **5b Markdown documents — done.** *(`npm run proof:docs`, 15 checks; every save is compared byte for byte with the expected file.)* Markdown files open in a Document view (Milkdown, loaded on demand) with a Source switch, a small formatting toolbar and clickable to-do boxes. Blocks you did not edit keep their exact original text; edited blocks are rewritten in their own style (bullet, rule and fence markers), and a change that would not read back as shown is refused rather than written. Front matter is kept verbatim. Both views edit the same draft, so save, conflicts, copies and draft recovery work unchanged; Cmd+S flushes the latest edit first.
 - **6 Context picker — done.** *(`npm run proof:context`, 13 checks; `proof:files`, `proof:workflows`, `proof-b b3` re-run green.)* The composer's + searches the project's files (bounded walk, dependencies and links skipped, 30 results) and its workflows, and adds them as the same `@file:`/`@workflow:` references as before. What a message will attach shows as removable chips; duplicates are marked, and a reference that would fail if sent now (missing file, unknown workflow) turns red before sending and is re-checked while the draft waits. The 8-file limit is shared with the server. Mac only, like the Files panel.
 
+## Second upgrade (agreed 2026-10-01)
+
+Source: a recorded Enjoy walkthrough analysed by Gemini, checked against the private 2026-09-30 trial evidence and this source. A second analysis of the same recording (Antigravity) is pending. When it lands, an item joins this list only if both analyses agree or the recording or trial evidence shows it, and it is slotted by the same rule as below: daily-use value first, account and paid features last.
+
+Cockpit may become a paid product later. Paid features come last and start as clearly labelled placeholders: no payment code, no prices, nothing that looks like a working purchase.
+
+Each checkpoint is its own commit with a packaged-app proof, pushed when green.
+
+- **U1 Git branch control.** A branch pill in the composer shows the project's current branch; hidden when the folder is not a Git repository. Its popover searches local branches, switches, creates and switches, and pushes the current branch. It says it applies to every conversation in the project. Switching or creating is refused while any conversation in the project is working or waiting on an approval, and refused with uncommitted changes (it lists them; no automatic stash). Push uses the user's own Git setup and shows Git's error text when it fails. Gate `proof:git`: a scratch repository with a local bare remote; switch, create, push reaches the remote, blocked while a turn runs, dirty tree refused, non-repository hides the pill.
+- **U2 Processes page.** A Processes view listing every process the cockpit runner started in the project (search, count, state, port) with a live log beside it and Stop/Restart. Reuses the existing runner; the header chip stays. Gate `proof:processes`.
+- **U3 Conversation menu.** Mark as unread, and Delete conversation: stops its agent session first, confirms inside the app, removes the stored conversation. Gate `proof:thread-menu`.
+- **U4 Calendar schedules** (the former checkpoint 7): daily/weekday/weekly at a local time, timezone and next-run display, explicit DST and missed-run rules; minute intervals kept.
+- **U5 Workflow gallery.** Cockpit's own curated workflows (original text, not Enjoy's), grouped by category, with a detail view showing the instructions and Add to Workflows. Adding copies it and never schedules or runs it. Gate `proof:gallery`.
+- **U6 Appearance.** System/Light/Dark and Normal/Compact for the conversation list and messages, remembered across restarts.
+- **U7 App settings and sounds.** An app settings panel; optional sounds when an agent replies and when it needs a decision.
+- **U8 Project settings.** Tab tint, project image, Open folder in Finder, Remove from Cockpit (never touches the folder).
+- **U9 Files extras.** Documents kept by the app outside any repository, rename, pin, archive, delete, Open in default app, Reveal in Finder, word count.
+- **U10 Account and plan placeholders.** An account panel that says the preview is free, with a plan card and licence field shown as "coming later". Needs a decision first: this repository has no licence file (all rights reserved by default), and what, if anything, is paid.
+
+Left out, as features that only make sense for a hosted service: Google sign-in, team invites, a keychain for API keys (Cockpit stores none; it uses each CLI's own login), feedback and testimonial forms, community links.
+
 **Proposed, not adopted:** let desktop P0 completion gate Phase 7 and track physical-phone push as a separate acceptance item. Phase 7 below keeps its current gate until this is decided.
 
 ## Scope for the first release
