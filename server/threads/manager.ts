@@ -112,6 +112,8 @@ export interface ThreadManager {
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
+  /** Stops its agent session, deletes everything stored for it and tells every window. */
+  remove(threadId: string): Promise<void>
   /** Hand the thread to another agent/model; the transcript goes with it. */
   switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
   summaries(): ThreadSummary[]
@@ -129,6 +131,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const listeners = new Set<UpdateListener>()
   const generations = new Map<string, symbol>()
   const closing = new Set<Promise<void>>()
+  // Deleted conversations: a closing session's last events must not recreate their files.
+  const deleted = new Set<string>()
 
   const closeEntry = (entry: Live): Promise<void> => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
@@ -147,6 +151,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   }
 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
+    if (deleted.has(threadId)) return
     const entry = live.get(threadId)
     // A failed result right after the user pressed Stop is a stop, not an error.
     const event: NormalizedEvent =
@@ -231,6 +236,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   }
 
   const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[]): void => {
+    if (deleted.has(threadId)) throw new Error('This conversation was deleted')
     const meta = requireMeta(threadId)
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
@@ -281,6 +287,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const meta = store.update(threadId, { completed })
       record(threadId, { kind: 'completion_changed', completed })
       return meta
+    },
+    async remove(threadId) {
+      requireMeta(threadId)
+      deleted.add(threadId)
+      const entry = live.get(threadId)
+      live.delete(threadId)
+      generations.delete(threadId)
+      if (entry) await closeEntry(entry)
+      store.remove(threadId)
+      const update: ThreadUpdate = { threadId, event: { kind: 'thread_deleted' }, status: 'idle' }
+      for (const listener of listeners) listener(update)
     },
     switchAgent(threadId, settings) {
       const meta = requireMeta(threadId)

@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
@@ -21,6 +21,8 @@ export interface ThreadStore {
   append(id: string, event: NormalizedEvent): StoredEvent
   events(id: string): StoredEvent[]
   transcriptPath(id: string): string
+  /** Deletes the conversation's folder: metadata, events and transcript. */
+  remove(id: string): void
 }
 
 export function defaultRoot(): string {
@@ -95,6 +97,9 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
     },
     transcriptPath(id) {
       return join(dirOf(id), 'messages.md')
+    },
+    remove(id) {
+      rmSync(dirOf(id), { recursive: true, force: true })
     },
   }
 }

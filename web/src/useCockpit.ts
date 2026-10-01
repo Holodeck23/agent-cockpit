@@ -92,6 +92,17 @@ export function useCockpit(local = true): Cockpit {
 
   useEffect(() => {
     const onUpdate = (update: ThreadUpdate): void => {
+      if (update.event.kind === 'thread_deleted') {
+        setThreads((current) => current.filter((t) => t.meta.id !== update.threadId))
+        if (selectedRef.current === update.threadId) {
+          ++loadVersion.current
+          selectedRef.current = undefined
+          setSelectedId(undefined)
+          setDetail(undefined)
+          setStreaming('')
+        }
+        return
+      }
       const isDelta = update.event.kind === 'text_delta'
       if (!knownIds.current.has(update.threadId)) refresh()
       else if (!isDelta) setThreads((current) => applyToSummaries(current, update))

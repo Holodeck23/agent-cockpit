@@ -4,6 +4,7 @@ import type { ThreadSummary } from './api.ts'
 // "Unread" = activity since you last had the conversation open. Tracked per
 // window in localStorage; the server doesn't need to know.
 const KEY = 'cockpit:seen'
+const CHANGED = 'cockpit:seen-changed'
 
 type SeenMap = Readonly<Record<string, string>>
 
@@ -24,8 +25,21 @@ function save(map: SeenMap): void {
   }
 }
 
+/** Marks a conversation unread in this window: it counts as unread until opened again. */
+export function markUnread(id: string): void {
+  const next = { ...load(), [id]: '' }
+  save(next)
+  window.dispatchEvent(new Event(CHANGED))
+}
+
 export function useSeen(threads: readonly ThreadSummary[], selectedId: string | undefined): (thread: ThreadSummary) => boolean {
   const [seen, setSeen] = useState<SeenMap | undefined>(load)
+
+  useEffect(() => {
+    const reload = (): void => setSeen(load())
+    window.addEventListener(CHANGED, reload)
+    return () => window.removeEventListener(CHANGED, reload)
+  }, [])
 
   // First run ever: everything that already exists counts as read.
   useEffect(() => {

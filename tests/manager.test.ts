@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -115,6 +115,27 @@ describe('thread manager', () => {
     agent.emit({ kind: 'result', ok: true })
     expect(seen).toContain('user_text:working')
     expect(seen).toContain('result:done')
+  })
+})
+
+describe('deleting a conversation', () => {
+  it('closes a working session, removes its files, ignores late events and tells listeners', async () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'long job' })
+    const dir = store.transcriptPath(meta.id).replace(/\/messages\.md$/, '')
+    expect(existsSync(dir)).toBe(true)
+    const seen: string[] = []
+    manager.subscribe((u) => seen.push(`${u.threadId}:${u.event.kind}`))
+    await manager.remove(meta.id)
+    expect(existsSync(dir)).toBe(false)
+    expect(store.get(meta.id)).toBeUndefined()
+    expect(manager.summaries().map((s) => s.meta.id)).not.toContain(meta.id)
+    // The fake session's close emitted an exit; it must not have recreated the folder.
+    agent.emit({ kind: 'assistant_text', messageId: 'late', text: 'too late' })
+    expect(existsSync(dir)).toBe(false)
+    expect(seen).toEqual([`${meta.id}:thread_deleted`])
+    expect(() => manager.send(meta.id, 'again')).toThrow('This conversation was deleted')
+    await expect(manager.remove('0'.repeat(32))).rejects.toThrow()
   })
 })
 

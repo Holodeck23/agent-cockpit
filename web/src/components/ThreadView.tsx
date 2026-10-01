@@ -5,6 +5,7 @@ import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
 import { native } from '../native.ts'
 import { buildTranscript } from '../transcript.ts'
+import { markUnread } from '../useSeen.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
@@ -143,6 +144,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               completed={meta.completed}
               instructions={{ session: meta.instructionsRevision, current: instructionsRevision, sessionText: meta.instructionsText }}
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
+              onMarkUnread={() => { markUnread(meta.id); onBack?.() }}
+              onDelete={() => api.deleteThread(meta.id).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
+              running={running}
             />
           </div>}
         </div>
@@ -156,6 +160,13 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
         />
+        {meta.completed && !running ? (
+          <div className="completed-bar" role="status">
+            <CheckIcon />
+            <span>Marked complete</span>
+            {phone ? null : <button type="button" className="button-soft" onClick={() => guard(api.setCompleted(meta.id, false))}>Reopen</button>}
+          </div>
+        ) : null}
       </div>
       <Composer
         initialDraft={initialDraft}

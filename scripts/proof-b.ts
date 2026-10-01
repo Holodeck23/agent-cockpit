@@ -232,7 +232,8 @@ async function b3(): Promise<void> {
   await headStatus(page).filter({ hasText: /Ready|Error/ }).waitFor({ timeout: 90_000 })
   const notes = join(bakery, 'notes.txt')
   check('allowing it let the agent write the file', existsSync(notes) && readFileSync(notes, 'utf8').includes('hello'))
-  check('answered approval folds into a note', (await page.locator('.note', { hasText: 'Allowed: Write' }).count()) === 1)
+  check('answered approval folds into a decision line', (await page.locator('details.decisions summary', { hasText: '1 decision · Allowed' }).count()) === 1
+    && (await page.locator('details.decisions li', { hasText: 'Write' }).count()) === 1)
 
   // Dark mode on the running turn.
   const themeButton = page.locator('.subnav-tools .icon-button[aria-label^="Theme"]')

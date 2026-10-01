@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ApprovalBehavior } from '../../../server/agents/types.ts'
+import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { Bars } from './icons.tsx'
@@ -12,12 +13,6 @@ interface TranscriptViewProps {
   streaming: string
   streamingAuthor: 'claude' | 'codex'
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
-}
-
-const RESOLVED: Record<ApprovalBehavior, string> = {
-  allow: 'Allowed',
-  allow_session: 'Allowed for this session',
-  deny: 'Denied',
 }
 
 const time = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -44,15 +39,16 @@ function Author({ author, ts }: { author: 'you' | 'claude' | 'codex'; ts?: strin
 }
 
 export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove }: TranscriptViewProps) {
-  const lastStepIndex = items.findLastIndex((i) => i.type === 'step')
-  const liveStep = running && lastStepIndex >= 0 && lastStepIndex === items.length - 1 && !streaming
+  const shown = groupDecisions(items, openApprovals)
+  const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
+  const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
   const now = useTick(liveStep)
-  const last = items.at(-1)
+  const last = shown.at(-1)
   const streamingShowsAuthor = !(last?.type === 'message' && last.author === streamingAuthor)
 
   return (
     <div className="transcript">
-      {items.map((item, index) => {
+      {shown.map((item, index) => {
         switch (item.type) {
           case 'message':
             return (
@@ -84,15 +80,23 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
               </div>
             )
           }
+          case 'decisions':
+            return (
+              <details key={item.key} className="decisions">
+                <summary>{decisionSummary(item.entries)}</summary>
+                <ul>
+                  {item.entries.map((entry) => (
+                    <li key={entry.key} className={entry.resolution === 'deny' ? 'decision-denied' : undefined}>
+                      <span className="decision-answer">{RESOLVED[entry.resolution!]}</span>
+                      <span>{agentName(entry.agent)} · {entry.toolName}</span>
+                      <code>{entry.detail}</code>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )
           case 'approval': {
             const open = openApprovals.has(item.requestId)
-            if (!open && item.resolution) {
-              return (
-                <div key={item.key} className="note">
-                  {RESOLVED[item.resolution]}: {item.toolName} <code>{item.detail}</code>
-                </div>
-              )
-            }
             return (
               <div key={item.key} className={`approval${open ? ' open' : ''}`}>
                 <div className="approval-title">

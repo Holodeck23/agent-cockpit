@@ -1,0 +1,34 @@
+#!/bin/sh
+# Stand-in `claude` for `npm run proof:thread-menu`. Each turn asks permission for two shell
+# commands in a row, in the format Claude Code 2.1 uses (tests/fixtures/claude-turn-approval.jsonl),
+# waits for each answer, then finishes. Exits on stdin EOF, like the real CLI.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit ask fixture)"; exit 0; }
+session=""
+previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"ask-fixture"}\n' "$session"
+turn=0
+waiting=""
+ask() {
+  printf '{"type":"assistant","message":{"id":"ask-%s-%s","role":"assistant","content":[{"type":"tool_use","id":"toolu_%s_%s","name":"Bash","input":{"command":"echo step %s"}}]}}\n' "$turn" "$1" "$turn" "$1" "$1"
+  printf '{"type":"control_request","request_id":"req-%s-%s","request":{"subtype":"can_use_tool","tool_name":"Bash","display_name":"Bash","input":{"command":"echo step %s"},"description":"step %s","permission_suggestions":[]}}\n' "$turn" "$1" "$1" "$1"
+  waiting="$1"
+}
+answered() {
+  printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_%s_%s","type":"tool_result","content":"step %s"}]}}\n' "$turn" "$1" "$1"
+}
+while IFS= read -r line; do
+  case "$line" in
+    *'"type":"user"'*) turn=$((turn + 1)); ask 1 ;;
+    *'"type":"control_response"'*)
+      case "$waiting" in
+        1) answered 1; ask 2 ;;
+        2) answered 2; waiting=""
+           printf '{"type":"assistant","message":{"id":"ask-%s-done","role":"assistant","content":[{"type":"text","text":"Both steps answered."}]}}\n' "$turn"
+           printf '{"type":"result","subtype":"success","is_error":false,"result":"Both steps answered.","total_cost_usd":0,"duration_ms":5}\n' ;;
+      esac ;;
+  esac
+done

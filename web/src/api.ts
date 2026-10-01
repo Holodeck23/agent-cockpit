@@ -76,6 +76,7 @@ export const api = {
   interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
   switchAgent: (id: string, settings: Partial<ThreadSettings>) =>
     request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),
+  deleteThread: (id: string) => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: {} }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),

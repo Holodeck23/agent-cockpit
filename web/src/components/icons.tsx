@@ -167,3 +167,8 @@ export const TerminalIcon = (p: IconProps) => (
     <path d="M7.5 9.5l3 2.5-3 2.5M12.5 15h4" />
   </Svg>
 )
+export const TrashIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5.5M14 11v5.5" />
+  </Svg>
+)

@@ -1,0 +1,21 @@
+/* Conversation menu extras, decision lines and the completed bar (ThreadMenu, TranscriptView, ThreadView). */
+.menu-danger { color: var(--danger); }
+.menu-danger .icon { color: var(--danger); }
+.delete-confirm { display: grid; gap: 8px; width: 300px; padding: 14px; }
+.delete-title { margin: 0; font-weight: 600; color: var(--strong); }
+.delete-confirm .menu-note { margin: 0; padding: 0; white-space: normal; }
+.delete-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.button-danger { padding: 7px 14px; border: 1px solid var(--danger); border-radius: var(--r-sm); background: var(--danger); color: #fff; font-weight: 500; }
+.button-danger:disabled, .delete-actions .button-soft:disabled { opacity: 0.6; }
+.decisions { align-self: flex-start; max-width: 100%; margin: 2px 0; border-radius: var(--r-sm); font-size: 13px; color: var(--secondary); }
+.decisions summary { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--field); cursor: pointer; list-style: none; }
+.decisions summary::-webkit-details-marker { display: none; }
+.decisions summary::before { content: '›'; display: inline-block; transition: transform 120ms ease; color: var(--muted); }
+.decisions[open] summary::before { transform: rotate(90deg); }
+.decisions ul { display: grid; gap: 6px; margin: 8px 0 0; padding: 10px 12px; list-style: none; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); }
+.decisions li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; }
+.decisions li code { grid-column: 2; font: 12px var(--mono); color: var(--secondary); overflow-wrap: anywhere; }
+.decision-answer { font-weight: 600; color: var(--success); }
+.decision-denied .decision-answer { color: var(--danger); }
+.completed-bar { display: flex; align-items: center; gap: 10px; margin: 18px auto 6px; padding: 10px 14px; width: fit-content; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--secondary); font-size: 13.5px; }
+.completed-bar .icon { width: 16px; height: 16px; color: var(--success); }

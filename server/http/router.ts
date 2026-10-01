@@ -200,6 +200,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       } else if (method === 'POST' && action === 'interrupt') {
         manager.interrupt(threadId)
         sendJson(res, 202, { data: {} })
+      } else if (method === 'DELETE' && !action) {
+        if (viaPhone) throw new HttpError(403, 'Conversations can only be deleted on the Mac')
+        await manager.remove(threadId)
+        sendJson(res, 200, { data: { deleted: threadId } })
       } else if (method === 'POST' && action === 'completed') {
         sendJson(res, 200, { data: manager.setCompleted(threadId, parseBody(completedBody, await readJson(req)).completed) })
       } else if (method === 'POST' && action === 'agent') {
