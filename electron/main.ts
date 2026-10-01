@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
+import { createDockActivity, parseActivity } from './dock-activity.ts'
 import { resolveAppPath } from './shell-path.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
@@ -108,8 +109,24 @@ function createWindow(url: string): BrowserWindow {
   return win
 }
 
+// Calls go through app.dock each time (not a saved reference), so the proofs can watch them.
+const dockFrames = (name: string) => nativeImage.createFromPath(join(__dirname, 'dock', `${name}.png`))
+const dock = process.platform === 'darwin' ? createDockActivity({
+  frames: Array.from({ length: 8 }, (_, i) => dockFrames(`frame-${i}`)).filter((image) => !image.isEmpty()),
+  rest: dockFrames('rest'),
+  setIcon: (image) => app.dock?.setIcon(image),
+  setBadge: (text) => app.dock?.setBadge(text),
+  setInterval: (run, ms) => setInterval(run, ms),
+  clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+}) : undefined
+
 function registerIpc(url: string, threadsDir: string): void {
   const origin = new URL(url).origin
+  ipcMain.on('cockpit:activity', (event, value: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    const activity = parseActivity(value)
+    if (activity) dock?.update(activity)
+  })
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
@@ -151,6 +168,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', (event) => {
+  dock?.stop()
   if (shutdownFinished || !running) return
   event.preventDefault()
   const server = running

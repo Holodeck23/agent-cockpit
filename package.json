@@ -40,7 +40,9 @@
     "proof:schedules": "tsx scripts/proof-schedules.ts",
     "proof:gallery": "tsx scripts/proof-gallery.ts",
     "proof:appearance": "tsx scripts/proof-appearance.ts",
-    "proof:settings": "tsx scripts/proof-settings.ts"
+    "proof:settings": "tsx scripts/proof-settings.ts",
+    "proof:dock": "tsx scripts/proof-dock.ts",
+    "dock-frames": "tsx scripts/make-dock-frames.ts"
   },
   "author": "",
   "license": "UNLICENSED",

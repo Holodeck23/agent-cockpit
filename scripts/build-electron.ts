@@ -1,6 +1,7 @@
 // Bundles the Electron main process (with the whole server) and the preload
 // into CommonJS files under dist-electron/. Vite builds the page separately.
 import { build, type BuildOptions } from 'esbuild'
+import { cpSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -20,4 +21,6 @@ await Promise.all([
   // The cockpit MCP server each agent session spawns (see server/mcp/stdio.ts).
   build({ ...common, entryPoints: ['server/mcp/stdio.ts'], outfile: 'dist-electron/mcp.cjs' }),
 ])
-console.log('[build-electron] dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs')
+// Dock animation frames (scripts/make-dock-frames.ts), loaded by electron/dock-activity.ts.
+cpSync(`${root}build/dock`, `${root}dist-electron/dock`, { recursive: true })
+console.log('[build-electron] dist-electron/dock/, dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs')

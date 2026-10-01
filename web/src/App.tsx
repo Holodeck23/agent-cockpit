@@ -13,6 +13,7 @@ import { AppearanceMenu } from './components/AppearanceMenu.tsx'
 import { AppSettings } from './components/AppSettings.tsx'
 import { useSoundSettings, useStatusSounds } from './sounds.ts'
 import { Mark, SlidersIcon } from './components/icons.tsx'
+import { native } from './native.ts'
 import type { PageMode } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { PhoneNotify } from './components/PhoneNotify.tsx'
@@ -33,6 +34,10 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // Desktop only: the phone has its own notifications.
   useStatusSounds(local ? cockpit.threads : NO_THREADS, sounds)
+  // The Dock icon: moving bars while any agent works, a badge with how many need you (every project).
+  const working = cockpit.threads.filter((t) => t.status === 'working').length
+  const needs = cockpit.threads.filter((t) => t.status === 'needs_input').length
+  useEffect(() => { if (local) native?.setActivity({ working, needs }) }, [local, working, needs])
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
   const [section, setSectionState] = useState<Section>('conversations')
