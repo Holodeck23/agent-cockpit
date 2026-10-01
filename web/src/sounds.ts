@@ -21,8 +21,10 @@ export function parseSounds(raw: string | null): SoundSettings {
   }
 }
 
-type Row = Pick<ThreadSummary, 'status' | 'lastActivityAt'> & { meta: Pick<ThreadSummary['meta'], 'id'> }
+type Row = Pick<ThreadSummary, 'status' | 'lastActivityAt' | 'awaiting'> & { meta: Pick<ThreadSummary['meta'], 'id'> }
 export type Seen = ReadonlyMap<string, Pick<Row, 'status' | 'lastActivityAt'>>
+// A question or blocker at the end of a turn waits on you just like an approval (U12).
+const effective = (t: Row): Row['status'] => (t.awaiting && t.status !== 'working' ? 'needs_input' : t.status)
 const ENDED = new Set<Row['status']>(['done', 'idle'])
 
 /**
@@ -38,9 +40,10 @@ export function soundFor(previous: Seen | undefined, threads: readonly Row[], se
   let reply = false
   for (const t of threads) {
     const before = previous.get(t.meta.id)
-    const waiting = t.status === 'needs_input' && (before?.status !== 'needs_input' || before.lastActivityAt !== t.lastActivityAt)
+    const status = effective(t)
+    const waiting = status === 'needs_input' && (before?.status !== 'needs_input' || before.lastActivityAt !== t.lastActivityAt)
     if (waiting && settings.decision) return 'decision'
-    if (before && ENDED.has(t.status) && (before.status === 'working' || before.status === 'needs_input')) reply = true
+    if (before && ENDED.has(status) && (before.status === 'working' || before.status === 'needs_input')) reply = true
   }
   return reply && settings.reply ? 'reply' : undefined
 }
@@ -99,7 +102,7 @@ export function useStatusSounds(threads: readonly ThreadSummary[], settings: Sou
   const seen = useRef<Seen>(undefined)
   useEffect(() => {
     const kind = soundFor(seen.current, threads, settings)
-    seen.current = new Map(threads.map((t) => [t.meta.id, { status: t.status, lastActivityAt: t.lastActivityAt }]))
+    seen.current = new Map(threads.map((t) => [t.meta.id, { status: effective(t), lastActivityAt: t.lastActivityAt }]))
     if (kind) playSound(kind)
   }, [threads, settings])
 }

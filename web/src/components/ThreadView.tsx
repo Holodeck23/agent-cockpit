@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { buildActivity } from '../activity.ts'
 import { openApprovals } from '../../../server/threads/status.ts'
+import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
 import { native } from '../native.ts'
@@ -40,6 +41,8 @@ function shortPath(path: string): string {
 export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = status === 'working' || status === 'needs_input'
+  // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
+  const shown = !running && awaitingOf(events) ? 'needs_input' : status
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
@@ -93,9 +96,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         <div className="thread-heading">
           <h1>{meta.title}</h1>
           <div className="thread-status">
-            <span className={`status-text status-${status}`}>
-              {status === 'working' ? <Bars live /> : null}
-              {STATUS_LABEL[status]}
+            <span className={`status-text status-${shown}`}>
+              {shown === 'working' ? <Bars live /> : null}
+              {STATUS_LABEL[shown]}
             </span>
             {native ? (
               <button type="button" className="transcript-link" title={`Show ${transcriptPath} in Finder`} onClick={() => native?.revealTranscript(transcriptPath)}>

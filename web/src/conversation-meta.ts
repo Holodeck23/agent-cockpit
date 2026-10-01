@@ -52,9 +52,14 @@ export interface FilterInput {
   readonly isUnread: (thread: ThreadSummary) => boolean
 }
 
+/** Waiting on you: an approval is open, or the last turn ended with a question or a blocker (U12). */
+export const needsYou = (t: Pick<ThreadSummary, 'status' | 'awaiting'>): boolean => t.status === 'needs_input' || (Boolean(t.awaiting) && t.status !== 'working')
+/** The status a list row shows: a question or blocker reads as Needs you. */
+export const shownStatus = (t: Pick<ThreadSummary, 'status' | 'awaiting'>): ThreadStatus => (needsYou(t) ? 'needs_input' : t.status)
+
 const MATCHES: Record<ListFilter, (t: ThreadSummary, isUnread: (t: ThreadSummary) => boolean) => boolean> = {
   all: () => true,
-  needs: (t) => t.status === 'needs_input',
+  needs: (t) => needsYou(t),
   working: (t) => t.status === 'working',
   unread: (t, isUnread) => isUnread(t),
 }

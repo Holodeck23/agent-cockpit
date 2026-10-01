@@ -27,6 +27,8 @@ function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): Threa
     return {
       ...t,
       status: update.status,
+      // Your reply answers a question; a finished turn's own kind is re-read from the server (see onUpdate).
+      awaiting: update.event.kind === 'user_text' ? undefined : t.awaiting,
       meta: update.event.kind === 'completion_changed' ? { ...t.meta, completed: update.event.completed } : t.meta,
       preview: text ? text.slice(0, 140) : t.preview,
       messageCount: t.messageCount + (isMessage ? 1 : 0),
@@ -108,7 +110,7 @@ export function useCockpit(local = true): Cockpit {
         return
       }
       const isDelta = update.event.kind === 'text_delta'
-      if (!knownIds.current.has(update.threadId)) refresh()
+      if (!knownIds.current.has(update.threadId) || update.event.kind === 'result') refresh()
       else if (!isDelta) setThreads((current) => applyToSummaries(current, update))
       if (update.threadId !== selectedRef.current) return
       if (update.event.kind === 'text_delta') {

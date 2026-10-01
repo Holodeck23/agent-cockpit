@@ -1,6 +1,6 @@
 import type { ThreadSummary } from '../api.ts'
 import { DEFAULT_APPEARANCE, rowMeta, type RowShows } from '../appearance.ts'
-import { agentLabel, dayLabel, tagFor, toneFor } from '../conversation-meta.ts'
+import { agentLabel, dayLabel, shownStatus, tagFor, toneFor } from '../conversation-meta.ts'
 import { ChatIcon } from './icons.tsx'
 import { StatusPill } from './StatusPill.tsx'
 
@@ -39,7 +39,7 @@ export function ConversationCard({ thread, selected, unread, onSelect, project, 
         <span className="card-meta">
           {rowMeta({ project, agent: agentLabel(thread.meta.settings.agent), date: dayLabel(thread.lastActivityAt) }, shows)}
         </span>
-        <StatusPill status={thread.status} />
+        <StatusPill status={shownStatus(thread)} />
       </span>
     </button>
   )

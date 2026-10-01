@@ -183,3 +183,16 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .usage-bar { height: 6px; border-radius: 999px; background: var(--field); overflow: hidden; }
 .usage-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--link); }
 .agent-missing { margin-left: 2px; font-size: 11px; font-weight: 500; color: var(--danger); }
+
+/* Turn shape (U12): a quiet acknowledgement, compact updates, a labelled question or blocker. */
+.bubble.ack { padding: 8px 14px; font-size: 14px; color: var(--secondary); background: transparent; border-style: dashed; }
+.update-line { display: block; padding: 2px 4px 2px 32px; color: var(--secondary); font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.update-line summary { cursor: default; list-style: none; }
+.update-line summary::-webkit-details-marker { display: none; }
+.update-line > div { margin-top: 4px; white-space: pre-wrap; color: var(--muted); }
+.update-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 5px; background: var(--field); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; vertical-align: 1px; }
+.conclusion-tag { justify-self: start; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.conclusion-tag.question { background: var(--needs-bg); color: var(--needs-ink); border: 1px solid var(--needs-border); }
+.conclusion-tag.blocker { background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
+.conclusion-question .bubble { border-color: var(--needs-border); }
+.conclusion-blocker .bubble { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }

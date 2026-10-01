@@ -4,9 +4,16 @@
 import type { AgentId, ApprovalBehavior, WorkflowSnapshot } from '../../server/agents/types.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
+import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 
 export type TranscriptItem =
-  | { type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[]; workflows?: readonly WorkflowSnapshot[] }
+  | {
+      type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[]; workflows?: readonly WorkflowSnapshot[]
+      /** Agent messages before the conclusion (U12); absent on conclusions and your messages. */
+      phase?: 'acknowledgement' | 'update'
+      /** A conclusion that asks you something or reports a blocker; its marker is removed from `text`. */
+      conclusion?: 'question' | 'blocker'
+    }
   | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string }
   | {
       type: 'approval'
@@ -137,6 +144,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let agent: AgentId = firstSwitch?.kind === 'agent_switch' ? firstSwitch.from : currentAgent
 
   const items: TranscriptItem[] = []
+  const roles = turnRoles(events)
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
   const replace = (index: number, next: TranscriptItem): void => {
@@ -156,7 +164,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           const { text, attachments } = describeAttachments(event.text)
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(attachments.length ? { attachments } : {}),
             ...(event.workflows?.length ? { workflows: event.workflows } : {}) })
-        } else items.push({ type: 'message', key, author, text: event.text, ts, showAuthor })
+        } else {
+          const role = roles.get(index)
+          const parsed = role === 'conclusion' ? parseConclusion(event.text) : undefined
+          items.push({ type: 'message', key, author, text: parsed?.text ?? event.text, ts, showAuthor,
+            ...(role === 'acknowledgement' || role === 'update' ? { phase: role } : {}),
+            ...(parsed && parsed.kind !== 'answer' ? { conclusion: parsed.kind } : {}) })
+        }
         return
       }
       case 'tool_use':

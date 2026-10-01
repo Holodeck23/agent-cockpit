@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 import { previewOf } from '../server/threads/status.ts'
-import { awaitingOf, latestConclusion, parseConclusion, turnRoles } from '../server/threads/turns.ts'
+import { awaitingOf, latestConclusion, parseConclusion, turnRoles, TURN_GUIDANCE } from '../server/threads/turns.ts'
+import { COCKPIT_GUIDANCE } from '../server/mcp/sessions.ts'
 import type { StoredEvent } from '../server/threads/types.ts'
 
 const log = (...events: NormalizedEvent[]): StoredEvent[] => events.map((event, i) => ({ ts: `2026-10-01T10:00:${String(i).padStart(2, '0')}Z`, event }))
@@ -54,5 +55,13 @@ describe('conclusions', () => {
     expect(previewOf(log(you('go'), says('On it.'), says('Halfway.'), says('Question: Keep the old logo?'), done))).toBe('Keep the old logo?')
     expect(previewOf(log(you('go'), says('On it.'), says('Halfway.')))).toBe('go')
     expect(previewOf(log(you('go'), says('Done.'), done, you('next'), says('Starting.')))).toBe('next')
+  })
+})
+
+describe('guidance', () => {
+  it('asks every Cockpit session for the turn shape and the two markers', () => {
+    expect(COCKPIT_GUIDANCE).toContain(TURN_GUIDANCE)
+    expect(TURN_GUIDANCE).toMatch(/"Question:"/)
+    expect(TURN_GUIDANCE).toMatch(/"Blocked:"/)
   })
 })
