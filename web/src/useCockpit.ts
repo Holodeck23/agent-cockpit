@@ -50,8 +50,12 @@ export function useCockpit(local = true): Cockpit {
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
   const [remote, setRemote] = useState<RemoteStatus>()
 
+  // Several refreshes can be in flight (a new conversation's every event asks for one); only the
+  // newest may land, or an older list arriving last would send statuses backwards.
+  const listVersion = useRef(0)
   const refresh = useCallback(() => {
-    api.listThreads().then(setThreads, (e: unknown) => setError(String(e)))
+    const version = ++listVersion.current
+    api.listThreads().then((rows) => { if (version === listVersion.current) setThreads(rows) }, (e: unknown) => setError(String(e)))
   }, [])
 
   useEffect(refresh, [refresh])

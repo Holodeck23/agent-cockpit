@@ -172,3 +172,10 @@ export const TrashIcon = (p: IconProps) => (
     <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5.5M14 11v5.5" />
   </Svg>
 )
+export const SlidersIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.5 7h9M17.5 7h2M4.5 17h3M11.5 17h8" />
+    <circle cx="15.5" cy="7" r="2" />
+    <circle cx="9.5" cy="17" r="2" />
+  </Svg>
+)

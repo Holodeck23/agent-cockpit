@@ -10,12 +10,16 @@ import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
 import { AppearanceMenu } from './components/AppearanceMenu.tsx'
-import { Mark } from './components/icons.tsx'
+import { AppSettings } from './components/AppSettings.tsx'
+import { useSoundSettings, useStatusSounds } from './sounds.ts'
+import { Mark, SlidersIcon } from './components/icons.tsx'
 import type { PageMode } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { PhoneNotify } from './components/PhoneNotify.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
+
+const NO_THREADS: never[] = []
 
 export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const local = page.mode === 'local'
@@ -25,6 +29,10 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const projects = useProjects(cockpit.threads, cockpit.reportError)
   const theme = useTheme()
   const { appearance, update: updateAppearance } = useAppearance()
+  const { sounds, setSounds } = useSoundSettings()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  // Desktop only: the phone has its own notifications.
+  useStatusSounds(local ? cockpit.threads : NO_THREADS, sounds)
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
   const [section, setSectionState] = useState<Section>('conversations')
@@ -65,9 +73,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         appearance={<AppearanceMenu theme={theme.mode} onTheme={theme.set} appearance={appearance} onChange={updateAppearance} />}
         conversationsOnly={phone}
         runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}
-        tools={local ? <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
+        tools={local ? <><PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
+          <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}><SlidersIcon /></button></>
           : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
       />
+      {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} onClose={() => setSettingsOpen(false)} /> : null}
       {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
         <div className="pairing-banner" role="alert"><PairingRequests status={cockpit.remote} onError={cockpit.reportError} /></div>
       ) : null}

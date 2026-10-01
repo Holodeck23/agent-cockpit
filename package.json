@@ -39,7 +39,8 @@
     "proof:thread-menu": "tsx scripts/proof-thread-menu.ts",
     "proof:schedules": "tsx scripts/proof-schedules.ts",
     "proof:gallery": "tsx scripts/proof-gallery.ts",
-    "proof:appearance": "tsx scripts/proof-appearance.ts"
+    "proof:appearance": "tsx scripts/proof-appearance.ts",
+    "proof:settings": "tsx scripts/proof-settings.ts"
   },
   "author": "",
   "license": "UNLICENSED",
