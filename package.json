@@ -36,7 +36,8 @@
     "proof:context": "tsx scripts/proof-context.ts",
     "proof:git": "tsx scripts/proof-git.ts",
     "proof:processes": "tsx scripts/proof-processes.ts",
-    "proof:thread-menu": "tsx scripts/proof-thread-menu.ts"
+    "proof:thread-menu": "tsx scripts/proof-thread-menu.ts",
+    "proof:schedules": "tsx scripts/proof-schedules.ts"
   },
   "author": "",
   "license": "UNLICENSED",

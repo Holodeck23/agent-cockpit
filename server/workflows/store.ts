@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { WorkflowSnapshot } from '../agents/types.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MessageReferenceError, WORKFLOW_REFERENCE } from '../files/references.ts'
+import { calendarSchema } from './calendar.ts'
 
 export const workflowInputSchema = z.object({
   projectPath: z.string().min(1).max(1000).refine(isAbsolute, 'Choose an absolute project path'),
@@ -17,6 +18,8 @@ export const workflowInputSchema = z.object({
   prompt: z.string().trim().min(1).max(40_000),
   settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
   intervalMinutes: z.number().int().min(5).max(43_200).nullable().default(null),
+  /** Days and a local time instead of an interval; at most one of the two is set. */
+  calendar: calendarSchema.nullable().default(null),
 })
 export type WorkflowInput = z.input<typeof workflowInputSchema>
 const workflowSchema = workflowInputSchema.extend({
@@ -46,6 +49,7 @@ export function createWorkflowStore(root: string): WorkflowStore {
     get: (id) => read().find((w) => w.id === id && !w.archived),
     save(input, id) {
       const parsed = workflowInputSchema.parse(input)
+      if (parsed.intervalMinutes && parsed.calendar) throw new Error('Choose either a repeat interval or days and a time, not both')
       const rows = read()
       const old = id ? rows.find((w) => w.id === id && !w.archived) : undefined
       if (id && !old) throw new Error('Unknown workflow')

@@ -1,3 +1,4 @@
+import { describeCalendar } from '../../../server/workflows/calendar.ts'
 import { useMemo, useState } from 'react'
 import type { Project, Workflow } from '../api.ts'
 import { displayTitle, filterWorkflows, groupByCollection, type WorkflowView } from '../workflow-list.ts'
@@ -62,7 +63,7 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
               <strong>{displayTitle(w)}</strong>
               <code className="workflow-slug">@workflow:{w.name}</code>
               <span>{w.prompt.slice(0, 100)}</span>
-              <small className={w.lastError ? 'workflow-error' : ''}>{w.lastError ? 'Needs attention' : w.enabled ? `Every ${w.intervalMinutes} min` : 'Manual / paused'}</small>
+              <small className={w.lastError ? 'workflow-error' : ''}>{w.lastError ? 'Needs attention' : w.enabled ? (w.calendar ? describeCalendar(w.calendar) : `Every ${w.intervalMinutes} min`) : 'Manual / paused'}</small>
             </button>
           ))}
         </section>

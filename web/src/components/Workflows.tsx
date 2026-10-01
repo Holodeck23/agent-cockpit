@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, type Project, type Workflow, type WorkflowInput } from '../api.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { WorkflowIcon } from './icons.tsx'
+import { RepeatPicker } from './RepeatPicker.tsx'
 import { WorkflowList } from './WorkflowList.tsx'
+import { canSchedule, repeatFrom, repeatInput } from '../repeat.ts'
+import { describeCalendar } from '../../../server/workflows/calendar.ts'
 import { displayTitle } from '../workflow-list.ts'
 import { freeName, type WorkflowStarter } from '../workflow-starters.ts'
 
@@ -49,7 +52,7 @@ export function Workflows({ project, onError, onOpenThread }: Props) {
   const addStarter = (starter: WorkflowStarter) => perform(async () => {
     if (!projectPath) return
     const saved = await api.saveWorkflow({ projectPath, name: freeName(starter.name, new Set(rows.map((w) => w.name))),
-      title: starter.title, collection: starter.collection, prompt: starter.prompt, intervalMinutes: null,
+      title: starter.title, collection: starter.collection, prompt: starter.prompt, intervalMinutes: null, calendar: null,
       settings: { agent: 'claude', permissionMode: starter.permissionMode, useHooks: false } })
     await refresh()
     setSelected(saved.id); setCreating(false)
@@ -78,18 +81,18 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
   const [title, setTitle] = useState(workflow?.title ?? '')
   const [collection, setCollection] = useState(workflow?.collection ?? '')
   const [prompt, setPrompt] = useState(workflow?.prompt ?? '')
-  const [interval, setInterval] = useState(workflow?.intervalMinutes?.toString() ?? '')
+  const [repeat, setRepeat] = useState(() => repeatFrom(workflow))
   const [choice, setChoice] = useState<AgentChoice>({ agent: workflow?.settings.agent ?? 'claude', model: workflow?.settings.model ?? '',
     effort: workflow?.settings.effort ?? '', permissionMode: workflow?.settings.permissionMode ?? 'manual' })
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const intent = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value as Intent | undefined
-    void onSave({ name, title, collection, prompt, projectPath, intervalMinutes: interval ? Number(interval) : null,
+    void onSave({ name, title, collection, prompt, projectPath, ...repeatInput(repeat),
       settings: settingsFromChoice(choice, workflow?.settings) }, intent ?? 'save')
   }
   return <main className="workflow-editor">
     <header><span className="workflow-kicker">Reusable instructions</span><h1>{workflow ? displayTitle(workflow) : 'New workflow'}</h1>
-      <p>{workflow?.enabled ? `Scheduled · Next run ${when(workflow.nextRunAt)}` : 'Run manually, or turn on a schedule when you’re ready.'}</p></header>
+      <p>{workflow?.enabled ? `Scheduled · ${workflow.calendar ? describeCalendar(workflow.calendar) : `Every ${workflow.intervalMinutes} min`} · Next run ${when(workflow.nextRunAt)}` : 'Run manually, or turn on a schedule when you’re ready.'}</p></header>
     {workflow?.lastError ? <div className="workflow-notice" role="alert"><strong>Schedule paused</strong><p>{workflow.lastError}</p></div> : null}
     <form onSubmit={submit}><fieldset disabled={busy}>
       <label>Title<input maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Daily review" /></label>
@@ -102,12 +105,12 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
         placeholder="Review this project’s recent changes. Report bugs with file locations and suggested fixes." /></label>
       <small>Include another workflow with <code>@workflow:name</code>. Its instructions join this run; it does not launch another agent.</small>
       <div className="workflow-config"><div><span className="workflow-label">Agent and permissions</span><AgentPicker value={choice} onChange={setChoice} /></div>
-        <label>Repeat every (minutes)<input type="number" min={5} max={43200} step={1} value={interval} onChange={(e) => setInterval(e.target.value)} placeholder="Manual only" /></label></div>
+        <RepeatPicker value={repeat} onChange={setRepeat} /></div>
       <p className="workflow-help">Saving pauses an existing schedule. Scheduled runs use these permissions and appear in Conversations. A failure pauses the schedule; a busy run skips the next occurrence.</p>
       <div className="workflow-actions">
         <button type="submit" className="button-primary" value="save">{busy ? 'Working…' : 'Save workflow'}</button>
         <button type="submit" value="run">Save and run</button>
-        <button type="submit" value="schedule" disabled={!interval}>Save and enable schedule</button>
+        <button type="submit" value="schedule" disabled={!canSchedule(repeat)}>Save and enable schedule</button>
       </div>
     </fieldset></form>
     {workflow ? <footer className="workflow-run"><div><strong>Latest run</strong><span>{when(workflow.lastRunAt)}</span>

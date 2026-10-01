@@ -2,7 +2,14 @@ import { expandFiles } from '../files/browser.ts'
 import { statSync } from 'node:fs'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
-import { expandWorkflows, resolveWorkflows, type WorkflowStore } from './store.ts'
+import { nextCalendarRun } from './calendar.ts'
+import { expandWorkflows, resolveWorkflows, type Workflow, type WorkflowStore } from './store.ts'
+
+/** When a schedule fires next after `after`; undefined when the workflow has no schedule. */
+export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calendar'>, after: number): number | undefined {
+  if (workflow.calendar) return nextCalendarRun(workflow.calendar, after)
+  return workflow.intervalMinutes ? after + workflow.intervalMinutes * 60_000 : undefined
+}
 
 export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManager, threads: ThreadStore, now = Date.now) {
   let timer: NodeJS.Timeout | undefined
@@ -35,17 +42,20 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
   }
   const setEnabled = (id: string, enabled: boolean) => {
     const workflow = requireWorkflow(id)
-    if (enabled && !workflow.intervalMinutes) throw new Error('Choose a repeat interval first')
+    const next = nextRunAfter(workflow, now())
+    if (enabled && next === undefined) throw new Error('Choose when it repeats first')
     if (enabled) expandWorkflows(workflow.prompt, workflow.projectPath, store)
-    return store.update(id, { enabled, nextRunAt: enabled ? new Date(now() + workflow.intervalMinutes! * 60_000).toISOString() : null,
-      lastError: undefined })
+    return store.update(id, { enabled, nextRunAt: enabled ? new Date(next!).toISOString() : null, lastError: undefined })
   }
   const tick = () => {
     if (stopped) return
     for (const workflow of store.list()) {
-      if (!workflow.enabled || !workflow.nextRunAt || !workflow.intervalMinutes || Date.parse(workflow.nextRunAt) > now()) continue
+      if (!workflow.enabled || !workflow.nextRunAt || Date.parse(workflow.nextRunAt) > now()) continue
+      const next = nextRunAfter(workflow, now())
+      if (next === undefined) continue
       // Persist the claim before launching: no duplicate launch after restart, no backlog replay.
-      store.update(workflow.id, { nextRunAt: new Date(now() + workflow.intervalMinutes * 60_000).toISOString() })
+      // The next run is counted from now, so a long gap means one late run, not one per missed slot.
+      store.update(workflow.id, { nextRunAt: new Date(next).toISOString() })
       if (isBusy(workflow.id)) continue
       try { run(workflow.id, 'scheduled') } catch { /* run saved the error and paused the schedule */ }
     }

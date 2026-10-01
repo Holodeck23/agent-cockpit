@@ -61,7 +61,8 @@ try {
   console.log('PASS a message that uses a workflow keeps its instructions beside it')
   await page.getByRole('tab', { name: 'Workflows', exact: true }).click()
   await page.locator('.workflow-row').filter({ hasText: 'quick-check' }).click()
-  await page.getByLabel('Repeat every (minutes)', { exact: true }).fill('5')
+  await page.getByLabel('Repeat', { exact: true }).selectOption('interval')
+  await page.getByLabel('Every (minutes)', { exact: true }).fill('5')
   await page.getByRole('button', { name: 'Save and enable schedule', exact: true }).click()
   await page.getByRole('button', { name: 'Pause schedule', exact: true }).waitFor()
   workflow = store.list(project)[0]!

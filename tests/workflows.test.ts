@@ -98,6 +98,23 @@ describe('workflows', () => {
     h.advance(5 * 60_000); h.runner.tick(); expect(h.sessions).toHaveLength(2)
   })
 
+  it('runs a calendar schedule at its local time, once after downtime, and never with an interval too', () => {
+    const h = setup()
+    // 2026-01-01 is a Thursday; 09:00 in Vienna (CET, UTC+1) is 08:00 UTC.
+    const w = h.store.save({ projectPath: h.root, name: 'morning', prompt: 'Brief me', calendar: { days: [1, 2, 3, 4, 5], time: '09:00', timeZone: 'Europe/Vienna' } })
+    expect(() => h.store.save({ projectPath: h.root, name: 'both', prompt: 'x', intervalMinutes: 5, calendar: { days: [1], time: '09:00', timeZone: 'Europe/Vienna' } }))
+      .toThrow('not both')
+    expect(h.runner.setEnabled(w.id, true).nextRunAt).toBe('2026-01-01T08:00:00.000Z')
+    h.advance(7 * 60 * 60_000); h.runner.tick(); expect(h.sessions).toHaveLength(0)
+    h.advance(60 * 60_000); h.runner.tick(); expect(h.sessions).toHaveLength(1)
+    expect(h.store.get(w.id)?.nextRunAt).toBe('2026-01-02T08:00:00.000Z')
+    h.sessions[0]!.emit({ kind: 'result', ok: true })
+    // Closed from Friday's run until Monday 12:00 Vienna: one late run then, next on Tuesday morning.
+    h.advance(4 * 24 * 60 * 60_000 + 3 * 60 * 60_000); h.runner.tick(); h.runner.tick()
+    expect(h.sessions).toHaveLength(2)
+    expect(h.store.get(w.id)?.nextRunAt).toBe('2026-01-06T08:00:00.000Z')
+  })
+
   it('pauses on failed scheduled runs and does not retry', () => {
     const h = setup(); const w = h.save(); h.runner.setEnabled(w.id, true)
     h.advance(5 * 60_000); h.runner.tick()
