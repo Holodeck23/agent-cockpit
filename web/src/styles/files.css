@@ -61,10 +61,12 @@
 .file-rename .button-soft { padding: 5px 10px; font-size: 12.5px; }
 .file-confirm { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: min(300px, 90vw); padding: 12px; border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--panel); font-size: 13px; line-height: 1.5; box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
 .file-confirm button { justify-self: end; }
-.new-file { position: relative; margin-left: auto; }
+/* The menu and the name box hang from the whole location row, so they never run off a narrow sidebar. */
+.file-location { position: relative; }
+.new-file { margin-left: auto; }
 .new-file .file-new { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); padding: 7px 10px; }
 .new-file .file-new .icon { width: 14px; height: 14px; }
-.new-file .file-new-form { position: absolute; right: 0; top: calc(100% + 6px); z-index: 25; width: min(300px, 80vw); flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 14%); }
+.new-file .file-new-form { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25; flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 14%); }
 .new-file .file-new-form small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 .new-file-menu .menu-item { justify-content: space-between; }
 .file-tabs-menu { position: relative; margin-left: auto; display: flex; align-items: center; flex: none; }
