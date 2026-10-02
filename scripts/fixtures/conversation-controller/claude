@@ -1,0 +1,22 @@
+#!/bin/sh
+# Synthetic working controller; only writes credentials inside the proof's temp project.
+[ "$1" = "--version" ] && { echo '0.0.0 (Conversation controller fixture)'; exit 0; }
+printf '%s\n' "$$" >> .fixture-pids
+previous=''; session=''
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$session"
+while IFS= read -r line; do
+  case "$line" in
+    *'"type":"user"'*)
+      printf '%s' "$COCKPIT_MCP_TOKEN" > ".controller-$session-token"
+      printf '%s' "$COCKPIT_MCP_URL" > .controller-url
+      printf '{"type":"assistant","message":{"id":"ready","role":"assistant","content":[{"type":"text","text":"Controller ready for an approved handoff."}]}}\n'
+      ;;
+    *'"subtype":"interrupt"'*)
+      printf '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Interrupted","total_cost_usd":0,"duration_ms":5}\n'
+      ;;
+  esac
+done

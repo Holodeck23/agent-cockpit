@@ -98,7 +98,7 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .approval { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--needs-bg); border: 1px solid var(--needs-border); color: var(--needs-ink); }
 .approval:not(.open) { opacity: 0.7; }
 .approval-title { font-size: 14px; }
-.approval-detail { display: block; padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--strong); overflow-wrap: anywhere; }
+.approval-detail { display: block; padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--strong); overflow-wrap: anywhere; white-space: pre-wrap; }
 .approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .approval-expired { font-size: 12.5px; }
 

@@ -56,7 +56,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
               const [first = '', ...rest] = item.text.trim().split('\n')
               return (
                 <section key={item.key} className="message phase-update">
-                  {item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
+                  {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
                   {rest.length ? (
                     <details className="update-line"><summary><span className="update-tag">Update</span>{first}</summary><div>{rest.join('\n')}</div></details>
                   ) : <div className="update-line"><span className="update-tag">Update</span>{first}</div>}
@@ -65,7 +65,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
             }
             return (
               <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}`}>
-                {item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
+                {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
                 {item.conclusion ? <span className={`conclusion-tag ${item.conclusion}`}>{item.conclusion === 'question' ? 'Question for you' : 'Blocked'}</span> : null}
                 <div className={`bubble ${item.author === 'you' ? 'user' : 'agent'}${item.phase === 'acknowledgement' ? ' ack' : ''}`}>
                   {item.text}

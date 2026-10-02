@@ -10,6 +10,7 @@ export type TranscriptItem =
   | {
       type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[]; workflows?: readonly WorkflowSnapshot[]
       /** Agent messages before the conclusion (U12); absent on conclusions and your messages. */
+      fromConversation?: { id: string; title: string }
       phase?: 'acknowledgement' | 'update'
       /** A conclusion that asks you something or reports a blocker; its marker is removed from `text`. */
       conclusion?: 'question' | 'blocker'
@@ -58,6 +59,9 @@ export function toolDetail(input: unknown): string {
 }
 
 const COCKPIT_TOOLS: Record<string, string> = {
+  start_conversation: 'Start a conversation',
+  send_to_conversation: 'Send to a conversation',
+  stop_conversation: 'Stop a conversation',
   list_conversations: 'List conversations',
   read_conversation: 'Read a conversation',
   start_process: 'Start a process',
@@ -184,7 +188,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (event.kind === 'user_text') {
           // Attached files show as names; their contents went to the agent, not the transcript.
           const { text, attachments } = describeAttachments(event.text)
-          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(attachments.length ? { attachments } : {}),
+          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
             ...(event.workflows?.length ? { workflows: event.workflows } : {}) })
         } else {
           const role = roles.get(index)

@@ -1,10 +1,12 @@
 # First-Run Quick Start
 
+> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+
 Welcome to Agent Cockpit! This guide will take you from launching the app to seeing your first result.
 
 ## The Welcome Screen
 
-When you first launch Cockpit with a fresh installation, you will see the **First-run director**. Here you have two main paths:
+When you first launch Cockpit with no saved projects or conversations and without a saved Skip choice, you will see the **First-run director**. Here you have two main paths:
 
 1.  **Open a project:** Use the native folder picker to select a project on your Mac, then click **Explore this project**. Cockpit will open the project, select an installed agent automatically, and help you get oriented. Selecting a folder does not launch an agent on its own.
 2.  **Try a 90-second sample:** This starts a genuine local sample app (a dependency-free project) stored in Cockpit's own sample folder. It will guide you through a real conversation, an approval prompt, running a process, and opening a preview in Cockpit's preview pane. This uses a plain-language request and requires Claude Code, Codex, or OpenCode to be installed.
@@ -19,8 +21,8 @@ If you are an existing user or want to dive straight in, you can click **Skip fo
 
 ## Your First Conversation
 
-1. **Start a Conversation:** Once you are in a project (or the sample), type a request in the composer and press Enter. This sends your request to the agent using the Cockpit MCP (Model Context Protocol).
-2. **Understand Approvals:** When an agent wants to perform an action (like running a development server or editing a file), Cockpit will pause and display an approval prompt. For supported agents, you must review the action and click **Allow** or **Deny**. *(Note: Google Antigravity uses a different headless permission model without host approval cards—see the Agent Compatibility page for details.)*
+1. **Start a Conversation:** Once you are in a project (or the sample), type a request in the composer and press Enter. This sends your request through the selected agent's CLI adapter. MCP separately exposes Cockpit tools to compatible agents.
+2. **Understand Approvals:** Actions that require approval show **Allow** and **Deny**. Which native agent actions require approval depends on the provider and permission setting; manual mode does not promise a card for every file edit. Cockpit process and workflow mutations have their own approval gate. *(Note: Google Antigravity uses a different headless permission model without host approval cards—see the Agent Compatibility page for details.)*
 3. **See the Result:** After approving the necessary steps, the agent completes the work.
 
 ## Working with Processes and Previews

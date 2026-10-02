@@ -20,11 +20,12 @@ export interface WorkflowSnapshot {
 
 export type NormalizedEvent =
   | { kind: 'session_boundary' }
+  | { kind: 'delegation_started'; requestKey: string }
   | { kind: 'completion_changed'; completed: boolean }
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
-  | { kind: 'user_text'; text: string; workflows?: readonly WorkflowSnapshot[] }
+  | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[] }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }

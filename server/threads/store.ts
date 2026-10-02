@@ -31,7 +31,7 @@ export function defaultRoot(): string {
 }
 
 function markdownFor(event: NormalizedEvent, ts: string): string | undefined {
-  if (event.kind === 'user_text') return `\n## You · ${ts}\n\n${withAttachmentNote(event.text)}\n`
+  if (event.kind === 'user_text') return `\n## ${event.fromConversation ? `From conversation: ${event.fromConversation.title.replace(/[\r\n]/g, ' ')} (${event.fromConversation.id})` : 'You'} · ${ts}\n\n${withAttachmentNote(event.text)}\n`
   if (event.kind === 'assistant_text') return `\n## Agent · ${ts}\n\n${event.text}\n`
   if (event.kind === 'tool_use') return `\n> tool: ${event.name}\n`
   return undefined

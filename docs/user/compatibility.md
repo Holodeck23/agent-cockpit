@@ -1,15 +1,17 @@
 # Agent Compatibility and Limitations
 
+> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+
 Agent Cockpit provides a unified interface across different AI coding agents. However, each agent has specific requirements, capabilities, and limitations based on its CLI implementation and API provider.
 
 ## Supported Agents Matrix
 
 | Agent | Source/CLI | Verification Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **Claude Code** | `@anthropic-ai/claude-code` | Fully Verified | Supports full process control, file editing, and process previews. Real API usage is bounded by Anthropic's rate limits. |
-| **Codex** | Codex App Server | Fully Verified | Supports full process control, workflow schedules, and file attachments. Tested heavily in the main release flow. |
-| **Google Antigravity** | `agy` CLI | Verified (Adapter level) | Requires proper Google credentials setup. Has specific MCP connection limitations (see below). |
-| **OpenCode** | OpenCode CLI | Verified (Adapter level) | Primary method for connecting to OpenRouter models via the Agent Client Protocol (ACP). |
+| **Claude Code** | `@anthropic-ai/claude-code` | Live resume smokes and selected packaged proofs passed | Supports full process control, file editing, and process previews. Real API usage is bounded by Anthropic's rate limits. |
+| **Codex** | Codex App Server | Live resume smokes and selected packaged proofs passed | Supports full process control, workflow schedules, and file attachments. Tested heavily in the main release flow. |
+| **Google Antigravity** | `agy` CLI | Live subscription resume and packaged fixture passed | Requires proper Google credentials setup. Has specific MCP connection limitations (see below). |
+| **OpenCode** | OpenCode CLI | Packaged ACP stand-in passed; live OpenRouter untested | Primary method for connecting to OpenRouter models via the Agent Client Protocol (ACP). |
 
 ## Important Distinctions
 
@@ -25,4 +27,4 @@ Agent Cockpit provides a unified interface across different AI coding agents. Ho
 *   **Per-Launch MCP:** Because Antigravity has no per-launch Cockpit MCP connection capability, it cannot be used for the first-run 90-second sample project (which relies heavily on MCP tool integration for process previews).
 
 ### Phone Approvals and Notifications
-*   **Push Notifications:** While the Web Push infrastructure is implemented in Cockpit, reliable delivery to a physical phone remains a manual setup step (requiring Tailscale). Push notifications must be explicitly granted on the phone, and acceptance of the notification payload by the device is subject to the phone's OS rules.
+*   **Push Notifications:** While the Web Push infrastructure is implemented in Cockpit, delivery to a physical phone remains an uncompleted manual acceptance check (requiring Tailscale). Push notifications must be explicitly granted on the phone, and acceptance of the notification payload by the device is subject to the phone's OS rules.

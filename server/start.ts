@@ -1,3 +1,4 @@
+import { createConversationControl } from './mcp/control.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -158,7 +159,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
   const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, importHome: process.env.COCKPIT_IMPORT_HOME,
-    mcp: { sessions, processes, openUrl, conversations: { manager, store }, ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory } },
+    mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory } },
   [port, ...(options.trustedPorts ?? [])])
   remote.attach(api)
   server.on('request', (req, res) => {

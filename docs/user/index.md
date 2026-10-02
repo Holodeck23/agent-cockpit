@@ -1,14 +1,16 @@
 # Installation and Updating Guide
 
-*(Documented against source revision `654cbd0`)*
+> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+
+*(Documented against source revision `4577d74`)*
 
 ## System Requirements
 
-Agent Cockpit is built exclusively for macOS running on Apple Silicon (M1/M2/M3/M4 series). Other platforms and Intel Macs are not officially supported. You also need Node.js installed to download and run the underlying Agent CLIs.
+Agent Cockpit is built exclusively for macOS running on Apple Silicon. Other platforms and Intel Macs are not officially supported. The packaged app includes its runtime. Install any runtime required by your chosen agent separately.
 
 ## Installation
 
-1. Download the latest `release/Cockpit-0.1.0-arm64.dmg` from the Releases page.
+1. Download the latest `Cockpit-0.1.0-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 2. Open the `.dmg` file.
 3. Drag **Cockpit.app** to your **Applications** folder.
 
@@ -53,4 +55,4 @@ When a new version is released:
 2. Open it and drag the new **Cockpit.app** into your **Applications** folder.
 3. Choose **Replace** when macOS asks.
 
-**Your data is safe.** Updating or replacing the app in `/Applications` will not delete your projects, workflows, or conversation history. All user data is stored safely in `~/.agent-cockpit/` in your user directory. Building from the source repository also does not automatically overwrite the app in your `/Applications` folder. The built app lives in `release/mac-arm64/Cockpit.app`.
+Quit Cockpit before replacing it, and back up its state first. Replacing the app bundle does not replace `~/.agent-cockpit/` (or the folder selected by `COCKPIT_HOME`). Conversation history, workflows and settings live there; project files stay in their original folders. Building from the source repository also does not automatically overwrite the app in your `/Applications` folder. The built app lives in `release/mac-arm64/Cockpit.app`.

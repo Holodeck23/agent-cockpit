@@ -1,29 +1,31 @@
 # User Guide
 
+> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
-*(Documented against source revision `654cbd0`)*
+*(Documented against source revision `4577d74`)*
 
 ## Workspace & Projects
 
 -   **Toolbar Icons:** The main interface uses toolbar icons for quick access to core functions: **Projects** (folder icon), **Workflows** (play/gallery icon), **Files** (document icon), and **Settings** (gear icon).
 -   **Projects:** Select projects from the Projects menu. Cockpit remembers recent folders.
--   **Tabs:** Manage active files, previews, and documentation inside project tabs.
+-   **Tabs:** The top tabs switch projects. Files and the embedded preview open inside the workspace.
 -   **Settings:** Access overarching settings for appearance and workflows.
 
 ## Agents & Settings
 
--   **Agent Selection:** You can switch the active agent for a conversation. If you switch mid-turn, Cockpit performs a handoff, but you must first wait for the current agent to stop.
+-   **Agent Selection:** You can switch the active agent for a conversation. Wait for the current turn to stop before switching. Cockpit hands the transcript to a fresh session with the selected agent.
 -   **Model & Effort:** Configure specific model usage (if left blank, Cockpit defaults to the CLI's default).
 -   **Permissions:** You can control the level of autonomy the agent has, from full manual approval to more permissive setups.
 
 ## Conversations
 
--   **Starting & Managing:** Type a prompt in the composer to begin a new thread. Use the conversation menu to rename, archive, or duplicate threads.
+-   **Starting & Managing:** Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.
 -   **Follow-ups:** Reply to ongoing threads or answer agent questions.
 -   **Status States:** A conversation can be Working, Ready, Error, or "Needs you" (waiting for your approval or input).
 -   **Stop vs. Complete vs. Delete:** You can Stop an active turn. Note that stopping *requests* an interruption—it does not promise force-detaching the agent or stopping active dev servers immediately. You can mark a conversation complete when done. Deleting removes the thread permanently from your `~/.agent-cockpit/` history.
--   **Imports:** Cockpit allows you to import existing agent sessions if supported by the adapter. This is separate from normal conversation recovery.
+-   **Imports:** The Projects menu can import Claude Code and Codex sessions belonging to the selected folder; the next message resumes the original CLI session. This is separate from normal conversation recovery.
 
 ## Working with Files & Markdown
 
@@ -41,21 +43,21 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 
 -   **Processes:** Agents can run commands (like `npm run dev`) scoped to the project.
 -   **Previews:** Agents can open local web pages (localhost only) in the embedded preview pane and inspect screenshots of them.
--   **Controls:** You can manually restart, inspect logs, or stop processes from the UI. Cockpit cleans up processes when closing or stopping.
+-   **Controls:** You can manually restart, inspect logs, or stop processes from the UI. Closing Cockpit shuts down its managed processes. Stopping or deleting a conversation leaves its dev servers running; stop those through the process controls.
 
 ## Workflows & Schedules
 
 -   **Gallery & Editing:** Open **Workflows** to access saved instructions and prompts. You can edit existing workflows or pause them. Archiving a workflow hides it from normal views.
--   **Schedules:** You can schedule workflows (e.g., run daily tests) by setting an interval (5 mins to 30 days) and clicking **Save and enable schedule**.
+-   **Schedules:** You can schedule workflows (e.g., run daily tests) with an interval (5 minutes to 30 days), or at a daily, weekday, or selected-weekday time in the saved local timezone and clicking **Save and enable schedule**.
 -   **Missed Runs & Failures:** If Cockpit is closed, at most one missed run is started when you reopen it. Workflows that fail will not block subsequent scheduled runs but will report errors in their thread.
 
 ## Memory & Scopes
 
 -   **Scoping vs. Sandboxing:** Each session's MCP tools (like process runners) are scoped tightly to its project directory. However, this is *not* a strict filesystem sandbox for the provider—the underlying agent CLI still runs on your machine with your user permissions.
 -   **Local State vs. Project Files:** Cockpit stores UI state, schedules, and active metadata internally (Local State). Actual project edits apply directly to your working directory (Project Files).
--   **Thread Recovery:** Cockpit persists your individual conversations as plain files in `~/.agent-cockpit/`. If memory files are malformed, Cockpit fails safely without overwriting recoverable data.
--   **`memory.json` Recovery:** Cockpit maintains a separate `memory.json` (Project/Everywhere memory) for cross-thread context. If `memory.json` becomes corrupted, Cockpit can recover gracefully without breaking individual threads.
--   **Memory Controls:** You can view and explicitly edit the gathered memory instructions for a project via the Project Instructions settings.
+-   **Thread Recovery:** Cockpit persists your individual conversations as plain files in `~/.agent-cockpit/`. Conversation state and cross-thread memory are separate stores.
+-   **`memory.json` Recovery:** Cockpit maintains a separate `memory.json` (Project/Everywhere memory) for cross-thread context. If this file is malformed, Cockpit preserves its bytes and refuses memory reads and writes. Back it up and repair it deliberately; the app does not silently reset it or claim automatic recovery.
+-   **Memory Controls:** Use the Memory view to edit Project or Everywhere entries. Project Instructions is a separate setting.
 
 ## Appearance & Sounds
 
@@ -69,7 +71,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 3.  Scan the QR code or open the HTTPS address on your phone.
 4.  Choose **Ask my Mac**, match the 6-digit code, and click **Allow** on the Mac.
 5.  You can view conversations, answer approvals, and manage runs from your phone's browser.
-6.  **Revocation:** You can revoke phone access or stop the Tailscale service entirely from the Phone Access panel on your Mac.
+6.  **Revocation:** You can revoke phone access or disable Cockpit’s phone access from the Phone Access panel on your Mac.
 7.  **Push Notifications (Experimental):** Notifications are an optional transmission. They require explicit browser notification permission on your phone. You can manage notification settings directly from the phone UI.
 
 ## Agent-to-Agent MCP
@@ -85,12 +87,12 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
     -   `open_preview`: Opens a local page (localhost only) in the preview pane.
     -   `inspect_preview`: Returns a screenshot of the local page to the agent.
     -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first).
--   **Note:** Mutating agent-to-agent controls (start, message, stop) are currently being developed (Checkpoint M2) and are not yet available in this release.
+-   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are not included in the public 2026-09-30 DMG.
 
 ## Data, Backup, and Privacy
 
--   **Data Location:** All your Cockpit configuration, workflows, and conversation history are stored locally in `~/.agent-cockpit/`.
--   **Privacy:** Cockpit does not send telemetry to a central server. Your data is only transmitted to the configured AI provider when you actively run a thread. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
+-   **Data Location:** Cockpit state lives in `~/.agent-cockpit/` unless `COCKPIT_HOME` overrides it. Project files and the CLIs’ own credentials/session stores live separately.
+-   **Privacy:** Cockpit does not send telemetry to a central server. Agent runs can send prompts, attachments and project content to the configured provider, including scheduled workflow runs. Tools may also contact external services. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
 -   **Backups:** To back up your Cockpit data, securely copy the `~/.agent-cockpit/` directory.
 
 ## Extension Notes for Developers

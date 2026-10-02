@@ -2,6 +2,8 @@
 
 Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your existing subscriptions or provider setup. Supported agents include Claude Code, Codex, Google Antigravity, and OpenCode (OpenRouter is accessed through OpenCode).
 
+> **Source versus download:** These guides describe feature-branch source through `4577d74` (2026-10-02). The public [v0.1.0 download](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.0), uploaded 2026-09-30, predates the first-run director and MCP conversation controls. A source change does not update an installed app.
+
 ## Supported Platforms
 
 Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the supported Agent CLIs to be installed on your system.
@@ -17,7 +19,7 @@ Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the 
 
 ## Download
 
-Releases are provided as `.dmg` packages for Apple Silicon Macs. You can find the latest `Cockpit-0.1.0-arm64.dmg` in the repository's Releases page.
+Releases are provided as `.dmg` packages for Apple Silicon Macs. You can find the latest `Cockpit-0.1.0-arm64.dmg` in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
@@ -38,8 +40,8 @@ Cockpit window (React) ──HTTP + SSE──►  local server (Node, 127.0.0.1,
 ```
 
 - **Adapters** turn each CLI's wire protocol into one event model, so threads, storage and UI never care which agent is talking.
-- **Nothing raw reaches a command line.** Every flag passed to a CLI is built from a schema allowlist.
-- **The server only answers its own page.** Loopback host, matching origin and JSON-only writes, so a website open in your browser can't drive your agents.
+- **CLI settings are validated.** Agent tools and approved process commands can still execute shell commands with your account permissions.
+- **Local UI requests are checked.** Cockpit checks host, origin and JSON writes. MCP uses session tokens; optional phone access uses pairing and a separate authenticated listener.
 - **The desktop app is the same server** in Electron's main process, with a sandboxed page and no Node in the renderer.
 
 ## Screenshots
