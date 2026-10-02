@@ -55,7 +55,35 @@ try {
   await page.getByRole('complementary', { name: 'App preview' }).waitFor()
   check('a process URL reopens in the pane', await page.getByRole('complementary', { name: 'App preview' }).isVisible())
 
+  // Complete the tester mission in this same clean home and synthetic project.
+  const processInfo = async () => page.evaluate(async () =>
+    (await (await fetch('/api/processes')).json()).data as Array<{ id: string; status: string; pid: number; url?: string }>)
+  const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true } catch { return false } }
+  const first = (await processInfo()).find((p) => p.status === 'running')!
+  await page.getByRole('button', { name: 'Restart', exact: true }).click()
+  const waitForReplacement = async (oldId: string) => {
+    const deadline = Date.now() + 30_000
+    while (Date.now() < deadline) {
+      const found = (await processInfo()).find((p) => p.id !== oldId && p.status === 'running' && p.url)
+      if (found) return found
+      await page.waitForTimeout(100)
+    }
+    throw new Error('Replacement server did not start')
+  }
+  const second = await waitForReplacement(first.id)
+  check('restart replaces the server and ends the old process', !alive(first.pid) && alive(second.pid))
+  await page.locator('.process-url').filter({ hasText: second.url! }).click()
+  await page.frameLocator('.preview-pane iframe').getByText('Preview is live.').waitFor()
+  check('the restarted app renders in the embedded preview', true)
+  await page.getByRole('button', { name: 'Stop', exact: true }).click()
+  await page.getByRole('button', { name: 'Start again', exact: true }).waitFor()
+  const reachable = await fetch(second.url!, { signal: AbortSignal.timeout(2000) }).then(() => true, () => false)
+  check('stop closes the server and its port', !alive(second.pid) && !reachable)
+  await page.getByRole('button', { name: 'Start again', exact: true }).click()
+  const third = await waitForReplacement(second.id)
+  check('start again brings back a working server', (await fetch(third.url!)).ok)
   await app.close()
+  check('quitting ends the restarted server', !alive(third.pid))
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
   await page.screenshot({ path: join(PROOF_DIR, 'phase-7-preview-failure.png') }).catch(() => {})

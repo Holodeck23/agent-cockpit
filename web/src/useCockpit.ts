@@ -64,11 +64,16 @@ export function useCockpit(local = true): Cockpit {
 
   const selectedRef = useRef(selectedId)
   const loadVersion = useRef(0)
+  const eventVersion = useRef(0)
   const reloadDetail = useCallback((id: string): void => {
     const version = ++loadVersion.current
+    const eventsAtStart = eventVersion.current
     api.thread(id).then(
       (loaded) => {
         if (version !== loadVersion.current || selectedRef.current !== id) return
+        // Events delivered during this request may be newer than its snapshot.
+        // Re-read them instead of losing approvals/results while detail is still loading.
+        if (eventsAtStart !== eventVersion.current) { reloadDetail(id); return }
         setDetail(loaded)
         setStreaming(loaded.streaming)
       },
@@ -113,6 +118,7 @@ export function useCockpit(local = true): Cockpit {
       if (!knownIds.current.has(update.threadId) || update.event.kind === 'result') refresh()
       else if (!isDelta) setThreads((current) => applyToSummaries(current, update))
       if (update.threadId !== selectedRef.current) return
+      ++eventVersion.current
       if (update.event.kind === 'text_delta') {
         const delta = update.event.text
         setStreaming((s) => s + delta)
