@@ -1,13 +1,13 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Current 2026-10-02:** tester hardening is complete at `58d300b`. Phase 9 checkpoint 9a is implemented at `f870f00`; its previously capped live Claude smoke passed according to the user's report on 2026-10-02. Packaged and unit gates passed locally. MCP checkpoint M1 adds verified same-project conversation reads; approved start/message/stop remains checkpoint M2.
+**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are implemented and verified on `codex/phase9-first-run-director`. The public September 30 DMG has not been replaced. Real-provider first-value timing and second-person installation remain the next gates.
 
 **Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
 - **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
 - **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
 - **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
-- **Next (2026-10-02):** implement the requested MCP conversation controls one verified checkpoint at a time, then continue Phase 9's first-value path. Stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
+- **Next (2026-10-02):** measure recovery with a real provider from fresh Cockpit state, then package the tester candidate and complete second-person acceptance. Stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
 
 
 ## MVP inspection (2026-09-29)
@@ -175,7 +175,7 @@ Cockpit now supports the four agents requested for this build: Claude Code, Code
 - Known Antigravity boundary: headless permissions are policy-only rather than host approvals, and its MCP config is global/workspace rather than per launch, so Cockpit does not mutate or inject it.
 - **Gate on the Phase 7 package:** `proof:antigravity` 6/6, `proof:opencode` 10/10, and a real `smoke:antigravity` two-process resume passed on the user's Google/Antigravity subscription.
 
-## Phase 9: first value in under three minutes (checkpoint 9a complete; recovery pending)
+## Phase 9: first value in under three minutes (checkpoints 9a and 9b complete; live timing pending)
 
 The onboarding goal is not to explain Cockpit. It is to produce one real, project-specific result before asking the user to learn the product. The signature moment is: **Cockpit found where I stopped, resumed the work, started the app and showed me the result.** First value is reached when the agent either gives a useful conclusion grounded in the selected project or opens a working embedded preview and inspects it.
 
@@ -209,6 +209,14 @@ Keep model, effort, permission taxonomy, workflow schedules, phone setup, appear
 - The sample is a dependency-free local app stored in Cockpit's own sample folder. It runs through the existing conversation, approval, process, preview and PNG-inspection loop using the packaged runtime. Retrying preserves edited sample files. Its startup instructions go to the agent; the conversation shows a plain-language request.
 - `npm run proof:director` passed 12 packaged checks; screenshots are `docs/proof/phase-9-director-*.png`. `proof:startup` passed its missing-CLI and retry regression; `proof:preview` passed 13 checks after constraining conversation text to fit beside the preview. The full recovery/timing `proof:onboarding` gate is still pending; fixture timings do not establish time to first value with a live provider.
 - Validation: `npm run verify` passes 329 tests and both builds; live Codex resume smoke passes. The first live Claude smoke hit its session cap. On 2026-10-02 the user reported a subsequent successful run: `OK` then `tangerine`, `SMOKE PASS`. That closes the outstanding 9a gate on user-provided evidence; Codex did not repeat the run. The implementation remains on `codex/phase9-first-run-director`, not yet merged to main.
+
+### Checkpoint 9b: pick up where you left off (2026-10-02)
+
+- Opening a project shows recent unfinished Cockpit conversations and matching Claude/Codex CLI sessions, with the latest user request, agent, timestamp, current branch and changed files. Git state is explicitly current project state, not attributed to the earlier conversation. Opening a folder never starts an agent.
+- **Resume and show me the app** imports the transcript read-only or reuses its existing Cockpit conversation. The same agent keeps its native session; choosing another installed preview-capable agent performs the existing transcript handoff. Both paths use CLI-default model/effort, manual permissions and hooks off. Antigravity can still explore a project but has no recovery preview tools.
+- Reuses existing process and preview tools: inspect current files/instructions, reuse a running project server or ask once to start it, read its emitted URL, open and inspect the app. Missing startup instructions, unavailable providers and preview failure must be reported honestly. With no recent session, **Explore this project** provides the grounded orientation fallback; Start fresh and conversation/agent alternatives remain available.
+- Single-use, ten-minute offers suppress duplicate submissions. Submission rechecks project membership, provider availability and busy state. Completed sessions are not offered again through their import source. Up to twelve recent choices are shown, with transcript parsing bounded before selection.
+- Verified: 355 tests across 52 files, typecheck, both builds, arm64 packaging, `proof:recovery` (6 checks, real stdio MCP/PNG inspection with a synthetic provider), director (12), import (12), reliability, and both real Claude/Codex resume smokes. Recovery proof images: `docs/proof/phase-9b-recovery-*.png`. Live provider first-value timing is not established by these fixture checks.
 
 ### Agents controlling agents through MCP (M1 and M2 complete on the feature branch)
 

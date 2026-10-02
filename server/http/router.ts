@@ -1,3 +1,4 @@
+import { createRecovery, resumeRecoveryBody } from '../onboarding/recovery.ts'
 import { automaticAgent, directorDismissed, dismissDirector, ORIENTATION_PROMPT, prepareSample } from '../onboarding/director.ts'
 import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
@@ -80,6 +81,7 @@ export interface ApiDeps {
 }
 
 export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[]) {
+  const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
   const expandedFor = (text: string, projectPath: string): { agentText: string; workflows?: WorkflowSnapshot[] } => {
@@ -102,6 +104,17 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
     try {
       if (method === 'GET' && parts[1] === 'stream') {
         openSse(req, res, manager, processes, viaPhone ? undefined : remote)
+        return true
+      }
+      if (parts[1] === 'recovery' && parts.length === 2) {
+        if (viaPhone) throw new HttpError(403, 'Recent-work recovery is only available on the Mac')
+        const body = method === 'POST' ? parseBody(resumeRecoveryBody, await readJson(req)) : undefined
+        const projectPath = body?.projectPath ?? url.searchParams.get('projectPath') ?? ''
+        if (!projects.list().some((p) => p.path === projectPath)) throw new HttpError(404, 'Open this project first')
+        assertDirectory(projectPath)
+        if (method === 'GET') sendJson(res, 200, { data: await recovery.discover(projectPath) })
+        else if (body) sendJson(res, 200, { data: await recovery.resume(body) })
+        else throw new HttpError(404, 'Not found')
         return true
       }
       if (parts[1] === 'onboarding') {

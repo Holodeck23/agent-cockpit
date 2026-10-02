@@ -1,3 +1,4 @@
+import { RecoveryCard } from './RecoveryCard.tsx'
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type Project, type ThreadMeta } from '../api.ts'
 import { native } from '../native.ts'
@@ -73,6 +74,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
   const [prefill, setPrefill] = useState<{ text: string }>()
   // Unknown until loaded; a failed check just leaves the pointer out.
   const [noWorkflows, setNoWorkflows] = useState(false)
+  const [fresh, setFresh] = useState(Boolean(initialDraft))
   const projectPath = project?.path
   useEffect(() => {
     if (!projectPath || !onOpenGallery) return
@@ -113,6 +115,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
       </header>
       <div className="events">
         <div className="start">
+          {project && !fresh ? <RecoveryCard projectPath={project.path} onCreated={onCreated} onFresh={() => setFresh(true)} /> : <>
           <StartArt className="start-art" />
           <h2>What are you working on?</h2>
           {project ? (
@@ -144,6 +147,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
               <OpenProject onOpenProject={onOpenProject} />
             </>
           )}
+          </>}
         </div>
       </div>
       <Composer

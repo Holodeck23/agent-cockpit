@@ -1,3 +1,6 @@
+import type { RecoveryView, resumeRecoveryBody } from '../../server/onboarding/recovery.ts'
+import type { z } from 'zod'
+export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
 import type { DocumentEntry } from '../../server/files/documents.ts'
 import type { MemoryEntry } from '../../server/memory/store.ts'
@@ -50,6 +53,8 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 export type GitView = GitState & { readonly busy: readonly string[]; readonly pushedTo?: string }
 
 export const api = {
+  recentWork: (projectPath: string) => request<RecoveryView>(`/api/recovery?${new URLSearchParams({ projectPath })}`),
+  resumeWork: (body: z.infer<typeof resumeRecoveryBody>) => request<ThreadMeta>('/api/recovery', { method: 'POST', body }),
   director: () => request<{ show: boolean }>('/api/onboarding'),
   dismissDirector: () => request<unknown>('/api/onboarding/dismiss', { method: 'POST', body: {} }),
   startDirector: (body: { kind: 'sample' } | { kind: 'project'; projectPath: string }) =>

@@ -1,3 +1,4 @@
+import { RecoveryCard } from './RecoveryCard.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { api, type AgentStatus, type Project, type ThreadMeta } from '../api.ts'
 import { native } from '../native.ts'
@@ -7,6 +8,7 @@ import { FolderIcon, Mark } from './icons.tsx'
 export function FirstRun({ onDone, onCreated }: { onDone: () => void; onCreated: (meta: ThreadMeta) => void }) {
   const [agents, setAgents] = useState<AgentStatus[]>()
   const [project, setProject] = useState<Project>()
+  const [fresh, setFresh] = useState(false)
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
@@ -31,7 +33,7 @@ export function FirstRun({ onDone, onCreated }: { onDone: () => void; onCreated:
   }
   const open = () => act(async () => {
     const picked = native ? await native.pickFolder() : path.trim()
-    if (picked) setProject(await api.openProject(picked, { pinned: true }))
+    if (picked) { setFresh(false); setProject(await api.openProject(picked, { pinned: true })) }
   })
   const start = (kind: 'project' | 'sample') => act(async () => {
     const meta = await api.startDirector(kind === 'sample' ? { kind } : { kind, projectPath: project!.path })
@@ -51,8 +53,9 @@ export function FirstRun({ onDone, onCreated }: { onDone: () => void; onCreated:
         {project ? <>
           <span className="first-run-kicker">Your project</span>
           <h2>{project.name}</h2><p className="first-run-path">{project.path}</p>
+          {!fresh ? <RecoveryCard key={project.path} projectPath={project.path} onCreated={onCreated} onFresh={() => setFresh(true)} /> : <>
           <p>Get a short read of the files and recent changes, with one suggested next step.</p>
-          <button type="button" className="button-primary" disabled={busy || !agent} onClick={() => void start('project')}>Explore this project</button>
+          <button type="button" className="button-primary" disabled={busy || !agent} onClick={() => void start('project')}>Explore this project</button></>}
           <button type="button" className="button-plain" disabled={busy} onClick={() => setProject(undefined)}>Choose another project</button>
         </> : <>
           <FolderIcon /><h2>Start with your work.</h2>
@@ -64,7 +67,7 @@ export function FirstRun({ onDone, onCreated }: { onDone: () => void; onCreated:
             <small>A real local app. Your agent starts it and shows you the result. Uses your agent subscription.</small>
           </div>
         </>}
-        <p className="first-run-agent" role="status">{busy ? 'Opening your next step…' : agent ? `Using ${agentName(agent)} with its default model.` : agents ? 'No supported agent found. Install and sign in to an agent, or skip for now.' : 'Checking installed agents…'}</p>
+        <p className="first-run-agent" role="status" hidden={Boolean(project) && !fresh}>{busy ? 'Opening your next step…' : agent ? `Using ${agentName(agent)} with its default model.` : agents ? 'No supported agent found. Install and sign in to an agent, or skip for now.' : 'Checking installed agents…'}</p>
         {agent === 'antigravity' && !project ? <small>The sample needs Claude Code, Codex or OpenCode for preview controls. Antigravity can explore your project.</small> : null}
         {error ? <p className="first-run-error" role="alert">{error}</p> : null}
       </section>

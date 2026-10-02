@@ -54,6 +54,7 @@
     "dock-frames": "tsx scripts/make-dock-frames.ts",
     "proof:conversation-read": "tsx scripts/proof-conversation-read.ts",
     "proof:agent-controls": "tsx scripts/proof-agent-controls.ts",
+    "proof:recovery": "tsx scripts/proof-recovery.ts",
     "proof:director": "tsx scripts/proof-director.ts",
     "proof:startup": "tsx scripts/proof-startup.ts"
   },

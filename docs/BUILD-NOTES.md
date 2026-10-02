@@ -284,3 +284,9 @@ Gate: `npm run verify` passed 303 tests, typecheck and both builds. `npm run pro
 The requested Google route is Antigravity, not standalone Gemini CLI. The Phase 7 package passed `proof:antigravity` 6/6 and `proof:opencode` 10/10. A real `smoke:antigravity` run used the cached Google/Antigravity subscription and preserved a codeword across two separate `agy` processes, proving conversation resume. OpenRouter models are configured through OpenCode; the adapter is packaged and proven against its protocol stand-in, while live OpenRouter billing/account access was not available and is not claimed.
 
 This closes Phase 8 for the requested set: Claude Code, Codex, OpenCode and Antigravity. Grok Build remains a possible future adapter; it was not requested and no Grok CLI is installed on this Mac.
+
+## Phase 9b recovery (2026-10-02)
+
+Opening a project now discovers recent unfinished conversations, the latest user request and the current Git state. Resume imports or reuses a conversation, keeps native context for the same agent, applies safe defaults, and asks the agent to use the existing process/open/inspect tools. A provider change uses the existing transcript handoff. No sessions gives an honest project-exploration fallback.
+
+Gates: 355 tests, typecheck, web/Electron builds, arm64 package, recovery (6), director (12), import (12), reliability and both live resume smokes pass. The recovery fixture exercises real packaged stdio MCP tools, one startup approval and a returned PNG; it does not establish live-model activation timing. Inline review and logs are in the private vault under `outputs/agent-cockpit/2026-10-02-phase9b-recovery/`. Public download replacement and a second-person acceptance remain separate work.

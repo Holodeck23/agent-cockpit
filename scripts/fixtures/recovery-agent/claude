@@ -1,0 +1,3 @@
+#!/bin/sh
+[ "$1" = "--version" ] && { echo '0.0.0 (Recovery fixture)'; exit 0; }
+exec "$COCKPIT_FIXTURE_NODE" "$COCKPIT_RECOVERY_FIXTURE" "$@"

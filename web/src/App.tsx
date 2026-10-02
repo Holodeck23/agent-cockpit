@@ -91,7 +91,10 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <span className="phone-title">Cockpit</span>
         </header>
       ) : (
-        <ProjectTabBar projects={projects} onImported={(meta) => { cockpit.refresh(); cockpit.select(meta.id); setSection('conversations') }} />
+        <ProjectTabBar projects={{ ...projects,
+          open: async (path) => { await projects.open(path); cockpit.select(undefined); setSection('conversations') },
+          select: (path) => { projects.select(path); cockpit.select(undefined); setSection('conversations') },
+        }} onImported={(meta) => { cockpit.refresh(); cockpit.select(meta.id); setSection('conversations') }} />
       )}
       <SubNav
         section={section}

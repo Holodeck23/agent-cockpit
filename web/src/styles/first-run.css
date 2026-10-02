@@ -25,3 +25,20 @@
 .first-run .button-plain { border: 0; background: transparent; padding: 8px 0; color: var(--link); }
 .first-run .button-plain:disabled { color: var(--muted); }
 .first-run-actions .button-primary { justify-content: center; }
+
+.recovery-card { text-align: left; width: 100%; max-width: 580px; min-width: 0; --recovery-space: 14px; }
+.recovery-card h3 { color: var(--strong); font: 700 21px/1.3 var(--round); margin: var(--recovery-space) 0 8px; overflow-wrap: anywhere; }
+.recovery-card p { margin: 8px 0; overflow-wrap: anywhere; }
+.recovery-card .recovery-task { color: var(--secondary); font-size: 14px; line-height: 1.6; }
+.recovery-card .recovery-meta, .recovery-card small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.recovery-git { border-block: 1px solid var(--border); padding: 8px 0; margin: var(--recovery-space) 0; font-size: 12px; color: var(--secondary); }
+.recovery-git summary { cursor: pointer; color: var(--link); }
+.recovery-git ul { padding-left: 18px; max-height: 140px; overflow-y: auto; }
+.recovery-git code { overflow-wrap: anywhere; white-space: pre-wrap; }
+.recovery-card label { display: block; margin: var(--recovery-space) 0; color: var(--secondary); font-size: 12px; }
+.recovery-card select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-xl); color: var(--strong); background: var(--panel); }
+.recovery-card .button-primary { width: 100%; justify-content: center; margin-top: var(--recovery-space); }
+.recovery-actions { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.recovery-actions .button-plain { border: 0; background: transparent; padding: 8px 0; color: var(--link); font-size: 12px; }
+.recovery-card .first-run-error { color: var(--danger); font-size: 13px; }
+.recovery-card :is(button, select):focus-visible { outline: 3px solid var(--halo); outline-offset: 3px; }

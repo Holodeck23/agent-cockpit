@@ -95,13 +95,13 @@ export function readClaudeSession(text: string, sessionId: string, projectPath: 
   return summarize('claude', sessionId, withTurnEnds(events), updatedAt)
 }
 
-export function listClaudeSessions(home: string, projectPath: string): ImportedSession[] {
+export function listClaudeSessions(home: string, projectPath: string, limit = Infinity): ImportedSession[] {
   const dir = claudeProjectDir(home, projectPath)
   if (!existsSync(dir)) return []
-  return readdirSync(dir).filter((n) => /^[0-9a-f-]{36}\.jsonl$/.test(n)).flatMap((name) => {
-    const file = join(dir, name)
-    const stat = statSync(file)
-    if (stat.size > MAX_FILE_BYTES) return []
+  return readdirSync(dir).filter((n) => /^[0-9a-f-]{36}\.jsonl$/.test(n))
+    .map((name) => ({ name, file: join(dir, name), stat: statSync(join(dir, name)) }))
+    .filter(({ stat }) => stat.isFile() && stat.size <= MAX_FILE_BYTES)
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs).slice(0, limit).flatMap(({ name, file, stat }) => {
     const session = readClaudeSession(readFileSync(file, 'utf8'), name.slice(0, -'.jsonl'.length), projectPath, stat.mtime.toISOString())
     return session.messages > 0 ? [session] : []
   })
@@ -167,7 +167,7 @@ function firstLine(file: string): string {
   }
 }
 
-export function listCodexSessions(home: string, projectPath: string): ImportedSession[] {
+export function listCodexSessions(home: string, projectPath: string, limit = Infinity): ImportedSession[] {
   const root = join(home, '.codex', 'sessions')
   if (!existsSync(root)) return []
   const files: string[] = []
@@ -183,13 +183,15 @@ export function listCodexSessions(home: string, projectPath: string): ImportedSe
     const payload = (meta?.payload ?? {}) as Record<string, unknown>
     const stat = statSync(file)
     if (meta?.type !== 'session_meta' || payload.cwd !== projectPath || stat.size > MAX_FILE_BYTES) return []
+    return [{ file, stat }]
+  }).sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs).slice(0, limit).flatMap(({ file, stat }) => {
     const session = readCodexSession(readFileSync(file, 'utf8'), projectPath, stat.mtime.toISOString())
     return session && session.messages > 0 ? [session] : []
   })
 }
 
 /** Every importable session for the project, newest first. */
-export function listSessions(home: string, projectPath: string): ImportedSession[] {
-  return [...listClaudeSessions(home, projectPath), ...listCodexSessions(home, projectPath)]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+export function listSessions(home: string, projectPath: string, limit = Infinity): ImportedSession[] {
+  return [...listClaudeSessions(home, projectPath, limit), ...listCodexSessions(home, projectPath, limit)]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit)
 }

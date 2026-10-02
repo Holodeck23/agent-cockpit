@@ -145,6 +145,8 @@ export interface ThreadManager {
   remove(threadId: string): Promise<void>
   /** Hand the thread to another agent/model; the transcript goes with it. */
   switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
+  /** Resume with manual permissions and CLI defaults; retain the native session when the agent is unchanged. */
+  resumeRecovered(threadId: string, agent: AgentId, text: string, agentText: string): ThreadMeta
   summaries(): ThreadSummary[]
   status(threadId: string): ThreadStatus
   /** The agent message currently being streamed, or '' between messages. */
@@ -366,6 +368,22 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
       broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       return next
+    },
+    resumeRecovered(threadId, agent, text, agentText) {
+      const meta = requireMeta(threadId)
+      const entry = live.get(threadId)
+      if (entry?.turnRunning) throw new Error('Stop the current turn before resuming recent work')
+      const settings: ThreadSettings = { agent, permissionMode: 'manual', useHooks: false }
+      if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
+      else {
+        // Re-launch even an idle session so an earlier permissive policy cannot survive recovery.
+        generations.delete(threadId)
+        live.delete(threadId)
+        if (entry) void closeEntry(entry)
+        store.update(threadId, { settings })
+      }
+      send(threadId, text, agentText)
+      return requireMeta(threadId)
     },
     summaries() {
       const all = store.list().map((meta): ThreadSummary => {
