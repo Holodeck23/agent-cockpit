@@ -50,6 +50,10 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 export type GitView = GitState & { readonly busy: readonly string[]; readonly pushedTo?: string }
 
 export const api = {
+  director: () => request<{ show: boolean }>('/api/onboarding'),
+  dismissDirector: () => request<unknown>('/api/onboarding/dismiss', { method: 'POST', body: {} }),
+  startDirector: (body: { kind: 'sample' } | { kind: 'project'; projectPath: string }) =>
+    request<ThreadMeta>('/api/onboarding/start', { method: 'POST', body }),
   gitState: (projectPath: string) => request<GitView>(`/api/git?${new URLSearchParams({ projectPath })}`),
   switchBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch } }),
   createBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch } }),

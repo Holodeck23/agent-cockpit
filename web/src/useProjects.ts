@@ -11,6 +11,7 @@ export interface ProjectCounts {
 
 export interface Projects {
   /** Every known project, most recently opened first (the Projects menu). */
+  refresh(): Promise<void>
   readonly all: Project[]
   /** Pinned projects plus the active one, in a stable order (the tab bar). */
   readonly tabs: Project[]
@@ -128,6 +129,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
   }
 
   return {
+    refresh,
     all,
     tabs,
     active,

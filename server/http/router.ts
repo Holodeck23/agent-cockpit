@@ -1,3 +1,4 @@
+import { automaticAgent, directorDismissed, dismissDirector, ORIENTATION_PROMPT, prepareSample } from '../onboarding/director.ts'
 import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
 import { FileConflictError, writeProjectFile } from '../files/editor.ts'
@@ -102,6 +103,37 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (method === 'GET' && parts[1] === 'stream') {
         openSse(req, res, manager, processes, viaPhone ? undefined : remote)
         return true
+      }
+      if (parts[1] === 'onboarding') {
+        if (viaPhone) throw new HttpError(403, 'First-run setup is only available on the Mac')
+        if (method === 'GET' && parts.length === 2) {
+          const show = !directorDismissed(store.root) && projects.list({ includeHidden: true }).length === 0 && store.list().length === 0
+          sendJson(res, 200, { data: { show } })
+          return true
+        }
+        if (method === 'POST' && parts[2] === 'dismiss' && parts.length === 3) {
+          dismissDirector(store.root)
+          sendJson(res, 200, { data: {} })
+          return true
+        }
+        if (method === 'POST' && parts[2] === 'start' && parts.length === 3) {
+          const body = parseBody(z.discriminatedUnion('kind', [
+            z.object({ kind: z.literal('project'), projectPath: z.string().min(1).max(1000) }),
+            z.object({ kind: z.literal('sample') }),
+          ]), await readJson(req))
+          const agent = automaticAgent(await agents?.() ?? [], store.list(), body.kind === 'sample')
+          if (!agent) throw new HttpError(409, body.kind === 'sample'
+            ? 'The sample needs Claude Code, Codex or OpenCode installed and signed in. You can still open a project or skip.'
+            : 'Install and sign in to a supported agent, then try again. You can also skip for now.')
+          const { projectPath, text } = body.kind === 'sample' ? prepareSample(store.root) : { projectPath: body.projectPath, text: ORIENTATION_PROMPT }
+          assertDirectory(projectPath)
+          const visibleText = body.kind === 'sample' ? 'Start the sample app, show me the preview, and suggest one small change I could try.' : 'Explore this project and suggest a useful next step. Leave the files unchanged.'
+          const meta = manager.create({ projectPath, text: visibleText, agentText: text, title: body.kind === 'sample' ? 'Your first flight' : 'Pick up where you left off', settings: { agent, permissionMode: 'manual', useHooks: false } })
+          projects.open(projectPath, { pinned: true, ...(body.kind === 'sample' ? { name: '90-second sample' } : {}) })
+          sendJson(res, 201, { data: meta })
+          return true
+        }
+        throw new HttpError(404, 'Not found')
       }
       if (parts[1] === 'agents' && parts.length === 2 && method === 'GET' && agents) {
         sendJson(res, 200, { data: await agents() })
