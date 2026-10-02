@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
@@ -42,15 +42,29 @@ export interface MemoryStore {
 
 const words = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? []
 
+/** Bounded recovery message: never include corrupt contents or parser diagnostics. */
+export class MemoryReadError extends Error {
+  constructor(file: string) {
+    super(`Cockpit cannot read memory.json at ${file}. The original file has been preserved. Repair its JSON and entry format, or deliberately replace it with a valid memory file, then try again.`)
+    this.name = 'MemoryReadError'
+  }
+}
+
 export function createMemoryStore(root: string): MemoryStore {
   mkdirSync(root, { recursive: true, mode: 0o700 })
   const file = join(root, 'memory.json')
   const read = (): MemoryEntry[] => {
-    if (!existsSync(file)) return []
+    let contents: string
     try {
-      return z.array(entrySchema).parse(JSON.parse(readFileSync(file, 'utf8')))
+      contents = readFileSync(file, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw new MemoryReadError(file)
+    }
+    try {
+      return z.array(entrySchema).parse(JSON.parse(contents))
     } catch {
-      return []
+      throw new MemoryReadError(file)
     }
   }
   const write = (rows: readonly MemoryEntry[]): void => {

@@ -1,7 +1,8 @@
+import { createMemoryStore } from '../server/memory/store.ts'
 import { createWorkflowStore } from '../server/workflows/store.ts'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -15,6 +16,7 @@ import { createCockpitApi, createCockpitMcpServer } from '../server/mcp/tools.ts
 import { createProcessRunner, type ProcessRunner } from '../server/processes/runner.ts'
 
 interface Harness {
+  readonly memoryFile: string
   readonly url: string
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
@@ -40,9 +42,11 @@ async function harness(): Promise<Harness> {
   const opened: string[] = []
   const inspected: string[] = []
   const workflows = createWorkflowStore(mkdtempSync(join(tmpdir(), 'cockpit-workflows-mcp-')))
+  const memoryRoot = mkdtempSync(join(tmpdir(), 'cockpit-memory-mcp-'))
+  const memory = createMemoryStore(memoryRoot)
   server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, workflows, openUrl: (u) => void opened.push(u),
+    handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, workflows, memory, openUrl: (u) => void opened.push(u),
       capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } } }).catch(
       (error: unknown) => sendJson(res, error instanceof HttpError ? error.status : 500, { error: (error as Error).message }),
     )
@@ -50,6 +54,7 @@ async function harness(): Promise<Harness> {
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve))
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   return {
+    memoryFile: join(memoryRoot, 'memory.json'),
     url,
     sessions,
     processes,
@@ -191,4 +196,27 @@ describe('MCP wiring per CLI', () => {
     expect(values).toContain('mcp_servers.cockpit.tools.inspect_preview.approval_mode="approve"')
     expect(values.join(' ')).not.toContain('secret')
   })
+})
+
+
+it('MCP recall and remember report bounded corruption errors and preserve original bytes', async () => {
+  const h = await harness()
+  const original = Buffer.from('[{"text":"private recoverable text"')
+  writeFileSync(h.memoryFile, original)
+  const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+  for (const request of [
+    { name: 'recall', arguments: { query: 'deploy' } },
+    { name: 'remember', arguments: { text: 'new note', scope: 'project' } },
+  ]) {
+    const result = await client.callTool(request)
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toMatch(/original file has been preserved/)
+    expect(textOf(result)).not.toContain('private recoverable text')
+    expect(textOf(result).length).toBeLessThan(1000)
+    expect(readFileSync(h.memoryFile)).toEqual(original)
+  }
+  writeFileSync(h.memoryFile, '[]')
+  expect((await client.callTool({ name: 'remember', arguments: { text: 'repaired', scope: 'project' } })).isError).not.toBe(true)
+  expect(textOf(await client.callTool({ name: 'recall', arguments: { query: 'repaired' } }))).toContain('repaired')
+  await client.close()
 })

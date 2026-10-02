@@ -16,6 +16,7 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
 
 /** What Cockpit remembers across conversations: this project's notes and your everywhere preferences. */
 export function Memory({ project, threads, onError, onOpenThread }: MemoryProps) {
+  const [loadError, setLoadError] = useState('')
   const [entries, setEntries] = useState<MemoryEntry[]>()
   const [scope, setScope] = useState<'project' | 'everywhere'>('project')
   const [draft, setDraft] = useState('')
@@ -23,12 +24,16 @@ export function Memory({ project, threads, onError, onOpenThread }: MemoryProps)
   const [confirmClear, setConfirmClear] = useState(false)
   const projectPath = project?.path
   const reload = useCallback((): void => {
-    if (projectPath) api.listMemory(projectPath).then(setEntries, (e: unknown) => onError(message(e)))
+    if (projectPath) api.listMemory(projectPath).then(
+      (rows) => { setEntries(rows); setLoadError('') },
+      (e: unknown) => { setEntries(undefined); setLoadError(message(e)) },
+    )
   }, [projectPath, onError])
   useEffect(reload, [reload])
-  const run = (action: () => Promise<unknown>): void => { action().then(reload, (e: unknown) => onError(message(e))) }
+  const run = (action: () => Promise<unknown>): void => { action().then(reload, (e: unknown) => { onError(message(e)); reload() }) }
 
   if (!project) return <main className="workflow-empty"><MemoryIcon /><h1>Memory</h1><p>Open a project to see what Cockpit remembers.</p></main>
+  if (loadError) return <main className="memory"><h1>Memory unavailable</h1><p role="alert">{loadError}</p><button type="button" className="button-soft" onClick={reload}>Try again</button></main>
   const add = (event: FormEvent): void => {
     event.preventDefault()
     run(async () => { await api.addMemory(project.path, scope, draft); setDraft('') })

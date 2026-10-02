@@ -9,7 +9,7 @@ import { z } from 'zod'
 import type { ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
-import { MAX_MEMORY_CHARS, memoryScope, type MemoryStore } from '../memory/store.ts'
+import { MAX_MEMORY_CHARS, MemoryReadError, memoryScope, type MemoryStore } from '../memory/store.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -160,7 +160,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
             return true
           }
         } catch (error) {
-          if (error instanceof HttpError) throw error
+          if (error instanceof HttpError || error instanceof MemoryReadError) throw error
           throw new HttpError(400, error instanceof Error ? error.message : String(error))
         }
       }
@@ -353,7 +353,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MessageReferenceError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError ? 409 : error instanceof MessageReferenceError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

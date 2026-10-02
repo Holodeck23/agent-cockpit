@@ -3,7 +3,8 @@
 // its session token, asking first for `remember` the way Claude Code does. A fact remembered in one
 // conversation (after you allow it) is recalled in the next with its date and an out-of-date note; a
 // denied one is not stored; the Memory view adds, edits, deletes and clears; nothing lands in the project.
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
+import { readFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
@@ -95,6 +96,53 @@ try {
   await projectSection.getByText('Nothing remembered for this project yet.').waitFor()
   check('clearing forgets the project\'s notes', (await memory(page)).length === 0)
   check('nothing was written into the project folder', JSON.stringify(readdirSync(project)) === JSON.stringify(['README.md']))
+
+  // Corruption must stay visible and block every HTTP mutation, including clearing an empty view.
+  const file = join(home, 'state/memory.json')
+  const valid = readFileSync(file)
+  for (const [label, original] of [
+    ['json', Buffer.from('  [{"text":"Recover this note"}\n')],
+    ['schema', Buffer.from('[{"id":"broken", "text":"Recover this too"}]\n')],
+  ] as const) {
+    writeFileSync(file, original)
+    writeFileSync(join(PROOF_DIR, `memory-corrupt-${label}.txt`), original)
+    await page.reload()
+    await page.getByRole('tab', { name: 'Memory', exact: true }).click()
+    await page.getByRole('heading', { name: 'Memory unavailable' }).waitFor()
+    const recovery = await page.locator('main.memory [role="alert"]').innerText()
+    assert.match(recovery, /original file has been preserved/)
+    assert.ok(recovery.includes(file))
+    assert.match(recovery, /Repair its JSON/)
+    assert.equal(await page.getByRole('textbox', { name: 'New memory' }).count(), 0)
+    const attempts = [
+      { method: 'GET', path: `/api/memory?projectPath=${encodeURIComponent(project)}` },
+      { method: 'POST', path: '/api/memory', body: { projectPath: project, scope: 'project', text: 'new' } },
+      { method: 'POST', path: '/api/memory/broken', body: { text: 'updated' } },
+      { method: 'DELETE', path: '/api/memory/broken' },
+      { method: 'POST', path: '/api/memory/clear', body: { projectPath: project } },
+    ]
+    for (const attempt of attempts) {
+      const response = await page.evaluate(async ({ method, path, body }) => {
+        const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) })
+        return { status: res.status, text: await res.text() }
+      }, attempt)
+      assert.equal(response.status, 409)
+      assert.ok(response.text.length < 1000)
+      assert.match(response.text, /original file has been preserved/)
+      assert.deepEqual(readFileSync(file), original)
+    }
+    check(`corrupt ${label} stays byte-for-byte intact after list/add/update/delete/clear; UI explains repair`, true)
+    await page.screenshot({ path: join(PROOF_DIR, `proof-memory-corrupt-${label}.png`) })
+    writeFileSync(file, valid) // Explicit repair of a synthetic proof fixture only.
+    await page.getByRole('button', { name: 'Try again', exact: true }).click()
+    await page.getByRole('textbox', { name: 'New memory' }).waitFor()
+    assert.deepEqual(readFileSync(file), valid)
+  }
+  await view.getByRole('textbox', { name: 'New memory' }).fill('Memory works after repair.')
+  await view.getByRole('button', { name: 'Remember', exact: true }).click()
+  await view.getByText('Memory works after repair.', { exact: true }).waitFor()
+  check('normal memory use resumes after deliberate repair without restarting Cockpit', (await memory(page)).some((e) => e.text === 'Memory works after repair.'))
+
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
   await page.screenshot({ path: join(PROOF_DIR, 'proof-memory-failure.png') }).catch(() => {})
