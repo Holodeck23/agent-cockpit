@@ -1,6 +1,6 @@
 # Agent Compatibility and Limitations
 
-> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
 
 Agent Cockpit provides a unified interface across different AI coding agents. However, each agent has specific requirements, capabilities, and limitations based on its CLI implementation and API provider.
 

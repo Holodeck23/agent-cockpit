@@ -1,10 +1,10 @@
 # User Guide
 
-> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
-*(Documented against source revision `4577d74`)*
+*(Documented for v0.1.1)*
 
 ## Workspace & Projects
 
@@ -25,7 +25,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Follow-ups:** Reply to ongoing threads or answer agent questions.
 -   **Status States:** A conversation can be Working, Ready, Error, or "Needs you" (waiting for your approval or input).
 -   **Stop vs. Complete vs. Delete:** You can Stop an active turn. Note that stopping *requests* an interruption—it does not promise force-detaching the agent or stopping active dev servers immediately. You can mark a conversation complete when done. Deleting removes the thread permanently from your `~/.agent-cockpit/` history.
--   **Imports:** The Projects menu can import Claude Code and Codex sessions belonging to the selected folder; the next message resumes the original CLI session. This is separate from normal conversation recovery.
+-   **Imports:** The Projects menu can import Claude Code and Codex sessions belonging to the selected folder; the next message resumes the original CLI session. Recent work now appears automatically when opening a project. It reuses an existing Cockpit conversation or imports the selected session, and treats branch/files as current disk state.
 
 ## Working with Files & Markdown
 
@@ -87,7 +87,7 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
     -   `open_preview`: Opens a local page (localhost only) in the preview pane.
     -   `inspect_preview`: Returns a screenshot of the local page to the agent.
     -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first).
--   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are not included in the public 2026-09-30 DMG.
+-   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are included in v0.1.1; the older September 30 v0.1.0 DMG does not have them.
 
 ## Data, Backup, and Privacy
 

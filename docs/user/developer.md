@@ -1,6 +1,6 @@
 # Developer Guide
 
-> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
 
 This guide is for developers looking to build, test, and package Agent Cockpit locally.
 
@@ -36,7 +36,7 @@ Ensure you have Node.js and `npm` installed. Run `npm ci` in the repository firs
 | `npm run dev:server` | Starts the backend server with hot-reload via `tsx watch`. |
 | `npm run dev:web` | Starts the Vite dev server for the React frontend. |
 | `npm run app` | Builds the project and opens the Electron desktop app locally. |
-| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.0-arm64.dmg`. |
+| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.1-arm64.dmg`. |
 
 ## Testing and Proofs
 

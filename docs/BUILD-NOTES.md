@@ -293,6 +293,10 @@ Gates: 355 tests, typecheck, web/Electron builds, arm64 package, recovery (6), d
 
 ## Real recovery timing and alias correction (2026-10-02)
 
-Added `proof:onboarding -- --live [--agent=claude] [--runs=3]`, requiring a durable `COCKPIT_ONBOARDING_OUT`. Three real-Claude runs reached an inspected preview and useful conclusion in 22.902, 20.901 and 19.886 seconds, each with one startup approval. The existing CLI was authenticated; project selection/approval were automated and the dependency-free project plus prior real session were prepared before timing. Second-person install remains unverified.
+Added `proof:onboarding -- --live [--agent=claude] [--runs=3]`, requiring a durable `COCKPIT_ONBOARDING_OUT`. Three real-Claude runs reached an inspected preview and useful conclusion in 22.902, 20.901 and 19.918 seconds, each with one startup approval. The existing CLI was authenticated; project selection/approval were automated and the dependency-free project plus prior real session were prepared before timing. Second-person install remains unverified.
 
 Fixed an actual import failure where Claude canonicalizes `/var` to `/private/var`, and supplied a fresh Git snapshot in recovery context to avoid a redundant shell approval. 356 tests and builds pass. The default Codex model requires a newer local CLI, so that timing path remains blocked; the explicit-model resume smoke passes. Raw evidence is beside the live-proof review in the private vault.
+
+## v0.1.1 tester package (2026-10-02)
+
+Bumped the package to 0.1.1 and updated the README, user guides and landing page for recovery, MCP controls, installation and measured timing. Added an independent-Mac tester checklist and release checksum. The final DMG is 133,455,985 bytes, SHA-256 `b34ad184bf0144502624e557c8d5a8cdd9acad2bbc41c12d051f8e83ad9dbede`. Its copied app passed signature/version/archive checks, recovery (6), director (12), startup recovery (5 scenarios) and MCP controls (8). Source verification passed 356 tests and both builds. Landing interaction/contrast/overflow checks passed at 390, 768 and 1280px. Publication and the external tester outcome are recorded separately; the latter is still pending.

@@ -1,6 +1,6 @@
 # First-Run Quick Start
 
-> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
 
 Welcome to Agent Cockpit! This guide will take you from launching the app to seeing your first result.
 
@@ -8,7 +8,7 @@ Welcome to Agent Cockpit! This guide will take you from launching the app to see
 
 When you first launch Cockpit with no saved projects or conversations and without a saved Skip choice, you will see the **First-run director**. Here you have two main paths:
 
-1.  **Open a project:** Use the native folder picker to select a project on your Mac, then click **Explore this project**. Cockpit will open the project, select an installed agent automatically, and help you get oriented. Selecting a folder does not launch an agent on its own.
+1.  **Open a project:** Choose a folder on your Mac. Cockpit finds recent conversations and shows the latest task, agent, time, current branch and changed files. Choose **Resume and show me the app** to continue the same session with safe defaults, start the documented server with approval, and open and inspect its preview. Use the conversation or agent selector for an alternative, or **Start fresh**. With no recent session, choose **Explore this project**. Selecting a folder does not launch an agent.
 2.  **Try a 90-second sample:** This starts a genuine local sample app (a dependency-free project) stored in Cockpit's own sample folder. It will guide you through a real conversation, an approval prompt, running a process, and opening a preview in Cockpit's preview pane. This uses a plain-language request and requires Claude Code, Codex, or OpenCode to be installed.
 
 ### Automatic Agent Defaults

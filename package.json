@@ -1,7 +1,7 @@
 {
   "name": "agent-cockpit",
   "productName": "Cockpit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop cockpit for coding-agent CLIs (Claude Code, Codex): parallel threads, approvals, workflows.",
   "scripts": {
     "doctor": "tsx scripts/doctor.ts",

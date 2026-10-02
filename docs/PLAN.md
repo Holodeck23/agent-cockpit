@@ -1,13 +1,13 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are implemented and verified on `codex/phase9-first-run-director`. The public September 30 DMG has not been replaced. Real-Claude recovery timing passed on a generated project; release packaging/publication and second-person installation remain the next gates.
+**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are included in the v0.1.1 tester candidate. Real-Claude recovery timing passed on a generated project; the final DMG is packaged and being verified for publication. Second-person installation on a group member’s own Mac remains open.
 
 **Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
 - **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
 - **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
 - **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
-- **Next (2026-10-02):** measure recovery with a real provider from fresh Cockpit state, then package the tester candidate and complete second-person acceptance. Stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
+- **Next (2026-10-02):** publish the verified v0.1.1 DMG and landing page, then complete the [second-person checklist](user/tester-checklist.md) on a group member’s own Apple-silicon Mac. Physical-phone push acceptance remains a separate manual check. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
 
 
 ## MVP inspection (2026-09-29)
@@ -222,7 +222,7 @@ Keep model, effort, permission taxonomy, workflow schedules, phone setup, appear
 
 `proof:onboarding -- --live --agent=claude --runs=3` creates a real prior CLI conversation and then launches each run with fresh Cockpit state. It drives the native project-picker result, recovery selection, one visible startup approval, successful `open_preview` and `inspect_preview`, a grounded conclusion, and an interactive counter click. It records each activation stage, the transcript and screenshots in a required durable output folder.
 
-- Three runs: **22.902s, 20.901s, 19.886s**; median **20.901s**, sample p90 **22.902s**. All reached value within three minutes and took the scripted second action. Each had one startup approval and no extra read approvals. The project files remained unchanged.
+- Three runs: **22.902s, 20.901s, 19.918s**; median **20.901s**, sample p90 **22.902s**. All reached value within three minutes and took the scripted second action. Each had one startup approval and no extra read approvals. The project files remained unchanged.
 - Limits: this is a small machine-operated sample on this Mac, with an already authenticated Claude CLI (default `claude-opus-5-5`), a generated dependency-free project and a real seeded prior conversation. Seed creation is outside the stopwatch. It does not establish human onboarding time, installation success on another Mac, or arbitrary-project success rates.
 - Live testing found and fixed `/var` versus `/private/var` import matching. Canonical same-folder checks cover Claude/Codex source paths and existing recovery metadata, with a symlink regression. A fresh Git snapshot goes into recovery context so the agent need not ask for a redundant shell read.
 - The default Codex timing attempt stopped before activation: local Codex 0.147.0 rejects the configured `gpt-6-astra` model as requiring a newer CLI. The separate explicitly modelled Codex resume smoke passed; that does not close the default-model gate. No provider config was changed. This Homebrew installation can be updated by the owner with `brew upgrade --cask codex`.

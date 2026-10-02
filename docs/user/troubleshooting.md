@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> **Source versus download:** This guide describes feature-branch source through `4577d74` (2026-10-02). The public v0.1.0 DMG uploaded 2026-09-30 does not include the first-run director or MCP conversation controls. See [release status](../../README.md).
+> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
 
 When issues occur, Cockpit is designed to fail safely and preserve your work.
 
@@ -22,7 +22,11 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 
 **Symptom:** Cockpit opens, but expected new features are missing, or the UI looks wrong.
 *   **Likely Cause:** You might be launching a stale build (e.g., an older `.dmg` in your Downloads folder) instead of the updated version in `/Applications`.
-*   **Recovery:** Right-click the app icon in the Dock or Finder, select **Options > Show in Finder**, and verify it is the `/Applications/Cockpit.app` copy. Compare the release date and source revision; version 0.1.0 alone cannot identify which features are present. Keep older copies clearly labelled if you need them.
+*   **Recovery:** Right-click the app icon in the Dock or Finder, select **Options > Show in Finder**, and verify it is the `/Applications/Cockpit.app` copy. Compare the release date and source revision; a version number alone cannot identify which features are present. Keep older copies clearly labelled if you need them.
+
+**Symptom:** Codex says the configured model requires a newer CLI.
+* **Cause:** The CLI executable Cockpit found is older than the model configured in your Codex settings. Detection alone does not prove model compatibility.
+* **Recovery:** Update Codex using the same method you installed it with (for a Homebrew cask: `brew upgrade --cask codex`), verify the CLI works in Terminal, then reopen Cockpit. Or choose another installed, authenticated agent. Cockpit does not change provider configuration automatically.
 
 ## Conversations & Workflows
 
