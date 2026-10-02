@@ -55,6 +55,8 @@ try {
   await app.close()
   ;({ app, page } = await launch())
   await page.locator('.card').first().click()
+  // Count the restored transcript only after its detail has loaded.
+  await messageBox(page).waitFor()
   const userMessages = page.locator('.bubble.user')
   const agentMessages = page.locator('.bubble.agent')
   const before = await userMessages.count()
@@ -64,6 +66,7 @@ try {
   await userMessages.nth(before).waitFor()
   await agentMessages.nth(agentBefore).waitFor()
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
+  await page.locator('.bubble.agent').filter({ hasText: `Resumed ${SESSION}.` }).waitFor()
   check('a packaged restart resumes the same agy conversation', (await page.locator('.transcript').innerText()).includes(`Resumed ${SESSION}.`))
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
