@@ -1,8 +1,8 @@
 # Release acceptance
 
-## v0.1.1 tester candidate — 2026-10-02
+## v0.1.1 published tester build — 2026-10-02
 
-This candidate includes Phase 9a setup, 9b recent-work recovery, MCP conversation controls and tester hardening. The historical Day 30 checklist below remains evidence for v0.1.0; it is not a claim that every historical gate was repeated for v0.1.1.
+This prerelease includes Phase 9a setup, 9b recent-work recovery, MCP conversation controls and tester hardening. The historical Day 30 checklist below remains evidence for v0.1.0; it is not a claim that every historical gate was repeated for v0.1.1.
 
 - Artifact: `release/Cockpit-0.1.1-arm64.dmg`, 133,455,985 bytes, arm64, ad-hoc signed and not notarized.
 - SHA-256: `b34ad184bf0144502624e557c8d5a8cdd9acad2bbc41c12d051f8e83ad9dbede`.
@@ -11,6 +11,8 @@ This candidate includes Phase 9a setup, 9b recent-work recovery, MCP conversatio
 - The same recovery implementation previously passed import (12), reliability, real Claude/Codex resume smokes and three real-Claude activation runs: 22.902s, 20.901s, 19.918s. Each used fresh Cockpit state, an already signed-in CLI, a generated dependency-free project and a real prior session prepared outside timing. Each required one startup approval and produced an inspected interactive preview.
 - Evidence: `/Users/zod/vault/outputs/agent-cockpit/2026-10-02-phase9b-recovery/`, including `install-verification.json`, final installed proofs, timing transcripts/screenshots and release checks.
 - Open: a group member on their own Mac must complete the [tester checklist](user/tester-checklist.md). This installation copy test does not establish independent Gatekeeper/setup acceptance or human onboarding time. The local Codex 0.147.0 default-model trial was blocked by a newer-model CLI requirement; the explicit-model resume smoke passed. Live OpenRouter and physical-phone push remain unverified.
+
+Published from tag `v0.1.1` at `d2c7416` via [release PR #2](https://github.com/Holodeck23/agent-cockpit/pull/2). An unauthenticated full download returned HTTP 200, 133,455,985 bytes and the exact SHA-256 above. The production [Vercel page](https://agent-cockpit-theta.vercel.app) returned HTTP 200 and byte-for-byte matched the reviewed landing source; its v0.1.1 download link, recovery screenshot and approval simulation passed a hosted browser check. The source branch and Jules’s documentation-only PR #1 are merged.
 
 ## Historical Day 30 boundary (v0.1.0)
 

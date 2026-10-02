@@ -1,13 +1,13 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are included in the v0.1.1 tester candidate. Real-Claude recovery timing passed on a generated project; the final DMG is packaged and being verified for publication. Second-person installation on a group member’s own Mac remains open.
+**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are published in the [v0.1.1 prerelease](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.1). Real-Claude recovery timing passed on a generated project; the public DMG checksum matches the verified installed copy and the [Vercel page](https://agent-cockpit-theta.vercel.app) serves the updated source. Second-person installation on a group member’s own Mac remains open.
 
 **Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
 - **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
 - **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
 - **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
-- **Next (2026-10-02):** publish the verified v0.1.1 DMG and landing page, then complete the [second-person checklist](user/tester-checklist.md) on a group member’s own Apple-silicon Mac. Physical-phone push acceptance remains a separate manual check. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
+- **Next (2026-10-02):** complete the [second-person checklist](user/tester-checklist.md) on a group member’s own Apple-silicon Mac. Physical-phone push acceptance remains a separate manual check. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
 
 
 ## MVP inspection (2026-09-29)
