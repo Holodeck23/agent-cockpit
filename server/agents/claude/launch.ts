@@ -44,10 +44,16 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
     if (stderrTail.length > 20) stderrTail.shift()
   })
   child.on('error', (error) => {
-    exited = true
     onEvent({ kind: 'error', message: startErrorMessage('claude', error) })
+    // A failed spawn has no exit event. Complete the turn and release the session now.
+    if (!child.pid && !exited) {
+      exited = true
+      onEvent({ kind: 'result', ok: false })
+      onEvent({ kind: 'exit', code: null })
+    }
   })
   child.on('exit', (code) => {
+    if (exited) return
     exited = true
     if (code !== 0 && code !== null && stderrTail.length > 0) {
       onEvent({ kind: 'error', message: stderrTail.join('\n') })

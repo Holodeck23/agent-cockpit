@@ -65,7 +65,7 @@ describe('instructions reach sessions', () => {
       let alive = true
       const session: AgentSession = {
         agent: request.settings.agent,
-        send: () => undefined,
+        send: () => onEvent({ kind: 'session', sessionId: request.resume ?? request.sessionId! }),
         respondApproval: () => undefined,
         interrupt: () => undefined,
         close: () => { alive = false; onEvent({ kind: 'exit', code: 0 }); return Promise.resolve() },

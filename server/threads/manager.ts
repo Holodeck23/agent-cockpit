@@ -163,6 +163,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const closeEntry = (entry: Live): Promise<void> => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    entry.stopRequested = true
     const closingSession = entry.session.close()
     closing.add(closingSession)
     void closingSession.then(() => closing.delete(closingSession), () => closing.delete(closingSession))
@@ -180,6 +181,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
     const entry = live.get(threadId)
+    // A dead process cannot finish its turn later. Do not apply this to protocol errors.
+    if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false })
     // A failed result right after the user pressed Stop is a stop, not an error.
     const event: NormalizedEvent =
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
@@ -187,10 +190,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (event.kind !== 'text_delta') store.append(threadId, event)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
     if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
-    // Codex assigns its own thread id; remember it so the next process resumes it.
+    // Only provider evidence makes a session resumable; constructing a process does not.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
-      if (meta && meta.sessionId !== event.sessionId) store.update(threadId, { sessionId: event.sessionId })
+      if (meta) store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined })
     }
     if (entry && event.kind === 'result') {
       entry.pending.clear()
@@ -217,6 +220,36 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
+    let launching = true
+    const deliver: EventSink = (event) => {
+      // Even a synchronous launcher callback must follow the initial user_text and live entry.
+      if (launching) { queueMicrotask(() => deliver(event)); return }
+      handleEvent(event)
+    }
+    let released = false
+    const handleEvent: EventSink = (event) => {
+      if (event.kind === 'exit' && !released) { released = true; mcp?.release() }
+      // An old process may exit after its replacement has already started.
+      if (generations.get(meta.id) !== generation) return
+      if (event.kind === 'approval_request') {
+        const publicId = randomUUID()
+        requestIds.set(event.requestId, publicId)
+        pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
+        record(meta.id, { ...event, requestId: publicId })
+      } else if (event.kind === 'approval_resolved') {
+        const publicId = requestIds.get(event.requestId)
+        if (!publicId) return
+        pending.delete(publicId)
+        requestIds.delete(event.requestId)
+        record(meta.id, { ...event, requestId: publicId })
+      } else {
+        if (event.kind === 'result' || event.kind === 'exit') {
+          pending.clear()
+          requestIds.clear()
+        }
+        record(meta.id, event)
+      }
+    }
     const session = launchers[meta.settings.agent](
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
@@ -226,33 +259,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
         ...(mcp ? { cockpit: mcp.launch } : {}),
       },
-      (event) => {
-        if (event.kind === 'exit') mcp?.release()
-        // An old process may exit after its replacement has already started.
-        if (generations.get(meta.id) !== generation) return
-        if (event.kind === 'approval_request') {
-          const publicId = randomUUID()
-          requestIds.set(event.requestId, publicId)
-          pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
-          record(meta.id, { ...event, requestId: publicId })
-        } else if (event.kind === 'approval_resolved') {
-          const publicId = requestIds.get(event.requestId)
-          if (!publicId) return
-          pending.delete(publicId)
-          requestIds.delete(event.requestId)
-          record(meta.id, { ...event, requestId: publicId })
-        } else {
-          if (event.kind === 'result' || event.kind === 'exit') {
-            pending.clear()
-            requestIds.clear()
-          }
-          record(meta.id, event)
-        }
-      },
+      deliver,
     )
+    launching = false
     const entry: Live = { pending, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
-    store.update(meta.id, { sessionStarted: true, handoff: undefined, instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
+    store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
   }
 

@@ -12,11 +12,16 @@ export function stopChild(child: ChildProcess, alive: () => boolean, graceMs: nu
   return new Promise<void>((resolve) => {
     const term = setTimeout(() => child.kill('SIGTERM'), graceMs)
     const kill = setTimeout(() => child.kill('SIGKILL'), graceMs * 2)
-    child.once('exit', () => {
+    const finished = (): void => {
       clearTimeout(term)
       clearTimeout(kill)
+      child.off('exit', finished)
+      child.off('close', finished)
       resolve()
-    })
+    }
+    child.once('exit', finished)
+    // Failed spawns emit close without exit, including a shutdown requested before error arrives.
+    child.once('close', finished)
     child.stdin?.end()
   })
 }

@@ -89,7 +89,7 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
     firstPrompt = false
     rpc.request<{ stopReason?: string }>('session/prompt', { sessionId, prompt: [{ type: 'text', text: body }] })
       .then((result) => { flushMessage(); onEvent(acpTurnEnd(result?.stopReason)) })
-      .catch((error: unknown) => { flushMessage(); fail(error); onEvent({ kind: 'result', ok: false }) })
+      .catch((error: unknown) => { if (exited) return; flushMessage(); fail(error); onEvent({ kind: 'result', ok: false }) })
   }
 
   const mcpServers = (input.mcpServers ?? []).map((s) => ({ name: s.name, command: s.command, args: [...s.args], env: Object.entries(s.env).map(([name, value]) => ({ name, value })) }))
@@ -108,10 +108,11 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
         const created = await rpc.request<{ sessionId: string }>('session/new', { cwd: input.cwd, mcpServers })
         sessionId = created.sessionId
         firstPrompt = true
-        onEvent({ kind: 'session', sessionId })
       }
+      onEvent({ kind: 'session', sessionId })
       for (const text of queued.splice(0)) prompt(text)
     } catch (error) {
+      if (exited) return
       loading = false
       onEvent({ kind: 'error', message: `${input.label} failed to start: ${error instanceof Error ? error.message : String(error)}` })
       onEvent({ kind: 'result', ok: false })
@@ -120,10 +121,16 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
   })()
 
   child.on('error', (error) => {
-    exited = true
     onEvent({ kind: 'error', message: startErrorMessage(input.agent, error) })
+    // A failed spawn has no exit event. Complete the turn and release the session now.
+    if (!child.pid && !exited) {
+      exited = true
+      onEvent({ kind: 'result', ok: false })
+      onEvent({ kind: 'exit', code: null })
+    }
   })
   child.on('exit', (code) => {
+    if (exited) return
     exited = true
     onEvent({ kind: 'exit', code })
   })

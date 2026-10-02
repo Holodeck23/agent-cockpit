@@ -65,6 +65,7 @@ function describeApproval(request: ServerRequest): { toolName: string; input: un
 }
 
 export interface CodexLaunchDeps {
+  readonly executable?: string
   /** Config overrides (`-c key=value`) built by the cockpit, never from the UI. */
   configArgs?: readonly string[]
   /** Added to the app-server's environment. */
@@ -73,7 +74,7 @@ export interface CodexLaunchDeps {
 
 export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: CodexLaunchDeps = {}): AgentSession {
   const opts = codexLaunchSchema.parse(input)
-  const child = spawn('codex', ['app-server', ...(deps.configArgs ?? [])], {
+  const child = spawn(deps.executable ?? 'codex', ['app-server', ...(deps.configArgs ?? [])], {
     cwd: opts.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, ...deps.env },
@@ -123,7 +124,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
         input: [{ type: 'text', text, text_elements: [] }],
         ...(opts.effort ? { effort: opts.effort } : {}),
       })
-      .catch((error: unknown) => onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }))
+      .catch((error: unknown) => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) })
   }
 
   const policy = codexPolicy(opts.permissionMode)
@@ -144,9 +145,10 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
             ...(opts.developerInstructions ? { developerInstructions: opts.developerInstructions } : {}),
           })
       threadId = response.thread.id
-      if (opts.resume) onEvent({ kind: 'session', sessionId: threadId })
+      onEvent({ kind: 'session', sessionId: threadId })
       for (const text of queued.splice(0)) startTurn(text)
     } catch (error: unknown) {
+      if (exited) return
       onEvent({ kind: 'error', message: `Codex failed to start: ${error instanceof Error ? error.message : String(error)}` })
       onEvent({ kind: 'result', ok: false })
       child.stdin.end()
@@ -154,10 +156,16 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   })()
 
   child.on('error', (error) => {
-    exited = true
     onEvent({ kind: 'error', message: startErrorMessage('codex', error) })
+    // A failed spawn has no exit event. Complete the turn and release the session now.
+    if (!child.pid && !exited) {
+      exited = true
+      onEvent({ kind: 'result', ok: false })
+      onEvent({ kind: 'exit', code: null })
+    }
   })
   child.on('exit', (code) => {
+    if (exited) return
     exited = true
     onEvent({ kind: 'exit', code })
   })

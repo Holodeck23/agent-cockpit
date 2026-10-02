@@ -51,7 +51,8 @@
     "proof:opencode": "tsx scripts/proof-opencode.ts",
     "proof:antigravity": "tsx scripts/proof-antigravity.ts",
     "proof:preview": "tsx scripts/proof-preview.ts",
-    "dock-frames": "tsx scripts/make-dock-frames.ts"
+    "dock-frames": "tsx scripts/make-dock-frames.ts",
+    "proof:startup": "tsx scripts/proof-startup.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",

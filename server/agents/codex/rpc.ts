@@ -60,7 +60,8 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
     }
   })
 
-  child.on('exit', () => {
+  // close also arrives for failed spawns, which never emit exit.
+  child.on('close', () => {
     for (const waiter of pending.values()) waiter.reject(new Error(`${label} process exited`))
     pending.clear()
   })

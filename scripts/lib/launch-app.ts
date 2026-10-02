@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron, type ElectronApplication } from 'playwright-core'
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url))
-export const PROOF_DIR = join(ROOT, 'docs/proof')
+export const PROOF_DIR = process.env.COCKPIT_PROOF_DIR ?? join(ROOT, 'docs/proof')
 export const LAUNCHD_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 // COCKPIT_APP points the proofs at another install, e.g. a copy from the published DMG.
 const APP = process.env.COCKPIT_APP ?? join(ROOT, 'release/mac-arm64/Cockpit.app')
