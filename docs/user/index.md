@@ -1,12 +1,14 @@
 # Installation and Updating Guide
 
+*(Documented against source revision `654cbd0`)*
+
 ## System Requirements
 
-Agent Cockpit is built exclusively for macOS running on Apple Silicon (M1/M2/M3/M4 series). Other platforms and Intel Macs are not officially supported.
+Agent Cockpit is built exclusively for macOS running on Apple Silicon (M1/M2/M3/M4 series). Other platforms and Intel Macs are not officially supported. You also need Node.js installed to download and run the underlying Agent CLIs.
 
 ## Installation
 
-1. Download the latest `Cockpit-...-arm64.dmg` release.
+1. Download the latest `release/Cockpit-0.1.0-arm64.dmg` from the Releases page.
 2. Open the `.dmg` file.
 3. Drag **Cockpit.app** to your **Applications** folder.
 
@@ -22,7 +24,7 @@ Cockpit is currently not notarized by Apple. When you first open it, macOS Gatek
 
 ## Installing Agents
 
-Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions.
+Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions. Cockpit automatically resolves your login-shell `PATH` and checks fallback directories (like Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder.
 
 ### Claude Code
 Install globally using npm (requires Node.js):
@@ -32,17 +34,17 @@ npm install -g @anthropic-ai/claude-code
 Sign in with your Anthropic account to use your Claude subscription limit.
 
 ### Codex
-Follow the official documentation to install the Codex app-server. Make sure the executable is on your PATH. Requires a valid Codex API or subscription setup.
+Follow the official documentation (e.g., via `npm` or official binary) to install the `codex` executable. Cockpit automatically invokes it in its `app-server` mode. Requires a valid Codex API or subscription setup.
 
 ### Google Antigravity
-Install the Antigravity CLI according to Google's setup instructions. You must have valid subscription credentials configured for the CLI.
+Install the Antigravity `agy` CLI according to Google's official setup instructions. You must have valid subscription credentials configured for the CLI.
 
 ### OpenCode (OpenRouter)
-Install OpenCode (via standard `npm` or binary). OpenRouter is accessed through OpenCode, which will require setting up your OpenRouter API keys in its configuration.
+Install OpenCode via standard `npm` or binary. OpenRouter is accessed through OpenCode, which will require setting up your OpenRouter API keys in its configuration.
 
 ## Identifying Your App Version
 
-To verify which copy you are launching (especially if you have older copies in your Downloads folder), right-click the Cockpit app icon in Finder, choose **Get Info**, and check the version and path. Remember that development builds or feature branches might share the same version number but have different features.
+To verify which copy you are launching (especially if you have older copies in your Downloads folder), right-click the Cockpit app icon in Finder, choose **Get Info**, and check the version and path. A path of `/Applications/Cockpit.app` alone does not prove currency—it might be a stale installation. Remember that development builds or feature branches might share the same version number but have different features.
 
 ## Updating
 
@@ -51,4 +53,4 @@ When a new version is released:
 2. Open it and drag the new **Cockpit.app** into your **Applications** folder.
 3. Choose **Replace** when macOS asks.
 
-**Your data is safe.** Updating or replacing the app in `/Applications` will not delete your projects, workflows, or conversation history. All user data is stored safely in `~/.agent-cockpit/` in your user directory. Building from the source repository also does not automatically overwrite the app in your `/Applications` folder.
+**Your data is safe.** Updating or replacing the app in `/Applications` will not delete your projects, workflows, or conversation history. All user data is stored safely in `~/.agent-cockpit/` in your user directory. Building from the source repository also does not automatically overwrite the app in your `/Applications` folder. The built app lives in `release/mac-arm64/Cockpit.app`.

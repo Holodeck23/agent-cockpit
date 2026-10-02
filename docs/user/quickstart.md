@@ -20,13 +20,13 @@ If you are an existing user or want to dive straight in, you can click **Skip fo
 ## Your First Conversation
 
 1. **Start a Conversation:** Once you are in a project (or the sample), type a request in the composer and press Enter. This sends your request to the agent using the Cockpit MCP (Model Context Protocol).
-2. **Understand Approvals:** When an agent wants to perform an action (like running a development server or editing a file), Cockpit will pause and display an approval prompt. You must review the action and click **Approve** or **Deny**.
+2. **Understand Approvals:** When an agent wants to perform an action (like running a development server or editing a file), Cockpit will pause and display an approval prompt. For supported agents, you must review the action and click **Allow** or **Deny**. *(Note: Google Antigravity uses a different headless permission model without host approval cards—see the Agent Compatibility page for details.)*
 3. **See the Result:** After approving the necessary steps, the agent completes the work.
 
 ## Working with Processes and Previews
 
 When an agent needs to start a development server or run an app:
-1.  **Start an app:** The agent will use a tool (like `start_process`) to run a command. You must approve this.
+1.  **Start an app:** The agent will use a tool (like `start_process`) to run a command. You must allow this.
 2.  **Inspect the preview:** Once running, the agent can use `open_preview` to open the local web page inside Cockpit's preview pane.
 3.  **Stop the process:** When finished, the agent can stop the process, or you can manually stop it from the conversation's process controls.
 

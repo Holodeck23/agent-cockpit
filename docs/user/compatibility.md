@@ -21,8 +21,8 @@ Agent Cockpit provides a unified interface across different AI coding agents. Ho
 ## Known Agent Limitations
 
 ### Google Antigravity
-*   **Headless Permissions:** Be aware of how `agy` handles headless permissions when run via Cockpit.
-*   **Per-Launch MCP:** Currently, Antigravity has no per-launch Cockpit MCP connection capability. Therefore, it cannot be used for the first-run 90-second sample project, which relies heavily on MCP tool integration for process previews.
+*   **Headless Permissions:** Antigravity manages its own headless permissions internally. When run via Cockpit, workspace edits can proceed under the default or manual policy, but shell actions that would normally need approval are strictly denied. There are no host approval cards displayed in Cockpit for Antigravity, and no Cockpit MCP tools are injected into its context.
+*   **Per-Launch MCP:** Because Antigravity has no per-launch Cockpit MCP connection capability, it cannot be used for the first-run 90-second sample project (which relies heavily on MCP tool integration for process previews).
 
 ### Phone Approvals and Notifications
 *   **Push Notifications:** While the Web Push infrastructure is implemented in Cockpit, reliable delivery to a physical phone remains a manual setup step (requiring Tailscale). Push notifications must be explicitly granted on the phone, and acceptance of the notification payload by the device is subject to the phone's OS rules.

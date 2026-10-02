@@ -4,7 +4,7 @@ Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your 
 
 ## Supported Platforms
 
-Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the supported Agent CLIs to be installed and available on your system `PATH`.
+Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the supported Agent CLIs to be installed on your system.
 
 ## Quick Links
 
@@ -17,12 +17,37 @@ Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the 
 
 ## Download
 
-Releases are provided as `.dmg` packages for Apple Silicon Macs.
+Releases are provided as `.dmg` packages for Apple Silicon Macs. You can find the latest `Cockpit-0.1.0-arm64.dmg` in the repository's Releases page.
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
 >
 > Alternatively, you can run `xattr -dr com.apple.quarantine /Applications/Cockpit.app` in your terminal to allow the app to launch.
+
+## How it works
+
+```
+Cockpit window (React) ──HTTP + SSE──►  local server (Node, 127.0.0.1, random port)
+                                         ├─ claude -p          stream-json over stdio, approvals over stdio
+                                         ├─ codex app-server   JSON-RPC over stdio
+                                         ├─ agy                stream-json over stdio, subscription credentials
+                                         ├─ opencode acp       Agent Client Protocol over stdio
+                                         ├─ process runner     dev servers, one process group each
+                                         └─ ~/.agent-cockpit/  threads as plain files
+         each agent session ──stdio──►  cockpit MCP server ──HTTP + session token──► local server
+```
+
+- **Adapters** turn each CLI's wire protocol into one event model, so threads, storage and UI never care which agent is talking.
+- **Nothing raw reaches a command line.** Every flag passed to a CLI is built from a schema allowlist.
+- **The server only answers its own page.** Loopback host, matching origin and JSON-only writes, so a website open in your browser can't drive your agents.
+- **The desktop app is the same server** in Electron's main process, with a sandboxed page and no Node in the renderer.
+
+## Screenshots
+
+- **Approval Prompts:**
+  ![Approval Prompts](docs/proof/phase-4-approval.png)
+- **Local Previews:**
+  ![Previews](docs/proof/phase-7-preview.png)
 
 ## Licence
 

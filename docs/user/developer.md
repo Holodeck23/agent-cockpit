@@ -42,13 +42,16 @@ Testing is separated into isolated packaged proofs (using Playwright against the
 
 **Packaged Proofs (No API Cost):**
 These tests verify UI and application logic against protocol stand-ins and local files without consuming live API usage limits.
-*   `npm run proof:app`
 *   `npm run proof:reliability`
+*   `npm run proof:director` (First-run path verification)
+*   *See `package.json` for the full list of `proof:*` commands.*
+
+**Packaged Proofs (Consumes API Allowance):**
+These tests use real providers (even if checking synthetic local data) and will consume your configured API allowance. Do not run paid proofs during general documentation tasks.
+*   `npm run proof:app`
 *   `npm run proof:workflows`
 *   `npm run proof:files` (Pass `--codex` to run with Codex instead of Claude)
 *   `npm run proof:mcp` (Pass `--codex` to run with Codex)
-*   `npm run proof:director` (First-run path verification)
-*   *See `package.json` for the full list of `proof:*` commands.*
 
 **Live Smokes (Consumes API Allowance):**
 These tests perform real multi-turn runs that resume across processes, consuming actual provider usage.
@@ -57,4 +60,4 @@ These tests perform real multi-turn runs that resume across processes, consuming
 *   `npm run smoke:antigravity`
 *   `npm run smoke:mcp [claude|codex]`
 
-*Note: The packaged file/process checks use Codex's configured model or default development model. Always verify your account limits before running live smokes.*
+*Note: The packaged file/process checks use Codex's configured model or default development model. Always verify your account limits before running live or paid proofs.*
