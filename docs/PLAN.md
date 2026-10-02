@@ -1,6 +1,6 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are implemented and verified on `codex/phase9-first-run-director`. The public September 30 DMG has not been replaced. Real-provider first-value timing and second-person installation remain the next gates.
+**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are implemented and verified on `codex/phase9-first-run-director`. The public September 30 DMG has not been replaced. Real-Claude recovery timing passed on a generated project; release packaging/publication and second-person installation remain the next gates.
 
 **Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
@@ -175,7 +175,7 @@ Cockpit now supports the four agents requested for this build: Claude Code, Code
 - Known Antigravity boundary: headless permissions are policy-only rather than host approvals, and its MCP config is global/workspace rather than per launch, so Cockpit does not mutate or inject it.
 - **Gate on the Phase 7 package:** `proof:antigravity` 6/6, `proof:opencode` 10/10, and a real `smoke:antigravity` two-process resume passed on the user's Google/Antigravity subscription.
 
-## Phase 9: first value in under three minutes (checkpoints 9a and 9b complete; live timing pending)
+## Phase 9: first value in under three minutes (checkpoints 9a and 9b complete; live Claude timing verified)
 
 The onboarding goal is not to explain Cockpit. It is to produce one real, project-specific result before asking the user to learn the product. The signature moment is: **Cockpit found where I stopped, resumed the work, started the app and showed me the result.** First value is reached when the agent either gives a useful conclusion grounded in the selected project or opens a working embedded preview and inspects it.
 
@@ -217,6 +217,16 @@ Keep model, effort, permission taxonomy, workflow schedules, phone setup, appear
 - Reuses existing process and preview tools: inspect current files/instructions, reuse a running project server or ask once to start it, read its emitted URL, open and inspect the app. Missing startup instructions, unavailable providers and preview failure must be reported honestly. With no recent session, **Explore this project** provides the grounded orientation fallback; Start fresh and conversation/agent alternatives remain available.
 - Single-use, ten-minute offers suppress duplicate submissions. Submission rechecks project membership, provider availability and busy state. Completed sessions are not offered again through their import source. Up to twelve recent choices are shown, with transcript parsing bounded before selection.
 - Verified: 355 tests across 52 files, typecheck, both builds, arm64 packaging, `proof:recovery` (6 checks, real stdio MCP/PNG inspection with a synthetic provider), director (12), import (12), reliability, and both real Claude/Codex resume smokes. Recovery proof images: `docs/proof/phase-9b-recovery-*.png`. Live provider first-value timing is not established by these fixture checks.
+
+### Live activation gate (2026-10-02)
+
+`proof:onboarding -- --live --agent=claude --runs=3` creates a real prior CLI conversation and then launches each run with fresh Cockpit state. It drives the native project-picker result, recovery selection, one visible startup approval, successful `open_preview` and `inspect_preview`, a grounded conclusion, and an interactive counter click. It records each activation stage, the transcript and screenshots in a required durable output folder.
+
+- Three runs: **22.902s, 20.901s, 19.886s**; median **20.901s**, sample p90 **22.902s**. All reached value within three minutes and took the scripted second action. Each had one startup approval and no extra read approvals. The project files remained unchanged.
+- Limits: this is a small machine-operated sample on this Mac, with an already authenticated Claude CLI (default `claude-opus-5-5`), a generated dependency-free project and a real seeded prior conversation. Seed creation is outside the stopwatch. It does not establish human onboarding time, installation success on another Mac, or arbitrary-project success rates.
+- Live testing found and fixed `/var` versus `/private/var` import matching. Canonical same-folder checks cover Claude/Codex source paths and existing recovery metadata, with a symlink regression. A fresh Git snapshot goes into recovery context so the agent need not ask for a redundant shell read.
+- The default Codex timing attempt stopped before activation: local Codex 0.147.0 rejects the configured `gpt-6-astra` model as requiring a newer CLI. The separate explicitly modelled Codex resume smoke passed; that does not close the default-model gate. No provider config was changed. This Homebrew installation can be updated by the owner with `brew upgrade --cask codex`.
+- Evidence and failed attempts: private vault `outputs/agent-cockpit/2026-10-02-phase9b-recovery/`, including `live-final/summary.json` and per-run events/screenshots. Final source checks: 356 tests in 52 files, typecheck, both builds and arm64 packaging.
 
 ### Agents controlling agents through MCP (M1 and M2 complete on the feature branch)
 

@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentId, NormalizedEvent } from '../agents/types.ts'
 import type { StoredEvent } from '../threads/types.ts'
@@ -21,6 +21,14 @@ export interface SessionSummary {
   readonly messages: number
 }
 export interface ImportedSession extends SessionSummary { readonly events: StoredEvent[] }
+
+/** macOS /var and /private/var (and a user's project symlinks) can name the same folder. */
+function canonicalPath(path: string): string {
+  try { return realpathSync(path) } catch { return path }
+}
+export function sameProjectPath(left: string, right: string): boolean {
+  return left === right || canonicalPath(left) === canonicalPath(right)
+}
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 const clip = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text)
@@ -71,11 +79,15 @@ export const claudeProjectDir = (home: string, projectPath: string): string =>
 /** One Claude Code session file as Cockpit events. Lines from other folders or side chains are skipped. */
 export function readClaudeSession(text: string, sessionId: string, projectPath: string, updatedAt: string): ImportedSession {
   const events: StoredEvent[] = []
+  const matchingPaths = new Set([projectPath, canonicalPath(projectPath)])
   const push = (ts: unknown, event: NormalizedEvent): void => { events.push({ ts: typeof ts === 'string' ? ts : updatedAt, event }) }
   for (const line of text.split('\n')) {
     const row = parse(line)
     if (!row || (row.type !== 'user' && row.type !== 'assistant') || row.isSidechain === true || row.isMeta === true) continue
-    if (typeof row.cwd === 'string' && row.cwd !== projectPath) continue
+    if (typeof row.cwd === 'string' && !matchingPaths.has(row.cwd)) {
+      if (!sameProjectPath(row.cwd, projectPath)) continue
+      matchingPaths.add(row.cwd)
+    }
     const message = (row.message ?? {}) as { id?: string; content?: unknown }
     const blocks = typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : Array.isArray(message.content) ? message.content as Array<Record<string, unknown>> : []
     if (row.type === 'user') {
@@ -96,14 +108,16 @@ export function readClaudeSession(text: string, sessionId: string, projectPath: 
 }
 
 export function listClaudeSessions(home: string, projectPath: string, limit = Infinity): ImportedSession[] {
-  const dir = claudeProjectDir(home, projectPath)
-  if (!existsSync(dir)) return []
-  return readdirSync(dir).filter((n) => /^[0-9a-f-]{36}\.jsonl$/.test(n))
-    .map((name) => ({ name, file: join(dir, name), stat: statSync(join(dir, name)) }))
+  const dirs = [...new Set([projectPath, canonicalPath(projectPath)].map((path) => claudeProjectDir(home, path)))].filter(existsSync)
+  const seen = new Set<string>()
+  return dirs.flatMap((dir) => readdirSync(dir).filter((n) => /^[0-9a-f-]{36}\.jsonl$/.test(n))
+    .map((name) => ({ name, file: join(dir, name), stat: statSync(join(dir, name)) })))
     .filter(({ stat }) => stat.isFile() && stat.size <= MAX_FILE_BYTES)
     .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs).slice(0, limit).flatMap(({ name, file, stat }) => {
     const session = readClaudeSession(readFileSync(file, 'utf8'), name.slice(0, -'.jsonl'.length), projectPath, stat.mtime.toISOString())
-    return session.messages > 0 ? [session] : []
+    if (!session.messages || seen.has(session.sessionId)) return []
+    seen.add(session.sessionId)
+    return [session]
   })
 }
 
@@ -121,7 +135,7 @@ export function readCodexSession(text: string, projectPath: string, updatedAt: s
     const p = (row?.payload ?? {}) as Record<string, unknown>
     if (!row) continue
     if (row.type === 'session_meta') {
-      if (p.cwd !== projectPath) return undefined
+      if (typeof p.cwd !== 'string' || !sameProjectPath(p.cwd, projectPath)) return undefined
       sessionId = typeof p.id === 'string' ? p.id : undefined
       continue
     }
@@ -182,7 +196,7 @@ export function listCodexSessions(home: string, projectPath: string, limit = Inf
     const meta = parse(firstLine(file))
     const payload = (meta?.payload ?? {}) as Record<string, unknown>
     const stat = statSync(file)
-    if (meta?.type !== 'session_meta' || payload.cwd !== projectPath || stat.size > MAX_FILE_BYTES) return []
+    if (meta?.type !== 'session_meta' || (typeof payload.cwd !== 'string' || !sameProjectPath(payload.cwd, projectPath)) || stat.size > MAX_FILE_BYTES) return []
     return [{ file, stat }]
   }).sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs).slice(0, limit).flatMap(({ file, stat }) => {
     const session = readCodexSession(readFileSync(file, 'utf8'), projectPath, stat.mtime.toISOString())

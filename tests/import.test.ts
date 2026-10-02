@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, realpathSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -51,3 +51,14 @@ describe('listing', () => {
     expect(listSessions(home, '/nowhere')).toEqual([])
   })
 })
+
+ it('recovers real CLI sessions when a folder picker and provider use different symlink spellings', () => {
+  const home = mkdtempSync(join(tmpdir(), 'cockpit-alias-home-'))
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-alias-'))
+  const actual = realpathSync(mkdtempSync(join(tmpdir(), 'cockpit-actual-')))
+  const alias = join(root, 'project-link')
+  symlinkSync(actual, alias)
+  writeImportHome(home, actual)
+  expect(listSessions(home, alias).map((s) => s.agent).sort()).toEqual(['claude', 'codex'])
+  expect(listSessions(home, root)).toEqual([])
+ })

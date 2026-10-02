@@ -290,3 +290,9 @@ This closes Phase 8 for the requested set: Claude Code, Codex, OpenCode and Anti
 Opening a project now discovers recent unfinished conversations, the latest user request and the current Git state. Resume imports or reuses a conversation, keeps native context for the same agent, applies safe defaults, and asks the agent to use the existing process/open/inspect tools. A provider change uses the existing transcript handoff. No sessions gives an honest project-exploration fallback.
 
 Gates: 355 tests, typecheck, web/Electron builds, arm64 package, recovery (6), director (12), import (12), reliability and both live resume smokes pass. The recovery fixture exercises real packaged stdio MCP tools, one startup approval and a returned PNG; it does not establish live-model activation timing. Inline review and logs are in the private vault under `outputs/agent-cockpit/2026-10-02-phase9b-recovery/`. Public download replacement and a second-person acceptance remain separate work.
+
+## Real recovery timing and alias correction (2026-10-02)
+
+Added `proof:onboarding -- --live [--agent=claude] [--runs=3]`, requiring a durable `COCKPIT_ONBOARDING_OUT`. Three real-Claude runs reached an inspected preview and useful conclusion in 22.902, 20.901 and 19.886 seconds, each with one startup approval. The existing CLI was authenticated; project selection/approval were automated and the dependency-free project plus prior real session were prepared before timing. Second-person install remains unverified.
+
+Fixed an actual import failure where Claude canonicalizes `/var` to `/private/var`, and supplied a fresh Git snapshot in recovery context to avoid a redundant shell approval. 356 tests and builds pass. The default Codex model requires a newer local CLI, so that timing path remains blocked; the explicit-model resume smoke passes. Raw evidence is beside the live-proof review in the private vault.
