@@ -17,6 +17,8 @@ export const threadSettingsSchema = z.object({
 export type ThreadSettings = z.output<typeof threadSettingsSchema>
 
 export interface ThreadMeta {
+  readonly createdByThreadId?: string
+  readonly delegationDepth?: number
   readonly workflowId?: string
   readonly workflowTrigger?: 'manual' | 'scheduled'
   readonly id: string

@@ -36,7 +36,8 @@ export function listConversations(deps: ConversationDeps, grant: McpGrant, input
 function readable({ ts, event }: StoredEvent, index: number) {
   const base = { index, ts, kind: event.kind }
   switch (event.kind) {
-    case 'user_text': case 'assistant_text': return { ...base, text: clip(event.text) }
+    case 'user_text': return { ...base, text: clip(event.text), ...(event.fromConversation ? { fromConversation: { id: event.fromConversation.id, title: clip(event.fromConversation.title, 200) } } : {}) }
+    case 'assistant_text': return { ...base, text: clip(event.text) }
     case 'tool_use': return { ...base, tool: clip(event.name, 200) }
     case 'approval_request': return { ...base, tool: clip(event.toolName, 200), text: 'Waiting for the user to approve this action.' }
     case 'approval_resolved': return { ...base, behavior: event.behavior }

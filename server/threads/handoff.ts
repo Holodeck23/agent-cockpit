@@ -13,7 +13,7 @@ export function buildHandoff(events: readonly StoredEvent[], projectPath: string
     switch (event.kind) {
       case 'user_text':
         // References, not contents: the files on disk are current, a copy from then is not.
-        return [`USER: ${withAttachmentNote(event.text)}`]
+        return [`${event.fromConversation ? `FROM CONVERSATION ${event.fromConversation.title.replace(/[\r\n]/g, ' ')} (${event.fromConversation.id})` : 'USER'}: ${withAttachmentNote(event.text)}`]
       case 'assistant_text':
         return [`PREVIOUS AGENT: ${event.text}`]
       case 'tool_use': {

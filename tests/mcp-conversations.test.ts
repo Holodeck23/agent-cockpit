@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { openApprovals } from '../server/threads/status.ts'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { startServer, type RunningServer } from '../server/start.ts'
@@ -18,7 +19,7 @@ async function setup() {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-conversations-'))
   let token = ''
   let emit: EventSink = () => {}
-  server = await startServer({ port: 0, stateRoot: root, webDist: root, mcp: { command: process.execPath, args: [] }, launchers: {
+  server = await startServer({ port: 0, stateRoot: root, webDist: root, agentProbe: async () => ({ installed: true, version: 'fixture' }), mcp: { command: process.execPath, args: [] }, launchers: {
     claude: (req, sink) => { token = req.cockpit!.secretEnv.COCKPIT_MCP_TOKEN!; emit = sink; return {
       agent: 'claude', alive: () => true, send() {}, respondApproval() {}, interrupt() {}, close: async () => sink({ kind: 'exit', code: 0 }),
     } },
@@ -67,4 +68,26 @@ it('rejects bad bounds, foreign cursors, deleted callers and revoked grants', as
   server!.store.create(caller) // Restore after the missing-caller check, then exercise normal session revocation.
   emit({ kind: 'exit', code: 0 })
   expect(text(await client!.callTool({ name: 'list_conversations', arguments: {} }))).toContain('session token')
+})
+it('gates SDK mutations at the host and cancels disconnected HTTP actions', async () => {
+  const { caller, token } = await setup()
+  const args = { agent: 'claude', text: 'Review the README', request_key: 'sdk' }
+  const result = client!.callTool({ name: 'start_conversation', arguments: args })
+  await vi.waitFor(() => expect(openApprovals(server!.store.events(caller.id))).toHaveLength(1))
+  expect(server!.store.list()).toHaveLength(3)
+  server!.manager.approve(caller.id, openApprovals(server!.store.events(caller.id))[0]!, 'allow')
+  const child = JSON.parse(text(await result))
+  expect(server!.store.get(child.id)).toMatchObject({ createdByThreadId: caller.id })
+  expect(JSON.parse(text(await client!.callTool({ name: 'start_conversation', arguments: args })))).toEqual(child)
+  const post = (body: unknown, auth = token, signal?: AbortSignal) => fetch(server!.url + '/api/mcp/conversations/start', {
+    method: 'POST', headers: { authorization: `Bearer ${auth}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal,
+  })
+  expect((await post(args, 'invalid')).status).toBe(401)
+  expect((await post({ ...args, request_key: 'invalid-fields', permissions: 'auto' })).status).toBe(400)
+  const abort = new AbortController()
+  const disconnected = post({ ...args, request_key: 'disconnect' }, token, abort.signal).catch((e: Error) => e.name)
+  await vi.waitFor(() => expect(openApprovals(server!.store.events(caller.id))).toHaveLength(1))
+  abort.abort(); expect(await disconnected).toBe('AbortError')
+  await vi.waitFor(() => expect(openApprovals(server!.store.events(caller.id))).toHaveLength(0))
+  expect(server!.store.list()).toHaveLength(4)
 })

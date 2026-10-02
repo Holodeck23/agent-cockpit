@@ -1,0 +1,26 @@
+#!/usr/bin/perl
+# ACP controller fixture. Keeps a turn open while the SDK exercises the host gate.
+use strict; use warnings;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "0.0.0 (Cockpit control fixture)\n"; exit 0 }
+open(my $pids, '>>', '.fixture-pids') or die $!; print $pids "$$\n"; close $pids;
+my $session = "fixture-$$"; my $prompt;
+while (my $line = <STDIN>) {
+  my ($method) = $line =~ /"method":"([^"]+)"/;
+  my ($id) = $line =~ /"id":(\d+)/;
+  next unless defined $method;
+  if ($method eq 'initialize') { print qq({"jsonrpc":"2.0","id":$id,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true},"authMethods":[]}}\n) }
+  elsif ($method eq 'session/new' || $method eq 'session/load') {
+    print qq({"jsonrpc":"2.0","id":$id,"result":{"sessionId":"$session"}}\n);
+  }
+  elsif ($method eq 'session/prompt') {
+    $prompt = $id;
+    open(my $token, '>', ".controller-$session-token") or die $!; print $token $ENV{COCKPIT_MCP_TOKEN}; close $token;
+    open(my $url, '>', '.controller-url') or die $!; print $url $ENV{COCKPIT_MCP_URL}; close $url;
+    print qq({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"$session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Controller ready for an approved handoff."}}}}\n);
+  }
+  elsif ($method eq 'session/cancel' && defined $prompt) {
+    print qq({"jsonrpc":"2.0","id":$prompt,"result":{"stopReason":"cancelled"}}\n);
+    undef $prompt;
+  }
+}

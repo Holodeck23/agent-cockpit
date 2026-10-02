@@ -1,0 +1,36 @@
+#!/usr/bin/perl
+# Synthetic cross-provider target, with a deliberately long turn for stop proof.
+use strict; use warnings;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "codex-cli 0.0.0 (Cockpit control fixture)\n"; exit 0 }
+open(my $pids, '>>', '.fixture-pids') or die $!; print $pids "$$\n"; close $pids;
+my $thread = "fixture-$$"; my $turn = 0;
+while (my $line = <STDIN>) {
+  my ($method) = $line =~ /"method":\s*"([^"]+)"/;
+  my ($id) = $line =~ /"id":\s*(\d+)/;
+  next unless defined $method && defined $id;
+  if ($method eq 'initialize') { print qq({"id":$id,"result":{"userAgent":"fixture"}}\n) }
+  elsif ($method eq 'thread/resume' || $method eq 'thread/start') {
+    print qq({"id":$id,"result":{"thread":{"id":"$thread"}}}\n);
+    print qq({"method":"thread/started","params":{"thread":{"id":"$thread"}}}\n);
+  }
+  elsif ($method eq 'turn/start') {
+    $turn++;
+    open(my $token, '>', '.child-token') or die $!; print $token $ENV{COCKPIT_MCP_TOKEN}; close $token;
+    my $controller = $line =~ /Coordinate a review/ && $line !~ /Task from Cockpit conversation|Follow-up from Cockpit conversation/;
+    if ($controller) {
+      open(my $ct, '>', ".controller-$thread-token") or die $!; print $ct $ENV{COCKPIT_MCP_TOKEN}; close $ct;
+      open(my $url, '>', '.controller-url') or die $!; print $url $ENV{COCKPIT_MCP_URL}; close $url;
+    }
+    print qq({"id":$id,"result":{"turn":{"id":"turn-$turn"}}}\n);
+    print qq({"method":"turn/started","params":{"turn":{"id":"turn-$turn"}}}\n);
+    my $text = $controller ? 'Controller ready for an approved handoff.' : $line =~ /KEEP_WORKING/ ? 'Working on the approved follow-up.' : 'The README review is complete.';
+    print qq({"method":"item/completed","params":{"item":{"type":"agentMessage","id":"msg-$turn","text":"$text"}}}\n);
+    if (!$controller && $line !~ /KEEP_WORKING/) { print qq({"method":"turn/completed","params":{"turn":{"id":"turn-$turn","status":"completed"}}}\n) }
+  }
+  elsif ($method eq 'turn/interrupt') {
+    print qq({"id":$id,"result":{}}\n);
+    print qq({"method":"turn/completed","params":{"turn":{"id":"turn-$turn","status":"interrupted"}}}\n);
+  }
+  else { print qq({"id":$id,"result":{}}\n) }
+}
