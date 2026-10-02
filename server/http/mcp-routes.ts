@@ -1,3 +1,4 @@
+import { listConversations, listConversationsInput, readConversation, readConversationInput, type ConversationDeps } from '../mcp/conversations.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { McpSessions } from '../mcp/sessions.ts'
@@ -31,6 +32,7 @@ export function assertLocalUrl(raw: string): string {
 }
 
 export interface McpRouteDeps {
+  readonly conversations?: ConversationDeps
   readonly workflows?: WorkflowStore
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
@@ -44,7 +46,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl, capturePreview, workflows, memory }: McpRouteDeps,
+  { sessions, processes, openUrl, capturePreview, workflows, memory, conversations }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -52,6 +54,15 @@ export async function handleMcpRoute(
   const method = req.method ?? 'GET'
   const { projectPath } = grant
 
+  if (parts[2] === 'conversations') {
+    if (!conversations) throw new HttpError(503, 'Conversation controls unavailable')
+    const number = (key: string) => url.searchParams.has(key) ? Number(url.searchParams.get(key)) : undefined
+    if (method === 'GET' && parts.length === 3) return sendJson(res, 200, { data: listConversations(conversations, grant,
+      parseBody(listConversationsInput, { limit: number('limit'), cursor: url.searchParams.get('cursor') ?? undefined })) })
+    if (method === 'GET' && parts.length === 4) return sendJson(res, 200, { data: readConversation(conversations, grant,
+      parseBody(readConversationInput, { id: parts[3], since: number('since'), limit: number('limit') })) })
+    throw new HttpError(404, 'Not found')
+  }
   if (parts[2] === 'workflows' && method === 'POST') {
     if (!workflows) throw new HttpError(503, 'Workflows unavailable')
     const body = parseBody(workflowInputSchema.pick({ name: true, prompt: true }), await readJson(req))

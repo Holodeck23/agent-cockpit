@@ -2,6 +2,8 @@
 .workspace.has-preview { grid-template-columns: minmax(420px, 1fr) auto; }
 .workspace-main { display: grid; min-width: 0; min-height: 0; overflow: hidden; }
 .workspace-main > * { min-height: 0; }
+/* Let the transcript wrap within the space left by the preview. */
+.workspace.has-preview .thread:not(.with-activity) { grid-template-columns: minmax(0, 1fr); }
 
 .preview-pane {
   position: relative; display: grid; grid-template-rows: 45px 34px minmax(0, 1fr); min-width: 360px; max-width: 72vw;

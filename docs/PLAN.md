@@ -1,11 +1,13 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Status 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
+**Current 2026-10-02:** tester hardening is complete at `58d300b`. Phase 9 checkpoint 9a is implemented at `f870f00`; its previously capped live Claude smoke passed according to the user's report on 2026-10-02. Packaged and unit gates passed locally. MCP checkpoint M1 adds verified same-project conversation reads; approved start/message/stop remains checkpoint M2.
+
+**Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
 - **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
 - **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
 - **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
-- **Next (2026-10-02):** harden failed agent launches and corrupt-memory handling for a tester build, then build Phase 9's first-value path. Stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
+- **Next (2026-10-02):** implement the requested MCP conversation controls one verified checkpoint at a time, then continue Phase 9's first-value path. Stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
 
 
 ## MVP inspection (2026-09-29)
@@ -173,7 +175,7 @@ Cockpit now supports the four agents requested for this build: Claude Code, Code
 - Known Antigravity boundary: headless permissions are policy-only rather than host approvals, and its MCP config is global/workspace rather than per launch, so Cockpit does not mutate or inject it.
 - **Gate on the Phase 7 package:** `proof:antigravity` 6/6, `proof:opencode` 10/10, and a real `smoke:antigravity` two-process resume passed on the user's Google/Antigravity subscription.
 
-## Phase 9: first value in under three minutes (planned next)
+## Phase 9: first value in under three minutes (checkpoint 9a complete; recovery pending)
 
 The onboarding goal is not to explain Cockpit. It is to produce one real, project-specific result before asking the user to learn the product. The signature moment is: **Cockpit found where I stopped, resumed the work, started the app and showed me the result.** First value is reached when the agent either gives a useful conclusion grounded in the selected project or opens a working embedded preview and inspects it.
 
@@ -191,13 +193,28 @@ Keep model, effort, permission taxonomy, workflow schedules, phone setup, appear
 
 **Build order:**
 
-1. Close the tester-hardening gates: a failed CLI launch must terminate cleanly without poisoning resume state, and malformed memory must fail closed without overwriting recoverable bytes.
+1. **Done at `58d300b`:** close the tester-hardening gates: a failed CLI launch must terminate cleanly without poisoning resume state, and malformed memory must fail closed without overwriting recoverable bytes.
 2. Add a small first-run director with automatic agent defaults and a skippable **Open a project** / **Try a 90-second sample** entry screen.
 3. Reuse existing import, Git, project, process, preview and inspection primitives to discover recent work and power the one-click recovery action.
 4. Add the real sample fallback and instrument only the activation funnel: project selected, recovery offered, resume started, conclusion produced, preview opened/inspected, second action taken and abandonment stage.
 5. Prove the flow from a fresh `COCKPIT_HOME` in the packaged app with a stopwatch and synthetic project/session fixtures.
 
 **Gate:** median time to first value below 120 seconds and p90 below 180 seconds across clean-state runs; the packaged `proof:onboarding` must reach an imported conversation plus an inspected working preview in under three minutes without hidden manual setup. Record the percentage reaching value within three minutes and whether they take a second action. Windows, billing, additional agents and broader setup surfaces do not enter this phase.
+
+### Checkpoint 9a: first-run director (2026-10-02)
+
+- Fresh homes open on **Open a project** / **Try a 90-second sample**, with **Skip for now** persisted in Cockpit's state folder. Existing projects and conversations keep their normal workspace.
+- Project selection uses the native picker, then offers **Explore this project**. Selection and cancellation never launch an agent. Orientation asks for a grounded conclusion without changing files; session recovery remains checkpoint 9b.
+- Chooses an installed agent, leaves model and effort at the CLI defaults, and uses manual permissions with hooks off. Missing agents leave Open and Skip available. The sample requires Claude Code, Codex or OpenCode because Antigravity has no per-launch Cockpit MCP connection.
+- The sample is a dependency-free local app stored in Cockpit's own sample folder. It runs through the existing conversation, approval, process, preview and PNG-inspection loop using the packaged runtime. Retrying preserves edited sample files. Its startup instructions go to the agent; the conversation shows a plain-language request.
+- `npm run proof:director` passed 12 packaged checks; screenshots are `docs/proof/phase-9-director-*.png`. `proof:startup` passed its missing-CLI and retry regression; `proof:preview` passed 13 checks after constraining conversation text to fit beside the preview. The full recovery/timing `proof:onboarding` gate is still pending; fixture timings do not establish time to first value with a live provider.
+- Validation: `npm run verify` passes 329 tests and both builds; live Codex resume smoke passes. The first live Claude smoke hit its session cap. On 2026-10-02 the user reported a subsequent successful run: `OK` then `tangerine`, `SMOKE PASS`. That closes the outstanding 9a gate on user-provided evidence; Codex did not repeat the run. The implementation remains on `codex/phase9-first-run-director`, not yet merged to main.
+
+### Requested next: agents controlling agents through MCP
+
+Requested 2026-10-02. Extend the existing Cockpit MCP server with conversation controls as a separate verified checkpoint. The initial proposed tools are list/read conversations, start a conversation with a chosen installed agent, send a follow-up and stop a running turn. Preserve visible approvals for mutations, project scoping, normal thread lifecycle and provider usage visibility. Agent-to-agent control must not introduce automatic recursive spawning or let an agent grant another agent permissions.
+
+Initial implementation assumption: agents already inside Cockpit controlling same-project conversations. External access remains a separate connection/revocation design; the user has not explicitly selected it. M1 adds bounded read tools. M2 adds host-approved start/message/stop, visible provenance, idempotency and enforced limits on delegation. The implementation handoff is saved in the vault under `outputs/agent-cockpit/2026-10-02-mcp-agent-controls/implementation-handoff.md`. Implementation was deferred to a fresh session using the user-authorized planning fallback. `list_conversations` and `read_conversation` are implemented in M1. They use the calling session's project, return bounded content/cursors, and omit raw configuration and approval inputs. `npm run verify` passes 332 tests in 50 files; both live resume smokes pass; `proof:conversation-read` passes three packaged checks through the real stdio SDK. The screenshot is `docs/proof/mcp-conversation-read.png`. M2 mutations are not implemented yet. This feature remains outside the first-run screen.
 
 ## Verification
 - Every checkpoint: `npm run verify` (typecheck + unit/integration tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
