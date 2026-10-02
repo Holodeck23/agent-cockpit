@@ -5,7 +5,7 @@
 - **Distribution:** not notarized (no Apple Developer account, decided 2026-09-30). On macOS 26, Gatekeeper rejects the app (`spctl`: rejected; DMG: no usable signature) and the first launch shows "Cockpit" Not Opened with only Move to Trash / Done; right-click → Open no longer bypasses it. The README and release notes give the steps that work: Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine /Applications/Cockpit.app` (verified on a quarantined copy).
 - **Since acceptance:** a missing CLI now says "Claude Code isn't installed or isn't on PATH…" instead of the raw spawn error; rtl-clipped paths in the conversation and Projects menus keep their leading slash (checked in `proof:reliability`); `proof-b b1` and `proof:limit` updated to the current menus.
 - **Verified 2026-09-30:** `npm run verify` (216 tests), `proof:app` 10, `proof:reliability`, `proof-b b1` 11, `proof:limit` 9, all on the packaged app.
-- **Next:** stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
+- **Next (2026-10-02):** harden failed agent launches and corrupt-memory handling for a tester build, then build Phase 9's first-value path. Stranger install on a second macOS user and physical-phone push acceptance remain manual checks. Phase 7 is complete; the requested Phase 8 subscription adapters are implemented.
 
 
 ## MVP inspection (2026-09-29)
@@ -172,6 +172,32 @@ Cockpit now supports the four agents requested for this build: Claude Code, Code
 - **Grok Build:** optional future adapter, not requested for this phase and not installed on this Mac.
 - Known Antigravity boundary: headless permissions are policy-only rather than host approvals, and its MCP config is global/workspace rather than per launch, so Cockpit does not mutate or inject it.
 - **Gate on the Phase 7 package:** `proof:antigravity` 6/6, `proof:opencode` 10/10, and a real `smoke:antigravity` two-process resume passed on the user's Google/Antigravity subscription.
+
+## Phase 9: first value in under three minutes (planned next)
+
+The onboarding goal is not to explain Cockpit. It is to produce one real, project-specific result before asking the user to learn the product. The signature moment is: **Cockpit found where I stopped, resumed the work, started the app and showed me the result.** First value is reached when the agent either gives a useful conclusion grounded in the selected project or opens a working embedded preview and inspects it.
+
+The default first-run path:
+
+1. Open directly on **Pick up where you left off**, detect installed agents and offer a recent project or the native folder picker. Do not require an account or an onboarding tour.
+2. Inspect the chosen project for recent Cockpit/importable agent conversations, Git state and a likely development command. Present this as **recent work**, not JSON or session import.
+3. Show one recovery card with the task, agent, time, branch and changed-file count. Its primary action is **Resume and show me the app**; alternatives are start fresh, choose another conversation or use another installed agent.
+4. Apply safe automatic defaults, restore the transcript, summarize the current project state, and request at most one approval to start the development server.
+5. Open the local app in the embedded preview and have the agent run `inspect_preview`. End with three relevant actions: continue the recovered task, fix the first observed issue, or save the startup sequence as a workflow.
+
+If no resumable session exists, route to the nearest honest success path: start and show a detected web app; review a dirty repository; orient the user in an unfamiliar project; investigate a failing test; or run a genuine local 90-second sample app. The sample must exercise the real conversation, process and preview loop, not play a video or simulate success.
+
+Keep model, effort, permission taxonomy, workflow schedules, phone setup, appearance, MCP, JSON, OpenRouter and advanced agent configuration out of the first-run path until after first value. Existing controls remain available outside the director; this phase changes sequencing, not capability.
+
+**Build order:**
+
+1. Close the tester-hardening gates: a failed CLI launch must terminate cleanly without poisoning resume state, and malformed memory must fail closed without overwriting recoverable bytes.
+2. Add a small first-run director with automatic agent defaults and a skippable **Open a project** / **Try a 90-second sample** entry screen.
+3. Reuse existing import, Git, project, process, preview and inspection primitives to discover recent work and power the one-click recovery action.
+4. Add the real sample fallback and instrument only the activation funnel: project selected, recovery offered, resume started, conclusion produced, preview opened/inspected, second action taken and abandonment stage.
+5. Prove the flow from a fresh `COCKPIT_HOME` in the packaged app with a stopwatch and synthetic project/session fixtures.
+
+**Gate:** median time to first value below 120 seconds and p90 below 180 seconds across clean-state runs; the packaged `proof:onboarding` must reach an imported conversation plus an inspected working preview in under three minutes without hidden manual setup. Record the percentage reaching value within three minutes and whether they take a second action. Windows, billing, additional agents and broader setup surfaces do not enter this phase.
 
 ## Verification
 - Every checkpoint: `npm run verify` (typecheck + unit/integration tests + builds) and the `npm run smoke:claude` / `smoke:codex` smokes.
