@@ -52,6 +52,7 @@
     "proof:antigravity": "tsx scripts/proof-antigravity.ts",
     "proof:preview": "tsx scripts/proof-preview.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts",
+    "proof:conversation-read": "tsx scripts/proof-conversation-read.ts",
     "proof:director": "tsx scripts/proof-director.ts",
     "proof:startup": "tsx scripts/proof-startup.ts"
   },

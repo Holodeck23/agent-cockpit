@@ -58,6 +58,8 @@ export function toolDetail(input: unknown): string {
 }
 
 const COCKPIT_TOOLS: Record<string, string> = {
+  list_conversations: 'List conversations',
+  read_conversation: 'Read a conversation',
   start_process: 'Start a process',
   save_workflow: 'Save a workflow',
   stop_process: 'Stop a process',
