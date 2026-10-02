@@ -1,4 +1,18 @@
-# Day 30 release acceptance
+# Release acceptance
+
+## v0.1.1 tester candidate — 2026-10-02
+
+This candidate includes Phase 9a setup, 9b recent-work recovery, MCP conversation controls and tester hardening. The historical Day 30 checklist below remains evidence for v0.1.0; it is not a claim that every historical gate was repeated for v0.1.1.
+
+- Artifact: `release/Cockpit-0.1.1-arm64.dmg`, 133,455,985 bytes, arm64, ad-hoc signed and not notarized.
+- SHA-256: `b34ad184bf0144502624e557c8d5a8cdd9acad2bbc41c12d051f8e83ad9dbede`.
+- Source: runtime through `f827a1c`, with the release version changed to 0.1.1. `npm run verify`: 356 tests, typecheck, web and Electron builds passed before packaging.
+- Mounted the final DMG read-only, copied its app into an isolated Applications folder, detached it, checked version/signature and matched the application archive to the packaged app. That copied app passed recovery (6 checks), director (12), missing-CLI startup/retry (5 scenarios), and MCP controls (Claude fixture, 8). No provider usage in these fixtures.
+- The same recovery implementation previously passed import (12), reliability, real Claude/Codex resume smokes and three real-Claude activation runs: 22.902s, 20.901s, 19.918s. Each used fresh Cockpit state, an already signed-in CLI, a generated dependency-free project and a real prior session prepared outside timing. Each required one startup approval and produced an inspected interactive preview.
+- Evidence: `/Users/zod/vault/outputs/agent-cockpit/2026-10-02-phase9b-recovery/`, including `install-verification.json`, final installed proofs, timing transcripts/screenshots and release checks.
+- Open: a group member on their own Mac must complete the [tester checklist](user/tester-checklist.md). This installation copy test does not establish independent Gatekeeper/setup acceptance or human onboarding time. The local Codex 0.147.0 default-model trial was blocked by a newer-model CLI requirement; the explicit-model resume smoke passed. Live OpenRouter and physical-phone push remain unverified.
+
+## Historical Day 30 boundary (v0.1.0)
 
 The release is a macOS Apple-silicon early build for one reliable job:
 

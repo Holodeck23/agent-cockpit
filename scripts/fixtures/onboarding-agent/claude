@@ -1,0 +1,47 @@
+#!/bin/sh
+# First-run stand-in: asks approval, runs the supplied sample command, and asks the desktop shell
+# for the same PNG that inspect_preview returns to a real agent.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit preview fixture)"; exit 0; }
+session=""
+previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"preview-fixture"}\n' "$session"
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  command=$(printf '%s' "$line" | sed -n 's/.*with command \(.*\) and name.*/\1/p')
+  if [ -z "$command" ]; then
+    printf '{"type":"assistant","message":{"id":"orientation","role":"assistant","content":[{"type":"text","text":"This project contains README.md. Next, read the startup instructions."}]}}\n'
+    printf '{"type":"result","subtype":"success","is_error":false,"result":"Project explored.","total_cost_usd":0,"duration_ms":5}\n'
+    continue
+  fi
+  printf '{"type":"control_request","request_id":"sample-start","request":{"subtype":"can_use_tool","tool_name":"mcp__cockpit__start_process","input":{"command":"%s","name":"90-second sample"},"permission_suggestions":[]}}\n' "$command"
+  IFS= read -r answer
+  case "$answer" in
+    *'"behavior":"allow"'*) ;;
+    *) printf '{"type":"result","subtype":"success","is_error":false,"result":"Sample start denied.","total_cost_usd":0,"duration_ms":5}\n'; continue ;;
+  esac
+  started=$(curl -s -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
+    -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
+    -d "{\"command\":\"$command\",\"name\":\"90-second sample\"}")
+  id=$(printf '%s' "$started" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  url=""
+  attempts=0
+  while [ -z "$url" ] && [ "$attempts" -lt 40 ]; do
+    attempts=$((attempts + 1))
+    sleep 0.1
+    listed=$(curl -s "$COCKPIT_MCP_URL/api/mcp/processes" -H "authorization: Bearer $COCKPIT_MCP_TOKEN")
+    url=$(printf '%s' "$listed" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+  done
+  opened=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/preview" \
+    -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$url\"}")
+  shot=$(curl -s -X POST "$COCKPIT_MCP_URL/api/mcp/preview/screenshot" \
+    -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$url\"}")
+  meta=$(printf '%s' "$shot" | sed -n 's/.*"mimeType":"\([^"]*\)".*"width":\([0-9]*\).*"height":\([0-9]*\).*/\1 \2x\3/p')
+  case "$shot" in *'"mimeType":"image/png"'*'"width":1280'*'"height":800'*) inspected=yes ;; *) inspected=no ;; esac
+  text="Opened the embedded preview (HTTP $opened) and inspected its PNG: $inspected ($meta). Process $id."
+  printf '{"type":"assistant","message":{"id":"preview-fixture","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$text"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$text"
+done

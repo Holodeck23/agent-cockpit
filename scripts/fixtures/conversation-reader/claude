@@ -1,0 +1,15 @@
+#!/bin/sh
+[ "$1" = "--version" ] && { echo '0.0.0 (Conversation reader fixture)'; exit 0; }
+previous=''; session=''
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$session"
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  printf '%s' "$COCKPIT_MCP_TOKEN" > .reader-token
+  printf '%s' "$COCKPIT_MCP_URL" > .reader-url
+  printf '{"type":"assistant","message":{"id":"ready","role":"assistant","content":[{"type":"text","text":"Conversation reader connected."}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"Conversation reader connected.","total_cost_usd":0,"duration_ms":5}\n'
+done

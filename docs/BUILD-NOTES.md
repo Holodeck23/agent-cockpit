@@ -284,3 +284,19 @@ Gate: `npm run verify` passed 303 tests, typecheck and both builds. `npm run pro
 The requested Google route is Antigravity, not standalone Gemini CLI. The Phase 7 package passed `proof:antigravity` 6/6 and `proof:opencode` 10/10. A real `smoke:antigravity` run used the cached Google/Antigravity subscription and preserved a codeword across two separate `agy` processes, proving conversation resume. OpenRouter models are configured through OpenCode; the adapter is packaged and proven against its protocol stand-in, while live OpenRouter billing/account access was not available and is not claimed.
 
 This closes Phase 8 for the requested set: Claude Code, Codex, OpenCode and Antigravity. Grok Build remains a possible future adapter; it was not requested and no Grok CLI is installed on this Mac.
+
+## Phase 9b recovery (2026-10-02)
+
+Opening a project now discovers recent unfinished conversations, the latest user request and the current Git state. Resume imports or reuses a conversation, keeps native context for the same agent, applies safe defaults, and asks the agent to use the existing process/open/inspect tools. A provider change uses the existing transcript handoff. No sessions gives an honest project-exploration fallback.
+
+Gates: 355 tests, typecheck, web/Electron builds, arm64 package, recovery (6), director (12), import (12), reliability and both live resume smokes pass. The recovery fixture exercises real packaged stdio MCP tools, one startup approval and a returned PNG; it does not establish live-model activation timing. Inline review and logs are in the private vault under `outputs/agent-cockpit/2026-10-02-phase9b-recovery/`. Public download replacement and a second-person acceptance remain separate work.
+
+## Real recovery timing and alias correction (2026-10-02)
+
+Added `proof:onboarding -- --live [--agent=claude] [--runs=3]`, requiring a durable `COCKPIT_ONBOARDING_OUT`. Three real-Claude runs reached an inspected preview and useful conclusion in 22.902, 20.901 and 19.918 seconds, each with one startup approval. The existing CLI was authenticated; project selection/approval were automated and the dependency-free project plus prior real session were prepared before timing. Second-person install remains unverified.
+
+Fixed an actual import failure where Claude canonicalizes `/var` to `/private/var`, and supplied a fresh Git snapshot in recovery context to avoid a redundant shell approval. 356 tests and builds pass. The default Codex model requires a newer local CLI, so that timing path remains blocked; the explicit-model resume smoke passes. Raw evidence is beside the live-proof review in the private vault.
+
+## v0.1.1 tester package (2026-10-02)
+
+Bumped the package to 0.1.1 and updated the README, user guides and landing page for recovery, MCP controls, installation and measured timing. Added an independent-Mac tester checklist and release checksum. The final DMG is 133,455,985 bytes, SHA-256 `b34ad184bf0144502624e557c8d5a8cdd9acad2bbc41c12d051f8e83ad9dbede`. Its copied app passed signature/version/archive checks, recovery (6), director (12), startup recovery (5 scenarios) and MCP controls (8). Source verification passed 356 tests and both builds. Landing interaction/contrast/overflow checks passed at 390, 768 and 1280px. Publication and the external tester outcome are recorded separately; the latter is still pending.

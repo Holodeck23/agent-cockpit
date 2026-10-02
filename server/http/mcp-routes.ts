@@ -1,3 +1,5 @@
+import { startConversationInput, sendConversationInput, stopConversationInput, type ConversationControl } from '../mcp/control.ts'
+import { listConversations, listConversationsInput, readConversation, readConversationInput, type ConversationDeps } from '../mcp/conversations.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { McpSessions } from '../mcp/sessions.ts'
@@ -31,6 +33,8 @@ export function assertLocalUrl(raw: string): string {
 }
 
 export interface McpRouteDeps {
+  readonly control?: ConversationControl
+  readonly conversations?: ConversationDeps
   readonly workflows?: WorkflowStore
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
@@ -44,7 +48,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl, capturePreview, workflows, memory }: McpRouteDeps,
+  { sessions, processes, openUrl, capturePreview, workflows, memory, conversations, control }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -52,6 +56,28 @@ export async function handleMcpRoute(
   const method = req.method ?? 'GET'
   const { projectPath } = grant
 
+  if (parts[2] === 'conversations') {
+    if (!conversations) throw new HttpError(503, 'Conversation controls unavailable')
+    const number = (key: string) => url.searchParams.has(key) ? Number(url.searchParams.get(key)) : undefined
+    if (method === 'GET' && parts.length === 3) return sendJson(res, 200, { data: listConversations(conversations, grant,
+      parseBody(listConversationsInput, { limit: number('limit'), cursor: url.searchParams.get('cursor') ?? undefined })) })
+    if (method === 'GET' && parts.length === 4) return sendJson(res, 200, { data: readConversation(conversations, grant,
+      parseBody(readConversationInput, { id: parts[3], since: number('since'), limit: number('limit') })) })
+    if (method === 'POST' && parts.length === 4 && control && ['start', 'send', 'stop'].includes(parts[3]!)) {
+      const body = await readJson(req)
+      const request = parts[3] === 'start' ? { action: 'start' as const, input: parseBody(startConversationInput, body) }
+        : parts[3] === 'send' ? { action: 'send' as const, input: parseBody(sendConversationInput, body) }
+        : { action: 'stop' as const, input: parseBody(stopConversationInput, body) }
+      const abort = new AbortController()
+      const disconnected = () => { if (!res.writableEnded) abort.abort() }
+      res.once('close', disconnected)
+      try {
+        const result = await control.execute(grant, request, () => sessions.resolve(auth.slice('Bearer '.length)) === grant, abort.signal)
+        return sendJson(res, 200, { data: result })
+      } finally { res.removeListener('close', disconnected) }
+    }
+    throw new HttpError(404, 'Not found')
+  }
   if (parts[2] === 'workflows' && method === 'POST') {
     if (!workflows) throw new HttpError(503, 'Workflows unavailable')
     const body = parseBody(workflowInputSchema.pick({ name: true, prompt: true }), await readJson(req))

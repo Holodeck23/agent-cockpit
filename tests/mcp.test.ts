@@ -80,11 +80,11 @@ function devProject(): string {
 }
 
 describe('cockpit MCP tools', () => {
-  it('lists the nine cockpit tools', async () => {
+  it('lists the cockpit tools', async () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['inspect_preview', 'list_processes', 'open_preview', 'read_process_output', 'recall', 'remember', 'save_workflow', 'start_process', 'stop_process'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['inspect_preview', 'list_conversations', 'list_processes', 'open_preview', 'read_conversation', 'read_process_output', 'recall', 'remember', 'save_workflow', 'send_to_conversation', 'start_conversation', 'start_process', 'stop_conversation', 'stop_process'])
   })
 
   it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
@@ -177,10 +177,10 @@ describe('MCP wiring per CLI', () => {
     secretEnv: { COCKPIT_MCP_URL: 'http://127.0.0.1:1234', COCKPIT_MCP_TOKEN: 'secret' },
   }
 
-  it('gives Claude a stdio server, pre-allows the read-only tools, and keeps the token out of the config', () => {
+  it('gives Claude read and host-approved tools while keeping the token out of the config', () => {
     const options = claudeMcpOptions(launch)
     expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: launch.env })
-    expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__inspect_preview', 'mcp__cockpit__recall'])
+    expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__inspect_preview', 'mcp__cockpit__recall', 'mcp__cockpit__list_conversations', 'mcp__cockpit__read_conversation', 'mcp__cockpit__start_conversation', 'mcp__cockpit__send_to_conversation', 'mcp__cockpit__stop_conversation'])
     expect(JSON.stringify(options.mcpConfig)).not.toContain('secret')
     expect(options.env).toEqual(launch.secretEnv)
   })
@@ -194,6 +194,8 @@ describe('MCP wiring per CLI', () => {
     expect(values).toContain('mcp_servers.cockpit.env={"ELECTRON_RUN_AS_NODE"="1"}')
     expect(values).toContain('mcp_servers.cockpit.tools.read_process_output.approval_mode="approve"')
     expect(values).toContain('mcp_servers.cockpit.tools.inspect_preview.approval_mode="approve"')
+    for (const tool of ['start_conversation', 'send_to_conversation', 'stop_conversation']) expect(values).toContain(`mcp_servers.cockpit.tools.${tool}.approval_mode="approve"`)
+    expect(values).not.toContain('mcp_servers.cockpit.tools.start_process.approval_mode="approve"')
     expect(values.join(' ')).not.toContain('secret')
   })
 })

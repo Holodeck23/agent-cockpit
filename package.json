@@ -1,7 +1,7 @@
 {
   "name": "agent-cockpit",
   "productName": "Cockpit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop cockpit for coding-agent CLIs (Claude Code, Codex): parallel threads, approvals, workflows.",
   "scripts": {
     "doctor": "tsx scripts/doctor.ts",
@@ -52,6 +52,11 @@
     "proof:antigravity": "tsx scripts/proof-antigravity.ts",
     "proof:preview": "tsx scripts/proof-preview.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts",
+    "proof:conversation-read": "tsx scripts/proof-conversation-read.ts",
+    "proof:agent-controls": "tsx scripts/proof-agent-controls.ts",
+    "proof:onboarding": "tsx scripts/proof-onboarding.ts",
+    "proof:recovery": "tsx scripts/proof-recovery.ts",
+    "proof:director": "tsx scripts/proof-director.ts",
     "proof:startup": "tsx scripts/proof-startup.ts"
   },
   "author": "",

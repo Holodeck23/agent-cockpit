@@ -1,12 +1,12 @@
 # Cockpit prerelease landing page
 
-`index.html` is the complete, self-contained v0.1.0 landing page. It includes inline styles, script, the Cockpit mark and two embedded screenshots from the packaged app. Open it directly from disk or host this directory as a static website. Outbound links point to the public repository, release asset, issues and Enjoy attribution.
+`index.html` is the complete, self-contained v0.1.1 landing page. It includes inline styles, script, the Cockpit mark and four embedded screenshots from the packaged app. Open it directly from disk or host this directory as a static website. Outbound links point to the public repository, release asset, issues and Enjoy attribution.
 
 The embedded interactions are explicitly labeled simulations. They do not invoke agents, execute commands, access app state, call APIs or consume provider usage. Screenshot viewing, the gallery, preview scenes and FAQ work offline. Download and external links require a connection.
 
 When served over http(s) from a non-local host, the page loads Vercel Web Analytics (`/_vercel/insights/script.js`, cookieless page views). Opened from disk or localhost it loads nothing. DMG downloads are counted by GitHub: `gh api repos/Holodeck23/agent-cockpit/releases -q '.[].assets[]|.name+" "+(.download_count|tostring)'`.
 
-Hosted on Vercel as project `agent-cockpit`: https://agent-cockpit-theta.vercel.app (`agent-cockpit.vercel.app` is someone else's site). Deploy `index.html` alone with `vercel deploy <dir> --prod`.
+Hosted on Vercel as project `agent-cockpit`: https://agent-cockpit-theta.vercel.app (`agent-cockpit.vercel.app` is someone else's site). Deploy the existing project with `vercel deploy landing --prod --yes --project prj_UW9WKWGF9SHNckMf2FiqLNpGiHtZ --scope davids-projects-3fd8f18a` from the repository root. `.vercelignore` restricts uploads to the static page. This is a CLI deployment; the Vercel project is not connected to Git.
 
 This landing page follows the product visual system. Its structure was adapted from the demo-artifact scaffold. Unlike the broader project-to-portfolio workflow, this brief explicitly requests a landing page only, not a standalone demo.
 
@@ -34,11 +34,11 @@ node landing/verify.mjs
 ## Release / portfolio handoff
 
 - Static publish root: `landing/`. Entry: `index.html`. No build command.
-- Release asset: `Cockpit-0.1.0-arm64.dmg` from tag `v0.1.0`.
+- Release asset: `Cockpit-0.1.1-arm64.dmg` from tag `v0.1.1`.
 - Suitable portfolio card title: **Cockpit**.
 - Label: **Mac app · prerelease**.
-- Suggested description: **A desktop workspace for Claude Code and Codex, with parallel conversations, inline approvals, agent handoff, project files and repeatable workflows.**
-- Card CTA: **Explore Cockpit** → the eventual published landing URL.
-- The portfolio itself has not been changed. Link to this page after its hosting destination is selected; keep one canonical source here.
+- Suggested description: **A desktop workspace for coding agents, with recent-work recovery, inline approvals, embedded preview inspection, project files and repeatable workflows.**
+- Card CTA: **Explore Cockpit** → https://agent-cockpit-theta.vercel.app.
+- The portfolio itself has not been changed. The canonical site is the Vercel URL above; this folder is its source.
 
-Page claims are grounded in the release API response, README, release acceptance checklist, component source, and packaged-app captures. Recon, release metadata and render evidence are stored at `/Users/zod/vault/projects/agent-cockpit/release-landing/`.
+Page claims are grounded in the release API response, README, release acceptance checklist, component source, and packaged-app captures. The original recon is stored at `/Users/zod/vault/projects/agent-cockpit/release-landing/`. v0.1.1 release metadata, installed-DMG verification, timing evidence and page checks are at `/Users/zod/vault/outputs/agent-cockpit/2026-10-02-phase9b-recovery/`.

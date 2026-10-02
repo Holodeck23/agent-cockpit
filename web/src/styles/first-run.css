@@ -1,0 +1,44 @@
+.first-run { display: flex; flex-direction: column; --entry-gap: clamp(28px, 5vw, 76px); overflow: auto; }
+.first-run-bar { display: flex; align-items: center; gap: 10px; flex: 0 0 64px; padding: 0 32px 0 92px; border-bottom: 1px solid var(--border); -webkit-app-region: drag; font-family: var(--round); font-weight: 700; }
+.first-run-bar > svg { width: 24px; height: 24px; color: var(--blue); }
+.first-run-bar button { margin-left: auto; -webkit-app-region: no-drag; }
+.first-run-body { width: min(1050px, 100%); margin: auto; padding: 48px 48px 72px; display: grid; grid-template-columns: 1fr 1fr; gap: var(--entry-gap); align-items: center; }
+.first-run-kicker { color: var(--muted); font-size: 12px; font-weight: 650; }
+.first-run h1 { font: 750 clamp(38px, 4.2vw, 60px)/1.08 var(--round); letter-spacing: -.035em; color: var(--strong); margin: 22px 0; }
+.first-run-intro p { max-width: 310px; font-size: 17px; line-height: 1.65; color: var(--secondary); }
+.first-run-actions { padding: 32px; border: 1px solid var(--border); border-radius: var(--r-xl); background: var(--panel); box-shadow: 0 6px 22px #00000006; }
+.first-run-actions > svg { color: var(--blue); width: 30px; height: 30px; }
+.first-run h2 { font: 700 24px/1.2 var(--round); color: var(--strong); margin: 16px 0 12px; overflow-wrap: anywhere; }
+.first-run-actions p { line-height: 1.6; color: var(--secondary); }
+.first-run-actions .button-primary { width: 100%; margin: 16px 0 10px; padding: 12px 16px; }
+.first-run-actions > .button-plain { display: block; margin: 8px auto; }
+.first-run-sample { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; }
+.first-run-sample p { margin: 0 0 6px; font-size: 12px; }
+.first-run-sample button { padding: 0; color: var(--link); font-weight: 650; text-align: left; }
+.first-run small { display: block; font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 10px; }
+.first-run-agent { font-size: 12px; margin: 24px 0 0; }
+.first-run-path { font-size: 12px; overflow-wrap: anywhere; }
+.first-run-actions .first-run-error { color: var(--danger); font-size: 13px; }
+.first-run-actions input { width: 100%; }
+.first-run button:focus-visible { outline: 3px solid var(--halo); outline-offset: 4px; }
+@media (max-width: 720px) { .first-run-body { grid-template-columns: 1fr; padding: 28px 24px; gap: 24px; } .first-run h1 br { display: none; } .first-run-intro p { max-width: none; } .first-run-actions { padding: 24px; } }
+.first-run .button-plain { border: 0; background: transparent; padding: 8px 0; color: var(--link); }
+.first-run .button-plain:disabled { color: var(--muted); }
+.first-run-actions .button-primary { justify-content: center; }
+
+.recovery-card { text-align: left; width: 100%; max-width: 580px; min-width: 0; --recovery-space: 14px; }
+.recovery-card h3 { color: var(--strong); font: 700 21px/1.3 var(--round); margin: var(--recovery-space) 0 8px; overflow-wrap: anywhere; }
+.recovery-card p { margin: 8px 0; overflow-wrap: anywhere; }
+.recovery-card .recovery-task { color: var(--secondary); font-size: 14px; line-height: 1.6; }
+.recovery-card .recovery-meta, .recovery-card small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.recovery-git { border-block: 1px solid var(--border); padding: 8px 0; margin: var(--recovery-space) 0; font-size: 12px; color: var(--secondary); }
+.recovery-git summary { cursor: pointer; color: var(--link); }
+.recovery-git ul { padding-left: 18px; max-height: 140px; overflow-y: auto; }
+.recovery-git code { overflow-wrap: anywhere; white-space: pre-wrap; }
+.recovery-card label { display: block; margin: var(--recovery-space) 0; color: var(--secondary); font-size: 12px; }
+.recovery-card select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-xl); color: var(--strong); background: var(--panel); }
+.recovery-card .button-primary { width: 100%; justify-content: center; margin-top: var(--recovery-space); }
+.recovery-actions { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.recovery-actions .button-plain { border: 0; background: transparent; padding: 8px 0; color: var(--link); font-size: 12px; }
+.recovery-card .first-run-error { color: var(--danger); font-size: 13px; }
+.recovery-card :is(button, select):focus-visible { outline: 3px solid var(--halo); outline-offset: 3px; }

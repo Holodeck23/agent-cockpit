@@ -39,3 +39,5 @@ import './styles/processes.css'
 import './styles/conversation-actions.css'
 import './styles/preview.css'
 import './styles/phone.css'
+
+import './styles/first-run.css'

@@ -1,3 +1,5 @@
+import { FirstRun } from './components/FirstRun.tsx'
+import { api } from './api.ts'
 import { Workflows } from './components/Workflows.tsx'
 import { Memory } from './components/Memory.tsx'
 import { useCallback, useEffect, useState } from 'react'
@@ -27,6 +29,13 @@ const NO_THREADS: never[] = []
 
 export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const local = page.mode === 'local'
+  const [director, setDirector] = useState<boolean>()
+  useEffect(() => {
+    if (!local) return
+    let live = true
+    api.director().then(({ show }) => { if (live) setDirector(show) }, () => { if (live) setDirector(false) })
+    return () => { live = false }
+  }, [local])
   // A paired phone sees every project's conversations and can reply, approve and stop.
   const phone = !local
   const cockpit = useCockpit(local)
@@ -66,6 +75,14 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
 
+  if (local && director === undefined) return <div className="app first-run"><main className="first-run-body" role="status">Opening Cockpit…</main></div>
+  if (local && director) return <FirstRun onDone={() => { setDirector(false); void projects.refresh(); cockpit.refresh() }} onCreated={(meta) => {
+    void projects.open(meta.projectPath)
+    cockpit.refresh()
+    cockpit.select(meta.id)
+    setDirector(false)
+  }} />
+
   return (
     <div className="app">
       {phone ? (
@@ -74,7 +91,10 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <span className="phone-title">Cockpit</span>
         </header>
       ) : (
-        <ProjectTabBar projects={projects} onImported={(meta) => { cockpit.refresh(); cockpit.select(meta.id); setSection('conversations') }} />
+        <ProjectTabBar projects={{ ...projects,
+          open: async (path) => { await projects.open(path); cockpit.select(undefined); setSection('conversations') },
+          select: (path) => { projects.select(path); cockpit.select(undefined); setSection('conversations') },
+        }} onImported={(meta) => { cockpit.refresh(); cockpit.select(meta.id); setSection('conversations') }} />
       )}
       <SubNav
         section={section}

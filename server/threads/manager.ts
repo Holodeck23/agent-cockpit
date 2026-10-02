@@ -1,3 +1,4 @@
+import { createHostActions } from './host-actions.ts'
 import { randomUUID } from 'node:crypto'
 import { launchAntigravity } from '../agents/antigravity/launch.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
@@ -133,8 +134,10 @@ export interface ThreadManager {
    * agent receives when references were expanded. They differ only for attachments
    * and workflow references. `workflows` records the referenced instructions as they were used.
    */
-  create(input: { projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
-  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[]): void
+  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal): Promise<void>
+  canControl(threadId: string): boolean
+  create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
+  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
@@ -142,6 +145,8 @@ export interface ThreadManager {
   remove(threadId: string): Promise<void>
   /** Hand the thread to another agent/model; the transcript goes with it. */
   switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
+  /** Resume with manual permissions and CLI defaults; retain the native session when the agent is unchanged. */
+  resumeRecovered(threadId: string, agent: AgentId, text: string, agentText: string): ThreadMeta
   summaries(): ThreadSummary[]
   status(threadId: string): ThreadStatus
   /** The agent message currently being streamed, or '' between messages. */
@@ -160,6 +165,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const closing = new Set<Promise<void>>()
   // Deleted conversations: a closing session's last events must not recreate their files.
   const deleted = new Set<string>()
+  const hostActions = createHostActions((id, event) => record(id, event))
 
   const closeEntry = (entry: Live): Promise<void> => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
@@ -180,6 +186,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
+    if (incoming.kind === 'result' || incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.cancel(threadId)
     const entry = live.get(threadId)
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
     if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false })
@@ -274,7 +281,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[]): void => {
+  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void => {
+    hostActions.cancel(threadId)
     if (deleted.has(threadId)) throw new Error('This conversation was deleted')
     const meta = requireMeta(threadId)
     const entry = ensureSession(meta)
@@ -284,16 +292,22 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text, ...(workflows?.length ? { workflows } : {}) })
+    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}) })
     entry.session.send(agentText)
   }
 
   return {
-    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger }) {
+    canControl: (id) => Boolean(live.get(id)?.turnRunning && !live.get(id)?.stopRequested),
+    requestHostAction(threadId, toolName, input, signal) {
+      if (!live.get(threadId)?.turnRunning || live.get(threadId)?.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
+      return hostActions.request(threadId, toolName, input, signal)
+    },
+    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth }) {
       const now = new Date().toISOString()
       const meta = store.create({
         id: randomUUID(),
         workflowId, workflowTrigger,
+        ...(createdByThreadId ? { createdByThreadId, delegationDepth } : {}),
         title: title?.trim() || text.slice(0, 60),
         projectPath,
         settings,
@@ -303,11 +317,13 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         createdAt: now,
         updatedAt: now,
       })
-      send(meta.id, text, agentText, workflows)
+      const source = createdByThreadId ? store.get(createdByThreadId) : undefined
+      send(meta.id, text, agentText, workflows, source ? { id: source.id, title: source.title } : undefined)
       return meta
     },
     send,
     approve(threadId, requestId, behavior) {
+      if (hostActions.approve(threadId, requestId, behavior)) return
       const entry = live.get(threadId)
       if (!entry?.session.alive()) throw new Error('This approval belongs to a session that has ended')
       const request = entry.pending.get(requestId)
@@ -316,6 +332,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       entry.session.respondApproval(request, behavior)
     },
     interrupt(threadId) {
+      hostActions.cancel(threadId)
       const entry = live.get(threadId)
       if (!entry) return
       entry.stopRequested = true
@@ -329,6 +346,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     async remove(threadId) {
       requireMeta(threadId)
+      hostActions.cancel(threadId)
       deleted.add(threadId)
       const entry = live.get(threadId)
       live.delete(threadId)
@@ -351,6 +369,22 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       return next
     },
+    resumeRecovered(threadId, agent, text, agentText) {
+      const meta = requireMeta(threadId)
+      const entry = live.get(threadId)
+      if (entry?.turnRunning) throw new Error('Stop the current turn before resuming recent work')
+      const settings: ThreadSettings = { agent, permissionMode: 'manual', useHooks: false }
+      if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
+      else {
+        // Re-launch even an idle session so an earlier permissive policy cannot survive recovery.
+        generations.delete(threadId)
+        live.delete(threadId)
+        if (entry) void closeEntry(entry)
+        store.update(threadId, { settings })
+      }
+      send(threadId, text, agentText)
+      return requireMeta(threadId)
+    },
     summaries() {
       const all = store.list().map((meta): ThreadSummary => {
         const events = store.events(meta.id)
@@ -372,6 +406,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       return () => listeners.delete(listener)
     },
     async shutdown() {
+      hostActions.cancel()
       await Promise.all([...closing, ...[...live.values()].map(closeEntry)])
     },
   }
