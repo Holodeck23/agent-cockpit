@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
@@ -159,12 +159,7 @@ function createWindow(url: string): BrowserWindow {
     if (details.isMainFrame) return
     try { assertLocalUrl(details.url) } catch { details.preventDefault() }
   })
-  // Everything is refused except copying text from the cockpit page itself (Copy message).
-  win.webContents.session.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    let fromCockpit = false
-    try { fromCockpit = new URL(details.requestingUrl).origin === origin } catch { /* not a URL */ }
-    callback(permission === 'clipboard-sanitized-write' && fromCockpit)
-  })
+  win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
 
   win.once('ready-to-show', () => win.show())
   win.on('closed', () => {
@@ -185,8 +180,42 @@ const dock = process.platform === 'darwin' ? createDockActivity({
   clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
 }) : undefined
 
+// Shown notifications stay referenced until clicked or closed; a collected one loses its click.
+const shownNotifications = new Set<Notification>()
+
+/** A notification for one conversation; clicking it brings Cockpit forward and opens that conversation. */
+function showNotification(value: unknown): void {
+  const { threadId, title, body } = (value ?? {}) as Record<string, unknown>
+  if (typeof threadId !== 'string' || !/^[\w-]{1,80}$/.test(threadId) || typeof title !== 'string' || typeof body !== 'string') return
+  if (!Notification.isSupported()) return
+  const note = new Notification({ title: title.slice(0, 120), body: body.slice(0, 240), silent: true })
+  const release = (): void => { shownNotifications.delete(note) }
+  note.on('click', () => {
+    release()
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    win.webContents.send('cockpit:open-thread', threadId)
+  })
+  note.on('close', release)
+  shownNotifications.add(note)
+  if (shownNotifications.size > 20) shownNotifications.delete(shownNotifications.values().next().value!)
+  note.show()
+}
+
 function registerIpc(url: string, threadsDir: string, isProject: (path: string) => boolean): void {
   const origin = new URL(url).origin
+  // Copy message: the system clipboard, which (unlike the web API) does not need window focus.
+  ipcMain.on('cockpit:copy-text', (event, text: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    if (typeof text === 'string' && text.length <= 2_000_000) clipboard.writeText(text)
+  })
+  ipcMain.on('cockpit:notify', (event, value: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    showNotification(value)
+  })
   ipcMain.on('cockpit:activity', (event, value: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     const activity = parseActivity(value)

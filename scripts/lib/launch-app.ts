@@ -44,3 +44,23 @@ export function checker(): { check: (name: string, ok: boolean, detail?: string)
     },
   }
 }
+
+/**
+ * Proofs decide whether the user is looking at Cockpit instead of depending on (or stealing)
+ * the OS focus of the Mac the proof runs on. Applies to the current page and survives reloads.
+ */
+export async function setLooking(app: ElectronApplication, page: import('playwright-core').Page, looking: boolean): Promise<void> {
+  // Plain strings: tsx would otherwise inject its __name helper, which the page does not have.
+  const patch = `(() => {
+    if (Document.prototype.hasFocus.proofPatched) return
+    const original = Document.prototype.hasFocus
+    const patched = function () {
+      const forced = sessionStorage.getItem('proof:looking')
+      return forced === null ? original.call(this) : forced === '1'
+    }
+    patched.proofPatched = true
+    Document.prototype.hasFocus = patched
+  })()`
+  await app.context().addInitScript(patch)
+  await page.evaluate(`${patch}; sessionStorage.setItem('proof:looking', '${looking ? '1' : '0'}')`)
+}

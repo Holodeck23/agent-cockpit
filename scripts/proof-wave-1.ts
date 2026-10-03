@@ -8,8 +8,8 @@ import type { Page } from 'playwright-core'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
-import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { headStatus, openProject, setTheme } from './lib/ui.ts'
+import { checker, launchPackagedApp, PROOF_DIR, ROOT, setLooking } from './lib/launch-app.ts'
+import { apiPost, headStatus, openProject, setTheme } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave1-proof-'))
@@ -32,7 +32,7 @@ const done: NormalizedEvent = { kind: 'result', ok: true }
 const history: NormalizedEvent[] = [{ kind: 'user_text', text: 'Walk me through the release.' }]
 for (let i = 1; i <= 40; i += 1) history.push(says(`Step ${i}: a paragraph long enough to take some room in the conversation, so it scrolls.`))
 history.push(done)
-seed('Long history', history)
+const longId = seed('Long history', history)
 seed('Clips', [
   { kind: 'user_text', text: '@file:notes.md @workflow:review Check this', workflows: [{ name: 'review', prompt: 'Review the diff for risky changes.' }] },
   says('Checked.'), done,
@@ -142,6 +142,51 @@ try {
   check('B3 Mark complete takes it out of the badge', await until('badge cleared by complete', async () => (await badge()) === ''))
   await page.getByRole('button', { name: 'Reopen' }).first().click()
   check('B4 reopening does not bring the question back', await until('still no badge', async () => (await badge()) === '', 1500) || (await badge()) === '')
+
+  // B1 + B2: other conversations notify (and chime); the one you are looking at stays quiet.
+  await page.evaluate(() => localStorage.setItem('cockpit:sounds', JSON.stringify({ reply: true, decision: true })))
+  await page.reload()
+  await page.getByRole('tab', { selected: true }).first().waitFor()
+  await setLooking(app, page, true)
+  // Record instead of showing, so a proof run never puts banners on the Mac's screen.
+  await app.evaluate(({ Notification }) => {
+    const g = globalThis as unknown as { proofNotes: Electron.Notification[] }
+    g.proofNotes = []
+    Notification.prototype.show = function (this: Electron.Notification) { g.proofNotes.push(this) }
+  })
+  const notes = () => app.evaluate(() => (globalThis as unknown as { proofNotes: Electron.Notification[] }).proofNotes.map((n) => `${n.title} | ${n.body}`))
+  await page.evaluate(() => {
+    const w = window as unknown as { heard: string[] }
+    w.heard = []
+    window.addEventListener('cockpit:sound', (e) => w.heard.push((e as CustomEvent<string>).detail))
+  })
+  const heard = () => page.evaluate(() => (window as unknown as { heard: string[] }).heard.join(','))
+  await open('Clips')
+  await apiPost(page, `/api/threads/${longId}/messages`, { text: 'show me again' })
+  check('B1 a turn finishing elsewhere notifies with the conversation and its reply', await until('a notification', async () => (await notes()).some((n) => n.startsWith('Long history | Finished: First paragraph'))), (await notes()).join(' / '))
+  check('B2 and chimes, because you are not looking at that conversation', await until('the reply sound', async () => (await heard()) === 'reply'), await heard())
+  await page.getByRole('textbox', { name: 'Message' }).fill('hello')
+  await page.getByRole('textbox', { name: 'Message' }).press('Enter')
+  await page.locator('.message').filter({ hasText: 'First paragraph' }).last().waitFor()
+  await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
+  await new Promise((r) => setTimeout(r, 800))
+  check('B1 the conversation you are looking at does not notify', (await notes()).length === 1, (await notes()).join(' / '))
+  check('B2 and does not chime', (await heard()) === 'reply', await heard())
+  await app.evaluate(() => { (globalThis as unknown as { proofNotes: Electron.Notification[] }).proofNotes[0]!.emit('click') })
+  check('B1 clicking the notification opens its conversation', await until('Long history opened', async () => (await page.getByRole('heading', { level: 1, name: 'Long history' }).count()) === 1))
+  await setLooking(app, page, false)
+  await page.getByRole('textbox', { name: 'Message' }).fill('ask')
+  await page.getByRole('textbox', { name: 'Message' }).press('Enter')
+  check('B1 away from the window, even the open conversation notifies, with its question', await until('the question notification', async () => (await notes()).some((n) => n === 'Long history | Question: Staging or production?')), (await notes()).join(' / '))
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('checkbox', { name: /^When an agent finishes a turn/ }).uncheck()
+  await shot(page, 'b1-settings')
+  await page.keyboard.press('Escape')
+  const before1 = (await notes()).length
+  await apiPost(page, `/api/threads/${longId}/messages`, { text: 'once more' })
+  await page.locator('.message').filter({ hasText: 'First paragraph' }).nth(2).waitFor()
+  await new Promise((r) => setTimeout(r, 800))
+  check('B1 turning finished-turn notifications off stops them', (await notes()).length === before1, (await notes()).join(' / '))
 
   // A5: the conversation list resizes by dragging its edge, within bounds, and remembers it.
   const listWidth = () => page.locator('.list').evaluate((el) => Math.round(el.getBoundingClientRect().width))

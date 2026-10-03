@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { native } from '../native.ts'
 import { CheckIcon, CopyIcon } from './icons.tsx'
 
 /** Copies a message's text. Shown on hover or keyboard focus of the message; "Copied" for a moment after. */
@@ -10,6 +11,8 @@ export function CopyButton({ text }: { text: string }) {
     return () => clearTimeout(id)
   }, [state])
   const copy = (): void => {
+    // The desktop app writes the system clipboard directly; a browser (the phone) uses the web API.
+    if (native) { native.copyText(text); setState('copied'); return }
     navigator.clipboard.writeText(text).then(() => setState('copied'), () => setState('failed'))
   }
   const label = state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : 'Copy message'

@@ -1,11 +1,20 @@
 import { useEffect } from 'react'
+import type { NotifySettings } from '../mac-notifications.ts'
+import { native } from '../native.ts'
 import { playSound, type SoundKind, type SoundSettings } from '../sounds.ts'
 
 interface AppSettingsProps {
   sounds: SoundSettings
   onSounds: (next: SoundSettings) => void
+  notify: NotifySettings
+  onNotify: (next: NotifySettings) => void
   onClose: () => void
 }
+
+const NOTIFY: ReadonlyArray<{ id: SoundKind; label: string }> = [
+  { id: 'reply', label: 'When an agent finishes a turn' },
+  { id: 'decision', label: 'When an agent needs an approval or has a question' },
+]
 
 const SOUNDS: ReadonlyArray<{ id: SoundKind; label: string; detail: string }> = [
   { id: 'reply', label: 'When an agent replies', detail: 'A soft two-note chime when a turn finishes.' },
@@ -13,7 +22,7 @@ const SOUNDS: ReadonlyArray<{ id: SoundKind; label: string; detail: string }> = 
 ]
 
 /** App-wide settings. Appearance stays in its own top-bar popover; project settings live with the project. */
-export function AppSettings({ sounds, onSounds, onClose }: AppSettingsProps) {
+export function AppSettings({ sounds, onSounds, notify, onNotify, onClose }: AppSettingsProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -29,6 +38,20 @@ export function AppSettings({ sounds, onSounds, onClose }: AppSettingsProps) {
           <h2 id="app-settings-title">Settings</h2>
           <button type="button" className="activity-close" aria-label="Close" onClick={onClose}>×</button>
         </header>
+        {native ? (
+          <section className="settings-section" aria-labelledby="settings-notify">
+            <h3 id="settings-notify">Mac notifications</h3>
+            {NOTIFY.map((n) => (
+              <div key={n.id} className="settings-row">
+                <label className="check">
+                  <input type="checkbox" checked={notify[n.id]} onChange={(e) => onNotify({ ...notify, [n.id]: e.target.checked })} />
+                  <span><strong>{n.label}</strong></span>
+                </label>
+              </div>
+            ))}
+            <p className="modal-note">Never for the conversation you are looking at. Click one to open that conversation. macOS asks once whether Cockpit may notify; you can change that later in System Settings → Notifications.</p>
+          </section>
+        ) : null}
         <section className="settings-section" aria-labelledby="settings-sounds">
           <h3 id="settings-sounds">Sounds</h3>
           {SOUNDS.map((s) => (
@@ -40,7 +63,7 @@ export function AppSettings({ sounds, onSounds, onClose }: AppSettingsProps) {
               <button type="button" className="button-soft" aria-label={`Play the ${s.id} sound`} onClick={() => playSound(s.id)}>Play</button>
             </div>
           ))}
-          <p className="modal-note">Sounds play while Cockpit is open, from any project. They are off until you turn them on, and remembered on this Mac.</p>
+          <p className="modal-note">Sounds play while Cockpit is open, from any project, but not for the conversation you are looking at. They are off until you turn them on, and remembered on this Mac.</p>
         </section>
         <section className="settings-section" aria-labelledby="settings-elsewhere">
           <h3 id="settings-elsewhere">Elsewhere</h3>

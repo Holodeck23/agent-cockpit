@@ -24,6 +24,13 @@ const cockpit = {
     ipcRenderer.on('cockpit:preview-open', receive)
     return () => ipcRenderer.removeListener('cockpit:preview-open', receive)
   },
+  copyText: (text: string): void => ipcRenderer.send('cockpit:copy-text', text),
+  notify: (notification: { threadId: string; title: string; body: string }): void => ipcRenderer.send('cockpit:notify', notification),
+  onOpenThread: (listener: (threadId: string) => void): (() => void) => {
+    const receive = (_event: IpcRendererEvent, id: unknown): void => { if (typeof id === 'string') listener(id) }
+    ipcRenderer.on('cockpit:open-thread', receive)
+    return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
+  },
 }
 
 contextBridge.exposeInMainWorld('cockpit', cockpit)

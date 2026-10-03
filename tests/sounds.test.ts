@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SOUNDS, parseSounds, soundFor, type Seen } from '../web/src/sounds.ts'
+import { attentionChanges, DEFAULT_SOUNDS, parseSounds, soundFor, type Seen } from '../web/src/sounds.ts'
 
 type Status = 'idle' | 'working' | 'needs_input' | 'done' | 'error'
 const row = (id: string, status: Status, at = 't1') => ({ meta: { id }, status, lastActivityAt: at })
@@ -36,5 +36,25 @@ describe('sounds', () => {
     expect(soundFor(seen(['a', 'working']), [row('a', 'done')], { reply: false, decision: true })).toBeUndefined()
     expect(soundFor(seen(['a', 'working']), [row('a', 'needs_input')], { reply: true, decision: false })).toBeUndefined()
     expect(soundFor(seen(['a', 'working'], ['b', 'working']), [row('a', 'needs_input'), row('b', 'done')], { reply: true, decision: false })).toBe('reply')
+  })
+
+  it('stays quiet for the conversation you are looking at, but not for others', () => {
+    expect(soundFor(seen(['a', 'working']), [row('a', 'done')], on, 'a')).toBeUndefined()
+    expect(soundFor(seen(['a', 'working'], ['b', 'working']), [row('a', 'done'), row('b', 'done')], on, 'a')).toBe('reply')
+    expect(soundFor(seen(['a', 'working']), [row('a', 'needs_input')], on, 'a')).toBeUndefined()
+  })
+})
+
+describe('attentionChanges', () => {
+  it('names each conversation that finished or now needs a decision, skipping the focused one', () => {
+    const before = seen(['a', 'working'], ['b', 'working'], ['c', 'working'], ['d', 'done'])
+    const now = [row('a', 'done'), row('b', 'needs_input'), row('c', 'working'), row('d', 'done')]
+    expect(attentionChanges(before, now)).toEqual([{ id: 'a', kind: 'reply' }, { id: 'b', kind: 'decision' }])
+    expect(attentionChanges(before, now, 'b')).toEqual([{ id: 'a', kind: 'reply' }])
+    expect(attentionChanges(undefined, now)).toEqual([])
+  })
+
+  it('a question at the end of a turn is a decision, not a reply', () => {
+    expect(attentionChanges(seen(['a', 'working']), [{ ...row('a', 'done'), awaiting: 'question' as const }])).toEqual([{ id: 'a', kind: 'decision' }])
   })
 })
