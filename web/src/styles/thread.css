@@ -208,7 +208,7 @@
 .update-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 5px; background: var(--field); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; vertical-align: 1px; }
 /* Find: sticky at the top of the scroller; matches are painted with the Custom Highlight API. */
 .find-bar {
-  position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 6px; width: min(460px, 100%); margin: 0 0 12px auto;
+  position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: min(460px, 100%); margin: 0 0 12px auto;
   padding: 6px 6px 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel);
   box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.35);
 }
@@ -218,6 +218,15 @@
 .find-bar button:hover:not(:disabled) { background: var(--field); }
 .find-bar button:disabled { opacity: 0.4; }
 .find-bar button svg { width: 15px; height: 15px; }
+/* The matching messages, under the bar (A3). */
+.find-results { flex-basis: 100%; max-height: 220px; overflow: auto; margin: 2px 0 0; padding: 4px 0 0; border-top: 1px solid var(--border); list-style: none; }
+.find-bar .find-results button { display: flex; align-items: baseline; gap: 8px; width: 100%; height: auto; padding: 5px 6px; border-radius: var(--r-sm); font-size: 12.5px; color: var(--body); text-align: left; }
+.find-bar .find-results button[aria-current='true'] { background: var(--field); }
+.find-result-author { flex: none; font-weight: 600; color: var(--strong); }
+.find-result-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.find-result-text mark { background: color-mix(in srgb, #f5c542 55%, transparent); color: inherit; border-radius: 2px; }
+.find-result-count { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.find-results-more { padding: 5px 6px; font-size: 12px; color: var(--muted); }
 ::highlight(cockpit-find) { background-color: color-mix(in srgb, #f5c542 45%, transparent); color: inherit; }
 ::highlight(cockpit-find-current) { background-color: #f5a623; color: #1a1a1a; }
 /* Sticky inside the scroller; the negative margin keeps it from adding to the scroll height. */
