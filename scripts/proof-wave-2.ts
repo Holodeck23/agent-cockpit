@@ -154,9 +154,10 @@ try {
   await page.getByRole('heading', { level: 1, name: 'hello' }).waitFor()
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
   await page.getByRole('button', { name: /^Effort:/ }).click()
-  await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio', { name: 'High' }).click()
+  await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio', { name: 'High', exact: true }).click()
   check('C1 the effort button applies at once, as a quiet note', await until('note', async () => (await page.locator('.note').filter({ hasText: /high effort.*Applies from your next message/ }).count()) === 1))
-  check('C1 and shows the new effort', await until('label', async () => (await page.getByRole('button', { name: 'Effort: High' }).count()) === 1))
+  check('C1 and shows the new effort', await until('label', async () => (await page.getByRole('button', { name: 'Effort: High' }).count()) === 1),
+    String(await page.getByRole('button', { name: /^Effort:/ }).getAttribute('aria-label')))
 
   // D8: a network failure in a conversation links to the guide's network section.
   await page.locator('.card').filter({ hasText: 'Offline turn' }).click()
@@ -173,7 +174,7 @@ try {
   await messageBox(page).fill('x')
   check('E1 the send button takes the project tint', (await sendFill()) === 'rgb(181, 50, 112)', await sendFill())
   await page.getByRole('button', { name: 'Mark complete' }).click()
-  const completeColor = () => page.getByRole('button', { name: 'Reopen' }).evaluate((el) => getComputedStyle(el).color)
+  const completeColor = () => page.locator('.head-action[aria-pressed="true"]').evaluate((el) => getComputedStyle(el).color)
   check('E1 the Complete control takes the tint', await until('tinted', async () => (await completeColor()) === 'rgb(181, 50, 112)'), await completeColor())
   await shot(page, 'e1-tint-light')
   await setTheme(page, 'Dark')

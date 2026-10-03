@@ -132,8 +132,9 @@ export function useCockpit(local = true): Cockpit {
         setDetail((d) => d?.meta.id === update.threadId ? { ...d, meta: { ...d.meta, completed } } : d)
         return
       }
-      if (update.event.kind === 'agent_switch') {
-        // Settings and session changed server-side: reload the thread and the list.
+      if (update.event.kind === 'agent_switch' || update.event.kind === 'settings_changed') {
+        // Settings (and for a switch, the session) changed server-side: reload the thread and the list,
+        // so the agent picker and effort button show what the next message will use.
         reloadDetail(update.threadId)
         refresh()
         return
