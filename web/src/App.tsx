@@ -10,6 +10,7 @@ import { NewConversation } from './components/NewConversation.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
+import { shortcutFor } from './shortcuts.ts'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
@@ -85,6 +86,26 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     setSection('conversations')
     selectThread(id)
   }) : undefined, [local, selectProject, selectThread, setSection])
+
+  // ⌘1–9 project tabs, ⌥⌘1–5 sections (shortcuts.ts). The same moves as clicking the tab or section.
+  const tabsRef = useRef(projects.tabs)
+  tabsRef.current = projects.tabs
+  useEffect(() => {
+    if (phone) return
+    const onKey = (event: KeyboardEvent): void => {
+      const shortcut = shortcutFor(event, tabsRef.current.length)
+      if (!shortcut) return
+      event.preventDefault()
+      if (shortcut.kind === 'section') { setSection(shortcut.section); return }
+      const tab = tabsRef.current[shortcut.index]
+      if (!tab) return
+      selectProject(tab.path)
+      selectThread(undefined)
+      setSection('conversations')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phone, selectProject, selectThread, setSection])
 
   const activePath = projects.active?.path
   const visible = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
