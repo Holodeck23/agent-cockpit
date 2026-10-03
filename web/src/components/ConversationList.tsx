@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { api } from '../api.ts'
 import type { RowShows } from '../appearance.ts'
 import type { ThreadSummary } from '../api.ts'
 import { filterConversations, type ListFilter } from '../conversation-meta.ts'
@@ -33,7 +34,26 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
   const [filter, setFilter] = useState<ListFilter>('all')
   const [showCompleted, setShowCompleted] = useState(loadShowCompleted)
   const isUnread = useSeen(threads, selectedId)
-  const { counts, rows } = filterConversations({ threads, query, showCompleted, isUnread }, filter)
+  // Full-text matches from the server, for the query they answer (A9).
+  const [found, setFound] = useState<{ q: string; hits: ReadonlyMap<string, string> }>()
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) { setFound(undefined); return }
+    let live = true
+    const timer = setTimeout(() => {
+      api.searchThreads(q).then(
+        (hits) => { if (live) setFound({ q, hits: new Map(hits.map((h) => [h.id, h.excerpt])) }) },
+        () => { if (live) setFound(undefined) },
+      )
+    }, 200)
+    return () => { live = false; clearTimeout(timer) }
+  }, [query])
+  const textMatches = found && found.q === query.trim() ? found.hits : undefined
+  const { counts, rows } = filterConversations({ threads, query, showCompleted, isUnread, textMatches: textMatches && new Set(textMatches.keys()) }, filter)
+  const q = query.trim().toLowerCase()
+  // A card found by its messages (not its title or preview) shows where the words are.
+  const excerptOf = (t: ThreadSummary): string | undefined =>
+    q && !t.meta.title.toLowerCase().includes(q) && !t.preview.toLowerCase().includes(q) ? textMatches?.get(t.meta.id) : undefined
 
   const toggleCompleted = (next: boolean): void => {
     setShowCompleted(next)
@@ -92,6 +112,7 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
               unread={isUnread(thread)}
               onSelect={onSelect}
               shows={rowShows}
+              excerpt={excerptOf(thread)}
             />
           ))
         )}

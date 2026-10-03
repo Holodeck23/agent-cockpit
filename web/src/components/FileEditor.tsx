@@ -1,5 +1,5 @@
-import { lazy, Suspense, useRef, useState, type KeyboardEvent } from 'react'
-import { fileName, isDirty, lineCount, spaceOf, wordCount, type OpenFile } from '../file-text.ts'
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { fileName, isDirty, lineCount, lineRange, spaceOf, wordCount, type OpenFile } from '../file-text.ts'
 import { usePopover } from '../usePopover.ts'
 import { ChevronDownIcon, FileIcon } from './icons.tsx'
 
@@ -18,7 +18,11 @@ interface FileEditorProps {
   onOverwrite: (path: string) => void
   onSaveCopy: (path: string) => void
   onAttach: (path: string) => void
+  /** Select these lines once the file is active (from a reply's path:line link). */
+  jump?: Jump
 }
+
+export interface Jump { readonly path: string; readonly line: number; readonly endLine?: number; readonly nonce: number }
 
 // Guessed words must not land in files; the editor holds exactly what was typed.
 const PLAIN_TEXT: Record<string, string> = { writingsuggestions: 'false', autoCorrect: 'off', autoCapitalize: 'off' }
@@ -32,7 +36,7 @@ function loadView(): MarkdownView {
   try { return localStorage.getItem(VIEW_KEY) === 'source' ? 'source' : 'document' } catch { return 'document' }
 }
 
-export function FileEditor({ files, active, error, onSelect, onClose, onCloseMany, onChange, onSave, onReload, onOverwrite, onSaveCopy, onAttach }: FileEditorProps) {
+export function FileEditor({ files, active, error, onSelect, onClose, onCloseMany, onChange, onSave, onReload, onOverwrite, onSaveCopy, onAttach, jump }: FileEditorProps) {
   const [confirming, setConfirming] = useState<string>()
   const [view, setView] = useState<MarkdownView>(loadView)
   // Files the Document view declined, with its reason; they stay in Source.
@@ -42,6 +46,9 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
     try { localStorage.setItem(VIEW_KEY, next) } catch { /* not remembered */ }
   }
   const file = files.find((f) => f.path === active)
+  // Line numbers live in Source, so a jump into Markdown shows Source (without changing the saved choice).
+  const jumping = jump && file && jump.path === file.path ? jump : undefined
+  useEffect(() => { if (jumping && isMarkdown(jumping.path)) setView('source') }, [jumping])
   const dirty = file ? isDirty(file) : false
   const inDocuments = file ? spaceOf(file.path).space === 'documents' : false
   const [kept, setKept] = useState<string>()
@@ -128,7 +135,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
               </Suspense>
             </div>
           ) : (
-            <SourceText key={file.path} text={file.draft} readOnly={!file.eol} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
+            <SourceText key={file.path} text={file.draft} readOnly={!file.eol} jump={jumping} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
           )}
           <footer className="file-status" aria-label="File status">
             <span className={dirty ? 'file-status-dirty' : ''}>{file.conflict ? 'Changed on disk' : dirty ? 'Unsaved changes' : 'Saved'}</span>
@@ -148,15 +155,27 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
 }
 
 /** Source view: the text with line numbers beside it. Lines don't wrap, so the numbers stay level. */
-function SourceText({ text, readOnly, onChange, onKeyDown }: {
-  text: string; readOnly: boolean; onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
+function SourceText({ text, readOnly, jump, onChange, onKeyDown }: {
+  text: string; readOnly: boolean; jump?: Jump; onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 }) {
   const gutter = useRef<HTMLPreElement>(null)
+  const area = useRef<HTMLTextAreaElement>(null)
+  // Select the referenced lines and bring them a third of the way down the view.
+  useEffect(() => {
+    const el = area.current
+    if (!el || !jump) return
+    const { start, end } = lineRange(el.value, jump.line, jump.endLine)
+    el.focus()
+    el.setSelectionRange(start, end)
+    const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight) || 22
+    el.scrollTop = Math.max(0, (jump.line - 1) * lineHeight - el.clientHeight / 3)
+    // Only a new jump applies; editing afterwards must not pull the view back.
+  }, [jump?.nonce])
   const numbers = Array.from({ length: lineCount(text) }, (_, i) => i + 1).join('\n')
   return (
     <div className="file-source">
       <pre className="file-gutter" ref={gutter} aria-hidden>{numbers}</pre>
-      <textarea className="file-text" aria-label="File contents" value={text} readOnly={readOnly} spellCheck={false} wrap="off" {...PLAIN_TEXT}
+      <textarea ref={area} className="file-text" aria-label="File contents" value={text} readOnly={readOnly} spellCheck={false} wrap="off" {...PLAIN_TEXT}
         onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
         onScroll={(e) => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop }} />
     </div>

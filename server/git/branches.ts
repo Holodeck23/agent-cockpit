@@ -37,7 +37,7 @@ export function redact(text: string): string {
   return text.replace(/(\w+:\/\/)[^/\s@]+@/g, '$1***@')
 }
 
-function run(cwd: string, args: readonly string[], timeout = READ_TIMEOUT_MS): Promise<{ stdout: string; stderr: string }> {
+export function run(cwd: string, args: readonly string[], timeout = READ_TIMEOUT_MS): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     execFile('git', ['-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer: 2_000_000 }, (error, stdout, stderr) => {
       if (!error) { resolve({ stdout, stderr }); return }

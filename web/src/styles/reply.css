@@ -1,0 +1,44 @@
+/* Agent replies rendered as Markdown (markdown/reply.tsx). Compact: a reply is a message, not a page. */
+.bubble.reply { white-space: normal; }
+.reply > :first-child { margin-top: 0; }
+.reply > :last-child { margin-bottom: 0; }
+.reply p, .reply ul, .reply ol, .reply pre, .reply table, .reply blockquote { margin: 0 0 10px; }
+.reply h1, .reply h2, .reply h3, .reply h4, .reply h5, .reply h6 { margin: 16px 0 6px; line-height: 1.3; color: var(--strong); }
+.reply h1 { font-size: 19px; } .reply h2 { font-size: 17px; } .reply h3 { font-size: 15.5px; }
+.reply h4, .reply h5, .reply h6 { font-size: 14.5px; }
+.reply ul, .reply ol { padding-left: 22px; }
+.reply li { margin: 2px 0; }
+.reply li > p { margin: 0; }
+.reply li.task-list-item { list-style: none; margin-left: -20px; }
+.reply li.task-list-item input { margin: 0 6px 0 0; vertical-align: -2px; }
+.reply code { font: 13px var(--mono); padding: 1px 5px; border-radius: 5px; background: var(--field); overflow-wrap: anywhere; }
+.reply pre { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--subtle, var(--field)); overflow-x: auto; white-space: pre; }
+.reply pre code { padding: 0; background: none; font-size: 12.5px; line-height: 1.55; overflow-wrap: normal; }
+.reply blockquote { padding-left: 12px; border-left: 3px solid var(--border); color: var(--secondary); }
+.reply table { border-collapse: collapse; display: block; max-width: 100%; overflow-x: auto; font-size: 14px; }
+.reply th, .reply td { padding: 5px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.reply th { background: var(--field); font-weight: 600; }
+.reply hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+.reply a { color: var(--link); }
+.reply .reply-image { font-style: italic; }
+/* path:line references open Files at that line (markdown/file-links.ts). */
+.reply .file-link { display: inline; padding: 0; border: 0; background: none; font: inherit; color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+.reply .file-link code { color: var(--link); }
+.reply .file-link:hover { text-decoration-thickness: 2px; }
+.reply .commit-note { font-size: 12.5px; color: var(--muted); }
+/* Hover peek into a message's clips (components/Peek.tsx). */
+.peek { position: relative; display: inline-flex; }
+.peek-panel {
+  position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 20; display: flex; flex-direction: column; gap: 6px;
+  width: min(440px, 70vw); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); box-shadow: 0 14px 34px -16px rgb(0 0 0 / 0.4); white-space: normal; text-align: left;
+}
+.peek-title { font: 12px var(--mono); color: var(--secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peek-text { max-height: 240px; margin: 0; overflow: auto; font: 12px/1.5 var(--mono); color: var(--body); white-space: pre; }
+.peek-note { font-size: 12px; color: var(--muted); }
+.peek-error { color: var(--danger); }
+.peek-action { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--link); font-size: 12.5px; }
+/* Bridges the gap to the clip, so moving onto the panel never closes it. */
+.peek-panel::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 8px; }
+.peek-panel.below { top: calc(100% + 6px); bottom: auto; }
+.peek-panel.below::after { top: auto; bottom: 100%; }

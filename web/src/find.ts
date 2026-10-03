@@ -18,3 +18,15 @@ export function stepIndex(current: number, count: number, direction: 1 | -1): nu
   if (current < 0) return direction === 1 ? 0 : count - 1
   return (current + direction + count) % count
 }
+
+/** A one-line excerpt around [start, end) for the results list, with … where it was cut. */
+export function snippet(text: string, start: number, end: number, radius = 40): { before: string; match: string; after: string } {
+  const flat = (s: string): string => s.replace(/\s+/g, ' ')
+  const from = Math.max(0, start - radius)
+  const to = Math.min(text.length, end + radius)
+  return {
+    before: `${from > 0 ? '…' : ''}${flat(text.slice(from, start))}`,
+    match: flat(text.slice(start, end)),
+    after: `${flat(text.slice(end, to))}${to < text.length ? '…' : ''}`,
+  }
+}

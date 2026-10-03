@@ -34,6 +34,9 @@ export function useOpenFiles(projectPath: string | undefined) {
   const current = useRef(files)
   current.current = files
   const restored = useRef(false)
+  // A file opened on purpose (a click, a reply's link) while last visit's tabs are still being
+  // restored keeps the focus; the restore only adds tabs behind it.
+  const requested = useRef<string | undefined>(undefined)
 
   const replace = (path: string, next: (file: OpenFile) => OpenFile): void =>
     setFiles((all) => all.map((f) => (f.path === path ? next(f) : f)))
@@ -41,15 +44,15 @@ export function useOpenFiles(projectPath: string | undefined) {
   /** Opens a file, or brings it forward; a clean one is re-read so it matches the disk. */
   const open = useCallback(async (path: string, quiet = false): Promise<void> => {
     if (!projectPath) return
-    setError('')
+    if (!quiet) { setError(''); requested.current = path }
     const existing = current.current.find((f) => f.path === path)
-    if (existing && isDirty(existing)) { setActive(path); return }
+    if (existing && isDirty(existing)) { if (!quiet || !requested.current) setActive(path); return }
     try {
       const read = await api.readFile(projectPath, path)
       const stored = existing ? undefined : parse<StoredDraft>(storage.get(draftKey(projectPath, read.path)))
       const next = { ...openFile(read.path, read.text, read.version, stored?.draft), conflict: stored !== undefined && stored.version !== read.version }
       setFiles((all) => (all.some((f) => f.path === read.path) ? all.map((f) => (f.path === read.path ? next : f)) : [...all, next]))
-      setActive(read.path)
+      if (!quiet || !requested.current) setActive(read.path)
     } catch (e) {
       if (!quiet) setError(messageOf(e))
     }
@@ -66,7 +69,8 @@ export function useOpenFiles(projectPath: string | undefined) {
         await open(path, true)
       }
       if (cancelled) return
-      if (saved?.active && current.current.some((f) => f.path === saved.active)) setActive(saved.active)
+      const want = requested.current ?? saved?.active
+      if (want && current.current.some((f) => f.path === want)) setActive(want)
       restored.current = true
     })()
     return () => { cancelled = true }

@@ -2,7 +2,7 @@ import { FirstRun } from './components/FirstRun.tsx'
 import { api } from './api.ts'
 import { Workflows } from './components/Workflows.tsx'
 import { Memory } from './components/Memory.tsx'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
 import { ListResize, useListWidth } from './components/ListResize.tsx'
 import { Files } from './components/Files.tsx'
@@ -12,6 +12,8 @@ import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { shortcutFor } from './shortcuts.ts'
 import { ReleaseNotes } from './components/ReleaseNotes.tsx'
+import { ReplyContext, type CommitOutcome } from './markdown/reply.tsx'
+import type { FileTarget } from './markdown/file-links.ts'
 import { TroubleshootingLink } from './components/TroubleshootingLink.tsx'
 import { checkForUpdateNotice } from './update-notice.ts'
 import { ThreadView } from './components/ThreadView.tsx'
@@ -78,6 +80,22 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [previewUrl, setPreviewUrl] = useState<string>()
   // Help → Release Notes, or the "Updated to" view after an update (lead set).
   const [releaseNotes, setReleaseNotes] = useState<{ lead?: string }>()
+  // A reply's path:line link opens Files at that line (desktop only; Files stays on the Mac).
+  const [reveal, setReveal] = useState<{ target: FileTarget; nonce: number }>()
+  const openFileFromReply = useCallback((target: FileTarget) => { setReveal({ target, nonce: Date.now() }); setSection('files') }, [setSection])
+  const replyProject = phone ? undefined : cockpit.detail?.meta.projectPath
+  // A commit in a reply opens its page on the repository's host; without one the hash is copied.
+  const openCommitFromReply = useCallback(async (hash: string): Promise<CommitOutcome> => {
+    if (!replyProject) return 'missing'
+    const commit = await api.gitCommit(replyProject, hash).catch(() => undefined)
+    if (!commit) return 'missing'
+    if (commit.url) { window.open(commit.url, '_blank', 'noopener'); return 'opened' }
+    if (native) native.copyText(commit.hash.slice(0, 12))
+    else await navigator.clipboard?.writeText(commit.hash.slice(0, 12)).catch(() => undefined)
+    return 'copied'
+  }, [replyProject])
+  const replyContext = useMemo(() => ({ projectPath: replyProject, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply }),
+    [replyProject, openFileFromReply, openCommitFromReply])
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
@@ -181,6 +199,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           </button>
         </div>
       ) : null}
+      <ReplyContext.Provider value={replyContext}>
       <div className={`workspace${local && previewUrl ? ' has-preview' : ''}`}>
         <div className="workspace-main">
       {section === 'conversations' ? (
@@ -224,7 +243,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           )}
         </div>
       ) : section === 'files' ? (
-        <Files key={activePath ?? 'no-project'} project={projects.active} onAttach={(reference) => {
+        <Files key={activePath ?? 'no-project'} project={projects.active} reveal={reveal} onAttach={(reference) => {
           if (!activePath) return
           setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
           setSection('conversations')
@@ -241,6 +260,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
         {local && previewUrl ? <PreviewPane url={previewUrl} onClose={() => setPreviewUrl(undefined)} /> : null}
       </div>
+      </ReplyContext.Provider>
     </div>
   )
 }

@@ -50,6 +50,8 @@ export interface FilterInput {
   readonly query: string
   readonly showCompleted: boolean
   readonly isUnread: (thread: ThreadSummary) => boolean
+  /** Conversations whose messages match the query (full-text search on the server). */
+  readonly textMatches?: ReadonlySet<string>
 }
 
 type NeedsRow = Pick<ThreadSummary, 'status' | 'awaiting'> & { readonly meta?: Pick<ThreadSummary['meta'], 'completed'> }
@@ -71,10 +73,11 @@ const MATCHES: Record<ListFilter, (t: ThreadSummary, isUnread: (t: ThreadSummary
 /** Threads after search and the completed toggle, then the per-tab counts and the active tab's rows. */
 export function filterConversations(input: FilterInput, filter: ListFilter): { counts: Record<ListFilter, number>; rows: ThreadSummary[] } {
   const q = input.query.trim().toLowerCase()
-  const base = input.threads.filter(
-    (t) =>
-      (input.showCompleted || !t.meta.completed) &&
-      (q === '' || t.meta.title.toLowerCase().includes(q) || t.preview.toLowerCase().includes(q)),
+  // Searching looks through completed conversations too, whatever "Show completed" says.
+  const base = input.threads.filter((t) =>
+    q === ''
+      ? input.showCompleted || !t.meta.completed
+      : t.meta.title.toLowerCase().includes(q) || t.preview.toLowerCase().includes(q) || (input.textMatches?.has(t.meta.id) ?? false),
   )
   const count = (f: ListFilter): number => base.filter((t) => MATCHES[f](t, input.isUnread)).length
   return {

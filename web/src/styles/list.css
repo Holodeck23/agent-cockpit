@@ -87,3 +87,11 @@
 }
 .check { display: inline-flex; align-items: center; gap: 7px; color: var(--body); }
 .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
+.card-excerpt { font-style: italic; }
+/* A narrow list (the fixed 260px below 1120px windows) keeps all four filters in view. */
+.list { container-type: inline-size; }
+@container (max-width: 300px) {
+  .filters { padding-inline: 10px; }
+  .filter { font-size: 12.5px; gap: 3px; }
+  .filter .icon, .filter .bars, .filter svg, .filter .unread-icon { display: none; }
+}

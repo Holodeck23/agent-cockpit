@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findRanges, stepIndex } from '../web/src/find.ts'
+import { findRanges, snippet, stepIndex } from '../web/src/find.ts'
 
 describe('findRanges', () => {
   it('finds every case-insensitive match, left to right, without overlaps', () => {
@@ -20,5 +20,20 @@ describe('stepIndex', () => {
     expect(stepIndex(2, 3, 1)).toBe(0)
     expect(stepIndex(0, 3, -1)).toBe(2)
     expect(stepIndex(0, 0, 1)).toBe(-1)
+  })
+})
+
+describe('find results list', () => {
+  it('shows the match with some words either side', () => {
+    expect(snippet('Short text with needle here', 16, 22)).toEqual({ before: 'Short text with ', match: 'needle', after: ' here' })
+    const long = `${'a '.repeat(60)}needle${' b'.repeat(60)}`
+    const s = snippet(long, 120, 126, 20)
+    expect(s.match).toBe('needle')
+    expect(s.before.startsWith('…')).toBe(true)
+    expect(s.after.endsWith('…')).toBe(true)
+    expect(s.before.length).toBeLessThanOrEqual(22)
+  })
+  it('flattens line breaks so a row stays one line', () => {
+    expect(snippet('one\n\ntwo needle', 9, 15)).toEqual({ before: 'one two ', match: 'needle', after: '' })
   })
 })

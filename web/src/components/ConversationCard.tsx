@@ -13,9 +13,11 @@ interface ConversationCardProps {
   project?: string
   /** What the row shows besides the title (Appearance). */
   shows?: RowShows
+  /** While searching: where the words are in its messages, shown instead of the preview. */
+  excerpt?: string
 }
 
-export function ConversationCard({ thread, selected, unread, onSelect, project, shows = DEFAULT_APPEARANCE.rows }: ConversationCardProps) {
+export function ConversationCard({ thread, selected, unread, onSelect, project, shows = DEFAULT_APPEARANCE.rows, excerpt }: ConversationCardProps) {
   const tag = tagFor(thread.meta.title)
   const classes = ['card', selected ? 'selected' : '', thread.meta.completed ? 'completed' : '', unread ? 'unread' : '']
   return (
@@ -34,7 +36,7 @@ export function ConversationCard({ thread, selected, unread, onSelect, project, 
         </span>
       </span>
       <span className="card-title">{thread.meta.title}</span>
-      {shows.preview && thread.preview ? <span className="card-preview">{thread.preview}</span> : null}
+      {excerpt ? <span className="card-preview card-excerpt">{excerpt}</span> : shows.preview && thread.preview ? <span className="card-preview">{thread.preview}</span> : null}
       <span className="card-foot">
         <span className="card-meta">
           {rowMeta({ project, agent: agentLabel(thread.meta.settings.agent), date: dayLabel(thread.lastActivityAt) }, shows)}

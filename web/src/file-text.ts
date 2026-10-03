@@ -93,3 +93,22 @@ export function withExtension(name: string, kind: NewFileKind): string {
   const trimmed = name.trim()
   return !ext || trimmed.toLowerCase().endsWith(ext) ? trimmed : `${trimmed}${ext}`
 }
+
+/** Character offsets covering lines `line`…`endLine` (1-based), clamped to the text. */
+export function lineRange(text: string, line: number, endLine: number = line): { start: number; end: number } {
+  const lines = text.split('\n')
+  const from = Math.min(Math.max(line, 1), lines.length)
+  const to = Math.min(Math.max(endLine, from), lines.length)
+  let start = 0
+  for (let i = 1; i < from; i += 1) start += lines[i - 1]!.length + 1
+  let end = start
+  for (let i = from; i <= to; i += 1) end += lines[i - 1]!.length + (i < to ? 1 : 0)
+  return { start, end }
+}
+
+/** The start of a file for a hover peek: at most `lines` lines of at most 400 characters. */
+export function peekText(text: string, lines = 40): { text: string; more: number } {
+  const all = text.replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n')
+  const shown = all.slice(0, lines).map((line) => (line.length > 400 ? `${line.slice(0, 400)}…` : line))
+  return { text: shown.join('\n'), more: Math.max(0, all.length - lines) }
+}

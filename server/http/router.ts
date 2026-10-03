@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
+import { MAX_QUERY, searchThreads } from '../threads/search.ts'
 import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
@@ -360,6 +361,14 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         }
       }
       if (parts[1] !== 'threads') throw new HttpError(404, 'Not found')
+
+      // Every message of every conversation, for the list's search (before /api/threads/:id).
+      if (parts.length === 3 && parts[2] === 'search' && method === 'GET') {
+        const q = url.searchParams.get('q') ?? ''
+        if (q.length > MAX_QUERY) throw new HttpError(400, 'Search for something shorter')
+        sendJson(res, 200, { data: searchThreads(store, q, url.searchParams.get('projectPath') ?? undefined) })
+        return true
+      }
 
       if (parts.length === 2 && method === 'GET') {
         sendJson(res, 200, { data: manager.summaries() })

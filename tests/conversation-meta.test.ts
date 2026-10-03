@@ -74,6 +74,14 @@ describe('filterConversations', () => {
     expect(byPreview.rows.map((t) => t.meta.id)).toEqual(['2'])
   })
 
+  it('while searching, includes completed conversations and full-text matches', () => {
+    const search = (query: string, textMatches?: ReadonlySet<string>) =>
+      filterConversations({ threads, query, showCompleted: false, isUnread, textMatches }, 'all').rows.map((t) => t.meta.id)
+    expect(search('logo')).toEqual(['3'])
+    expect(search('invoice', new Set(['1', '3']))).toEqual(['1', '3'])
+    expect(search('', new Set(['1', '3']))).toEqual(['1', '2', '4'])
+  })
+
   it('returns only the active tab rows', () => {
     const { rows } = filterConversations({ threads, query: '', showCompleted: false, isUnread }, 'unread')
     expect(rows.map((t) => t.meta.id)).toEqual(['4'])

@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { findRanges, stepIndex } from '../find.ts'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { findRanges, snippet, stepIndex } from '../find.ts'
 import { ChevronDownIcon, ChevronUpIcon } from './icons.tsx'
 
 const ALL = 'cockpit-find'
@@ -19,7 +19,8 @@ function collect(root: HTMLElement, query: string): Range[] {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const parent = node.parentElement
-    if (!parent || parent.closest('.find-bar, button') || parent.getClientRects().length === 0) continue
+    // Controls are skipped; file and commit links in replies are part of the text.
+    if (!parent || parent.closest('.find-bar, button:not(.file-link)') || parent.getClientRects().length === 0) continue
     for (const [start, end] of findRanges(node.textContent ?? '', query)) {
       const range = document.createRange()
       range.setStart(node, start)
@@ -36,6 +37,29 @@ interface FindBarProps {
   /** Changes when the conversation's content changes, so matches are found again. */
   contentKey: string
   onClose: () => void
+}
+
+const ROWS = 50
+interface Group { first: number; count: number; author: string; before: string; match: string; after: string }
+
+/** Matches grouped by the message (or note) they are in, in order, with an excerpt of the first. */
+function groupsOf(ranges: readonly Range[]): Group[] {
+  const groups: Group[] = []
+  let owner: Element | null | undefined
+  ranges.forEach((range, index) => {
+    const el = range.startContainer.parentElement?.closest('.message, .note, .step, .decision, .approval') ?? null
+    if (el && el === owner) { groups[groups.length - 1]!.count += 1; return }
+    owner = el
+    // The excerpt comes from the bubble the match is in, not the author line above it.
+    const source = range.startContainer.parentElement?.closest('.bubble') ?? el
+    const text = source?.textContent ?? range.startContainer.textContent ?? ''
+    const lead = document.createRange()
+    if (source) { lead.setStart(source, 0); lead.setEnd(range.startContainer, range.startOffset) }
+    const at = source ? lead.toString().length : range.startOffset
+    const author = el?.querySelector('.author-name')?.textContent?.trim() ?? ''
+    groups.push({ first: index, count: 1, author, ...snippet(text, at, at + range.toString().length) })
+  })
+  return groups
 }
 
 /** ⌘F in a conversation: highlighted matches, Enter / Shift+Enter (or the arrows) to step, Esc to close. */
@@ -72,6 +96,9 @@ export function FindBar({ root, contentKey, onClose }: FindBarProps) {
   }, [ranges, current])
 
   const step = (direction: 1 | -1): void => setCurrent((at) => stepIndex(at, ranges.length, direction))
+  // Which messages match: a list under the bar to jump between them (shown for two or more).
+  const groups = useMemo(() => groupsOf(ranges), [ranges])
+  const activeGroup = groups.findLastIndex((g) => g.first <= current)
 
   return (
     <div className="find-bar" role="search">
@@ -93,6 +120,20 @@ export function FindBar({ root, contentKey, onClose }: FindBarProps) {
       <button type="button" aria-label="Previous match" disabled={ranges.length === 0} onClick={() => step(-1)}><ChevronUpIcon /></button>
       <button type="button" aria-label="Next match" disabled={ranges.length === 0} onClick={() => step(1)}><ChevronDownIcon /></button>
       <button type="button" className="find-close" aria-label="Close find" onClick={onClose}>×</button>
+      {groups.length > 1 ? (
+        <ul className="find-results" aria-label="Matching messages">
+          {groups.slice(0, ROWS).map((g, i) => (
+            <li key={g.first}>
+              <button type="button" aria-current={i === activeGroup || undefined} onClick={() => { setCurrent(g.first); input.current?.focus() }}>
+                {g.author ? <span className="find-result-author">{g.author}</span> : null}
+                <span className="find-result-text">{g.before}<mark>{g.match}</mark>{g.after}</span>
+                {g.count > 1 ? <span className="find-result-count">{g.count}</span> : null}
+              </button>
+            </li>
+          ))}
+          {groups.length > ROWS ? <li className="find-results-more">{groups.length - ROWS} more messages match; keep typing to narrow it.</li> : null}
+        </ul>
+      ) : null}
     </div>
   )
 }

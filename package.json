@@ -64,6 +64,7 @@
     "proof:updates": "tsx scripts/proof-updates.ts",
     "proof:wave-1": "tsx scripts/proof-wave-1.ts",
     "proof:wave-2": "tsx scripts/proof-wave-2.ts",
+    "proof:wave-3": "tsx scripts/proof-wave-3.ts",
     "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof",
     "proof:quit": "tsx scripts/proof-quit.ts"
   },
@@ -88,6 +89,8 @@
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "semver": "^7.8.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
