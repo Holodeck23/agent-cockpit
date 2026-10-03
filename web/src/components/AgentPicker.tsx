@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EFFORTS, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
-import { api, type AgentStatus, type ThreadSettings } from '../api.ts'
+import { api, type AgentStatus, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
@@ -129,12 +129,16 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
   const [loading, setLoading] = useState(false)
   const [memory, setMemory] = useState<AgentMemory>(loadMemory)
   const [closeAfter, setCloseAfter] = useState(readCloseAfter)
+  const [presets, setPresets] = useState<Preset[]>([])
+  const [naming, setNaming] = useState<string | undefined>(undefined)
+  const [presetError, setPresetError] = useState('')
 
   // Checked each time the panel opens: cheap, and never polled in the background.
   useEffect(() => {
     if (!open) return
     let current = true
     setLoading(true)
+    api.presets().then((rows) => { if (current) setPresets(rows) }, () => { if (current) setPresets([]) })
     api.agents()
       .then((next) => { if (current) setStatuses(next) })
       .catch(() => { if (current) setStatuses(undefined) })
@@ -151,6 +155,13 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
   }
   const patch = (change: Partial<AgentChoice>): void => set({ ...current, ...change })
   const close = (): void => { setOpen(false); focusComposer(ref.current) }
+
+  // Named settings: one click applies them (in a conversation, Apply/Switch still confirms).
+  const savePresets = (next: Preset[]): void => {
+    api.savePresets(next).then((saved) => { setPresets(saved); setPresetError(''); setNaming(undefined) },
+      (e: unknown) => setPresetError(e instanceof Error ? e.message : String(e)))
+  }
+  const matches = (p: Preset): boolean => p.agent === current.agent && p.model === current.model && p.effort === current.effort && p.permissionMode === current.permissionMode
 
   const toggle = (): void => {
     if (!open) setDraft(value)
@@ -178,6 +189,26 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
         </button>
         {open ? (
           <div className="picker-panel" role="dialog" aria-label="Agent settings">
+            <div className="presets" role="group" aria-label="Presets">
+              {presets.map((preset) => (
+                <span key={preset.name} className={`preset-chip${matches(preset) ? ' active' : ''}`}>
+                  <button type="button" aria-pressed={matches(preset)} title={`${agentName(preset.agent)} · ${choiceSummary(preset)} · ${permissionLabel(preset.agent, preset.permissionMode)}`}
+                    onClick={() => { set({ agent: preset.agent, model: preset.model, effort: preset.effort, permissionMode: preset.permissionMode }); if (closeAfter && !existing) close() }}>
+                    {preset.name}
+                  </button>
+                  <button type="button" className="preset-remove" aria-label={`Remove preset ${preset.name}`} onClick={() => savePresets(presets.filter((p) => p !== preset))}>×</button>
+                </span>
+              ))}
+              {naming === undefined ? (
+                <button type="button" className="preset-add" onClick={() => { setNaming(''); setPresetError('') }}>{presets.length ? '+ Save as preset' : 'Save these settings as a preset'}</button>
+              ) : (
+                <form className="preset-form" onSubmit={(e) => { e.preventDefault(); savePresets([...presets, { name: naming.trim(), ...current, effort: current.effort as Preset['effort'] }]) }}>
+                  <input aria-label="Preset name" placeholder="Name, e.g. Quick fix" maxLength={40} value={naming} autoFocus onChange={(e) => setNaming(e.target.value)} />
+                  <button type="submit" className="button-soft" disabled={!naming.trim()}>Save</button>
+                </form>
+              )}
+              {presetError ? <p className="picker-note" role="alert">{presetError}</p> : null}
+            </div>
             <div className="segmented" role="radiogroup" aria-label="Agent">
               {(['claude', 'codex', 'antigravity', 'opencode'] as const).map((agent) => (
                 <button
