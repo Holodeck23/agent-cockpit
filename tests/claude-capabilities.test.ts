@@ -8,6 +8,9 @@ import { launchClaude } from '../server/agents/claude/launch.ts'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 
 const help = readFileSync('scripts/fixtures/claude-help.txt', 'utf8')
+// macOS scans a freshly written executable on its first run (measured 0.7-1.6 s), so the
+// stand-in's first --help can outlast expect.poll's 1 s default. The probe itself allows 5 s.
+const FIRST_RUN = { timeout: 5000 }
 const legacyHelp = help.replace(/^  --permission-prompts.*\n/m, '')
 function fixture(helpText = help, probe = '') {
   const cwd = mkdtempSync(join(tmpdir(), 'cockpit-cli-capabilities-'))
@@ -56,7 +59,7 @@ describe('Claude compatibility', () => {
     const session = launchClaude({ cwd: f.cwd }, (event) => events.push(event), { executable: f.executable })
     try {
       session.send('hello')
-      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok)).toBe(true)
+      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok), FIRST_RUN).toBe(true)
       expect(readFileSync(join(f.cwd, 'launched'), 'utf8').includes('--permission-prompts')).toBe(text === help)
     } finally { await session.close() }
   })
@@ -64,7 +67,7 @@ describe('Claude compatibility', () => {
     const f = fixture('not Claude help'), events: NormalizedEvent[] = []
     const session = launchClaude({ cwd: f.cwd }, (e) => events.push(e), { executable: f.executable })
     session.send('hello')
-    await expect.poll(() => session.alive()).toBe(false)
+    await expect.poll(() => session.alive(), FIRST_RUN).toBe(false)
     expect(existsSync(join(f.cwd, 'launched'))).toBe(false)
     expect(events.filter((e) => e.kind === 'session')).toEqual([])
     expect(events.filter((e) => e.kind === 'result')).toEqual([{ kind: 'result', ok: false }])
@@ -74,14 +77,14 @@ describe('Claude compatibility', () => {
     const retry = launchClaude({ cwd: f.cwd }, (e) => events.push(e), { executable: f.executable })
     try {
       retry.send('retry')
-      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok)).toBe(true)
+      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok), FIRST_RUN).toBe(true)
     } finally { await retry.close() }
   })
   it.each(['interrupt', 'close'] as const)('cancels a running probe on %s without launching or late errors', async (action) => {
     const f = fixture(help, 'echo started > probing; exec sleep 30'), events: NormalizedEvent[] = []
     const session = launchClaude({ cwd: f.cwd }, (e) => events.push(e), { executable: f.executable })
     session.send('must never reach provider')
-    await expect.poll(() => existsSync(join(f.cwd, 'probing'))).toBe(true)
+    await expect.poll(() => existsSync(join(f.cwd, 'probing')), FIRST_RUN).toBe(true)
     await session[action]()
     await session.close()
     expect(session.alive()).toBe(false)
