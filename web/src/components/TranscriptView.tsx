@@ -6,6 +6,7 @@ import { AgentGlyph } from './AgentGlyph.tsx'
 import { CopyButton } from './CopyButton.tsx'
 import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
 import { TroubleshootingLink } from './TroubleshootingLink.tsx'
+import { ReplyMarkdown } from '../markdown/reply.tsx'
 
 interface TranscriptViewProps {
   items: TranscriptItem[]
@@ -77,8 +78,9 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                     {index === waitingIndex ? <button type="button" className="button-soft conclusion-dismiss" onClick={onDismiss}>Dismiss</button> : null}
                   </div>
                 ) : null}
-                <div className={`bubble ${item.author === 'you' ? 'user' : 'agent'}${item.phase === 'acknowledgement' ? ' ack' : ''}`}>
-                  {item.text}
+                <div className={`bubble ${item.author === 'you' ? 'user' : 'agent reply'}${item.phase === 'acknowledgement' ? ' ack' : ''}`}>
+                  {/* What you typed stays exactly as typed; agent replies are Markdown. */}
+                  {item.author === 'you' ? item.text : <ReplyMarkdown text={item.text} />}
                   {item.attachments || item.workflows ? (
                     <div className={`message-clips${item.text ? '' : ' only'}`} role="list" aria-label="Sent with this message">
                       {item.attachments?.map((path) => (
@@ -168,7 +170,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
       {streaming ? (
         <section className="message">
           {streamingShowsAuthor ? <Author author={streamingAuthor} /> : null}
-          <div className="bubble agent streaming">{streaming}</div>
+          <div className="bubble agent reply streaming"><ReplyMarkdown text={streaming} /></div>
         </section>
       ) : null}
     </div>
