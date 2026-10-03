@@ -1,7 +1,7 @@
 {
   "name": "agent-cockpit",
   "productName": "Cockpit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Desktop cockpit for coding-agent CLIs (Claude Code, Codex): parallel threads, approvals, workflows.",
   "scripts": {
     "doctor": "tsx scripts/doctor.ts",
@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "smoke:claude": "tsx scripts/smoke-claude.ts",
-    "verify": "npm run typecheck && npm test && npm run build && npm run build:electron",
+    "check:paths": "tsx scripts/check-public-paths.ts",
+    "verify": "npm run check:paths && npm run typecheck && npm test && npm run build && npm run build:electron",
     "smoke:codex": "tsx scripts/smoke-codex.ts",
     "smoke:antigravity": "tsx scripts/smoke-antigravity.ts",
     "smoke:updates": "tsx scripts/smoke-updates.ts",

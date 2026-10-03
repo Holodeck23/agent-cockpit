@@ -32,6 +32,8 @@ jobs:
           git config --global user.email "ci@example.invalid"
           git config --global init.defaultBranch main
       - run: npm ci
+      - name: No absolute home paths in this public repo
+        run: npm run check:paths
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
