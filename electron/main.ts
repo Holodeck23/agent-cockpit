@@ -161,6 +161,9 @@ function createWindow(url: string): BrowserWindow {
   })
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
 
+  // Cockpit's own page never vetoes unloading. A previewed app's beforeunload must not either:
+  // it silently cancelled Quit, leaving Cockpit running with its window gone.
+  win.webContents.on('will-prevent-unload', (event) => event.preventDefault())
   win.once('ready-to-show', () => win.show())
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = undefined
@@ -328,6 +331,8 @@ app.on('before-quit', (event) => {
   const grace = new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_GRACE_MS))
   void Promise.race([server.close(), grace]).finally(() => {
     shutdownFinished = true
-    app.quit()
+    // Agents and servers are stopped: exit outright. A second app.quit() asks every window
+    // again, and anything that refuses then leaves a windowless Cockpit running.
+    app.exit(0)
   })
 })
