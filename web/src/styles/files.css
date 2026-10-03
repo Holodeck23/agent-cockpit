@@ -33,6 +33,12 @@
 .file-location .file-new { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .file-location .file-new .icon { width: 14px; height: 14px; }
 .file-location code { overflow-wrap: anywhere; }
+.file-location { flex-wrap: wrap; row-gap: 8px; }
+.file-location .file-path { order: 3; flex-basis: 100%; font-size: 12.5px; color: var(--secondary); }
+.file-nav { display: inline-flex; gap: 2px; }
+.file-location .file-nav button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--body); }
+.file-location .file-nav button:disabled { color: var(--muted); opacity: 0.55; }
+.file-nav .icon, .file-nav svg { width: 15px; height: 15px; }
 .file-new-form { display: flex; gap: 8px; margin: 0 0 12px; }
 .file-new-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--body); }
 .file-views { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); }
@@ -56,9 +62,12 @@
 .file-menu, .new-file-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 200px; }
 .menu-item.danger { color: var(--danger); }
 .file-pin { width: 14px; height: 14px; color: var(--muted); flex: none; }
-.file-rename { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+.file-rename { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
 .file-rename input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--input-border); border-radius: 6px; background: var(--panel); color: var(--strong); }
 .file-rename .button-soft { padding: 5px 10px; font-size: 12.5px; }
+.file-rename .button-soft { margin-left: 4px; }
+.file-rename input.file-rename-ext { flex: 0 0 56px; }
+.file-rename .file-rename-dot { flex: none; color: var(--muted); }
 .file-confirm { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: min(300px, 90vw); padding: 12px; border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--panel); font-size: 13px; line-height: 1.5; box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
 .file-confirm button { justify-self: end; }
 /* The menu and the name box hang from the whole location row, so they never run off a narrow sidebar. */
@@ -84,3 +93,10 @@
 .file-gutter { margin: 0; padding: 20px 10px 20px 14px; min-width: 3ch; overflow: hidden; text-align: right; font: 13px/1.7 var(--mono); color: var(--muted); background: color-mix(in srgb, var(--field) 60%, transparent); border-right: 1px solid var(--border); user-select: none; }
 .file-source .file-text { border: 0; border-radius: 0; background: none; white-space: pre; overflow: auto; padding-left: 14px; }
 .file-source .file-text:focus { box-shadow: none; }
+
+/* Hideable explorer (F7): the editor takes the whole width. */
+.files-layout.explorer-hidden { grid-template-columns: minmax(0, 1fr); }
+.file-tab-list { display: contents; }
+.file-explorer-toggle { flex: none; align-self: center; margin-right: 4px; }
+.file-explorer-toggle[aria-pressed='true'] { color: var(--body); }
+@media (max-width: 800px) { .files-layout.explorer-hidden { grid-template-columns: minmax(0, 1fr); } }

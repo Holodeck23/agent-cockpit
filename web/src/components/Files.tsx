@@ -10,12 +10,19 @@ import { FolderIcon } from './icons.tsx'
 
 type Space = 'project' | 'documents'
 const SPACE_KEY = 'cockpit:files-space'
+const EXPLORER_KEY = 'cockpit:files-explorer-hidden'
+const loadHidden = (): boolean => { try { return localStorage.getItem(EXPLORER_KEY) === '1' } catch { return false } }
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
 export function Files({ project, onAttach, reveal }: { project?: Project; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number } }) {
   const open = useOpenFiles(project?.path)
   const [space, setSpace] = useState<Space>(loadSpace)
   const [jump, setJump] = useState<Jump>()
+  const [hidden, setHidden] = useState(loadHidden)
+  const toggleExplorer = (): void => {
+    setHidden(!hidden)
+    try { localStorage.setItem(EXPLORER_KEY, hidden ? '0' : '1') } catch { /* not remembered */ }
+  }
   // A reply's file link: open the file in Project files, then select its lines.
   const { open: openPath } = open
   useEffect(() => {
@@ -35,8 +42,8 @@ export function Files({ project, onAttach, reveal }: { project?: Project; onAtta
     onRenamed: open.renamed, onTrashed: open.removed, onError: open.setError,
   }
   return (
-    <div className="files-layout">
-      <nav className="file-list" aria-label={space === 'project' ? 'Project files' : 'Your documents'}>
+    <div className={`files-layout${hidden ? ' explorer-hidden' : ''}`}>
+      <nav className="file-list" hidden={hidden} aria-label={space === 'project' ? 'Project files' : 'Your documents'}>
         <header>
           <span className="workflow-kicker">{project.name}</span>
           <h1>Files</h1>
@@ -47,7 +54,7 @@ export function Files({ project, onAttach, reveal }: { project?: Project; onAtta
           <p>{space === 'project' ? 'Edit a text file, or add it to a conversation draft.' : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
         </header>
         {space === 'project'
-          ? <FileTree {...shared} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />
+          ? <FileTree key={project.path} {...shared} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />
           : <DocumentList {...shared} onCreate={(name, kind) => open.create('', name, kind, 'documents')} />}
         <footer>Generated folders, dependencies and symbolic links are hidden. UTF-8 text files up to 100 KB can be edited.</footer>
       </nav>
@@ -65,6 +72,7 @@ export function Files({ project, onAttach, reveal }: { project?: Project; onAtta
         onSaveCopy={(path) => void open.saveCopy(path)}
         onAttach={(path) => { if (spaceOf(path).space === 'project') onAttach(`@file:${encodeURIComponent(path)}`) }}
         jump={jump}
+        explorer={{ hidden, toggle: toggleExplorer }}
       />
     </div>
   )

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type DocumentEntry, type Project } from '../api.ts'
-import { inSpace, type NewFileKind } from '../file-text.ts'
+import { inSpace, nextInFolder, type NewFileKind } from '../file-text.ts'
 import { FileRow } from './FileRow.tsx'
 import { NewFileMenu } from './NewFileMenu.tsx'
 
@@ -49,7 +49,12 @@ export function DocumentList({ project, selected, dirty, onOpen, onCreate, onRen
         return (
           <FileRow key={doc.path} projectPath={project.path} path={path} selected={selected === path} pinned={doc.pinned} dirty={dirty.has(path)}
             extra={extra} onOpen={() => onOpen(path)} onError={onError}
-            onRenamed={(to) => { onRenamed(path, to); reload() }} onTrashed={() => { onTrashed(path); reload() }} />
+            onRenamed={(to) => { onRenamed(path, to); reload() }} onTrashed={() => {
+              const next = selected === path ? nextInFolder(shown.map((d) => inSpace('documents', d.path)), path) : undefined
+              onTrashed(path)
+              reload()
+              if (next) onOpen(next)
+            }} />
         )
       })}
     </>

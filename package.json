@@ -65,6 +65,7 @@
     "proof:wave-1": "tsx scripts/proof-wave-1.ts",
     "proof:wave-2": "tsx scripts/proof-wave-2.ts",
     "proof:wave-3": "tsx scripts/proof-wave-3.ts",
+    "proof:wave-4": "tsx scripts/proof-wave-4.ts",
     "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof",
     "proof:quit": "tsx scripts/proof-quit.ts"
   },

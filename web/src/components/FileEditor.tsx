@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { fileName, isDirty, lineCount, lineRange, spaceOf, wordCount, type OpenFile } from '../file-text.ts'
 import { usePopover } from '../usePopover.ts'
-import { ChevronDownIcon, FileIcon } from './icons.tsx'
+import { ChevronDownIcon, FileIcon, SidebarIcon } from './icons.tsx'
 
 interface FileEditorProps {
   files: readonly OpenFile[]
@@ -20,6 +20,8 @@ interface FileEditorProps {
   onAttach: (path: string) => void
   /** Select these lines once the file is active (from a reply's path:line link). */
   jump?: Jump
+  /** The file explorer beside the editor, which can be hidden for more room. */
+  explorer: { readonly hidden: boolean; toggle(): void }
 }
 
 export interface Jump { readonly path: string; readonly line: number; readonly endLine?: number; readonly nonce: number }
@@ -36,7 +38,7 @@ function loadView(): MarkdownView {
   try { return localStorage.getItem(VIEW_KEY) === 'source' ? 'source' : 'document' } catch { return 'document' }
 }
 
-export function FileEditor({ files, active, error, onSelect, onClose, onCloseMany, onChange, onSave, onReload, onOverwrite, onSaveCopy, onAttach, jump }: FileEditorProps) {
+export function FileEditor({ files, active, error, onSelect, onClose, onCloseMany, onChange, onSave, onReload, onOverwrite, onSaveCopy, onAttach, jump, explorer }: FileEditorProps) {
   const [confirming, setConfirming] = useState<string>()
   const [view, setView] = useState<MarkdownView>(loadView)
   // Files the Document view declined, with its reason; they stay in Source.
@@ -69,8 +71,10 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
 
   return (
     <main className="file-preview file-editor">
-      {files.length > 0 ? (
-        <div className="file-tabs" role="tablist" aria-label="Open files">
+      <div className="file-tabs">
+        <button type="button" className="file-tabs-button file-explorer-toggle" aria-pressed={!explorer.hidden}
+          aria-label={explorer.hidden ? 'Show files' : 'Hide files'} title={explorer.hidden ? 'Show files' : 'Hide files'} onClick={explorer.toggle}><SidebarIcon /></button>
+        <div className="file-tab-list" role="tablist" aria-label="Open files">
           {files.map((f) => (
             <div key={f.path} className={`file-tab${f.path === active ? ' active' : ''}`}>
               <button type="button" role="tab" aria-selected={f.path === active} title={f.path} onClick={() => onSelect(f.path)}>
@@ -80,9 +84,9 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
               <button type="button" className="file-tab-close" aria-label={`Close ${nameOf(f.path)}`} onClick={() => requestClose(f)}>×</button>
             </div>
           ))}
-          <OpenTabsMenu files={files} active={active} onSelect={onSelect} onCloseMany={closeMany} />
         </div>
-      ) : null}
+        {files.length > 0 ? <OpenTabsMenu files={files} active={active} onSelect={onSelect} onCloseMany={closeMany} /> : null}
+      </div>
       {kept ? <div className="workflow-notice file-banner" role="status"><span>{kept}</span><button type="button" className="button-soft" onClick={() => setKept(undefined)}>OK</button></div> : null}
       {error ? <div className="workflow-notice" role="alert">{error}</div> : null}
       {file ? (

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api, type FileListing, type Project } from '../api.ts'
-import type { NewFileKind } from '../file-text.ts'
+import { nextInFolder, type NewFileKind } from '../file-text.ts'
 import { FileRow } from './FileRow.tsx'
-import { FolderIcon } from './icons.tsx'
+import { back, canGoBack, canGoForward, currentFolder, forward, parentOf, startHistory, visit } from '../folder-history.ts'
+import { ArrowUpLeftIcon, ChevronLeftIcon, ChevronRightIcon, FolderIcon, HomeIcon } from './icons.tsx'
 import { NewFileMenu } from './NewFileMenu.tsx'
 
 interface FileTreeProps {
@@ -19,7 +20,9 @@ interface FileTreeProps {
 }
 
 export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed, onTrashed, onError }: FileTreeProps) {
-  const [folder, setFolder] = useState('')
+  const [history, setHistory] = useState(startHistory)
+  const folder = currentFolder(history)
+  const setFolder = (next: string): void => setHistory((h) => visit(h, next))
   const [listing, setListing] = useState<FileListing>()
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
@@ -36,11 +39,18 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
     return () => { active = false }
   }, [project, folder, refresh])
 
+  const filePaths = listing?.entries.filter((e) => e.kind !== 'directory').map((e) => e.path) ?? []
+
   return (
     <>
       <div className="file-location">
-        <button type="button" disabled={!folder} onClick={() => setFolder(folder.split('/').slice(0, -1).join('/'))}>↑ Up</button>
-        <code>{folder || '/'}</code>
+        <div className="file-nav" role="group" aria-label="Folder navigation">
+          <button type="button" aria-label="Home" title="Project top" disabled={!folder} onClick={() => setFolder('')}><HomeIcon /></button>
+          <button type="button" aria-label="Back" title="Back" disabled={!canGoBack(history)} onClick={() => setHistory(back)}><ChevronLeftIcon /></button>
+          <button type="button" aria-label="Forward" title="Forward" disabled={!canGoForward(history)} onClick={() => setHistory(forward)}><ChevronRightIcon /></button>
+          <button type="button" aria-label="Up" title="Enclosing folder" disabled={!folder} onClick={() => setFolder(parentOf(folder))}><ArrowUpLeftIcon /></button>
+        </div>
+        <code className="file-path">{folder || '/'}</code>
         <NewFileMenu onCreate={async (name, kind) => { const ok = await onCreate(folder, name, kind); if (ok) reload(); return ok }} />
       </div>
       {!listing ? <p role="status">{error ? 'Folder unavailable' : 'Loading files…'}</p> : listing.entries.length === 0 ? <p>No files in this folder.</p> : null}
@@ -54,7 +64,13 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
         <FileRow key={entry.path} projectPath={project.path} path={entry.path} selected={selected === entry.path} dirty={dirty.has(entry.path)}
           onOpen={() => onOpen(entry.path)} onError={onError}
           onRenamed={(to) => { onRenamed(entry.path, to); reload() }}
-          onTrashed={() => { onTrashed(entry.path); reload() }} />
+          onTrashed={() => {
+            // The file you were looking at went to the Trash: show the next one in this folder.
+            const next = selected === entry.path ? nextInFolder(filePaths, entry.path) : undefined
+            onTrashed(entry.path)
+            reload()
+            if (next) onOpen(next)
+          }} />
       ))}
       {listing?.truncated ? <p>Showing the first 500 entries. Open a subfolder to narrow the list.</p> : null}
     </>

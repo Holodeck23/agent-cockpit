@@ -1,6 +1,6 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { api } from '../api.ts'
-import { fileName, spaceOf } from '../file-text.ts'
+import { fileName, joinName, spaceOf, splitName } from '../file-text.ts'
 import { native } from '../native.ts'
 import { usePopover } from '../usePopover.ts'
 import { FileIcon, MoreIcon, PinIcon } from './icons.tsx'
@@ -30,7 +30,7 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
 export function FileRow({ projectPath, path, selected, pinned, dirty, extra = [], detail, onOpen, onRenamed, onTrashed, onError }: FileRowProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   const [renaming, setRenaming] = useState(false)
-  const [name, setName] = useState(fileName(path))
+  const [name, setName] = useState(() => splitName(fileName(path)))
   const [trashing, setTrashing] = useState(false)
   const label = fileName(path)
   const { space, path: plain } = spaceOf(path)
@@ -41,16 +41,22 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
   }
   const rename = (event: FormEvent): void => {
     event.preventDefault()
-    if (name.trim() === label) { setRenaming(false); return }
-    api.renameFile(projectPath, path, name).then((to) => { setRenaming(false); onRenamed(to) }, (e: unknown) => onError(message(e)))
+    const next = joinName(name.stem, name.ext)
+    if (next === label) { setRenaming(false); return }
+    api.renameFile(projectPath, path, next).then((to) => { setRenaming(false); onRenamed(to) }, (e: unknown) => onError(message(e)))
   }
+
+  const cancelOnEscape = (e: KeyboardEvent<HTMLInputElement>): void => { if (e.key === 'Escape') { setRenaming(false); setName(splitName(label)) } }
 
   if (renaming) {
     return (
       <form className="file-row file-rename" onSubmit={rename}>
         <FileIcon />
-        <input aria-label={`New name for ${label}`} value={name} autoFocus onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Escape') { setRenaming(false); setName(label) } }} />
+        <input aria-label={`New name for ${label}`} value={name.stem} autoFocus onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setName({ ...name, stem: e.target.value })} onKeyDown={cancelOnEscape} />
+        <span className="file-rename-dot" aria-hidden>.</span>
+        <input className="file-rename-ext" aria-label={`Extension for ${label}`} value={name.ext} placeholder="ext"
+          onChange={(e) => setName({ ...name, ext: e.target.value })} onKeyDown={cancelOnEscape} />
         <button type="submit" className="button-soft">Rename</button>
       </form>
     )
@@ -69,7 +75,7 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
           <button type="button" role="menuitem" className="menu-item" onClick={() => {
             setOpen(false)
             if (dirty) onError(`Save or discard the changes to ${label} before renaming it`)
-            else { setName(label); setRenaming(true) }
+            else { setName(splitName(label)); setRenaming(true) }
           }}>Rename…</button>
           {extra.map((a) => <button key={a.label} type="button" role="menuitem" className="menu-item" onClick={() => act(a.run)}>{a.label}</button>)}
           {native ? <>
