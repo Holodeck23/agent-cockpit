@@ -121,7 +121,7 @@
 /* ---------- composer ---------- */
 .composer { padding: 6px 28px 20px; }
 .composer-card {
-  max-width: 880px; margin: 0 auto; border: 1px solid var(--border); border-radius: var(--r-lg);
+  position: relative; max-width: 880px; margin: 0 auto; border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--panel); transition: box-shadow 120ms ease, border-color 120ms ease;
 }
 .composer-card:focus-within { border-color: color-mix(in srgb, var(--link) 45%, var(--border)); box-shadow: 0 0 0 3px var(--focus-ring); }

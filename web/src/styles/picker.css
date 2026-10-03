@@ -47,3 +47,6 @@
 .preset-add { border: 1px dashed var(--border); border-radius: 999px; background: none; padding: 3px 10px; color: var(--secondary); font-size: 12.5px; }
 .preset-form { display: flex; gap: 6px; flex: 1; min-width: 0; }
 .preset-form input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 13px; }
+
+/* The inline list that opens when @ is typed in the message box (components/MentionMenu.tsx). */
+.mention-panel { left: 12px; }
