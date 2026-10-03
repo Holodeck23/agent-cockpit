@@ -1,7 +1,7 @@
 {
   "name": "agent-cockpit",
   "productName": "Cockpit",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Desktop cockpit for coding-agent CLIs (Claude Code, Codex): parallel threads, approvals, workflows.",
   "scripts": {
     "doctor": "tsx scripts/doctor.ts",
@@ -63,7 +63,8 @@
     "proof:startup": "tsx scripts/proof-startup.ts",
     "proof:updates": "tsx scripts/proof-updates.ts",
     "proof:wave-1": "tsx scripts/proof-wave-1.ts",
-    "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof"
+    "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof",
+    "proof:quit": "tsx scripts/proof-quit.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",
