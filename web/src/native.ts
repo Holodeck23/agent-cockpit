@@ -13,6 +13,8 @@ export interface CockpitBridge {
   /** A native notification; clicking it brings Cockpit forward and reports the conversation id. */
   notify(notification: { threadId: string; title: string; body: string }): void
   onOpenThread(listener: (threadId: string) => void): () => void
+  /** Whether the window is in macOS full screen; called on load and on every change. */
+  onFullScreen(listener: (fullScreen: boolean) => void): () => void
 }
 
 export const native: CockpitBridge | undefined = (window as { cockpit?: CockpitBridge }).cockpit

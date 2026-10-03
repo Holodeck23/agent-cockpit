@@ -183,6 +183,11 @@ function createWindow(url: string): BrowserWindow {
   win.on('maximize', saveSoon)
   win.on('unmaximize', saveSoon)
   win.on('close', saveState)
+  // The page drops the room it keeps for the window buttons while they are hidden.
+  const sendFullScreen = (): void => { if (!win.isDestroyed()) win.webContents.send('cockpit:full-screen', win.isFullScreen()) }
+  win.on('enter-full-screen', sendFullScreen)
+  win.on('leave-full-screen', sendFullScreen)
+  win.webContents.on('did-finish-load', sendFullScreen)
   saveWindowPlace = saveState
   win.once('ready-to-show', () => {
     if (place.maximized) win.maximize()

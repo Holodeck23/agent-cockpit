@@ -20,7 +20,7 @@
   padding: 0 10px 0 16px; background: var(--topbar); color: var(--body);
   -webkit-app-region: drag; user-select: none;
 }
-.in-app .tabbar { padding-left: 84px; } /* room for the traffic lights */
+.in-app .tabbar { padding-left: var(--traffic-clearance, 84px); } /* room for the traffic lights: window-chrome.ts */
 .tabbar button { -webkit-app-region: no-drag; }
 .tabbar-mark { align-self: center; margin-right: 6px; }
 .tabbar-spacer { flex: 1; align-self: stretch; }

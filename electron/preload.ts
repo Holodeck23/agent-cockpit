@@ -31,6 +31,11 @@ const cockpit = {
     ipcRenderer.on('cockpit:open-thread', receive)
     return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
   },
+  onFullScreen: (listener: (fullScreen: boolean) => void): (() => void) => {
+    const receive = (_event: IpcRendererEvent, value: unknown): void => { if (typeof value === 'boolean') listener(value) }
+    ipcRenderer.on('cockpit:full-screen', receive)
+    return () => ipcRenderer.removeListener('cockpit:full-screen', receive)
+  },
 }
 
 contextBridge.exposeInMainWorld('cockpit', cockpit)

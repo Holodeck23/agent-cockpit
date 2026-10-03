@@ -4,6 +4,7 @@ import { App } from './App.tsx'
 import { api, type PageMode } from './api.ts'
 import { PairPhone } from './components/PairPhone.tsx'
 import { native } from './native.ts'
+import { trackWindowChrome } from './window-chrome.ts'
 import './styles/tokens.css'
 import './styles/chrome.css'
 import './styles/list.css'
@@ -17,7 +18,10 @@ import './styles/project-settings.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root element')
-if (native) document.documentElement.classList.add('in-app')
+if (native) {
+  document.documentElement.classList.add('in-app')
+  trackWindowChrome(native)
+}
 
 // The same page runs in the Mac's window and on a paired phone. An unpaired phone
 // only gets the pairing screen; the server refuses everything else anyway.
