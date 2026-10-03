@@ -7,6 +7,8 @@ import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
 import { fileOnDisk, spaceSchema } from '../server/files/documents.ts'
 import { resolveAppPath } from './shell-path.ts'
+import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
+import { updateDialog } from './update-dialog.ts'
 import { assertLocalUrl } from '../server/http/mcp-routes.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
@@ -23,6 +25,7 @@ const isDev = !app.isPackaged
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
 let shutdownFinished = false
+const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init) })
 
 // A separate state folder is a separate cockpit: give it its own Electron profile, so
 // the single-instance lock (and window state) never collide with the installed app.
@@ -241,7 +244,40 @@ function menuTemplate(): MenuItemConstructorOptions[] {
     { type: 'separator' },
     { role: 'togglefullscreen' },
   ]
-  return [{ role: 'appMenu' }, { role: 'editMenu' }, { label: 'View', submenu: view }, { role: 'windowMenu' }]
+  // The standard macOS app menu (what role: 'appMenu' builds), plus Check for Updates….
+  const appMenu: MenuItemConstructorOptions[] = [
+    { role: 'about' },
+    { label: 'Check for Updates…', click: () => void checkForUpdates() },
+    { type: 'separator' },
+    { role: 'services' },
+    { type: 'separator' },
+    { role: 'hide' },
+    { role: 'hideOthers' },
+    { role: 'unhide' },
+    { type: 'separator' },
+    { role: 'quit' },
+  ]
+  return [{ label: app.name, submenu: appMenu }, { role: 'editMenu' }, { label: 'View', submenu: view }, { role: 'windowMenu' }]
+}
+
+/**
+ * User-initiated only. Shows the outcome natively; Download Update opens the official DMG in
+ * the browser. Replacing the app stays manual, so running agents are never stopped from here.
+ */
+async function checkForUpdates(): Promise<void> {
+  const content = updateDialog(await updates.check(app.getVersion(), UPDATE_CHANNEL))
+  const options = {
+    type: content.type,
+    message: content.message,
+    detail: content.detail,
+    buttons: [...content.buttons],
+    defaultId: 0,
+    cancelId: content.buttons.length - 1,
+    noLink: true,
+  }
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+  const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+  if (response === 0 && content.downloadUrl && isOfficialDownload(content.downloadUrl)) await shell.openExternal(content.downloadUrl)
 }
 
 // macOS convention: closing the window keeps the app (and running agents) alive;
