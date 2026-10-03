@@ -1,3 +1,5 @@
+import type { ReleaseNotes } from '../../electron/updates.ts'
+
 // Present only inside the desktop app (electron/preload.ts); undefined in a browser.
 export interface CockpitBridge {
   readonly platform: string
@@ -13,6 +15,11 @@ export interface CockpitBridge {
   /** A native notification; clicking it brings Cockpit forward and reports the conversation id. */
   notify(notification: { threadId: string; title: string; body: string }): void
   onOpenThread(listener: (threadId: string) => void): () => void
+  appVersion(): Promise<string | undefined>
+  /** This version's published notes (untrusted Markdown), from the release feed. */
+  releaseNotes(): Promise<ReleaseNotes>
+  /** Help → Release Notes was chosen. */
+  onShowReleaseNotes(listener: () => void): () => void
   /** Whether the window is in macOS full screen; called on load and on every change. */
   onFullScreen(listener: (fullScreen: boolean) => void): () => void
 }

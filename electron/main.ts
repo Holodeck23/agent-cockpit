@@ -11,6 +11,7 @@ import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updat
 import { updateDialog } from './update-dialog.ts'
 import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
 import { assertLocalUrl } from '../server/http/mcp-routes.ts'
+import { HELP, issueUrl } from '../server/help-links.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -75,21 +76,25 @@ async function boot(): Promise<void> {
   })
 }
 
-/** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
-function showPreview(url: string): void {
-  const target = assertLocalUrl(url)
+/** Sends an event to the page, reopening the window first if it was closed. */
+function sendToPage(channel: string, ...args: unknown[]): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     if (!running) return
     mainWindow = createWindow(running.url)
     const reopened = mainWindow
     reopened.webContents.once('did-finish-load', () => {
-      if (!reopened.isDestroyed()) reopened.webContents.send('cockpit:preview-open', target)
+      if (!reopened.isDestroyed()) reopened.webContents.send(channel, ...args)
     })
     return
   }
-  mainWindow.webContents.send('cockpit:preview-open', target)
+  mainWindow.webContents.send(channel, ...args)
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
+}
+
+/** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
+function showPreview(url: string): void {
+  sendToPage('cockpit:preview-open', assertLocalUrl(url))
 }
 
 /**
@@ -289,6 +294,15 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
       shell.showItemInFolder(target)
     }
   })
+  ipcMain.handle('cockpit:app-version', (event) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
+    return app.getVersion()
+  })
+  // Help → Release Notes: this version's notes from the same (cached) feed as Check for Updates.
+  ipcMain.handle('cockpit:release-notes', async (event) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return { state: 'unavailable', reason: 'Not allowed' }
+    return updates.notes(app.getVersion())
+  })
   ipcMain.handle('cockpit:pick-folder', async (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
     const options: OpenDialogOptions = { title: 'Choose a project folder', properties: ['openDirectory', 'createDirectory'] }
@@ -322,7 +336,15 @@ function menuTemplate(): MenuItemConstructorOptions[] {
     { type: 'separator' },
     { role: 'quit' },
   ]
-  return [{ label: app.name, submenu: appMenu }, { role: 'editMenu' }, { label: 'View', submenu: view }, { role: 'windowMenu' }]
+  const open = (url: string) => () => void shell.openExternal(url)
+  const help: MenuItemConstructorOptions[] = [
+    { label: 'Cockpit Guide', click: open(HELP.guide) },
+    { label: 'Release Notes', click: () => sendToPage('cockpit:show-release-notes') },
+    { label: 'Troubleshooting', click: open(HELP.troubleshooting) },
+    { type: 'separator' },
+    { label: 'Report a Problem…', click: () => void shell.openExternal(issueUrl({ version: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch })) },
+  ]
+  return [{ label: app.name, submenu: appMenu }, { role: 'editMenu' }, { label: 'View', submenu: view }, { role: 'windowMenu' }, { role: 'help', submenu: help }]
 }
 
 /**

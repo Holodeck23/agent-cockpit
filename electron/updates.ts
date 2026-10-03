@@ -78,13 +78,13 @@ function compatibleAsset(release: Release): Asset | undefined {
   })
 }
 
+// Control and bidirectional-override characters can disguise text in a native dialog.
+const stripHidden = (text: string): string => text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B-\u001F\u007F‪-‮⁦-⁩]/g, '')
+
 /** Release notes are untrusted markdown: show them as short plain text. */
 export function displayNotes(body: string | null | undefined, max: number = NOTES_MAX_CHARS): string {
   if (!body) return ''
-  const text = body
-    .replace(/\r\n?/g, '\n')
-    // Control and bidirectional-override characters can disguise text in a native dialog.
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F‪-‮⁦-⁩]/g, '')
+  const text = stripHidden(body)
     .split('\n')
     .map((line) => line.replace(/^#{1,6}\s+/, '').replace(/\*\*|__/g, ''))
     .join('\n')
@@ -94,6 +94,27 @@ export function displayNotes(body: string | null | undefined, max: number = NOTE
   const cut = text.slice(0, max)
   const lineEnd = cut.lastIndexOf('\n')
   return `${(lineEnd > max / 2 ? cut.slice(0, lineEnd) : cut).trimEnd()}…`
+}
+
+export type ReleaseNotes =
+  | { readonly state: 'found'; readonly version: string; readonly title: string; readonly markdown: string }
+  | { readonly state: 'missing'; readonly version: string }
+  | { readonly state: 'unavailable'; readonly reason: string }
+
+const FULL_NOTES_MAX_CHARS = 40_000
+
+/** The published notes for one version, as (untrusted) Markdown for the in-app Release Notes. */
+export function releaseNotesFrom(feed: unknown, version: string): ReleaseNotes {
+  const parsed = feedSchema.safeParse(feed)
+  if (!parsed.success) return { state: 'unavailable', reason: 'GitHub returned release information Cockpit could not read.' }
+  const release = parsed.data.find((r) => !r.draft && r.tag_name.replace(/^v/, '') === version)
+  if (!release) return { state: 'missing', version }
+  return {
+    state: 'found',
+    version,
+    title: release.name?.trim() || `Cockpit ${version}`,
+    markdown: stripHidden(release.body ?? '').trim().slice(0, FULL_NOTES_MAX_CHARS),
+  }
 }
 
 /** Pure decision over a release feed. A feed that cannot be read is never "up to date". */
@@ -174,7 +195,10 @@ function resetTime(response: Response): Date | undefined {
  * Fetches the feed with a timeout, a size bound and an ETag: an unchanged feed answers 304,
  * which GitHub does not count against the anonymous rate limit. Overlapping checks share one request.
  */
-export function createUpdateChecker(deps: CheckerDeps): { check(current: string, channel: UpdateChannel): Promise<UpdateCheck> } {
+export function createUpdateChecker(deps: CheckerDeps): {
+  check(current: string, channel: UpdateChannel): Promise<UpdateCheck>
+  notes(version: string): Promise<ReleaseNotes>
+} {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxBytes = deps.maxBytes ?? DEFAULT_MAX_BYTES
   let cached: { readonly etag: string; readonly data: unknown } | undefined
@@ -215,13 +239,23 @@ export function createUpdateChecker(deps: CheckerDeps): { check(current: string,
     }
   }
 
+  const readFeed = (): Promise<FeedResult> => {
+    inFlight ??= fetchFeed().finally(() => { inFlight = undefined })
+    return inFlight
+  }
+
   return {
     async check(current, channel) {
-      inFlight ??= fetchFeed().finally(() => { inFlight = undefined })
-      const feed = await inFlight
+      const feed = await readFeed()
       if (feed.kind === 'rate-limited') return { state: 'rate-limited', current, resetAt: feed.resetAt }
       if (feed.kind === 'unavailable') return { state: 'unavailable', current, reason: feed.reason }
       return selectUpdate(feed.data, current, channel)
+    },
+    async notes(version) {
+      const feed = await readFeed()
+      if (feed.kind === 'rate-limited') return { state: 'unavailable', reason: 'GitHub is limiting requests from this network. Try again in a few minutes.' }
+      if (feed.kind === 'unavailable') return { state: 'unavailable', reason: feed.reason.replace('Checking for updates', 'Loading the release notes') }
+      return releaseNotesFrom(feed.data, version)
     },
   }
 }

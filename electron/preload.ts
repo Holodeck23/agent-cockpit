@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { ReleaseNotes } from './updates.ts'
 
 // The only native surface the page gets. Everything else goes through the
 // loopback HTTP API, exactly as in the browser.
@@ -30,6 +31,13 @@ const cockpit = {
     const receive = (_event: IpcRendererEvent, id: unknown): void => { if (typeof id === 'string') listener(id) }
     ipcRenderer.on('cockpit:open-thread', receive)
     return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
+  },
+  appVersion: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:app-version') as Promise<string | undefined>,
+  releaseNotes: (): Promise<ReleaseNotes> => ipcRenderer.invoke('cockpit:release-notes') as Promise<ReleaseNotes>,
+  onShowReleaseNotes: (listener: () => void): (() => void) => {
+    const receive = (): void => listener()
+    ipcRenderer.on('cockpit:show-release-notes', receive)
+    return () => ipcRenderer.removeListener('cockpit:show-release-notes', receive)
   },
   onFullScreen: (listener: (fullScreen: boolean) => void): (() => void) => {
     const receive = (_event: IpcRendererEvent, value: unknown): void => { if (typeof value === 'boolean') listener(value) }
