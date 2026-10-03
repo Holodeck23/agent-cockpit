@@ -1,10 +1,14 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { NewProject } from './new-project.ts'
+import type { ReleaseNotes } from './updates.ts'
 
 // The only native surface the page gets. Everything else goes through the
 // loopback HTTP API, exactly as in the browser.
 const cockpit = {
   platform: process.platform,
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:pick-folder') as Promise<string | undefined>,
+  /** Native Save panel for a new project's name and location; creates the folder. */
+  newProject: (near?: string): Promise<NewProject | undefined> => ipcRenderer.invoke('cockpit:new-project', near) as Promise<NewProject | undefined>,
   /** Native chrome (traffic lights, menus) follows the page's theme choice. */
   setTheme: (mode: 'system' | 'light' | 'dark'): void => ipcRenderer.send('cockpit:set-theme', mode),
   /** Shows a thread's transcript in Finder. Only paths inside the cockpit's own thread folder are honoured. */
@@ -30,6 +34,18 @@ const cockpit = {
     const receive = (_event: IpcRendererEvent, id: unknown): void => { if (typeof id === 'string') listener(id) }
     ipcRenderer.on('cockpit:open-thread', receive)
     return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
+  },
+  appVersion: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:app-version') as Promise<string | undefined>,
+  releaseNotes: (): Promise<ReleaseNotes> => ipcRenderer.invoke('cockpit:release-notes') as Promise<ReleaseNotes>,
+  onShowReleaseNotes: (listener: () => void): (() => void) => {
+    const receive = (): void => listener()
+    ipcRenderer.on('cockpit:show-release-notes', receive)
+    return () => ipcRenderer.removeListener('cockpit:show-release-notes', receive)
+  },
+  onFullScreen: (listener: (fullScreen: boolean) => void): (() => void) => {
+    const receive = (_event: IpcRendererEvent, value: unknown): void => { if (typeof value === 'boolean') listener(value) }
+    ipcRenderer.on('cockpit:full-screen', receive)
+    return () => ipcRenderer.removeListener('cockpit:full-screen', receive)
   },
 }
 

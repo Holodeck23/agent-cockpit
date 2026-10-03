@@ -18,6 +18,17 @@
 .remove-confirm strong { color: var(--strong); font-size: 14px; }
 .remove-confirm p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--secondary); }
 
+/* Project tint (E1): the active project's colour on primary buttons, badges, the Complete
+   control and resize bars. --project-tint follows the theme (text, lines); --project-fill is
+   a shade deep enough for white text in both themes (at least the 4.2:1 of the old blue). */
+.app.tint-blue { --project-tint: var(--p-blue); --project-fill: #2878ef; }
+.app.tint-pink { --project-tint: var(--p-pink); --project-fill: #b53270; }
+.app.tint-orange { --project-tint: var(--p-orange); --project-fill: #c25a0a; }
+.app.tint-green { --project-tint: var(--p-green); --project-fill: #3b8a55; }
+.app.tint-purple { --project-tint: var(--p-purple); --project-fill: #7b5bd6; }
+.app.tint-gray { --project-tint: var(--p-gray); --project-fill: #72736d; }
+.app[class*='tint-'] { --project-fill-shadow: color-mix(in srgb, var(--project-fill) 72%, #000); }
+
 /* Tab tint: an inactive tab carries a wash of its project colour, the active one a stripe on top. */
 .tab.tint-blue { --tab-tint: var(--p-blue); }
 .tab.tint-pink { --tab-tint: var(--p-pink); }

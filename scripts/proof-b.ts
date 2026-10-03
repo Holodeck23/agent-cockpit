@@ -218,7 +218,7 @@ async function b3(): Promise<void> {
   check('follow-up placeholder while running', (await messageBox(page).getAttribute('placeholder')) === 'Add to the current turn…')
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const locked = page.getByRole('dialog', { name: 'Agent settings' })
-  check('agent switch is locked mid-turn', (await locked.getByRole('button', { name: 'Switch' }).isDisabled()) && (await locked.textContent())?.includes('Stop the current turn before switching.') === true)
+  check('agent switch is locked mid-turn', (await locked.getByRole('button', { name: /^(Switch|Apply)$/ }).isDisabled()) && (await locked.textContent())?.includes('Stop the current turn before switching.') === true)
   await page.keyboard.press('Escape')
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-working.png') })
 

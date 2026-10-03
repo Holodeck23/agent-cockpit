@@ -1,5 +1,5 @@
 .first-run { display: flex; flex-direction: column; --entry-gap: clamp(28px, 5vw, 76px); overflow: auto; }
-.first-run-bar { display: flex; align-items: center; gap: 10px; flex: 0 0 64px; padding: 0 32px 0 92px; border-bottom: 1px solid var(--border); -webkit-app-region: drag; font-family: var(--round); font-weight: 700; }
+.first-run-bar { display: flex; align-items: center; gap: 10px; flex: 0 0 64px; padding: 0 32px 0 calc(var(--traffic-clearance, 84px) + 8px); border-bottom: 1px solid var(--border); -webkit-app-region: drag; font-family: var(--round); font-weight: 700; }
 .first-run-bar > svg { width: 24px; height: 24px; color: var(--blue); }
 .first-run-bar button { margin-left: auto; -webkit-app-region: no-drag; }
 .first-run-body { width: min(1050px, 100%); margin: auto; padding: 48px 48px 72px; display: grid; grid-template-columns: 1fr 1fr; gap: var(--entry-gap); align-items: center; }

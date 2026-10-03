@@ -9,14 +9,19 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 ## Workspace & Projects
 
 -   **Toolbar Icons:** The main interface uses toolbar icons for quick access to core functions: **Projects** (folder icon), **Workflows** (play/gallery icon), **Files** (document icon), and **Settings** (gear icon).
--   **Projects:** Select projects from the Projects menu. Cockpit remembers recent folders.
--   **Tabs:** The top tabs switch projects. Files and the embedded preview open inside the workspace.
+-   **Projects:** Select projects from the Projects menu. Cockpit remembers recent folders. **New project…** asks for a name and a location in the standard macOS save panel, creates the folder and opens it; **Open folder…** opens one that already exists. New project never touches a folder that already has files.
+-   **Tabs:** The top tabs switch projects, in the order you pinned them. Files and the embedded preview open inside the workspace.
+-   **Shortcuts:** ⌘1–8 open the first eight tabs and ⌘9 the last one; ⌥⌘1–5 open Conversations, Files, Workflows, Memory and Processes. Hover a tab or section to see its shortcut.
+-   **Window:** Cockpit reopens at the size and place you left it, as long as that place is still on a screen.
 -   **Settings:** Access overarching settings for appearance and workflows.
 
 ## Agents & Settings
 
 -   **Agent Selection:** You can switch the active agent for a conversation. Wait for the current turn to stop before switching. Cockpit hands the transcript to a fresh session with the selected agent.
--   **Model & Effort:** Configure specific model usage (if left blank, Cockpit defaults to the CLI's default).
+-   **Model & Effort:** Configure specific model usage (if left blank, Cockpit defaults to the CLI's default). The effort button beside the agent changes effort in one click; in a conversation it applies from your next message and the agent's session continues.
+-   **Remembered per agent:** Switching agents in the picker brings back what each agent was last set to on this Mac. Tick **Close after choosing an agent** to close the panel on a choice.
+-   **Presets:** **Save these settings as a preset** names the current agent, model, effort and permissions; one click on the chip applies them later.
+-   **Antigravity** starts in **Bypass permissions**, because it can't pause for approval when run by Cockpit. **Configured permissions** follows Antigravity's own settings; **Plan** is read-only.
 -   **Permissions:** You can control the level of autonomy the agent has, from full manual approval to more permissive setups.
 
 ## Conversations
@@ -30,7 +35,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 ## Working with Files & Markdown
 
 -   **Documents & Editing:** Open **Files** to view, edit, and save text files in your project. You can edit Markdown files in the dedicated Markdown Document view.
--   **Attachments:** Add files to your message draft via the composer's **+** menu. Text files are limited to 100 KB, with a max of 8 attachments and 200,000 characters per prompt. Note that attachments and prompt text are sent directly to the agent (provider-bound).
+-   **Attachments:** Add files and workflows to your message draft via the composer's **+** menu, or type **@** in the message and pick from the list (↑↓, then Enter or Tab; Esc hides it). Text files are limited to 100 KB, with a max of 8 attachments and 200,000 characters per prompt. Note that attachments and prompt text are sent directly to the agent (provider-bound).
 -   **Conflicts:** Cockpit detects if a file was changed externally while you or the agent were editing it and provides conflict handling (e.g., using **Reload from disk** or **Save mine as a copy**).
 
 ## Git & Version Control
@@ -62,7 +67,8 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 ## Appearance & Sounds
 
 -   Customize theme, sounds, and the activity view via settings.
--   Cockpit integrates with the macOS Dock to show active states.
+-   Cockpit integrates with the macOS Dock to show active states. The Dock icon follows Cockpit's appearance, with a dark version in Dark.
+-   A project's colour (Project settings) tints its tab, the send and primary buttons, the working and process badges, the Complete control and resize bars.
 
 ## Phone Access
 
@@ -93,7 +99,15 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 
 -   **Check for Updates…** is in the Cockpit app menu (v0.1.3 and later). It reads the official GitHub release list, including prereleases, and only checks when you choose it.
 -   **Download Update** opens the official Apple-silicon DMG for that release in your browser. Install it by hand: finish or stop running agents, quit Cockpit, open the DMG and drag Cockpit to Applications to replace the old copy. State in `~/.agent-cockpit/` is outside the app, so conversations and settings are kept.
--   If the check fails (offline, rate-limited, or the newest release has no installer yet), Cockpit says so; a failed check never reports "up to date".
+-   If the check fails (offline, rate-limited, or the newest release has no installer yet), Cockpit says so; a failed check never reports "up to date". When GitHub can't be reached, **Troubleshooting** opens the network section of the troubleshooting guide.
+-   After you install a newer version, Cockpit says **Updated to Cockpit x** once; **What's new** shows that version's notes.
+
+## Help
+
+-   **Help → Release Notes** shows what changed in the version you're running, inside Cockpit. Notes come from the same GitHub release list as Check for Updates and are shown as plain text.
+-   **Help → Cockpit Guide** and **Troubleshooting** open these pages in your browser.
+-   **Help → Report a Problem…** opens a new GitHub issue with only your Cockpit and macOS versions filled in. Nothing else is sent; add what happened yourself.
+-   Errors that look like a network problem (an agent that can't reach its provider, a failed update check) link to [Network problems](troubleshooting.md#network-problems).
 
 ## Data, Backup, and Privacy
 

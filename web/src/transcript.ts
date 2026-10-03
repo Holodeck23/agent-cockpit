@@ -4,6 +4,7 @@
 import type { AgentId, ApprovalBehavior, WorkflowSnapshot } from '../../server/agents/types.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
+import { PERMISSION_LABEL } from './permission-labels.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 
 export type TranscriptItem =
@@ -233,6 +234,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const at = approvals.get(event.requestId)
         const card = at === undefined ? undefined : items[at]
         if (at !== undefined && card?.type === 'approval') replace(at, { ...card, resolution: event.behavior })
+        return
+      }
+      case 'settings_changed': {
+        const mode = (PERMISSION_LABEL as Record<string, string>)[event.permissionMode] ?? event.permissionMode
+        items.push({ type: 'note', key, text: `Now ${event.model ?? 'the default model'}, ${event.effort ? `${event.effort} effort` : 'default effort'}, ${mode}. Applies from your next message.`, tone: 'plain' })
         return
       }
       case 'branch_changed':

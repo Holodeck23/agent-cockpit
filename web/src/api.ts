@@ -1,4 +1,5 @@
 import type { RecoveryView, resumeRecoveryBody } from '../../server/onboarding/recovery.ts'
+import type { Preset } from '../../server/presets/store.ts'
 import type { z } from 'zod'
 export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
@@ -119,7 +120,10 @@ export const api = {
   deleteThread: (id: string) => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: {} }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
+  presets: () => request<Preset[]>('/api/presets'),
+  savePresets: (presets: readonly Preset[]) => request<Preset[]>('/api/presets', { method: 'PUT', body: { presets } }),
   dismissAwaiting: (id: string) => request<Record<string, never>>(`/api/threads/${id}/dismiss`, { method: 'POST', body: {} }),
+  changeSettings: (id: string, settings: Partial<ThreadSettings>) => request<ThreadMeta>(`/api/threads/${id}/settings`, { method: 'POST', body: { settings } }),
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
   restartProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/restart`, { method: 'POST', body: {} }),
@@ -166,3 +170,5 @@ export type { MemoryEntry } from '../../server/memory/store.ts'
 /** A session the CLI ran in this project, as the import window lists it. */
 export type ImportableSession = SessionSummary & { inCockpit: boolean }
 export type { FileMatch, ReferenceCheck } from '../../server/files/search.ts'
+
+export type { Preset }

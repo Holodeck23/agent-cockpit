@@ -1,6 +1,6 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
@@ -9,7 +9,10 @@ import { fileOnDisk, spaceSchema } from '../server/files/documents.ts'
 import { resolveAppPath } from './shell-path.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
+import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
 import { assertLocalUrl } from '../server/http/mcp-routes.ts'
+import { HELP, issueUrl } from '../server/help-links.ts'
+import { createProjectFolder, type NewProject } from './new-project.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -20,10 +23,13 @@ const CANVAS = { light: '#fafaf9', dark: '#202020' }
 // Longer than both stop ladders — agents: EOF → SIGTERM → SIGKILL (2 × 1.5s); project
 // processes: group SIGTERM → SIGKILL (3s) — so nothing hung is orphaned.
 const SHUTDOWN_GRACE_MS = 5000
+const WINDOW = { width: 1360, height: 860, minWidth: 980, minHeight: 640 }
 const isDev = !app.isPackaged
 
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
+// Quit ends with app.exit, which skips the window's close event, so it saves the place itself.
+let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
 const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init) })
 
@@ -63,6 +69,9 @@ async function boot(): Promise<void> {
     capturePreview,
   })
   writeAppPort(portFile, running.port)
+  // The Dock icon follows Cockpit's appearance (System, Light or Dark).
+  dock?.setDark(nativeTheme.shouldUseDarkColors)
+  nativeTheme.on('updated', () => dock?.setDark(nativeTheme.shouldUseDarkColors))
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
   registerIpc(running.url, join(running.store.root, 'threads'), (path) => running?.projects.list().some((p) => p.path === path) ?? false)
   mainWindow = createWindow(running.url)
@@ -71,21 +80,25 @@ async function boot(): Promise<void> {
   })
 }
 
-/** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
-function showPreview(url: string): void {
-  const target = assertLocalUrl(url)
+/** Sends an event to the page, reopening the window first if it was closed. */
+function sendToPage(channel: string, ...args: unknown[]): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     if (!running) return
     mainWindow = createWindow(running.url)
     const reopened = mainWindow
     reopened.webContents.once('did-finish-load', () => {
-      if (!reopened.isDestroyed()) reopened.webContents.send('cockpit:preview-open', target)
+      if (!reopened.isDestroyed()) reopened.webContents.send(channel, ...args)
     })
     return
   }
-  mainWindow.webContents.send('cockpit:preview-open', target)
+  mainWindow.webContents.send(channel, ...args)
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
+}
+
+/** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
+function showPreview(url: string): void {
+  sendToPage('cockpit:preview-open', assertLocalUrl(url))
 }
 
 /**
@@ -120,11 +133,13 @@ async function capturePreview(url: string): Promise<{ data: string; mimeType: 'i
 }
 
 function createWindow(url: string): BrowserWindow {
+  // In the Electron profile, so a separate COCKPIT_HOME (the proofs) keeps its own.
+  const stateFile = join(app.getPath('userData'), 'window-state.json')
+  const place = placeWindow(readWindowState(stateFile), screen.getAllDisplays().map((d) => d.workArea), WINDOW)
   const win = new BrowserWindow({
-    width: 1360,
-    height: 860,
-    minWidth: 980,
-    minHeight: 640,
+    ...place.bounds,
+    minWidth: WINDOW.minWidth,
+    minHeight: WINDOW.minHeight,
     show: false,
     title: 'Cockpit',
     titleBarStyle: 'hiddenInset',
@@ -164,7 +179,29 @@ function createWindow(url: string): BrowserWindow {
   // Cockpit's own page never vetoes unloading. A previewed app's beforeunload must not either:
   // it silently cancelled Quit, leaving Cockpit running with its window gone.
   win.webContents.on('will-prevent-unload', (event) => event.preventDefault())
-  win.once('ready-to-show', () => win.show())
+  // Normal bounds, so a maximised or full-screen window still remembers its own size.
+  let saveTimer: ReturnType<typeof setTimeout> | undefined
+  const saveState = (): void => {
+    clearTimeout(saveTimer)
+    if (win.isDestroyed()) return
+    writeWindowState(stateFile, { ...win.getNormalBounds(), maximized: win.isMaximized() })
+  }
+  const saveSoon = (): void => { clearTimeout(saveTimer); saveTimer = setTimeout(saveState, 400) }
+  win.on('resize', saveSoon)
+  win.on('move', saveSoon)
+  win.on('maximize', saveSoon)
+  win.on('unmaximize', saveSoon)
+  win.on('close', saveState)
+  // The page drops the room it keeps for the window buttons while they are hidden.
+  const sendFullScreen = (): void => { if (!win.isDestroyed()) win.webContents.send('cockpit:full-screen', win.isFullScreen()) }
+  win.on('enter-full-screen', sendFullScreen)
+  win.on('leave-full-screen', sendFullScreen)
+  win.webContents.on('did-finish-load', sendFullScreen)
+  saveWindowPlace = saveState
+  win.once('ready-to-show', () => {
+    if (place.maximized) win.maximize()
+    win.show()
+  })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = undefined
   })
@@ -174,9 +211,14 @@ function createWindow(url: string): BrowserWindow {
 
 // Calls go through app.dock each time (not a saved reference), so the proofs can watch them.
 const dockFrames = (name: string) => nativeImage.createFromPath(join(__dirname, 'dock', `${name}.png`))
+const dockLook = (dir: string) => ({
+  frames: Array.from({ length: 8 }, (_, i) => dockFrames(`${dir}frame-${i}`)).filter((image) => !image.isEmpty()),
+  rest: dockFrames(`${dir}rest`),
+})
+const darkDock = dockLook('dark/')
 const dock = process.platform === 'darwin' ? createDockActivity({
-  frames: Array.from({ length: 8 }, (_, i) => dockFrames(`frame-${i}`)).filter((image) => !image.isEmpty()),
-  rest: dockFrames('rest'),
+  ...dockLook(''),
+  dark: darkDock.rest.isEmpty() ? undefined : darkDock,
   setIcon: (image) => app.dock?.setIcon(image),
   setBadge: (text) => app.dock?.setBadge(text),
   setInterval: (run, ms) => setInterval(run, ms),
@@ -261,6 +303,34 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
       shell.showItemInFolder(target)
     }
   })
+  ipcMain.handle('cockpit:app-version', (event) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
+    return app.getVersion()
+  })
+  // Help → Release Notes: this version's notes from the same (cached) feed as Check for Updates.
+  ipcMain.handle('cockpit:release-notes', async (event) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return { state: 'unavailable', reason: 'Not allowed' }
+    return updates.notes(app.getVersion())
+  })
+  // Projects → New Project…: name and location in the native Save panel, starting beside the
+  // active project. Resolves to the new folder, an error message, or undefined if cancelled.
+  ipcMain.handle('cockpit:new-project', async (event, near: unknown): Promise<NewProject | undefined> => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
+    const location = typeof near === 'string' && isProject(near) ? dirname(near) : app.getPath('documents')
+    const options = {
+      title: 'New Project',
+      message: 'Name the project and choose where its folder goes.',
+      nameFieldLabel: 'Project name:',
+      buttonLabel: 'Create',
+      defaultPath: join(location, 'New Project'),
+      showsTagField: false,
+      properties: ['createDirectory'] as Array<'createDirectory'>,
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return undefined
+    return createProjectFolder(result.filePath)
+  })
   ipcMain.handle('cockpit:pick-folder', async (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
     const options: OpenDialogOptions = { title: 'Choose a project folder', properties: ['openDirectory', 'createDirectory'] }
@@ -294,7 +364,15 @@ function menuTemplate(): MenuItemConstructorOptions[] {
     { type: 'separator' },
     { role: 'quit' },
   ]
-  return [{ label: app.name, submenu: appMenu }, { role: 'editMenu' }, { label: 'View', submenu: view }, { role: 'windowMenu' }]
+  const open = (url: string) => () => void shell.openExternal(url)
+  const help: MenuItemConstructorOptions[] = [
+    { label: 'Cockpit Guide', click: open(HELP.guide) },
+    { label: 'Release Notes', click: () => sendToPage('cockpit:show-release-notes') },
+    { label: 'Troubleshooting', click: open(HELP.troubleshooting) },
+    { type: 'separator' },
+    { label: 'Report a Problem…', click: () => void shell.openExternal(issueUrl({ version: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch })) },
+  ]
+  return [{ label: app.name, submenu: appMenu }, { role: 'editMenu' }, { label: 'View', submenu: view }, { role: 'windowMenu' }, { role: 'help', submenu: help }]
 }
 
 /**
@@ -309,12 +387,13 @@ async function checkForUpdates(): Promise<void> {
     detail: content.detail,
     buttons: [...content.buttons],
     defaultId: 0,
-    cancelId: content.buttons.length - 1,
+    cancelId: content.helpUrl ? 0 : content.buttons.length - 1,
     noLink: true,
   }
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
   const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
   if (response === 0 && content.downloadUrl && isOfficialDownload(content.downloadUrl)) await shell.openExternal(content.downloadUrl)
+  if (response === 1 && content.helpUrl) await shell.openExternal(content.helpUrl)
 }
 
 // macOS convention: closing the window keeps the app (and running agents) alive;
@@ -325,6 +404,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', (event) => {
   dock?.stop()
+  saveWindowPlace?.()
   if (shutdownFinished || !running) return
   event.preventDefault()
   const server = running

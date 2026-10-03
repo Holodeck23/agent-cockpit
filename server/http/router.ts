@@ -21,6 +21,7 @@ import { threadSettingsSchema } from '../threads/types.ts'
 import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
+import type { PresetStore } from '../presets/store.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
@@ -76,11 +77,13 @@ export interface ApiDeps {
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
   readonly memory?: MemoryStore
+  /** Named agent settings for the picker. */
+  readonly presets?: PresetStore
   /** Where the CLIs keep their sessions (~), for Import conversations; tests point it elsewhere. */
   readonly importHome?: string
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[]) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
@@ -290,6 +293,17 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         await handleMcpRoute(req, res, url, parts, mcp)
         return true
       }
+      if (parts[1] === 'presets' && parts.length === 2 && presets) {
+        if (method === 'GET') { sendJson(res, 200, { data: presets.list() }); return true }
+        if (method !== 'PUT') throw new HttpError(404, 'Not found')
+        if (viaPhone) throw new HttpError(403, 'Presets can only be changed on the Mac')
+        const body = (await readJson(req)) as { presets?: unknown }
+        if (!Array.isArray(body?.presets)) throw new HttpError(400, 'Send { presets: [...] }')
+        try { sendJson(res, 200, { data: presets.replace(body.presets) }) } catch (error) {
+          throw new HttpError(400, error instanceof z.ZodError ? 'A preset needs a name, an agent and valid settings' : error instanceof Error ? error.message : String(error))
+        }
+        return true
+      }
       if (parts[1] === 'git') {
         await handleGitRoute(req, res, url, parts, { projects, manager }, viaPhone)
         return true
@@ -395,6 +409,9 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         await readJson(req)
         try { manager.dismissAwaiting(threadId) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
         sendJson(res, 200, { data: {} })
+      } else if (method === 'POST' && action === 'settings') {
+        const { settings } = parseBody(switchBody, await readJson(req))
+        try { sendJson(res, 200, { data: manager.changeSettings(threadId, settings) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
       } else if (method === 'POST' && action === 'agent') {
         sendJson(res, 200, { data: manager.switchAgent(threadId, parseBody(switchBody, await readJson(req)).settings) })
       } else {

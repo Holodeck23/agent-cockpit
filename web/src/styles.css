@@ -8,13 +8,13 @@ code { font-family: var(--mono); font-size: 0.86em; }
 
 .layout { position: relative; display: grid; grid-template-columns: var(--list-width, 312px) minmax(0, 1fr); min-height: 0; }
 .list-resize { position: absolute; top: 0; bottom: 0; left: calc(var(--list-width, 312px) - 4px); width: 8px; z-index: 3; cursor: col-resize; touch-action: none; }
-.list-resize:hover, .list-resize:focus-visible { outline: none; background: linear-gradient(90deg, transparent 3px, var(--halo) 3px, var(--halo) 5px, transparent 5px); }
+.list-resize:hover, .list-resize:focus-visible { outline: none; background: linear-gradient(90deg, transparent 3px, var(--project-tint, var(--halo)) 3px, var(--project-tint, var(--halo)) 5px, transparent 5px); }
 
 .button-primary {
   display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 0; border-radius: var(--r-sm);
-  background: var(--blue); color: #fff; font-weight: 600; box-shadow: 0 2px 0 var(--blue-shadow);
+  background: var(--project-fill, var(--blue)); color: #fff; font-weight: 600; box-shadow: 0 2px 0 var(--project-fill-shadow, var(--blue-shadow));
 }
-.button-primary:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--blue-shadow); }
+.button-primary:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--project-fill-shadow, var(--blue-shadow)); }
 .button-primary:disabled { background: var(--field); color: var(--muted); box-shadow: none; }
 .button-primary .icon { width: 17px; height: 17px; }
 .button-soft { padding: 7px 14px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-weight: 500; }
@@ -28,3 +28,7 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .toast button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; }
 
 /* Narrow screens (the phone) are laid out in styles/phone.css. */
+/* "Updated to Cockpit x" after an update (update-notice.ts); an error toast takes its place. */
+.toast.update-toast { align-items: center; border-color: var(--border); }
+.toast .update-toast-notes { font-size: 13px; color: var(--link); padding: 0 4px; }
+.troubleshooting-link { margin-left: 4px; color: var(--link); white-space: nowrap; }

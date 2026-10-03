@@ -45,3 +45,29 @@ export function addReference(text: string, token: string): string {
 export function removeReference(text: string, token: string): string {
   return text.replace(new RegExp(`(^|\\s)${escape(token)}(?=\\s|$)[ \\t]?`, 'g'), '$1').replace(/[ \t]+\n/g, '\n').replace(/^[ \t]+/, '')
 }
+
+/** An `@word` being typed in the draft: where its @ sits and what follows it so far. */
+export interface Mention { readonly start: number; readonly query: string }
+
+const MAX_MENTION = 80
+
+/**
+ * The @word the caret is in, if any. The @ must start a word (so mail addresses stay quiet),
+ * and a written token (`@file:…`) or a finished word is not a mention.
+ */
+export function mentionAt(text: string, caret: number): Mention | undefined {
+  const before = text.slice(0, caret)
+  const match = /(^|\s)@([^\s@:]*)$/.exec(before)
+  if (!match) return undefined
+  const query = match[2] ?? ''
+  if (query.length > MAX_MENTION) return undefined
+  return { start: caret - query.length - 1, query }
+}
+
+/** Replaces the typed @word with a reference token followed by a space; returns where the caret goes. */
+export function completeMention(text: string, mention: Mention, token: string): { text: string; caret: number } {
+  const end = mention.start + 1 + mention.query.length
+  const rest = text.slice(end)
+  const next = `${text.slice(0, mention.start)}${token}${/^\s/.test(rest) ? '' : ' '}${rest}`
+  return { text: next, caret: mention.start + token.length + 1 }
+}

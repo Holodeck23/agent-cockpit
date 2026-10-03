@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createUpdateChecker, displayNotes, isOfficialDownload, selectUpdate, type UpdateCheck } from '../electron/updates.ts'
+import { createUpdateChecker, displayNotes, isOfficialDownload, releaseNotesFrom, selectUpdate, type UpdateCheck } from '../electron/updates.ts'
 import { updateDialog } from '../electron/update-dialog.ts'
 
 const REPO = 'https://github.com/Holodeck23/agent-cockpit'
@@ -253,14 +253,38 @@ describe('updateDialog', () => {
       const dialog = updateDialog(result)
       expect(`${dialog.message} ${dialog.detail}`).not.toMatch(/you're up to date/i)
       expect(dialog.downloadUrl).toBeUndefined()
-      expect(dialog.buttons).toEqual(['OK'])
+      expect(dialog.buttons[0]).toBe('OK')
     }
     expect(updateDialog({ state: 'unavailable', current: '0.1.2', reason: 'x' }).detail).toMatch(/does not mean/i)
+  })
+
+  it('offers the network troubleshooting guide when GitHub could not be reached', () => {
+    const dialog = updateDialog({ state: 'unavailable', current: '0.1.2', reason: 'Cockpit could not reach GitHub.' })
+    expect(dialog.buttons).toEqual(['OK', 'Troubleshooting'])
+    expect(dialog.helpUrl).toBe('https://github.com/Holodeck23/agent-cockpit/blob/main/docs/user/troubleshooting.md#network-problems')
+    expect(dialog.downloadUrl).toBeUndefined()
   })
 
   it('confirms up to date with the installed version', () => {
     const dialog = updateDialog({ state: 'up-to-date', current: '0.1.2', latest: '0.1.2' })
     expect(dialog.message).toBe("You're up to date")
     expect(dialog.detail).toContain('0.1.2')
+  })
+})
+
+describe('release notes for the running version', () => {
+  it('finds this version in the feed and keeps the Markdown, minus hidden characters', () => {
+    const feed = [release('v0.1.5', { body: '# Cockpit v0.1.5\n\n- **Faster**‮ list' }), release('v0.1.4')]
+    expect(releaseNotesFrom(feed, '0.1.5')).toEqual({ state: 'found', version: '0.1.5', title: 'Cockpit v0.1.5', markdown: '# Cockpit v0.1.5\n\n- **Faster** list' })
+  })
+  it('says so when the version has no published notes, or the feed cannot be read', () => {
+    expect(releaseNotesFrom([release('v0.1.4')], '0.1.5')).toEqual({ state: 'missing', version: '0.1.5' })
+    expect(releaseNotesFrom([release('v0.1.5', { draft: true })], '0.1.5')).toEqual({ state: 'missing', version: '0.1.5' })
+    expect(releaseNotesFrom({ nope: true }, '0.1.5')).toMatchObject({ state: 'unavailable' })
+  })
+  it('is read through the same cached feed as the update check', async () => {
+    const checker = createUpdateChecker({ fetch: fakeFetch([{ status: 200, body: JSON.stringify(FEED) }]) })
+    expect(await checker.notes('0.1.1')).toMatchObject({ state: 'found', markdown: 'Notes for v0.1.1' })
+    expect(await createUpdateChecker({ fetch: fakeFetch([{ status: 500 }]) }).notes('0.1.1')).toMatchObject({ state: 'unavailable' })
   })
 })

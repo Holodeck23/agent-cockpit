@@ -55,3 +55,33 @@ describe('dock activity', () => {
     }
   })
 })
+
+describe('dark Dock icon', () => {
+  function themed() {
+    const icons: string[] = []
+    let tick: (() => void) | undefined
+    const dock = createDockActivity({
+      frames: ['f0', 'f1'], rest: 'rest', dark: { frames: ['d0', 'd1'], rest: 'drest' },
+      setIcon: (image) => icons.push(image), setBadge: () => {},
+      setInterval: (run) => { tick = run; return 1 }, clearInterval: () => { tick = undefined },
+    })
+    return { dock, icons, tick: () => tick?.() }
+  }
+  it('switches the resting icon with the theme, once per change', () => {
+    const h = themed()
+    h.dock.setDark(false)
+    expect(h.icons).toEqual([])
+    h.dock.setDark(true)
+    h.dock.setDark(true)
+    h.dock.setDark(false)
+    expect(h.icons).toEqual(['drest', 'rest'])
+  })
+  it('keeps animating in the new look and rests in it', () => {
+    const h = themed()
+    h.dock.update({ working: 1, needs: 0 })
+    h.dock.setDark(true)
+    h.tick()
+    h.dock.update({ working: 0, needs: 0 })
+    expect(h.icons).toEqual(['f0', 'd1', 'drest'])
+  })
+})

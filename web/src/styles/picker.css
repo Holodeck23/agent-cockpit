@@ -26,5 +26,27 @@
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* Four agents side by side; "Unavailable" sits under the name so each fits its quarter. */
 .picker-panel .segmented[aria-label='Agent'] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.picker-panel .segmented[aria-label='Agent'] button { flex-wrap: wrap; row-gap: 0; padding: 7px 4px; }
+.picker-panel .segmented[aria-label='Agent'] button { flex-direction: column; gap: 3px; padding: 7px 4px; text-align: center; line-height: 1.2; }
 .picker-panel .segmented[aria-label='Agent'] .agent-missing { flex-basis: 100%; text-align: center; font-size: 10.5px; line-height: 1.3; }
+
+/* The agent picker and its one-click effort button sit together in the composer. */
+.picker-group { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.effort-button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--secondary); font-size: 12.5px; }
+.effort-button:hover:not(:disabled), .effort-button[aria-expanded='true'] { background: var(--field); color: var(--strong); }
+.effort-button:disabled { opacity: 0.5; }
+.effort-button .chevron { width: 12px; height: 12px; }
+.effort-menu { position: absolute; left: 0; right: auto; top: auto; bottom: calc(100% + 8px); z-index: 25; width: auto; min-width: 140px; }
+.picker-close-after { margin-top: 2px; font-size: 12.5px; color: var(--secondary); }
+
+/* Presets: named agent settings at the top of the agent panel. */
+.presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.preset-chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--field); }
+.preset-chip.active { border-color: var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 12%, var(--panel)); }
+.preset-chip > button { border: 0; background: none; padding: 3px 4px 3px 10px; color: var(--strong); font-size: 12.5px; }
+.preset-chip > .preset-remove { padding: 3px 8px 3px 4px; color: var(--muted); }
+.preset-add { border: 1px dashed var(--border); border-radius: 999px; background: none; padding: 3px 10px; color: var(--secondary); font-size: 12.5px; }
+.preset-form { display: flex; gap: 6px; flex: 1; min-width: 0; }
+.preset-form input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 13px; }
+
+/* The inline list that opens when @ is typed in the message box (components/MentionMenu.tsx). */
+.mention-panel { left: 12px; }

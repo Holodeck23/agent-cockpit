@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { EFFORTS, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
-import { api, type AgentStatus, type ThreadSettings } from '../api.ts'
+import { api, type AgentStatus, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
+import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
+import { focusComposer } from '../focus-composer.ts'
+import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
@@ -25,14 +28,7 @@ const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
   opencode: ['openrouter/anthropic/claude-sonnet-4', 'openrouter/openai/gpt-4o', 'openrouter/google/gemini-2.5-pro'],
 }
 
-export const PERMISSION_LABEL: Record<ThreadSettings['permissionMode'], string> = {
-  manual: 'Ask before acting',
-  acceptEdits: 'Edit files without asking',
-  plan: 'Plan only, no changes',
-  auto: 'Auto',
-  dontAsk: 'Never ask',
-  bypassPermissions: 'Bypass all permissions',
-}
+export { PERMISSION_LABEL } from '../permission-labels.ts'
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
 
@@ -86,25 +82,63 @@ interface AgentPickerProps {
   value: AgentChoice
   /** New conversation: every change applies at once. */
   onChange?: (choice: AgentChoice) => void
-  /** Existing conversation: changes apply when "Switch" is pressed (the transcript goes along). */
+  /** Existing conversation, another agent: applies on "Switch" (the transcript goes along). */
   onSwitch?: (choice: AgentChoice) => void
-  /** Why switching is unavailable right now, e.g. while a turn runs. */
+  /** Existing conversation, same agent: applies on "Apply"; the agent's session continues. */
+  onApply?: (choice: AgentChoice) => void
+  /** Why changing is unavailable right now, e.g. while a turn runs. */
   lockedReason?: string
 }
 
-export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPickerProps) {
-  const { open, setOpen, ref } = usePopover<HTMLDivElement>()
+const CLOSE_KEY = 'cockpit:picker-close-after'
+const readCloseAfter = (): boolean => { try { return localStorage.getItem(CLOSE_KEY) === 'true' } catch { return false } }
+
+/** One click to the agent's effort, beside the picker (OpenCode has no effort setting). */
+function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disabled?: string; onPick: (effort: string) => void }) {
+  const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
+  if (value.agent === 'opencode') return null
+  const label = value.effort ? capitalize(value.effort) : 'Default'
+  return (
+    <div className="picker effort-picker" ref={ref}>
+      <button type="button" className="effort-button" aria-label={`Effort: ${label}`} aria-expanded={open} title={disabled ?? 'Effort'} disabled={disabled !== undefined} onClick={() => setOpen(!open)}>
+        {label}
+        <ChevronDownIcon className="chevron" />
+      </button>
+      {open ? (
+        <div className="menu effort-menu" role="menu" aria-label="Effort">
+          {['', ...EFFORTS].map((effort) => (
+            <button key={effort || 'default'} type="button" role="menuitemradio" aria-checked={value.effort === effort} className="menu-item"
+              onClick={() => { onPick(effort); setOpen(false); focusComposer(ref.current) }}>
+              {effort ? capitalize(effort) : 'Default'}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }: AgentPickerProps) {
+  const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
+  const existing = onSwitch !== undefined || onApply !== undefined
   const [draft, setDraft] = useState<AgentChoice>(value)
-  const current = onSwitch ? draft : value
+  const current = existing ? draft : value
   const changed = JSON.stringify(draft) !== JSON.stringify(value)
+  const sameAgent = draft.agent === value.agent
   const [statuses, setStatuses] = useState<AgentStatus[] | undefined>(undefined)
   const [loading, setLoading] = useState(false)
+  const [memory, setMemory] = useState<AgentMemory>(loadMemory)
+  const [closeAfter, setCloseAfter] = useState(readCloseAfter)
+  const [presets, setPresets] = useState<Preset[]>([])
+  const [naming, setNaming] = useState<string | undefined>(undefined)
+  const [presetError, setPresetError] = useState('')
 
   // Checked each time the panel opens: cheap, and never polled in the background.
   useEffect(() => {
     if (!open) return
     let current = true
     setLoading(true)
+    api.presets().then((rows) => { if (current) setPresets(rows) }, () => { if (current) setPresets([]) })
     api.agents()
       .then((next) => { if (current) setStatuses(next) })
       .catch(() => { if (current) setStatuses(undefined) })
@@ -112,101 +146,168 @@ export function AgentPicker({ value, onChange, onSwitch, lockedReason }: AgentPi
     return () => { current = false }
   }, [open])
 
-  const set = (patch: Partial<AgentChoice>): void => {
-    const next = { ...current, ...patch }
-    if (onSwitch) setDraft(next)
+  const set = (next: AgentChoice): void => {
+    const remembered = remember(memory, next)
+    setMemory(remembered)
+    saveMemory(remembered)
+    if (existing) setDraft(next)
     else onChange?.(next)
   }
+  const patch = (change: Partial<AgentChoice>): void => set({ ...current, ...change })
+  const close = (): void => { setOpen(false); focusComposer(ref.current) }
+
+  // Named settings: one click applies them (in a conversation, Apply/Switch still confirms).
+  const savePresets = (next: Preset[]): void => {
+    api.savePresets(next).then((saved) => { setPresets(saved); setPresetError(''); setNaming(undefined) },
+      (e: unknown) => setPresetError(e instanceof Error ? e.message : String(e)))
+  }
+  const savePreset = (): void => savePresets([...presets, { name: (naming ?? '').trim(), ...current, effort: current.effort as Preset['effort'] }])
+  const matches = (p: Preset): boolean => p.agent === current.agent && p.model === current.model && p.effort === current.effort && p.permissionMode === current.permissionMode
 
   const toggle = (): void => {
     if (!open) setDraft(value)
     setOpen(!open)
   }
 
+  // Effort beside the picker applies at once: in a new conversation directly, in an existing one
+  // as a same-agent settings change (the agent's session continues).
+  const pickEffort = (effort: string): void => {
+    const next = { ...value, effort }
+    set(next)
+    if (existing) onApply?.(next)
+  }
+
   return (
-    <div className="picker" ref={ref}>
-      <button type="button" className="picker-button" aria-label="Agent settings" aria-expanded={open} onClick={toggle}>
-        <AgentGlyph author={value.agent} />
-        <span className="picker-text">
-          <span className="picker-name">{agentName(value.agent)}</span>
-          <span className="picker-sub">{choiceSummary(value)}</span>
-        </span>
-        <ChevronDownIcon className="chevron" />
-      </button>
-      {open ? (
-        <div className="picker-panel" role="dialog" aria-label="Agent settings">
-          <div className="segmented" role="radiogroup" aria-label="Agent">
-            {(['claude', 'codex', 'antigravity', 'opencode'] as const).map((agent) => (
-              <button
-                key={agent}
-                type="button"
-                role="radio"
-                aria-checked={current.agent === agent}
-                onClick={() => set({ agent, model: agent === current.agent ? current.model : '' })}
-              >
-                <AgentGlyph author={agent} />
-                {agentName(agent)}
-                {statuses?.find((s) => s.id === agent)?.installation.installed === false ? <span className="agent-missing">Unavailable</span> : null}
-              </button>
-            ))}
-          </div>
-          <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
-          <label className="field">
-            Model
-            <input
-              list={`models-${current.agent}`}
-              value={current.model}
-              placeholder="Default model"
-              onChange={(e) => set({ model: e.target.value.trim() })}
-            />
-            <datalist id={`models-${current.agent}`}>
-              {MODEL_SUGGESTIONS[current.agent].map((m) => (
-                <option key={m} value={m} />
+    <div className="picker-group">
+      <div className="picker" ref={ref}>
+        <button type="button" className="picker-button" aria-label="Agent settings" aria-expanded={open} onClick={toggle}>
+          <AgentGlyph author={value.agent} />
+          <span className="picker-text">
+            <span className="picker-name">{agentName(value.agent)}</span>
+            <span className="picker-sub">{choiceSummary(value)}</span>
+          </span>
+          <ChevronDownIcon className="chevron" />
+        </button>
+        {open ? (
+          <div className="picker-panel" role="dialog" aria-label="Agent settings">
+            <div className="presets" role="group" aria-label="Presets">
+              {presets.map((preset) => (
+                <span key={preset.name} className={`preset-chip${matches(preset) ? ' active' : ''}`}>
+                  <button type="button" aria-pressed={matches(preset)} title={`${agentName(preset.agent)} · ${choiceSummary(preset)} · ${permissionLabel(preset.agent, preset.permissionMode)}`}
+                    onClick={() => { set({ agent: preset.agent, model: preset.model, effort: preset.effort, permissionMode: preset.permissionMode }); if (closeAfter && !existing) close() }}>
+                    {preset.name}
+                  </button>
+                  <button type="button" className="preset-remove" aria-label={`Remove preset ${preset.name}`} onClick={() => savePresets(presets.filter((p) => p !== preset))}>×</button>
+                </span>
               ))}
-            </datalist>
-          </label>
-          <label className="field">
-            Effort
-            <select value={current.effort} onChange={(e) => set({ effort: e.target.value })}>
-              <option value="">Default</option>
-              {EFFORTS.map((effort) => (
-                <option key={effort} value={effort}>
-                  {capitalize(effort)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Permissions
-            <select value={current.permissionMode} onChange={(e) => set({ permissionMode: e.target.value as AgentChoice['permissionMode'] })}>
-              {PERMISSION_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {PERMISSION_LABEL[mode]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {current.agent === 'antigravity' && current.permissionMode === 'manual' ? (
-            <p className="picker-note">Antigravity headless cannot pause for approval: workspace edits proceed, while shell commands that need approval are denied.</p>
-          ) : null}
-          {onSwitch ? (
-            <div className="picker-foot">
-              <span className="picker-note">{lockedReason ?? 'The conversation so far goes to the new agent.'}</span>
-              <button
-                type="button"
-                className="button-primary"
-                disabled={!changed || lockedReason !== undefined}
-                onClick={() => {
-                  onSwitch(draft)
-                  setOpen(false)
-                }}
-              >
-                Switch
-              </button>
+              {naming === undefined ? (
+                <button type="button" className="preset-add" onClick={() => { setNaming(''); setPresetError('') }}>{presets.length ? '+ Save as preset' : 'Save these settings as a preset'}</button>
+              ) : (
+                // Not a <form>: the panel sits inside the composer's form, and a nested form's Save
+                // submitted the page natively (a reload) instead of saving.
+                <div className="preset-form">
+                  <input aria-label="Preset name" placeholder="Name, e.g. Quick fix" maxLength={40} value={naming} autoFocus onChange={(e) => setNaming(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); if (naming.trim()) savePreset() } }} />
+                  <button type="button" className="button-soft" disabled={!naming.trim()} onClick={savePreset}>Save</button>
+                </div>
+              )}
+              {presetError ? <p className="picker-note" role="alert">{presetError}</p> : null}
             </div>
-          ) : null}
-        </div>
-      ) : null}
+            <div className="segmented" role="radiogroup" aria-label="Agent">
+              {(['claude', 'codex', 'antigravity', 'opencode'] as const).map((agent) => (
+                <button
+                  key={agent}
+                  type="button"
+                  role="radio"
+                  aria-checked={current.agent === agent}
+                  onClick={() => {
+                    // Switching back to an agent restores what it was last set to on this Mac.
+                    set(agent === current.agent ? current : recall(memory, agent))
+                    if (closeAfter && !existing) close()
+                  }}
+                >
+                  <AgentGlyph author={agent} />
+                  <span>{agentName(agent)}</span>
+                  {statuses?.find((s) => s.id === agent)?.installation.installed === false ? <span className="agent-missing">Unavailable</span> : null}
+                </button>
+              ))}
+            </div>
+            <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
+            <label className="field">
+              Model
+              <input
+                list={`models-${current.agent}`}
+                value={current.model}
+                placeholder="Default model"
+                onChange={(e) => patch({ model: e.target.value.trim() })}
+              />
+              <datalist id={`models-${current.agent}`}>
+                {MODEL_SUGGESTIONS[current.agent].map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </label>
+            {current.agent === 'opencode' ? null : (
+              <label className="field">
+                Effort
+                <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
+                  <option value="">Default</option>
+                  {EFFORTS.map((effort) => (
+                    <option key={effort} value={effort}>
+                      {capitalize(effort)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="field">
+              Permissions
+              <select value={current.permissionMode} onChange={(e) => patch({ permissionMode: e.target.value as AgentChoice['permissionMode'] })}>
+                {permissionModesFor(current.agent).map((mode) => (
+                  <option key={mode} value={mode}>
+                    {permissionLabel(current.agent, mode)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {current.agent === 'antigravity' ? (
+              <p className="picker-note">
+                {current.permissionMode === 'manual'
+                  ? 'Follows your Antigravity settings. Antigravity cannot pause for approval: workspace edits proceed, commands that would need one are denied.'
+                  : current.permissionMode === 'bypassPermissions'
+                    ? 'Antigravity cannot pause for approval, so it runs without asking. Use Plan for read-only work.'
+                    : 'Read-only: Antigravity plans and makes no changes.'}
+              </p>
+            ) : null}
+            {existing ? (
+              <div className="picker-foot">
+                <span className="picker-note">{lockedReason ?? (sameAgent ? 'Applies from your next message; the session continues.' : 'The conversation so far goes to the new agent.')}</span>
+                <button
+                  type="button"
+                  className="button-primary"
+                  disabled={!changed || lockedReason !== undefined}
+                  onClick={() => {
+                    if (sameAgent) onApply?.(draft)
+                    else onSwitch?.(draft)
+                    close()
+                  }}
+                >
+                  {sameAgent ? 'Apply' : 'Switch'}
+                </button>
+              </div>
+            ) : (
+              <label className="check picker-close-after">
+                <input type="checkbox" checked={closeAfter} onChange={(e) => {
+                  setCloseAfter(e.target.checked)
+                  try { localStorage.setItem(CLOSE_KEY, String(e.target.checked)) } catch { /* preference only */ }
+                }} />
+                <span>Close after choosing an agent</span>
+              </label>
+            )}
+          </div>
+        ) : null}
+      </div>
+      <EffortButton value={value} disabled={existing ? lockedReason : undefined} onPick={pickEffort} />
     </div>
   )
 }

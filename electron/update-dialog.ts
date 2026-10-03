@@ -1,5 +1,6 @@
 // The words shown for each update-check outcome. Kept apart from Electron so every outcome
 // can be tested; a failed check must never read as "up to date".
+import { HELP } from '../server/help-links.ts'
 import type { UpdateCheck } from './updates.ts'
 
 export interface UpdateDialog {
@@ -9,6 +10,8 @@ export interface UpdateDialog {
   readonly buttons: readonly string[]
   /** Set only when the first button downloads; the caller re-validates it before opening. */
   readonly downloadUrl?: string
+  /** Set when the second button opens this troubleshooting page; Escape stays on OK. */
+  readonly helpUrl?: string
 }
 
 const NOT_UP_TO_DATE = 'This does not mean Cockpit is up to date.'
@@ -63,7 +66,8 @@ export function updateDialog(result: UpdateCheck): UpdateDialog {
         type: 'warning',
         message: "Couldn't check for updates",
         detail: `${result.reason} ${NOT_UP_TO_DATE}`,
-        buttons: ['OK'],
+        buttons: ['OK', 'Troubleshooting'],
+        helpUrl: HELP.network,
       }
   }
 }

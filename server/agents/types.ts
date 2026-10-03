@@ -26,6 +26,8 @@ export type NormalizedEvent =
   | { kind: 'awaiting_dismissed' }
   /** Another conversation (or Cockpit) switched the project's branch; `byTitle` names that conversation. */
   | { kind: 'branch_changed'; from: string; to: string; byTitle?: string }
+  /** Same agent, new model/effort/permissions; the native session continues from the next message. */
+  | { kind: 'settings_changed'; model?: string; effort?: string; permissionMode: string }
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }

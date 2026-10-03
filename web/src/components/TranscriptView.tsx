@@ -5,6 +5,7 @@ import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { CopyButton } from './CopyButton.tsx'
 import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
+import { TroubleshootingLink } from './TroubleshootingLink.tsx'
 
 interface TranscriptViewProps {
   items: TranscriptItem[]
@@ -157,6 +158,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
             return (
               <div key={item.key} className={`note meta-line${item.tone === 'error' ? ' note-error' : ''}`}>
                 {item.text}
+                {item.tone === 'error' ? <TroubleshootingLink text={item.text} /> : null}
               </div>
             )
           default:

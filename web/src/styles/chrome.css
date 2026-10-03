@@ -20,7 +20,7 @@
   padding: 0 10px 0 16px; background: var(--topbar); color: var(--body);
   -webkit-app-region: drag; user-select: none;
 }
-.in-app .tabbar { padding-left: 84px; } /* room for the traffic lights */
+.in-app .tabbar { padding-left: var(--traffic-clearance, 84px); } /* room for the traffic lights: window-chrome.ts */
 .tabbar button { -webkit-app-region: no-drag; }
 .tabbar-mark { align-self: center; margin-right: 6px; }
 .tabbar-spacer { flex: 1; align-self: stretch; }
@@ -35,7 +35,7 @@
 .tab.active .tab-main { color: var(--strong); font-weight: 500; }
 .tab:not(.active) .tab-main:hover { color: var(--body); background: color-mix(in srgb, var(--strong) 6%, transparent); }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
-.tab-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--body); }
+.tab-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--tab-tint, var(--body)); }
 .tab-needs { position: relative; display: inline-flex; color: var(--muted); }
 .tab-needs .icon { width: 20px; height: 20px; }
 .count-dot {
@@ -49,7 +49,7 @@
   background: var(--field); border: 0; border-radius: var(--r-sm); color: var(--muted); cursor: default;
 }
 .tab-pin .icon { width: 15px; height: 15px; }
-.tab-pin.pinned { color: var(--strong); }
+.tab-pin.pinned { color: var(--tab-tint, var(--strong)); }
 .tab-pin:hover { color: var(--strong); }
 
 .avatar {
@@ -104,7 +104,7 @@
 .subnav-item .icon { width: 17px; height: 17px; }
 .subnav-item[aria-selected='true'] { background: var(--subnav-active); color: var(--strong); font-weight: 500; }
 .subnav-item:not([aria-selected='true']):hover { color: var(--strong); }
-.subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
+.subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--project-tint, inherit); }
 .subnav-tools { display: flex; gap: 4px; }
 .icon-button {
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: none; border: 0;
@@ -138,3 +138,13 @@ button:focus-visible, [role='tab']:focus-visible { outline: 2px solid var(--blue
 .modal-error { margin: 0; font-size: 13px; color: var(--danger); }
 .modal-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .modal-count { flex: 1; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Help → Release Notes and the "Updated to" view (components/ReleaseNotes.tsx). */
+.release-notes { width: min(620px, 100%); }
+.release-notes-body { max-height: min(60vh, 560px); overflow: auto; font-size: 14px; line-height: 1.55; color: var(--body); }
+.release-notes-body h3 { margin: 4px 0 8px; font-size: 16px; color: var(--strong); }
+.release-notes-body h4 { margin: 16px 0 6px; font-size: 13px; letter-spacing: 0.02em; color: var(--strong); }
+.release-notes-body p { margin: 0 0 10px; }
+.release-notes-body ul { margin: 0 0 10px; padding-left: 20px; }
+.release-notes-body li { margin: 3px 0; }
+.release-notes-body code { font: 12.5px var(--mono); padding: 1px 4px; border-radius: 4px; background: var(--field); }

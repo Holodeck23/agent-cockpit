@@ -26,6 +26,14 @@ export function ProjectsMenu({ projects, onImported }: ProjectsMenuProps) {
     void projects.open(path)
   }
 
+  const newProject = async (): Promise<void> => {
+    setOpen(false)
+    const created = await native?.newProject(active?.path)
+    if (!created) return
+    if ('error' in created) projects.reportError(created.error)
+    else void projects.open(created.path)
+  }
+
   const pickFolder = async (): Promise<void> => {
     const path = await native?.pickFolder()
     if (path) openPath(path)
@@ -49,10 +57,16 @@ export function ProjectsMenu({ projects, onImported }: ProjectsMenuProps) {
       {open ? (
         <div className="menu" role="menu" aria-label="Projects">
           {native ? (
-            <button type="button" role="menuitem" className="menu-item" onClick={() => void pickFolder()}>
-              <PlusIcon />
-              Open folder…
-            </button>
+            <>
+              <button type="button" role="menuitem" className="menu-item" onClick={() => void newProject()}>
+                <PlusIcon />
+                New project…
+              </button>
+              <button type="button" role="menuitem" className="menu-item" onClick={() => void pickFolder()}>
+                <FolderIcon />
+                Open folder…
+              </button>
+            </>
           ) : (
             <form className="menu-path" onSubmit={submitTyped}>
               <input

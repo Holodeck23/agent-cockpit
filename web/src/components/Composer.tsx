@@ -3,6 +3,7 @@ import { MAX_ATTACHED_FILES } from '../../../server/files/references.ts'
 import { addReference, referencesIn, removeReference, tokenFor } from '../draft-references.ts'
 import { BranchPicker } from './BranchPicker.tsx'
 import { ContextPicker } from './ContextPicker.tsx'
+import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
 import { ArrowUpIcon } from './icons.tsx'
 
@@ -52,6 +53,9 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
+  // Where the caret is while the box has focus; drives the inline @ list.
+  const [caret, setCaret] = useState<number>()
+  const pendingCaret = useRef<number | undefined>(undefined)
   const box = useRef<HTMLTextAreaElement>(null)
   const appliedDraft = useRef<string | undefined>(undefined)
 
@@ -78,6 +82,11 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`
+    if (pendingCaret.current !== undefined) {
+      el.setSelectionRange(pendingCaret.current, pendingCaret.current)
+      setCaret(pendingCaret.current)
+      pendingCaret.current = undefined
+    }
   }, [text])
 
   const update = (value: string): void => {
@@ -103,18 +112,25 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     }
   }
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event)
-  }
-
   const references = referencesIn(text)
   const attached = new Set(references.map((r) => tokenFor(r.kind, r.reference)))
   const filesAttached = references.filter((r) => r.kind === 'file').reduce((n, r) => n + r.count, 0)
+  const filesFull = filesAttached >= MAX_ATTACHED_FILES
+  const mentions = useMentionMenu({
+    projectPath, text, caret, attached, filesFull,
+    onComplete: (next, at) => { pendingCaret.current = at; update(next) },
+  })
+
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (mentions.onKeyDown(event)) return
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) void submit(event)
+  }
 
   return (
     <form className="composer" onSubmit={(e) => void submit(e)}>
       {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
       <div className="composer-card">
+        {mentions.menu}
         <ReferenceChips projectPath={projectPath} text={text} onRemove={(token) => { update(removeReference(text, token)); box.current?.focus() }} />
         <div className="composer-top">
           <textarea
@@ -125,13 +141,16 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             rows={1}
             {...NO_WRITING_SUGGESTIONS}
             disabled={disabled}
-            onChange={(e) => update(e.target.value)}
+            onChange={(e) => { update(e.target.value); setCaret(e.target.selectionStart) }}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+            onFocus={(e) => setCaret(e.currentTarget.selectionStart)}
+            onBlur={() => setCaret(undefined)}
             onKeyDown={onKeyDown}
           />
         </div>
         <div className="composer-foot">
           {projectPath ? (
-            <ContextPicker projectPath={projectPath} attached={attached} filesFull={filesAttached >= MAX_ATTACHED_FILES}
+            <ContextPicker projectPath={projectPath} attached={attached} filesFull={filesFull}
               onBrowseFiles={onBrowseFiles} onPick={(token) => { update(addReference(text, token)); box.current?.focus() }} />
           ) : null}
           {picker}
