@@ -28,6 +28,11 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 
 -   **Starting & Managing:** Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.
 -   **Follow-ups:** Reply to ongoing threads or answer agent questions.
+-   **Replies:** Agent replies show as formatted text: headings, lists, tables, code. Web links open in your browser; raw HTML in a reply shows as text and images are never loaded (you see their description). Your own messages stay exactly as you typed them.
+-   **File and commit links:** `src/app.ts:42` in a reply opens Files with that line selected (ranges like `:10-20` too). A commit hash opens the commit on GitHub, GitLab or Bitbucket when the project's `origin` is there; otherwise it copies the hash. Agents are asked to name their commits by short hash.
+-   **Find:** ⌘F highlights matches in the open conversation and lists the matching messages under the bar; click one to jump to it.
+-   **Search:** The list's search looks through every message, not just titles, and includes completed conversations while you search.
+-   **Peek:** Hover a file or workflow clip on a sent message to see inside it; **Open in Files** opens the file.
 -   **Status States:** A conversation can be Working, Ready, Error, or "Needs you" (waiting for your approval or input).
 -   **Stop vs. Complete vs. Delete:** You can Stop an active turn. Note that stopping *requests* an interruption—it does not promise force-detaching the agent or stopping active dev servers immediately. You can mark a conversation complete when done. Deleting removes the thread permanently from your `~/.agent-cockpit/` history.
 -   **Imports:** The Projects menu can import Claude Code and Codex sessions belonging to the selected folder; the next message resumes the original CLI session. Recent work now appears automatically when opening a project. It reuses an existing Cockpit conversation or imports the selected session, and treats branch/files as current disk state.
