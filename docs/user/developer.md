@@ -1,6 +1,6 @@
 # Developer Guide
 
-> **v0.1.2 prerelease (2026-10-03).** This guide covers the updated tester build. Same-Mac acceptance passed on a second account; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide is for developers looking to build, test, and package Agent Cockpit locally.
 
@@ -36,7 +36,7 @@ Ensure you have Node.js and `npm` installed. Run `npm ci` in the repository firs
 | `npm run dev:server` | Starts the backend server with hot-reload via `tsx watch`. |
 | `npm run dev:web` | Starts the Vite dev server for the React frontend. |
 | `npm run app` | Builds the project and opens the Electron desktop app locally. |
-| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.2-arm64.dmg`. |
+| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.3-arm64.dmg`. |
 
 ## Testing and Proofs
 
@@ -63,3 +63,14 @@ These tests perform real multi-turn runs that resume across processes, consuming
 *   `npm run smoke:mcp [claude|codex]`
 
 *Note: The packaged file/process checks use Codex's configured model or default development model. Always verify your account limits before running live or paid proofs.*
+
+## Releasing
+
+Releases are Apple-silicon prereleases on GitHub, announced by the landing page and offered by **Check for Updates**. `scripts/release.ts` runs them in four stages. Each stage checks its own preconditions, so a failed stage can be re-run on its own.
+
+1. `npm run release -- prepare 0.1.4` on the branch being released: bumps `package.json`/`package-lock.json` and every release link in the README and landing page, then lists lines that still name the old version. Rewrite those that describe the release, leave those that are history ("v0.1.3 and later include…"), then commit `release: prepare v0.1.4`.
+2. Merge to `main`, then `npm run release -- build 0.1.4`: `verify`, the landing checks, packaging into `release/v0.1.4/` (never `release/mac-arm64/`, which may be the copy you are running), `SHA256SUMS`, an install from a read-only mount into an isolated folder (version, signature, `app.asar` match) and the startup and recovery proofs on that installed copy. No provider usage. If the DMG size on the landing page changed, commit that line.
+3. `npm run release -- publish 0.1.4 --notes <file>` from a clean `main` equal to `origin/main`: creates the GitHub prerelease with the DMG and `SHA256SUMS` and checks the uploaded asset's size and digest.
+4. `npm run release -- deploy 0.1.4`: deploys `landing/` to Vercel, checks the live page and confirms the live update feed offers the new version.
+
+Logs and screenshots go to `release/v<version>/evidence/` unless `--evidence <dir>` is given.

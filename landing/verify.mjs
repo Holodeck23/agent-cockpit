@@ -1,11 +1,15 @@
 // Deterministic landing-page checks. No agents, app state, or downloads are invoked.
 import assert from 'node:assert/strict'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright-core'
 
 const pageFile = fileURLToPath(new URL('./index.html', import.meta.url))
+// The page must advertise the version being released (package.json), not a hard-coded one.
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const escaped = version.replace(/\./g, '\\.')
+const downloadHref = new RegExp(`releases/download/v${escaped}/Cockpit-${escaped}-arm64\\.dmg$`)
 const evidence = process.argv[2] ? resolve(process.argv[2]) : undefined
 if (evidence) await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -56,7 +60,7 @@ try {
     assert.match(await page.locator('details[open]').innerText(), /passed same-Mac acceptance on a second account/)
     await page.getByRole('link', { name: 'Get the Mac prerelease' }).click()
     assert.equal(await page.evaluate(() => location.hash), '#release')
-    assert.match(await page.locator('#download').getAttribute('href'), /releases\/download\/v0\.1\.2\/Cockpit-0\.1\.2-arm64\.dmg$/)
+    assert.match(await page.locator('#download').getAttribute('href'), downloadHref)
     assert.deepEqual(network, [], 'offline page must make zero external requests')
     assert.deepEqual(errors, [], 'no JavaScript exceptions')
     results.push(`${width}px: no overflow; allow/deny/reset, handoff, scene persistence, gallery, dialog Escape, FAQ, release CTA; zero external requests or JS errors`)
@@ -68,15 +72,15 @@ try {
     const page = await context.newPage()
     const response = await page.goto(process.env.LANDING_URL)
     assert.equal(response.status(), 200)
-    assert.match(await page.locator('#download').getAttribute('href'), /releases\/download\/v0\.1\.2\/Cockpit-0\.1\.2-arm64\.dmg$/)
-    assert.match(await page.locator('.release-chip').innerText(), /v0\.1\.2/)
+    assert.match(await page.locator('#download').getAttribute('href'), downloadHref)
+    assert.ok((await page.locator('.release-chip').innerText()).includes(`v${version}`))
     await page.getByRole('button', { name: 'Recent work', exact: true }).click()
     assert.equal(await page.locator('#product-shot').evaluate(img => img.complete && img.naturalWidth > 0), true)
     await page.getByRole('button', { name: 'Allow', exact: false }).click()
     assert.match(await page.locator('#messages').innerText(), /Dev server running/)
     if (evidence) await page.screenshot({ path: join(evidence, 'landing-hosted-preview.png') })
     await context.close()
-    results.push('HTTP preview: 200, v0.1.2 download, recovery screenshot and approval interaction passed')
+    results.push(`HTTP preview: 200, v${version} download, recovery screenshot and approval interaction passed`)
   }
   console.log(results.map(result => 'PASS ' + result).join('\n'))
 } finally {

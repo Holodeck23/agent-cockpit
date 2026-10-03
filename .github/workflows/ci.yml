@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # Cockpit ships for Apple-silicon Macs; run the checks on the same platform.
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      # The checks build and test the code; they never launch Electron.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Configure git for repository tests
+        run: |
+          git config --global user.name "Cockpit CI"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+      - run: npm ci
+      - name: No absolute home paths in this public repo
+        run: npm run check:paths
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:electron
