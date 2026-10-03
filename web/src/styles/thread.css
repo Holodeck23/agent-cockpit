@@ -204,6 +204,20 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .update-line summary::-webkit-details-marker { display: none; }
 .update-line > div { margin-top: 4px; white-space: pre-wrap; color: var(--muted); }
 .update-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 5px; background: var(--field); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; vertical-align: 1px; }
+/* Find: sticky at the top of the scroller; matches are painted with the Custom Highlight API. */
+.find-bar {
+  position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 6px; width: min(460px, 100%); margin: 0 0 12px auto;
+  padding: 6px 6px 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel);
+  box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.35);
+}
+.find-bar input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 13.5px; }
+.find-count { min-width: 64px; font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.find-bar button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-sm); background: none; color: var(--secondary); font-size: 18px; }
+.find-bar button:hover:not(:disabled) { background: var(--field); }
+.find-bar button:disabled { opacity: 0.4; }
+.find-bar button svg { width: 15px; height: 15px; }
+::highlight(cockpit-find) { background-color: color-mix(in srgb, #f5c542 45%, transparent); color: inherit; }
+::highlight(cockpit-find-current) { background-color: #f5a623; color: #1a1a1a; }
 /* Sticky inside the scroller; the negative margin keeps it from adding to the scroll height. */
 .jump-latest {
   position: sticky; bottom: 14px; z-index: 5; display: flex; align-items: center; gap: 6px; width: fit-content; margin: -36px auto 0;

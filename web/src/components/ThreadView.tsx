@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
 import { openApprovals } from '../../../server/threads/status.ts'
@@ -12,6 +12,7 @@ import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
+import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
 import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
@@ -59,17 +60,24 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const scroller = useRef<HTMLDivElement>(null)
 
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
+  const [finding, setFinding] = useState(false)
+  useEffect(() => setFinding(false), [meta.id])
   useEffect(() => {
     if (phone) return
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
         setActivityOpen(!activityOpen)
+      } else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        // ⌘F finds in this conversation; pressed again it refocuses the open bar.
+        event.preventDefault()
+        if (finding) document.querySelector<HTMLInputElement>('.find-bar input')?.focus()
+        else setFinding(true)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phone, activityOpen, setActivityOpen])
+  }, [phone, activityOpen, setActivityOpen, finding])
 
   const sentKey = useMemo(() => String(events.findLastIndex((e) => e.event.kind === 'user_text')), [events])
   const { hasNew, jumpToLatest } = useStickToBottom(scroller, meta.id, `${events.length}:${streaming.length}`, sentKey)
@@ -155,6 +163,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         </div>
       </header>
       <div className="events" ref={scroller}>
+        {finding ? <FindBar root={scroller} contentKey={`${meta.id}:${events.length}`} onClose={() => setFinding(false)} /> : null}
         <TranscriptView
           items={conversationItems}
           openApprovals={open}
