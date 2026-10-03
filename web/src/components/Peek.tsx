@@ -27,7 +27,8 @@ export function Peek({ title, load, action, children }: PeekProps) {
     load().then(setContent, (e: unknown) => setContent({ error: e instanceof Error ? e.message : String(e) }))
   }, [open, content, load])
 
-  const show = (delay: number): void => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(true), delay) }
+  // Coming back while it is open (e.g. moving onto the panel) only cancels the close.
+  const show = (delay: number): void => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), delay) }
   const hide = (): void => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), CLOSE_GRACE_MS) }
 
   return (
@@ -35,7 +36,7 @@ export function Peek({ title, load, action, children }: PeekProps) {
       onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}>
       {children}
       {open ? (
-        <span className="peek-panel" role="tooltip">
+        <span className="peek-panel" role="dialog" aria-label={title}>
           <span className="peek-title">{title}</span>
           {!content ? <span className="peek-note">Loading…</span>
             : 'error' in content ? <span className="peek-note peek-error">{content.error}</span>
