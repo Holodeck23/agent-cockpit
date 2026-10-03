@@ -192,6 +192,13 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .update-line summary::-webkit-details-marker { display: none; }
 .update-line > div { margin-top: 4px; white-space: pre-wrap; color: var(--muted); }
 .update-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 5px; background: var(--field); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; vertical-align: 1px; }
+/* Sticky inside the scroller; the negative margin keeps it from adding to the scroll height. */
+.jump-latest {
+  position: sticky; bottom: 14px; z-index: 5; display: flex; align-items: center; gap: 6px; width: fit-content; margin: -36px auto 0;
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--strong);
+  font-size: 13px; font-weight: 500; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 0.35);
+}
+.jump-latest svg { width: 14px; height: 14px; }
 .conclusion-head { display: flex; align-items: center; gap: 8px; justify-self: start; }
 .conclusion-dismiss { padding: 2px 10px; font-size: 12px; }
 .conclusion-tag { justify-self: start; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }

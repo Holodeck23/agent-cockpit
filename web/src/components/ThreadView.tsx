@@ -8,11 +8,12 @@ import { STATUS_LABEL } from '../conversation-meta.ts'
 import { native } from '../native.ts'
 import { buildTranscript } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
+import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
-import { ActivityIcon, Bars, CheckIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
+import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 
@@ -70,10 +71,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
     return () => window.removeEventListener('keydown', onKey)
   }, [phone, activityOpen, setActivityOpen])
 
-  useEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [events.length, streaming])
+  const sentKey = useMemo(() => String(events.findLastIndex((e) => e.event.kind === 'user_text')), [events])
+  const { hasNew, jumpToLatest } = useStickToBottom(scroller, meta.id, `${events.length}:${streaming.length}`, sentKey)
 
   const guard = (action: Promise<unknown>): void => {
     action.catch((e: unknown) => onError(e instanceof Error ? e.message : String(e)))
@@ -171,6 +170,12 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             <span>Marked complete</span>
             {phone ? null : <button type="button" className="button-soft" onClick={() => guard(api.setCompleted(meta.id, false))}>Reopen</button>}
           </div>
+        ) : null}
+        {hasNew ? (
+          <button type="button" className="jump-latest" onClick={jumpToLatest}>
+            <ChevronDownIcon />
+            Jump to latest
+          </button>
         ) : null}
       </div>
       <Composer
