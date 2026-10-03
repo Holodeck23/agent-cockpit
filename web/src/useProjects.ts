@@ -19,6 +19,8 @@ export interface Projects {
   readonly active: Project | undefined
   countsFor(path: string): ProjectCounts
   select(path: string): void
+  /** Shows a message in the app's error toast. */
+  reportError(message: string): void
   /** Registers (or reopens) a folder, pins it and makes it active. */
   open(path: string): Promise<void>
   togglePin(project: Project): Promise<void>
@@ -134,6 +136,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     active,
     countsFor: (path) => counts.get(path) ?? { working: 0, needsYou: 0 },
     select,
+    reportError: onError,
     open,
     togglePin,
     saveInstructions,

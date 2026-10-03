@@ -1,9 +1,12 @@
+import type { NewProject } from '../../electron/new-project.ts'
 import type { ReleaseNotes } from '../../electron/updates.ts'
 
 // Present only inside the desktop app (electron/preload.ts); undefined in a browser.
 export interface CockpitBridge {
   readonly platform: string
   pickFolder(): Promise<string | undefined>
+  /** Name and location in the native Save panel; resolves to the created folder, an error, or undefined if cancelled. */
+  newProject(near?: string): Promise<NewProject | undefined>
   setTheme(mode: 'system' | 'light' | 'dark'): void
   revealTranscript(path: string): void
   openFolder(path: string): void

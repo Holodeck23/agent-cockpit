@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { NewProject } from './new-project.ts'
 import type { ReleaseNotes } from './updates.ts'
 
 // The only native surface the page gets. Everything else goes through the
@@ -6,6 +7,8 @@ import type { ReleaseNotes } from './updates.ts'
 const cockpit = {
   platform: process.platform,
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:pick-folder') as Promise<string | undefined>,
+  /** Native Save panel for a new project's name and location; creates the folder. */
+  newProject: (near?: string): Promise<NewProject | undefined> => ipcRenderer.invoke('cockpit:new-project', near) as Promise<NewProject | undefined>,
   /** Native chrome (traffic lights, menus) follows the page's theme choice. */
   setTheme: (mode: 'system' | 'light' | 'dark'): void => ipcRenderer.send('cockpit:set-theme', mode),
   /** Shows a thread's transcript in Finder. Only paths inside the cockpit's own thread folder are honoured. */

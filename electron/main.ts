@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
@@ -12,6 +12,7 @@ import { updateDialog } from './update-dialog.ts'
 import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
 import { assertLocalUrl } from '../server/http/mcp-routes.ts'
 import { HELP, issueUrl } from '../server/help-links.ts'
+import { createProjectFolder, type NewProject } from './new-project.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -302,6 +303,25 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.handle('cockpit:release-notes', async (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return { state: 'unavailable', reason: 'Not allowed' }
     return updates.notes(app.getVersion())
+  })
+  // Projects → New Project…: name and location in the native Save panel, starting beside the
+  // active project. Resolves to the new folder, an error message, or undefined if cancelled.
+  ipcMain.handle('cockpit:new-project', async (event, near: unknown): Promise<NewProject | undefined> => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
+    const location = typeof near === 'string' && isProject(near) ? dirname(near) : app.getPath('documents')
+    const options = {
+      title: 'New Project',
+      message: 'Name the project and choose where its folder goes.',
+      nameFieldLabel: 'Project name:',
+      buttonLabel: 'Create',
+      defaultPath: join(location, 'New Project'),
+      showsTagField: false,
+      properties: ['createDirectory'] as Array<'createDirectory'>,
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return undefined
+    return createProjectFolder(result.filePath)
   })
   ipcMain.handle('cockpit:pick-folder', async (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
