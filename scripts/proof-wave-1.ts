@@ -215,6 +215,9 @@ try {
   await page.reload()
   await page.locator('.list').waitFor()
   check('A5 the width is remembered', (await listWidth()) === 276)
+  await page.setViewportSize({ width: 1000, height: 720 })
+  check('A5 below 1120 px the list is fixed and its handle is hidden', (await listWidth()) === 260 && !(await handle.isVisible()))
+  await page.setViewportSize({ width: 1360, height: 860 })
 
   // B5: switching the branch from one conversation tells the project's others.
   await open('Clips')
