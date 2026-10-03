@@ -161,6 +161,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
     api.savePresets(next).then((saved) => { setPresets(saved); setPresetError(''); setNaming(undefined) },
       (e: unknown) => setPresetError(e instanceof Error ? e.message : String(e)))
   }
+  const savePreset = (): void => savePresets([...presets, { name: (naming ?? '').trim(), ...current, effort: current.effort as Preset['effort'] }])
   const matches = (p: Preset): boolean => p.agent === current.agent && p.model === current.model && p.effort === current.effort && p.permissionMode === current.permissionMode
 
   const toggle = (): void => {
@@ -202,10 +203,13 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
               {naming === undefined ? (
                 <button type="button" className="preset-add" onClick={() => { setNaming(''); setPresetError('') }}>{presets.length ? '+ Save as preset' : 'Save these settings as a preset'}</button>
               ) : (
-                <form className="preset-form" onSubmit={(e) => { e.preventDefault(); savePresets([...presets, { name: naming.trim(), ...current, effort: current.effort as Preset['effort'] }]) }}>
-                  <input aria-label="Preset name" placeholder="Name, e.g. Quick fix" maxLength={40} value={naming} autoFocus onChange={(e) => setNaming(e.target.value)} />
-                  <button type="submit" className="button-soft" disabled={!naming.trim()}>Save</button>
-                </form>
+                // Not a <form>: the panel sits inside the composer's form, and a nested form's Save
+                // submitted the page natively (a reload) instead of saving.
+                <div className="preset-form">
+                  <input aria-label="Preset name" placeholder="Name, e.g. Quick fix" maxLength={40} value={naming} autoFocus onChange={(e) => setNaming(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); if (naming.trim()) savePreset() } }} />
+                  <button type="button" className="button-soft" disabled={!naming.trim()} onClick={savePreset}>Save</button>
+                </div>
               )}
               {presetError ? <p className="picker-note" role="alert">{presetError}</p> : null}
             </div>
