@@ -192,6 +192,8 @@ button.transcript-link:hover { color: var(--strong); text-decoration: underline;
 .update-line summary::-webkit-details-marker { display: none; }
 .update-line > div { margin-top: 4px; white-space: pre-wrap; color: var(--muted); }
 .update-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 5px; background: var(--field); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; vertical-align: 1px; }
+.conclusion-head { display: flex; align-items: center; gap: 8px; justify-self: start; }
+.conclusion-dismiss { padding: 2px 10px; font-size: 12px; }
 .conclusion-tag { justify-self: start; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .conclusion-tag.question { background: var(--needs-bg); color: var(--needs-ink); border: 1px solid var(--needs-border); }
 .conclusion-tag.blocker { background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }

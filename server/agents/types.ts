@@ -22,6 +22,8 @@ export type NormalizedEvent =
   | { kind: 'session_boundary' }
   | { kind: 'delegation_started'; requestKey: string }
   | { kind: 'completion_changed'; completed: boolean }
+  /** You dismissed the question or blocker the last turn ended with. */
+  | { kind: 'awaiting_dismissed' }
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }

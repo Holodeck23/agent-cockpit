@@ -119,6 +119,7 @@ export const api = {
   deleteThread: (id: string) => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: {} }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
+  dismissAwaiting: (id: string) => request<Record<string, never>>(`/api/threads/${id}/dismiss`, { method: 'POST', body: {} }),
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
   restartProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/restart`, { method: 'POST', body: {} }),

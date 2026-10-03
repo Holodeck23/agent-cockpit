@@ -307,6 +307,18 @@ describe('session lifecycle regressions', () => {
     expect(manager.summaries()[0]?.meta.completed).toBe(false)
     await manager.shutdown()
   })
+
+  it('dismisses an open question; dismissing with nothing open is refused', async () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'deploy?' })
+    expect(() => manager.dismissAwaiting(meta.id)).toThrow(/Nothing is waiting/)
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'Question: Staging or production?' })
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.summaries()[0]?.awaiting).toBe('question')
+    manager.dismissAwaiting(meta.id)
+    expect(manager.summaries()[0]?.awaiting).toBeUndefined()
+    await manager.shutdown()
+  })
 })
 
 

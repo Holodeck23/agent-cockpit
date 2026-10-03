@@ -141,6 +141,8 @@ export interface ThreadManager {
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
+  /** Clears the question or blocker the last turn ended with, without replying. */
+  dismissAwaiting(threadId: string): void
   /** Stops its agent session, deletes everything stored for it and tells every window. */
   remove(threadId: string): Promise<void>
   /** Hand the thread to another agent/model; the transcript goes with it. */
@@ -343,6 +345,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const meta = store.update(threadId, { completed })
       record(threadId, { kind: 'completion_changed', completed })
       return meta
+    },
+    dismissAwaiting(threadId) {
+      requireMeta(threadId)
+      if (!awaitingOf(store.events(threadId))) throw new Error('Nothing is waiting on you in this conversation')
+      record(threadId, { kind: 'awaiting_dismissed' })
     },
     async remove(threadId) {
       requireMeta(threadId)

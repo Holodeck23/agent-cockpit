@@ -391,6 +391,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         sendJson(res, 200, { data: { deleted: threadId } })
       } else if (method === 'POST' && action === 'completed') {
         sendJson(res, 200, { data: manager.setCompleted(threadId, parseBody(completedBody, await readJson(req)).completed) })
+      } else if (method === 'POST' && action === 'dismiss') {
+        await readJson(req)
+        try { manager.dismissAwaiting(threadId) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
+        sendJson(res, 200, { data: {} })
       } else if (method === 'POST' && action === 'agent') {
         sendJson(res, 200, { data: manager.switchAgent(threadId, parseBody(switchBody, await readJson(req)).settings) })
       } else {
