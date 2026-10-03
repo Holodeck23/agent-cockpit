@@ -1,10 +1,10 @@
 # User Guide
 
-> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
+> **v0.1.2 prerelease (2026-10-03).** This guide covers the updated tester build. Same-Mac acceptance passed on a second account; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
-*(Documented for v0.1.1)*
+*(Documented for v0.1.2)*
 
 ## Workspace & Projects
 

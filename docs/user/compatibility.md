@@ -1,6 +1,6 @@
 # Agent Compatibility and Limitations
 
-> **v0.1.1 prerelease (2026-10-02).** This guide covers the updated tester build. Second-person installation acceptance is pending; see the [tester checklist](tester-checklist.md).
+> **v0.1.2 prerelease (2026-10-03).** This guide covers the updated tester build. Same-Mac acceptance passed on a second account; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 Agent Cockpit provides a unified interface across different AI coding agents. However, each agent has specific requirements, capabilities, and limitations based on its CLI implementation and API provider.
 
@@ -24,7 +24,7 @@ Agent Cockpit provides a unified interface across different AI coding agents. Ho
 
 ### Claude Code
 * **Public v0.1.1:** Claude 2.1.220 fails at startup with `unknown option '--permission-prompts'`. The failure is in CLI launch compatibility, not sign-in or your project. Preserve your conversation; do not reset it to troubleshoot this error.
-* **0.1.2-rc.1 candidate:** checks the selected CLI's advertised options before launch, retains manual/stdio approval handling, and omits the newer permission-prompts switch when unavailable. Unsupported options or a failed check produce guidance to update the executable Cockpit uses or choose another agent. Cockpit does not upgrade your CLI automatically. This candidate is not yet a published update to the v0.1.1 download.
+* **v0.1.2:** checks the selected CLI's advertised options before launch, retains manual/stdio approval handling, and omits the newer permission-prompts switch when unavailable. Unsupported options or a failed check produce guidance to update the executable Cockpit uses or choose another agent. Cockpit does not upgrade your CLI automatically.
 * **Version evidence (2026-10-03):** real Deny, Allow and native-resume checks passed with 2.1.220 and 2.1.288 under the developer's account. This does not establish Nova's candidate GUI acceptance, that every version between them works, or that 2.1.220 is the earliest compatible release. Installation, authentication, advertised options and actual approval behavior are distinct checks.
 
 ### Google Antigravity

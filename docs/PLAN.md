@@ -1,6 +1,6 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Current 2026-10-02:** tester hardening, first-run director (9a), MCP conversation reads/approved controls (M1/M2), and recent-work recovery (9b) are published in the [v0.1.1 prerelease](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.1). Real-Claude recovery timing passed on a generated project; the public DMG checksum matches the verified installed copy and the [Vercel page](https://agent-cockpit-theta.vercel.app) serves the updated source. Second-person installation on a group member’s own Mac remains open.
+**Current 2026-10-03:** Claude CLI capability detection and the approval-preserving compatibility fix are ready for the [v0.1.2 prerelease](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.2). Same-Mac acceptance passed on a second account with Claude Code 2.1.220; independent human and other-Mac installation remain open. The next planned wave is Check for Updates, followed by the wargame workflow.
 
 **Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 
