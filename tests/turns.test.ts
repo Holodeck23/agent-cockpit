@@ -48,6 +48,16 @@ describe('conclusions', () => {
     expect(awaitingOf([...asked, ...log(you('Staging'))])).toBeUndefined()
     expect(awaitingOf(log(you('go'), says('Blocked: No network.'), done))).toBe('blocker')
     expect(awaitingOf(log(you('go'), says('All good.'), done))).toBeUndefined()
+  })
+
+  it('Complete or Dismiss clears an open question, and reopening does not bring it back', () => {
+    const asked = log(you('Deploy?'), says('Question: Staging or production?'), done)
+    const completed = log(you('Deploy?'), says('Question: Staging or production?'), done, { kind: 'completion_changed', completed: true })
+    expect(awaitingOf(completed)).toBeUndefined()
+    expect(awaitingOf([...completed, ...log({ kind: 'completion_changed', completed: false })])).toBeUndefined()
+    expect(awaitingOf([...asked, ...log({ kind: 'awaiting_dismissed' })])).toBeUndefined()
+    // A new question after a dismissal waits again.
+    expect(awaitingOf([...asked, ...log({ kind: 'awaiting_dismissed' }, you('ok'), says('Question: Which region?', 'q2'), done)])).toBe('question')
     expect(latestConclusion(log(you('go'), says('On it.')))).toBeUndefined()
   })
 

@@ -2,8 +2,9 @@ import { FirstRun } from './components/FirstRun.tsx'
 import { api } from './api.ts'
 import { Workflows } from './components/Workflows.tsx'
 import { Memory } from './components/Memory.tsx'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
+import { ListResize, useListWidth } from './components/ListResize.tsx'
 import { Files } from './components/Files.tsx'
 import { NewConversation } from './components/NewConversation.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
@@ -14,7 +15,8 @@ import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
 import { AppearanceMenu } from './components/AppearanceMenu.tsx'
 import { AppSettings } from './components/AppSettings.tsx'
-import { useSoundSettings, useStatusSounds } from './sounds.ts'
+import { playSound, soundForChanges, useAttention, useSoundSettings } from './sounds.ts'
+import { notificationText, useNotifySettings } from './mac-notifications.ts'
 import { Mark, SlidersIcon } from './components/icons.tsx'
 import { native } from './native.ts'
 import { needsYou } from './conversation-meta.ts'
@@ -44,8 +46,19 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const { appearance, update: updateAppearance } = useAppearance()
   const { sounds, setSounds } = useSoundSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  // Desktop only: the phone has its own notifications.
-  useStatusSounds(local ? cockpit.threads : NO_THREADS, sounds)
+  const listWidth = useListWidth()
+  const [listDraft, setListDraft] = useState<number>()
+  const { notify, setNotify } = useNotifySettings()
+  // Desktop only: the phone has its own notifications. The conversation you are looking at (open,
+  // window focused) never chimes or notifies; every other one can.
+  useAttention(local ? cockpit.threads : NO_THREADS, () => (document.hasFocus() ? cockpit.selectedId : undefined), (changes) => {
+    const sound = soundForChanges(changes, sounds)
+    if (sound) playSound(sound)
+    for (const change of changes.filter((c) => notify[c.kind]).slice(0, 3)) {
+      const thread = cockpit.threads.find((t) => t.meta.id === change.id)
+      if (thread) native?.notify({ threadId: change.id, ...notificationText(thread, change.kind) })
+    }
+  })
   // The Dock icon: moving bars while any agent works, a badge with how many need you (every project).
   const working = cockpit.threads.filter((t) => t.status === 'working').length
   const needs = cockpit.threads.filter(needsYou).length
@@ -60,6 +73,18 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string>()
   useEffect(() => local ? native?.onPreviewOpen(setPreviewUrl) : undefined, [local])
+  // A clicked Mac notification opens its conversation, in whichever project it belongs to.
+  const threadsRef = useRef(cockpit.threads)
+  threadsRef.current = cockpit.threads
+  const { select: selectProject } = projects
+  const { select: selectThread } = cockpit
+  useEffect(() => local ? native?.onOpenThread((id) => {
+    const thread = threadsRef.current.find((t) => t.meta.id === id)
+    if (!thread) return
+    selectProject(thread.meta.projectPath)
+    setSection('conversations')
+    selectThread(id)
+  }) : undefined, [local, selectProject, selectThread, setSection])
 
   const activePath = projects.active?.path
   const visible = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
@@ -107,7 +132,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}><SlidersIcon /></button></>
           : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
       />
-      {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} notify={notify} onNotify={setNotify} onClose={() => setSettingsOpen(false)} /> : null}
       {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
         <div className="pairing-banner" role="alert"><PairingRequests status={cockpit.remote} onError={cockpit.reportError} /></div>
       ) : null}
@@ -122,7 +147,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       <div className={`workspace${local && previewUrl ? ' has-preview' : ''}`}>
         <div className="workspace-main">
       {section === 'conversations' ? (
-        <div className={`layout${selectedId ? ' has-selection' : ''}`}>
+        <div className={`layout${selectedId ? ' has-selection' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
+          {phone ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
           <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
             {...(phone ? { projectName, canCreate: false } : {})} />
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (

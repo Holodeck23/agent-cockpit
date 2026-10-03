@@ -66,10 +66,14 @@ export function latestConclusion(events: readonly StoredEvent[]): { kind: Conclu
   return undefined
 }
 
-/** A finished conversation waiting on you: its last turn ended with a question or a blocker, and you haven't replied. */
+/**
+ * A finished conversation waiting on you: its last turn ended with a question or a blocker, and
+ * since then you haven't replied, marked the conversation complete, or dismissed it.
+ */
 export function awaitingOf(events: readonly StoredEvent[]): 'question' | 'blocker' | undefined {
   const conclusion = latestConclusion(events)
   if (!conclusion || conclusion.kind === 'answer') return undefined
-  const repliedAfter = events.slice(conclusion.index + 1).some(({ event }) => event.kind === 'user_text')
-  return repliedAfter ? undefined : conclusion.kind
+  const settled = events.slice(conclusion.index + 1).some(({ event }) =>
+    event.kind === 'user_text' || event.kind === 'awaiting_dismissed' || (event.kind === 'completion_changed' && event.completed))
+  return settled ? undefined : conclusion.kind
 }

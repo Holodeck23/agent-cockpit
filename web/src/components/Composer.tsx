@@ -14,6 +14,8 @@ interface ComposerProps {
   /** Replaces the draft and focuses the box, e.g. from a starter suggestion. A new object each time. */
   prefill?: { readonly text: string }
   projectPath?: string
+  /** Set in a conversation (not on New conversation). */
+  threadId?: string
   draftKey: string
   placeholder: string
   disabled?: boolean
@@ -46,7 +48,7 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, draftKey, placeholder, disabled, picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, threadId, draftKey, placeholder, disabled, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
@@ -133,7 +135,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
               onBrowseFiles={onBrowseFiles} onPick={(token) => { update(addReference(text, token)); box.current?.focus() }} />
           ) : null}
           {picker}
-          {projectPath ? <BranchPicker projectPath={projectPath} refreshKey={branchRefreshKey} /> : null}
+          {projectPath ? <BranchPicker projectPath={projectPath} threadId={threadId} refreshKey={branchRefreshKey} /> : null}
           <span className="composer-spacer" />
           <button type="submit" className="send" aria-label="Send" disabled={disabled || sending || !text.trim()}>
             <ArrowUpIcon />

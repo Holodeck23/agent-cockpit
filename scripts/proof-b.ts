@@ -201,7 +201,9 @@ async function b3(): Promise<void> {
   const authors = await page.locator('.author-name').allTextContents()
   check('author rows for you and the agent', authors.includes('You') && authors.includes('Claude Code'), authors.join(', '))
   check('header status reads Ready', (await headStatus(page).textContent()) === 'Ready')
-  check('header shows the transcript path', /…\/threads\/[0-9a-f]{8}\/messages\.md/.test((await page.locator('.transcript-link').textContent()) ?? ''))
+  await page.getByRole('button', { name: 'More' }).click()
+  check('the conversation menu shows the transcript path', /\/threads\/[0-9a-f-]+\/messages\.md$/.test((await page.locator('.menu-path').textContent()) ?? ''))
+  await page.keyboard.press('Escape')
 
   // A running turn.
   await page.locator('.card').filter({ hasText: 'essay' }).click()

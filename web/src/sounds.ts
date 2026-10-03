@@ -27,25 +27,36 @@ export type Seen = ReadonlyMap<string, Pick<Row, 'status' | 'lastActivityAt'>>
 const effective = (t: Row): Row['status'] => (t.awaiting && t.status !== 'working' ? 'needs_input' : t.status)
 const ENDED = new Set<Row['status']>(['done', 'idle'])
 
+export interface AttentionChange {
+  readonly id: string
+  readonly kind: SoundKind
+}
+
 /**
- * Which sound a change calls for, if any; at most one per update, a decision first. Answering one
- * approval can surface the next at once, so the list may never show "working" in between:
+ * Conversations that now call for you, one entry each, in list order. Answering one approval can
+ * surface the next at once, so the list may never show "working" in between:
  *  - decision: a conversation that is now waiting and either wasn't before, or has new activity
  *    since (a fresh approval), or is new since the last update;
  *  - reply: a turn that ended (done or idle) after working or waiting.
- * `previous` is undefined on the first look, which never sounds.
+ * `previous` is undefined on the first look, which reports nothing. `focusedId` is the
+ * conversation you are looking at (open, window focused): it never calls for you.
  */
-export function soundFor(previous: Seen | undefined, threads: readonly Row[], settings: SoundSettings): SoundKind | undefined {
-  if (!previous) return undefined
-  let reply = false
+export function attentionChanges(previous: Seen | undefined, threads: readonly Row[], focusedId?: string): AttentionChange[] {
+  if (!previous) return []
+  const changes: AttentionChange[] = []
   for (const t of threads) {
+    if (t.meta.id === focusedId) continue
     const before = previous.get(t.meta.id)
     const status = effective(t)
-    const waiting = status === 'needs_input' && (before?.status !== 'needs_input' || before.lastActivityAt !== t.lastActivityAt)
-    if (waiting && settings.decision) return 'decision'
-    if (before && ENDED.has(status) && (before.status === 'working' || before.status === 'needs_input')) reply = true
+    if (status === 'needs_input' && (before?.status !== 'needs_input' || before.lastActivityAt !== t.lastActivityAt)) changes.push({ id: t.meta.id, kind: 'decision' })
+    else if (before && ENDED.has(status) && (before.status === 'working' || before.status === 'needs_input')) changes.push({ id: t.meta.id, kind: 'reply' })
   }
-  return reply && settings.reply ? 'reply' : undefined
+  return changes
+}
+
+/** Which sound a change calls for, if any; at most one per update, a decision first. */
+export function soundFor(previous: Seen | undefined, threads: readonly Row[], settings: SoundSettings, focusedId?: string): SoundKind | undefined {
+  return soundForChanges(attentionChanges(previous, threads, focusedId), settings)
 }
 
 const TONES: Record<SoundKind, { type: OscillatorType; notes: ReadonlyArray<[frequency: number, start: number]> }> = {
@@ -97,12 +108,26 @@ export function useSoundSettings(): { sounds: SoundSettings; setSounds: (next: S
   return { sounds, setSounds }
 }
 
-/** Watches conversation statuses and plays the matching sound when one is switched on. */
-export function useStatusSounds(threads: readonly ThreadSummary[], settings: SoundSettings): void {
+/**
+ * Watches conversation statuses and reports what now calls for you (see attentionChanges).
+ * `focused` is read at each update: the conversation you are looking at, if any.
+ */
+export function useAttention(threads: readonly ThreadSummary[], focused: () => string | undefined, onChanges: (changes: AttentionChange[]) => void): void {
   const seen = useRef<Seen>(undefined)
+  const handler = useRef(onChanges)
+  handler.current = onChanges
+  const focus = useRef(focused)
+  focus.current = focused
   useEffect(() => {
-    const kind = soundFor(seen.current, threads, settings)
+    const changes = attentionChanges(seen.current, threads, focus.current())
     seen.current = new Map(threads.map((t) => [t.meta.id, { status: effective(t), lastActivityAt: t.lastActivityAt }]))
-    if (kind) playSound(kind)
-  }, [threads, settings])
+    if (changes.length > 0) handler.current(changes)
+  }, [threads])
+}
+
+/** The sound for a set of changes under the current settings: a decision first. */
+export function soundForChanges(changes: readonly AttentionChange[], settings: SoundSettings): SoundKind | undefined {
+  if (settings.decision && changes.some((c) => c.kind === 'decision')) return 'decision'
+  if (settings.reply && changes.some((c) => c.kind === 'reply')) return 'reply'
+  return undefined
 }

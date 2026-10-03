@@ -99,6 +99,13 @@ describe('workflows used by a message', () => {
     expect(items[0]).toMatchObject({ type: 'message', workflows: [{ name: 'review', prompt: 'Review the diff' }] })
     expect(items[1]).not.toHaveProperty('workflows')
   })
+
+  it('shows a used workflow as a clip, not as its @workflow token; unknown tokens stay as typed', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'Run @workflow:review on @workflow:ghost today', workflows: [{ name: 'review', prompt: 'Review the diff' }] }),
+    ], 'claude')
+    expect(items[0]).toMatchObject({ text: 'Run on @workflow:ghost today', workflows: [{ name: 'review' }] })
+  })
 })
 
 describe('cockpit MCP tools in the transcript', () => {
@@ -112,5 +119,18 @@ describe('cockpit MCP tools in the transcript', () => {
   it('names MCP tools readably on approval cards', () => {
     expect(friendlyToolName('mcp__cockpit__start_process')).toBe('Start a process')
     expect(friendlyToolName('Bash')).toBe('Bash')
+  })
+})
+
+describe('branch changes made elsewhere', () => {
+  it('say which branch, from where, as a plain note', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'branch_changed', from: 'main', to: 'feature/login', byTitle: 'Login work' }),
+      at(1, { kind: 'branch_changed', from: 'main', to: 'fix' }),
+    ], 'claude')
+    expect(items).toMatchObject([
+      { type: 'note', text: 'The project switched from main to feature/login in “Login work”. Files here now reflect feature/login.' },
+      { type: 'note', text: 'The project switched from main to fix. Files here now reflect fix.' },
+    ])
   })
 })

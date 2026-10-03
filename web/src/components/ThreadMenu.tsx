@@ -3,7 +3,7 @@ import type { NormalizedEvent } from '../../../server/agents/types.ts'
 import { native } from '../native.ts'
 import { usePopover } from '../usePopover.ts'
 import { usageLine } from '../usage.ts'
-import { FileIcon, MoreIcon, TrashIcon } from './icons.tsx'
+import { FileIcon, MoreIcon, SearchIcon, TrashIcon } from './icons.tsx'
 
 type UsageEvent = Extract<NormalizedEvent, { kind: 'usage' }>
 
@@ -12,6 +12,8 @@ interface ThreadMenuProps {
   usage: UsageEvent | undefined
   completed: boolean
   onToggleCompleted: () => void
+  /** Opens the find bar (desktop). */
+  onFind?: () => void
   /** Absent on the phone, where conversations can't be deleted. */
   onMarkUnread?: () => void
   onDelete?: () => Promise<void>
@@ -28,7 +30,7 @@ function instructionsNote({ session, current }: { session?: number; current?: nu
   return `Project instructions: revision ${current} is saved; it applies when the agent next starts${session ? ` (this session has ${session})` : ''}.`
 }
 
-export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted, onMarkUnread, onDelete, running = false, instructions }: ThreadMenuProps) {
+export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted, onFind, onMarkUnread, onDelete, running = false, instructions }: ThreadMenuProps) {
   const instructionLine = instructions ? instructionsNote(instructions) : undefined
   const { open, setOpen: setPopover, ref } = usePopover<HTMLDivElement>()
   const [confirming, setConfirming] = useState(false)
@@ -63,6 +65,13 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
       </button>
       {open ? (
         <div className="menu menu-right" role="menu" aria-label="Conversation">
+          {onFind ? (
+            <button type="button" role="menuitem" className="menu-item" onClick={() => { onFind(); setOpen(false) }}>
+              <SearchIcon />
+              Find in conversation
+              <kbd className="menu-shortcut">⌘F</kbd>
+            </button>
+          ) : null}
           {native ? (
             <button
               type="button"

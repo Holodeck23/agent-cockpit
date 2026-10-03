@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
 import { openApprovals } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
-import { native } from '../native.ts'
 import { buildTranscript } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
+import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
+import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
-import { ActivityIcon, Bars, CheckIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
+import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 
@@ -30,13 +31,6 @@ interface ThreadViewProps {
   /** Phone: reply, approve and stop only; a back button returns to the list. */
   phone?: boolean
   onBack?: () => void
-}
-
-/** "…/threads/1a2b3c4d/messages.md": enough to recognise, short enough to fit. */
-function shortPath(path: string): string {
-  const parts = path.split('/')
-  const id = parts.at(-2) ?? ''
-  return `…/threads/${id.slice(0, 8)}/${parts.at(-1) ?? ''}`
 }
 
 export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack }: ThreadViewProps) {
@@ -58,22 +52,27 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const scroller = useRef<HTMLDivElement>(null)
 
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
+  const [finding, setFinding] = useState(false)
+  useEffect(() => setFinding(false), [meta.id])
   useEffect(() => {
     if (phone) return
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
         setActivityOpen(!activityOpen)
+      } else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        // ⌘F finds in this conversation; pressed again it refocuses the open bar.
+        event.preventDefault()
+        if (finding) document.querySelector<HTMLInputElement>('.find-bar input')?.focus()
+        else setFinding(true)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phone, activityOpen, setActivityOpen])
+  }, [phone, activityOpen, setActivityOpen, finding])
 
-  useEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [events.length, streaming])
+  const sentKey = useMemo(() => String(events.findLastIndex((e) => e.event.kind === 'user_text')), [events])
+  const { hasNew, jumpToLatest } = useStickToBottom(scroller, meta.id, `${events.length}:${streaming.length}`, sentKey)
 
   const guard = (action: Promise<unknown>): void => {
     action.catch((e: unknown) => onError(e instanceof Error ? e.message : String(e)))
@@ -101,35 +100,29 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               {shown === 'working' ? <Bars live /> : null}
               {STATUS_LABEL[shown]}
             </span>
-            {native ? (
-              <button type="button" className="transcript-link" title={`Show ${transcriptPath} in Finder`} onClick={() => native?.revealTranscript(transcriptPath)}>
-                <FileIcon />
-                {shortPath(transcriptPath)}
+            {running ? (
+              <button type="button" className="head-action" aria-label="Stop" title="Stop the current turn" onClick={() => guard(api.interrupt(meta.id))}>
+                <StopIcon />
+                Stop
               </button>
-            ) : (
-              <span className="transcript-link" title={transcriptPath}>
-                <FileIcon />
-                {shortPath(transcriptPath)}
-              </span>
+            ) : null}
+            {phone ? null : (
+              <button
+                type="button"
+                className="head-action"
+                aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
+                aria-pressed={meta.completed}
+                title={meta.completed ? 'Reopen this conversation' : 'Mark this conversation complete'}
+                onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
+              >
+                <CheckIcon />
+                {meta.completed ? 'Completed' : 'Complete'}
+              </button>
             )}
             {phone ? null : <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />}
           </div>
         </div>
         <div className="thread-actions">
-          <div className="segment">
-            <button type="button" aria-label="Stop" title="Stop the current turn" disabled={!running} onClick={() => guard(api.interrupt(meta.id))}>
-              <StopIcon />
-            </button>
-            {phone ? null : <button
-              type="button"
-              aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
-              aria-pressed={meta.completed}
-              title={meta.completed ? 'Reopen' : 'Mark complete'}
-              onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
-            >
-              <CheckIcon />
-            </button>}
-          </div>
           {phone ? null : <div className="segment">
             <button
               type="button"
@@ -148,6 +141,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               completed={meta.completed}
               instructions={{ session: meta.instructionsRevision, current: instructionsRevision, sessionText: meta.instructionsText }}
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
+              onFind={() => setFinding(true)}
               onMarkUnread={() => { markUnread(meta.id); onBack?.() }}
               onDelete={() => api.deleteThread(meta.id).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
               running={running}
@@ -156,6 +150,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         </div>
       </header>
       <div className="events" ref={scroller}>
+        {finding ? <FindBar root={scroller} contentKey={`${meta.id}:${events.length}`} onClose={() => setFinding(false)} /> : null}
         <TranscriptView
           items={conversationItems}
           openApprovals={open}
@@ -163,6 +158,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streaming={streaming}
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
+          onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (
           <div className="completed-bar" role="status">
@@ -171,12 +167,19 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             {phone ? null : <button type="button" className="button-soft" onClick={() => guard(api.setCompleted(meta.id, false))}>Reopen</button>}
           </div>
         ) : null}
+        {hasNew ? (
+          <button type="button" className="jump-latest" onClick={jumpToLatest}>
+            <ChevronDownIcon />
+            Jump to latest
+          </button>
+        ) : null}
       </div>
       <Composer
         initialDraft={initialDraft}
         onDraftLoaded={onDraftLoaded}
         onBrowseFiles={phone ? undefined : onBrowseFiles}
         projectPath={phone ? undefined : meta.projectPath}
+        threadId={meta.id}
         draftKey={meta.id}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}

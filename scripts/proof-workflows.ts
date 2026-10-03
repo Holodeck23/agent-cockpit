@@ -55,7 +55,7 @@ try {
   assert.equal(await page.getByRole('textbox', { name: 'Message' }).inputValue(), '@workflow:quick-check ')
   console.log('PASS composer inserts workflow reference')
   await page.getByRole('textbox', { name: 'Message' }).press('Enter')
-  await page.locator('.workflow-used summary', { hasText: 'Used workflow quick-check' }).first().waitFor({ timeout: 15_000 })
+  await page.locator('.workflow-clip summary', { hasText: 'quick-check' }).first().waitFor({ timeout: 15_000 })
   const referenced = await page.evaluate(async () => ((await (await fetch('/api/threads')).json()) as { data: Array<{ meta: { id: string }; status: string }> }).data)
   for (const t of referenced) await waitForRun(t.meta.id)
   console.log('PASS a message that uses a workflow keeps its instructions beside it')

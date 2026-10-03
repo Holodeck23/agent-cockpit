@@ -17,18 +17,21 @@ export interface Cockpit {
   reportError(message: string | undefined): void
 }
 
-function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): ThreadSummary[] {
+export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): ThreadSummary[] {
   return threads.map((t) => {
     if (t.meta.id !== update.threadId) return t
     const isMessage = update.event.kind === 'assistant_text' || update.event.kind === 'user_text'
     const text = isMessage && 'text' in update.event ? update.event.text : undefined
-    // Streaming deltas are not persisted server-side, so they don't count as activity either.
-    const lastActivityAt = update.event.kind === 'text_delta' ? t.lastActivityAt : new Date().toISOString()
+    // Streaming deltas are not persisted server-side, so they don't count as activity either; nor do
+    // a dismissal or a branch note (server/threads/manager.ts QUIET).
+    const lastActivityAt = update.event.kind === 'text_delta' || update.event.kind === 'awaiting_dismissed' || update.event.kind === 'branch_changed' ? t.lastActivityAt : new Date().toISOString()
+    // A reply, a dismissal or Mark complete settles a question (server/threads/turns.ts awaitingOf).
+    const settles = update.event.kind === 'user_text' || update.event.kind === 'awaiting_dismissed' || (update.event.kind === 'completion_changed' && update.event.completed)
     return {
       ...t,
       status: update.status,
       // Your reply answers a question; a finished turn's own kind is re-read from the server (see onUpdate).
-      awaiting: update.event.kind === 'user_text' ? undefined : t.awaiting,
+      awaiting: settles ? undefined : t.awaiting,
       meta: update.event.kind === 'completion_changed' ? { ...t.meta, completed: update.event.completed } : t.meta,
       preview: text ? text.slice(0, 140) : t.preview,
       messageCount: t.messageCount + (isMessage ? 1 : 0),

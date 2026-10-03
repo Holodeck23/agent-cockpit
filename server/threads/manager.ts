@@ -42,6 +42,9 @@ export function projectInstructionsBlock(text: string): string {
 }
 
 /** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
+/** Events that inform without being activity: they never reorder the list or mark it unread. */
+const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed'])
+
 export const instructionsFor = (req: LaunchRequest): string | undefined =>
   [
     req.cockpit ? COCKPIT_GUIDANCE : undefined,
@@ -141,6 +144,10 @@ export interface ThreadManager {
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
+  /** Clears the question or blocker the last turn ended with, without replying. */
+  dismissAwaiting(threadId: string): void
+  /** Tells the project's other conversations that its branch changed (from `byThreadId`, if given). */
+  noteBranchChange(projectPath: string, from: string, to: string, byThreadId?: string): void
   /** Stops its agent session, deletes everything stored for it and tells every window. */
   remove(threadId: string): Promise<void>
   /** Hand the thread to another agent/model; the transcript goes with it. */
@@ -344,6 +351,18 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       record(threadId, { kind: 'completion_changed', completed })
       return meta
     },
+    noteBranchChange(projectPath, from, to, byThreadId) {
+      const byTitle = byThreadId ? store.get(byThreadId)?.title : undefined
+      for (const meta of store.list()) {
+        if (meta.projectPath !== projectPath || meta.id === byThreadId || deleted.has(meta.id)) continue
+        record(meta.id, { kind: 'branch_changed', from, to, ...(byTitle ? { byTitle } : {}) })
+      }
+    },
+    dismissAwaiting(threadId) {
+      requireMeta(threadId)
+      if (!awaitingOf(store.events(threadId))) throw new Error('Nothing is waiting on you in this conversation')
+      record(threadId, { kind: 'awaiting_dismissed' })
+    },
     async remove(threadId) {
       requireMeta(threadId)
       hostActions.cancel(threadId)
@@ -393,7 +412,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
           status: deriveStatus(events, live.get(meta.id)?.turnRunning ?? false),
           preview: previewOf(events),
           messageCount: messageCountOf(events),
-          lastActivityAt: events.at(-1)?.ts ?? meta.updatedAt,
+          lastActivityAt: events.findLast((e) => !QUIET.has(e.event.kind))?.ts ?? meta.updatedAt,
           ...(awaitingOf(events) ? { awaiting: awaitingOf(events) } : {}),
         }
       })

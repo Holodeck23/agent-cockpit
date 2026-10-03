@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ElectronApplication, Page } from 'playwright-core'
-import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { checker, launchPackagedApp, setLooking, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { headStatus, messageBox, openProject } from './lib/ui.ts'
 
 const home = mkdtempSync(join(tmpdir(), 'cockpit-settings-proof-'))
@@ -50,6 +50,8 @@ page.setDefaultTimeout(15_000)
 
 try {
   await openProject(page, project, 'Settings demo')
+  // The user is in another app, so the open conversation chimes too (B2 silences it only while you look).
+  await setLooking(app, page, false)
   await listen(page)
   await runTurn(page, 'First run with sounds off')
   check('sounds are off by default: a decision and a reply play nothing', JSON.stringify(await heard(page)) === '[]', (await heard(page)).join(', '))
@@ -86,6 +88,7 @@ try {
   check('sound choices survive a restart', !(await toggle(page, 'When an agent replies').isChecked())
     && await toggle(page, 'When an agent needs a decision').isChecked())
   await page.keyboard.press('Escape')
+  await setLooking(app, page, false)
   await listen(page)
   await runTurn(page, 'Third run, decisions only')
   const third = await heard(page)

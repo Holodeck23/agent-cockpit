@@ -3,7 +3,8 @@ import type { AgentId, ApprovalBehavior } from '../../../server/agents/types.ts'
 import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
-import { Bars } from './icons.tsx'
+import { CopyButton } from './CopyButton.tsx'
+import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
 
 interface TranscriptViewProps {
   items: TranscriptItem[]
@@ -13,6 +14,8 @@ interface TranscriptViewProps {
   streaming: string
   streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
+  /** Present while the last turn's question or blocker still waits on you. */
+  onDismiss?: () => void
 }
 
 const time = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -38,8 +41,9 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove }: TranscriptViewProps) {
+export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
+  const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
   const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
   const now = useTick(liveStep)
@@ -66,19 +70,32 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
             return (
               <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}`}>
                 {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
-                {item.conclusion ? <span className={`conclusion-tag ${item.conclusion}`}>{item.conclusion === 'question' ? 'Question for you' : 'Blocked'}</span> : null}
+                {item.conclusion ? (
+                  <div className="conclusion-head">
+                    <span className={`conclusion-tag ${item.conclusion}`}>{item.conclusion === 'question' ? 'Question for you' : 'Blocked'}</span>
+                    {index === waitingIndex ? <button type="button" className="button-soft conclusion-dismiss" onClick={onDismiss}>Dismiss</button> : null}
+                  </div>
+                ) : null}
                 <div className={`bubble ${item.author === 'you' ? 'user' : 'agent'}${item.phase === 'acknowledgement' ? ' ack' : ''}`}>
                   {item.text}
-                  {item.attachments ? (
-                    <div className={`attachments${item.text ? '' : ' only'}`}>Attached: {item.attachments.join(', ')}</div>
+                  {item.attachments || item.workflows ? (
+                    <div className={`message-clips${item.text ? '' : ' only'}`} role="list" aria-label="Sent with this message">
+                      {item.attachments?.map((path) => (
+                        <span key={`file:${path}`} role="listitem" className="reference-chip" title={path}>
+                          <FileIcon />
+                          <span>{path.split('/').pop() ?? path}</span>
+                        </span>
+                      ))}
+                      {item.workflows?.map((w) => (
+                        <details key={`workflow:${w.name}`} role="listitem" className="reference-chip workflow-clip">
+                          <summary title={`Workflow ${w.name}: show the instructions it sent`}><WorkflowIcon /><span>{w.name}</span></summary>
+                          <pre>{w.prompt}</pre>
+                        </details>
+                      ))}
+                    </div>
                   ) : null}
-                  {item.workflows?.map((w) => (
-                    <details key={w.name} className="workflow-used">
-                      <summary>Used workflow {w.name}</summary>
-                      <pre>{w.prompt}</pre>
-                    </details>
-                  ))}
                 </div>
+                {item.text.trim() ? <CopyButton text={item.text} /> : null}
               </section>
             )
           case 'step': {

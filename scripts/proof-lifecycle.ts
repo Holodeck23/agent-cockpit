@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
-import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { checker, launchPackagedApp, setLooking, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { headStatus, messageBox, openProject } from './lib/ui.ts'
 
 interface Summary { meta: { title: string }; status: string; preview: string; awaiting?: string }
@@ -35,6 +35,8 @@ page.setDefaultTimeout(15_000)
 
 try {
   await openProject(page, project, 'Landing page')
+  // The user is in another app, so the open conversation chimes too (B2 silences it only while you look).
+  await setLooking(app, page, false)
   // Set once the app has mounted (it saves its own defaults on first render), then reload to read them.
   await page.evaluate(() => localStorage.setItem('cockpit:sounds', JSON.stringify({ reply: true, decision: true })))
   await page.reload()

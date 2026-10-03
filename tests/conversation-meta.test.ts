@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadSummary } from '../server/threads/types.ts'
-import { dayLabel, filterConversations, STATUS_LABEL, tagFor, toneFor, TAG_TONES } from '../web/src/conversation-meta.ts'
+import { dayLabel, filterConversations, needsYou, STATUS_LABEL, tagFor, toneFor, TAG_TONES } from '../web/src/conversation-meta.ts'
 
 function thread(id: string, patch: { title?: string; status?: ThreadSummary['status']; completed?: boolean; preview?: string }): ThreadSummary {
   return {
@@ -77,6 +77,20 @@ describe('filterConversations', () => {
   it('returns only the active tab rows', () => {
     const { rows } = filterConversations({ threads, query: '', showCompleted: false, isUnread }, 'unread')
     expect(rows.map((t) => t.meta.id)).toEqual(['4'])
+  })
+})
+
+describe('needsYou', () => {
+  it('ignores completed conversations, so the Dock badge and Needs you tab skip them', () => {
+    expect(needsYou(thread('a', { status: 'needs_input' }))).toBe(true)
+    expect(needsYou(thread('b', { status: 'needs_input', completed: true }))).toBe(false)
+    expect(needsYou({ ...thread('c', { status: 'done', completed: true }), awaiting: 'question' })).toBe(false)
+    expect(needsYou({ ...thread('d', { status: 'done' }), awaiting: 'question' })).toBe(true)
+  })
+
+  it('a completed conversation shown with Show completed does not count in Needs you', () => {
+    const threads = [thread('1', { status: 'needs_input', completed: true }), thread('2', { status: 'needs_input' })]
+    expect(filterConversations({ threads, query: '', showCompleted: true, isUnread: () => false }, 'needs').counts.needs).toBe(1)
   })
 })
 

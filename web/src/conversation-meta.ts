@@ -52,10 +52,14 @@ export interface FilterInput {
   readonly isUnread: (thread: ThreadSummary) => boolean
 }
 
-/** Waiting on you: an approval is open, or the last turn ended with a question or a blocker (U12). */
-export const needsYou = (t: Pick<ThreadSummary, 'status' | 'awaiting'>): boolean => t.status === 'needs_input' || (Boolean(t.awaiting) && t.status !== 'working')
+type NeedsRow = Pick<ThreadSummary, 'status' | 'awaiting'> & { readonly meta?: Pick<ThreadSummary['meta'], 'completed'> }
+/**
+ * Waiting on you: an approval is open, or the last turn ended with a question or a blocker (U12).
+ * A conversation you marked complete never counts, in the Dock badge, the tabs or the Needs you list.
+ */
+export const needsYou = (t: NeedsRow): boolean => !t.meta?.completed && (t.status === 'needs_input' || (Boolean(t.awaiting) && t.status !== 'working'))
 /** The status a list row shows: a question or blocker reads as Needs you. */
-export const shownStatus = (t: Pick<ThreadSummary, 'status' | 'awaiting'>): ThreadStatus => (needsYou(t) ? 'needs_input' : t.status)
+export const shownStatus = (t: NeedsRow): ThreadStatus => (needsYou(t) ? 'needs_input' : t.status)
 
 const MATCHES: Record<ListFilter, (t: ThreadSummary, isUnread: (t: ThreadSummary) => boolean) => boolean> = {
   all: () => true,
