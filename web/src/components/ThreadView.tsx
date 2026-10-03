@@ -5,7 +5,6 @@ import { openApprovals } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
-import { native } from '../native.ts'
 import { buildTranscript } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
@@ -14,7 +13,7 @@ import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker
 import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
-import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, FileIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
+import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 
@@ -32,13 +31,6 @@ interface ThreadViewProps {
   /** Phone: reply, approve and stop only; a back button returns to the list. */
   phone?: boolean
   onBack?: () => void
-}
-
-/** "…/threads/1a2b3c4d/messages.md": enough to recognise, short enough to fit. */
-function shortPath(path: string): string {
-  const parts = path.split('/')
-  const id = parts.at(-2) ?? ''
-  return `…/threads/${id.slice(0, 8)}/${parts.at(-1) ?? ''}`
 }
 
 export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack }: ThreadViewProps) {
@@ -108,35 +100,29 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               {shown === 'working' ? <Bars live /> : null}
               {STATUS_LABEL[shown]}
             </span>
-            {native ? (
-              <button type="button" className="transcript-link" title={`Show ${transcriptPath} in Finder`} onClick={() => native?.revealTranscript(transcriptPath)}>
-                <FileIcon />
-                {shortPath(transcriptPath)}
+            {running ? (
+              <button type="button" className="head-action" aria-label="Stop" title="Stop the current turn" onClick={() => guard(api.interrupt(meta.id))}>
+                <StopIcon />
+                Stop
               </button>
-            ) : (
-              <span className="transcript-link" title={transcriptPath}>
-                <FileIcon />
-                {shortPath(transcriptPath)}
-              </span>
+            ) : null}
+            {phone ? null : (
+              <button
+                type="button"
+                className="head-action"
+                aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
+                aria-pressed={meta.completed}
+                title={meta.completed ? 'Reopen this conversation' : 'Mark this conversation complete'}
+                onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
+              >
+                <CheckIcon />
+                {meta.completed ? 'Completed' : 'Complete'}
+              </button>
             )}
             {phone ? null : <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />}
           </div>
         </div>
         <div className="thread-actions">
-          <div className="segment">
-            <button type="button" aria-label="Stop" title="Stop the current turn" disabled={!running} onClick={() => guard(api.interrupt(meta.id))}>
-              <StopIcon />
-            </button>
-            {phone ? null : <button
-              type="button"
-              aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
-              aria-pressed={meta.completed}
-              title={meta.completed ? 'Reopen' : 'Mark complete'}
-              onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
-            >
-              <CheckIcon />
-            </button>}
-          </div>
           {phone ? null : <div className="segment">
             <button
               type="button"
@@ -155,6 +141,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               completed={meta.completed}
               instructions={{ session: meta.instructionsRevision, current: instructionsRevision, sessionText: meta.instructionsText }}
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
+              onFind={() => setFinding(true)}
               onMarkUnread={() => { markUnread(meta.id); onBack?.() }}
               onDelete={() => api.deleteThread(meta.id).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
               running={running}

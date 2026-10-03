@@ -109,6 +109,16 @@ try {
   await find.press('Escape')
   check('A3 Esc closes the bar and clears highlights', !(await find.isVisible()) && await page.evaluate(() => !CSS.highlights.has('cockpit-find')))
 
+  // A6: a calmer bar. Stop/Complete under the title, Find and the transcript in the menu.
+  const status = page.locator('.thread-status')
+  check('A6 Complete sits under the title', await status.getByRole('button', { name: 'Mark complete' }).isVisible())
+  check('A6 Stop shows under the title only while a turn runs', (await status.getByRole('button', { name: 'Stop' }).count()) === 0)
+  check('A6 the transcript path left the header', (await status.innerText()).includes('messages.md') === false)
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('menuitem', { name: /Find in conversation/ }).click()
+  check('A6 Find in conversation is in the menu and opens the bar', await find.isVisible())
+  await find.press('Escape')
+
   // A7: a sent message shows its file and workflow as clips.
   await open('Clips')
   const clips = page.getByRole('list', { name: 'Sent with this message' })
