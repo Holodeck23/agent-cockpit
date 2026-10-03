@@ -12,6 +12,7 @@ interface PeekProps {
 
 const OPEN_DELAY_MS = 350
 const CLOSE_GRACE_MS = 150
+const PANEL_ROOM = 320
 
 /** Hover (or focus) a clip to see inside it, without opening anything (A8). */
 export function Peek({ title, load, action, children }: PeekProps) {
@@ -19,6 +20,8 @@ export function Peek({ title, load, action, children }: PeekProps) {
   const [content, setContent] = useState<{ text: string; more?: number } | { error: string }>()
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const loading = useRef(false)
+  const anchor = useRef<HTMLSpanElement>(null)
+  const [below, setBelow] = useState(false)
 
   useEffect(() => () => clearTimeout(timer.current), [])
   useEffect(() => {
@@ -27,16 +30,26 @@ export function Peek({ title, load, action, children }: PeekProps) {
     load().then(setContent, (e: unknown) => setContent({ error: e instanceof Error ? e.message : String(e) }))
   }, [open, content, load])
 
-  // Coming back while it is open (e.g. moving onto the panel) only cancels the close.
-  const show = (delay: number): void => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), delay) }
+  // Coming back while it is open (e.g. moving onto the panel) only cancels the close. It opens
+  // above the clip, or below when the clip is too near the top of its scrolling view.
+  const show = (delay: number): void => {
+    clearTimeout(timer.current)
+    if (open) return
+    timer.current = setTimeout(() => {
+      const el = anchor.current
+      const view = el?.closest('.events, .thread, main')?.getBoundingClientRect()
+      setBelow(Boolean(el && el.getBoundingClientRect().top - (view?.top ?? 0) < PANEL_ROOM))
+      setOpen(true)
+    }, delay)
+  }
   const hide = (): void => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), CLOSE_GRACE_MS) }
 
   return (
-    <span className="peek" onMouseEnter={() => show(OPEN_DELAY_MS)} onMouseLeave={hide} onFocus={() => show(0)} onBlur={hide}
+    <span ref={anchor} className="peek" onMouseEnter={() => show(OPEN_DELAY_MS)} onMouseLeave={hide} onFocus={() => show(0)} onBlur={hide}
       onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}>
       {children}
       {open ? (
-        <span className="peek-panel" role="dialog" aria-label={title}>
+        <span className={`peek-panel${below ? ' below' : ''}`} role="dialog" aria-label={title}>
           <span className="peek-title">{title}</span>
           {!content ? <span className="peek-note">Loading…</span>
             : 'error' in content ? <span className="peek-note peek-error">{content.error}</span>

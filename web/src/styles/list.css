@@ -93,5 +93,5 @@
 @container (max-width: 300px) {
   .filters { padding-inline: 10px; }
   .filter { font-size: 12.5px; gap: 3px; }
-  .filter .icon, .filter .bars, .filter svg { display: none; }
+  .filter .icon, .filter .bars, .filter svg, .filter .unread-icon { display: none; }
 }

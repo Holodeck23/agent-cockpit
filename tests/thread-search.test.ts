@@ -28,7 +28,7 @@ describe('searching every message', () => {
     const hits = searchThreads(store, 'rounding cent')
     expect(hits).toHaveLength(1)
     expect(hits[0]).toMatchObject({ id: a })
-    expect(hits[0]!.excerpt).toContain('rounding')
+    expect(hits[0]!.excerpt).toBe('The rounding in invoice.ts was off by one cent.')
     expect(searchThreads(store, 'INVOICE').map((h) => h.id).sort()).toEqual([a, b].sort())
     expect(searchThreads(store, 'invoice', '/w/clinic').map((h) => h.id)).toEqual([b])
   })
