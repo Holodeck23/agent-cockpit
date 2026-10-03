@@ -24,6 +24,10 @@ const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\
 const PATTERNS: readonly string[] = [
   'releases/download/vV/Cockpit-V-arm64\\.dmg',
   'releases/download/vV/SHA256SUMS',
+  '\\bCockpit-V-arm64\\.dmg',
+  'from tag `vV`',
+  '\\bthe vV prerelease',
+  'self-contained vV landing page',
   'releases/tag/vV(?![\\d.])',
   '\\bvV is ready to try',
   'Cockpit V / Prerelease',

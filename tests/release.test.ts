@@ -41,6 +41,11 @@ describe('bumpReleaseLinks', () => {
     expect(out).toContain('<span class="eyebrow">/ 0.1.4</span>')
   })
 
+  it('moves generic mentions: the bare DMG name, its tag and "the vX prerelease"', () => {
+    const readme = 'find the latest [`Cockpit-0.1.3-arm64.dmg`](x) from tag `v0.1.3`. Get the v0.1.3 prerelease.'
+    expect(bumpReleaseLinks(readme, '0.1.3', '0.1.4')).toBe('find the latest [`Cockpit-0.1.4-arm64.dmg`](x) from tag `v0.1.4`. Get the v0.1.4 prerelease.')
+  })
+
   it('leaves release-specific prose alone so a human rewrites it', () => {
     const out = bumpReleaseLinks(page, '0.1.3', '0.1.4')
     expect(out).toContain('<p>v0.1.3 adds Check for Updates.</p>')
