@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
@@ -9,6 +9,7 @@ import { fileOnDisk, spaceSchema } from '../server/files/documents.ts'
 import { resolveAppPath } from './shell-path.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
+import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
 import { assertLocalUrl } from '../server/http/mcp-routes.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
@@ -20,10 +21,13 @@ const CANVAS = { light: '#fafaf9', dark: '#202020' }
 // Longer than both stop ladders — agents: EOF → SIGTERM → SIGKILL (2 × 1.5s); project
 // processes: group SIGTERM → SIGKILL (3s) — so nothing hung is orphaned.
 const SHUTDOWN_GRACE_MS = 5000
+const WINDOW = { width: 1360, height: 860, minWidth: 980, minHeight: 640 }
 const isDev = !app.isPackaged
 
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
+// Quit ends with app.exit, which skips the window's close event, so it saves the place itself.
+let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
 const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init) })
 
@@ -120,11 +124,13 @@ async function capturePreview(url: string): Promise<{ data: string; mimeType: 'i
 }
 
 function createWindow(url: string): BrowserWindow {
+  // In the Electron profile, so a separate COCKPIT_HOME (the proofs) keeps its own.
+  const stateFile = join(app.getPath('userData'), 'window-state.json')
+  const place = placeWindow(readWindowState(stateFile), screen.getAllDisplays().map((d) => d.workArea), WINDOW)
   const win = new BrowserWindow({
-    width: 1360,
-    height: 860,
-    minWidth: 980,
-    minHeight: 640,
+    ...place.bounds,
+    minWidth: WINDOW.minWidth,
+    minHeight: WINDOW.minHeight,
     show: false,
     title: 'Cockpit',
     titleBarStyle: 'hiddenInset',
@@ -164,7 +170,24 @@ function createWindow(url: string): BrowserWindow {
   // Cockpit's own page never vetoes unloading. A previewed app's beforeunload must not either:
   // it silently cancelled Quit, leaving Cockpit running with its window gone.
   win.webContents.on('will-prevent-unload', (event) => event.preventDefault())
-  win.once('ready-to-show', () => win.show())
+  // Normal bounds, so a maximised or full-screen window still remembers its own size.
+  let saveTimer: ReturnType<typeof setTimeout> | undefined
+  const saveState = (): void => {
+    clearTimeout(saveTimer)
+    if (win.isDestroyed()) return
+    writeWindowState(stateFile, { ...win.getNormalBounds(), maximized: win.isMaximized() })
+  }
+  const saveSoon = (): void => { clearTimeout(saveTimer); saveTimer = setTimeout(saveState, 400) }
+  win.on('resize', saveSoon)
+  win.on('move', saveSoon)
+  win.on('maximize', saveSoon)
+  win.on('unmaximize', saveSoon)
+  win.on('close', saveState)
+  saveWindowPlace = saveState
+  win.once('ready-to-show', () => {
+    if (place.maximized) win.maximize()
+    win.show()
+  })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = undefined
   })
@@ -325,6 +348,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', (event) => {
   dock?.stop()
+  saveWindowPlace?.()
   if (shutdownFinished || !running) return
   event.preventDefault()
   const server = running
