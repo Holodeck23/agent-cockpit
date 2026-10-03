@@ -10,6 +10,9 @@ const pageFile = fileURLToPath(new URL('./index.html', import.meta.url))
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 const escaped = version.replace(/\./g, '\\.')
 const downloadHref = new RegExp(`releases/download/v${escaped}/Cockpit-${escaped}-arm64\\.dmg$`)
+// Over HTTP a swapped screenshot takes a moment to arrive; wait for it (bounded) before judging it.
+const shotLoaded = page => page.locator('#product-shot').evaluate(img => img.complete && img.naturalWidth > 0 ? true
+  : new Promise(resolve => { img.addEventListener('load', () => resolve(img.naturalWidth > 0), { once: true }); img.addEventListener('error', () => resolve(false), { once: true }); setTimeout(() => resolve(img.complete && img.naturalWidth > 0), 10000) }))
 const evidence = process.argv[2] ? resolve(process.argv[2]) : undefined
 if (evidence) await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -89,17 +92,17 @@ try {
       assert.equal(await page.locator('[data-scene="1"]').getAttribute('aria-pressed'), 'true')
     }
     await page.getByRole('button', { name: 'Saved workflows', exact: true }).click()
-    assert.equal(await page.locator('#product-shot').evaluate(img => img.complete && img.naturalWidth > 0), true)
+    assert.equal(await shotLoaded(page), true)
     await page.getByRole('button', { name: 'Enlarge product screenshot' }).click()
     assert.equal(await page.getByRole('dialog').isVisible(), true)
     await page.keyboard.press('Escape')
     assert.equal(await page.getByRole('dialog').isVisible(), false)
     assert.equal(await page.locator('#enlarge').evaluate(el => el === document.activeElement), true, 'closing screenshot returns focus')
     await page.getByRole('button', { name: 'Files & documents', exact: true }).click()
-    assert.equal(await page.locator('#product-shot').evaluate(img => img.complete && img.naturalWidth > 0), true)
+    assert.equal(await shotLoaded(page), true)
     for (const name of ['Recent work', 'Inspected preview']) {
       await page.getByRole('button', { name, exact: true }).click()
-      assert.equal(await page.locator('#product-shot').evaluate(img => img.complete && img.naturalWidth > 0), true)
+      assert.equal(await shotLoaded(page), true)
     }
     await page.getByText('What should I expect from the prerelease?', { exact: true }).click()
     assert.equal(await page.locator('details[open]').count(), 1)
