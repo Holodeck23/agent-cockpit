@@ -3,6 +3,7 @@ import type { AgentId, ApprovalBehavior } from '../../../server/agents/types.ts'
 import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
+import { CopyButton } from './CopyButton.tsx'
 import { Bars } from './icons.tsx'
 
 interface TranscriptViewProps {
@@ -87,6 +88,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                     </details>
                   ))}
                 </div>
+                {item.text.trim() ? <CopyButton text={item.text} /> : null}
               </section>
             )
           case 'step': {

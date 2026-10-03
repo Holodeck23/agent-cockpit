@@ -185,3 +185,9 @@ export const MemoryIcon = (p: IconProps) => (
     <path d="M6 18a1.5 1.5 0 0 1 1.5-1.5H18M9.5 8.5h5M9.5 11.5h3.5" />
   </Svg>
 )
+export const CopyIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="8.5" y="8.5" width="11" height="11" rx="2.2" />
+    <path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8" />
+  </Svg>
+)
