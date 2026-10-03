@@ -50,10 +50,12 @@ function groupsOf(ranges: readonly Range[]): Group[] {
     const el = range.startContainer.parentElement?.closest('.message, .note, .step, .decision, .approval') ?? null
     if (el && el === owner) { groups[groups.length - 1]!.count += 1; return }
     owner = el
-    const text = el?.textContent ?? range.startContainer.textContent ?? ''
+    // The excerpt comes from the bubble the match is in, not the author line above it.
+    const source = range.startContainer.parentElement?.closest('.bubble') ?? el
+    const text = source?.textContent ?? range.startContainer.textContent ?? ''
     const lead = document.createRange()
-    if (el) { lead.setStart(el, 0); lead.setEnd(range.startContainer, range.startOffset) }
-    const at = el ? lead.toString().length : range.startOffset
+    if (source) { lead.setStart(source, 0); lead.setEnd(range.startContainer, range.startOffset) }
+    const at = source ? lead.toString().length : range.startOffset
     const author = el?.querySelector('.author-name')?.textContent?.trim() ?? ''
     groups.push({ first: index, count: 1, author, ...snippet(text, at, at + range.toString().length) })
   })

@@ -130,6 +130,7 @@ try {
   await findBox.fill('needle')
   const results = page.getByRole('list', { name: 'Matching messages' })
   check('A3 the matching messages are listed under the bar', await until('rows', async () => (await results.locator('li').count()) === 3), String(await results.locator('li').count()))
+  check('A3 excerpts are the message text, without the author line', (await results.locator('.find-result-text').first().innerText()) === 'Where is the needle?', await results.locator('.find-result-text').first().innerText())
   check('A3 a message with several matches shows its count', (await results.locator('.find-result-count').allInnerTexts()).includes('2'))
   await results.locator('li').nth(2).getByRole('button').click()
   check('A3 a row jumps to its first match', (await page.locator('.find-count').innerText()) === '3 of 4', await page.locator('.find-count').innerText())
@@ -153,7 +154,9 @@ try {
   check('A8 Open in Files opens it', await until('files', async () => (await page.getByRole('tablist', { name: 'Open files' }).getByRole('tab', { selected: true }).innerText()).startsWith('app.ts')))
   await open('Clips')
   await page.locator('.workflow-clip summary').hover()
-  check('A8 hovering a workflow clip shows the instructions it sent', await until('workflow peek', async () => (await page.locator('.peek-panel').innerText()).includes('Review the diff for risky changes.')))
+  const flowPeek = page.locator('.peek', { has: page.locator('.workflow-clip') }).locator('.peek-panel')
+  check('A8 hovering a workflow clip shows the instructions it sent', await until('workflow peek', async () => (await flowPeek.innerText()).includes('Review the diff for risky changes.')),
+    `panels open: ${await page.locator('.peek-panel').count()}; texts: ${(await page.locator('.peek-panel').allInnerTexts()).join(' | ').slice(0, 200)}`)
 
   // A9: search every message, completed included while searching.
   await page.getByRole('checkbox', { name: 'Show completed' }).uncheck()
