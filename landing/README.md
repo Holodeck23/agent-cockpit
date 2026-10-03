@@ -41,4 +41,4 @@ node landing/verify.mjs
 - Card CTA: **Explore Cockpit** → https://agent-cockpit-theta.vercel.app.
 - The portfolio itself has not been changed. The canonical site is the Vercel URL above; this folder is its source.
 
-Page claims are grounded in the release API response, README, release acceptance checklist, component source, and packaged-app captures. The original recon is stored at `/Users/zod/vault/projects/agent-cockpit/release-landing/`. v0.1.2 release metadata, installed-DMG verification, timing evidence and page checks are at `/Users/zod/vault/outputs/agent-cockpit/2026-10-02-phase9b-recovery/`.
+Page claims are grounded in the release API response, README, release acceptance checklist, component source, and packaged-app captures. The original recon, release metadata, installed-DMG verification, timing evidence and page checks are kept in the maintainer's private release archive, not in this repository.
