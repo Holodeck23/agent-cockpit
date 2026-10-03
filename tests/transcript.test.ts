@@ -99,6 +99,13 @@ describe('workflows used by a message', () => {
     expect(items[0]).toMatchObject({ type: 'message', workflows: [{ name: 'review', prompt: 'Review the diff' }] })
     expect(items[1]).not.toHaveProperty('workflows')
   })
+
+  it('shows a used workflow as a clip, not as its @workflow token; unknown tokens stay as typed', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'Run @workflow:review on @workflow:ghost today', workflows: [{ name: 'review', prompt: 'Review the diff' }] }),
+    ], 'claude')
+    expect(items[0]).toMatchObject({ text: 'Run on @workflow:ghost today', workflows: [{ name: 'review' }] })
+  })
 })
 
 describe('cockpit MCP tools in the transcript', () => {

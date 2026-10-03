@@ -4,7 +4,7 @@ import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { CopyButton } from './CopyButton.tsx'
-import { Bars } from './icons.tsx'
+import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
 
 interface TranscriptViewProps {
   items: TranscriptItem[]
@@ -78,15 +78,22 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                 ) : null}
                 <div className={`bubble ${item.author === 'you' ? 'user' : 'agent'}${item.phase === 'acknowledgement' ? ' ack' : ''}`}>
                   {item.text}
-                  {item.attachments ? (
-                    <div className={`attachments${item.text ? '' : ' only'}`}>Attached: {item.attachments.join(', ')}</div>
+                  {item.attachments || item.workflows ? (
+                    <div className={`message-clips${item.text ? '' : ' only'}`} role="list" aria-label="Sent with this message">
+                      {item.attachments?.map((path) => (
+                        <span key={`file:${path}`} role="listitem" className="reference-chip" title={path}>
+                          <FileIcon />
+                          <span>{path.split('/').pop() ?? path}</span>
+                        </span>
+                      ))}
+                      {item.workflows?.map((w) => (
+                        <details key={`workflow:${w.name}`} role="listitem" className="reference-chip workflow-clip">
+                          <summary title={`Workflow ${w.name}: show the instructions it sent`}><WorkflowIcon /><span>{w.name}</span></summary>
+                          <pre>{w.prompt}</pre>
+                        </details>
+                      ))}
+                    </div>
                   ) : null}
-                  {item.workflows?.map((w) => (
-                    <details key={w.name} className="workflow-used">
-                      <summary>Used workflow {w.name}</summary>
-                      <pre>{w.prompt}</pre>
-                    </details>
-                  ))}
                 </div>
                 {item.text.trim() ? <CopyButton text={item.text} /> : null}
               </section>

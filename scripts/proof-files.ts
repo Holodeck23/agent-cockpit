@@ -135,7 +135,7 @@ try {
   assert.ok(transcript.includes('Attached: notes/release.md'), 'transcript does not name the attachment')
   assert.equal(transcript.split(codeword).length - 1, said.split(codeword).length - 1, 'transcript holds file contents beyond the answer')
   const bubble = page.locator('.bubble.user').last()
-  await bubble.locator('.attachments').filter({ hasText: 'Attached: notes/release.md' }).waitFor()
+  await bubble.getByRole('list', { name: 'Sent with this message' }).locator('[title="notes/release.md"]').filter({ hasText: 'release.md' }).waitFor()
   assert.ok(!((await bubble.textContent()) ?? '').includes(codeword), 'user bubble shows file contents')
   await page.screenshot({ path: join(PROOF_DIR, 'phase-5-files-attached.png') })
   console.log('PASS stored message, title, transcript and bubble keep the reference, not the contents')

@@ -187,7 +187,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const showAuthor = !(last?.type === 'message' && last.author === author)
         if (event.kind === 'user_text') {
           // Attached files show as names; their contents went to the agent, not the transcript.
-          const { text, attachments } = describeAttachments(event.text)
+          const described = describeAttachments(event.text)
+          const used = new Set(event.workflows?.map((w) => w.name))
+          // A used workflow shows as a clip under the message, so its token leaves the text.
+          const text = used.size === 0 ? described.text : described.text
+            .replace(/(^|\s)@workflow:([a-z0-9]+(?:-[a-z0-9]+)*)[ \t]?/g, (match, lead: string, name: string) => (used.has(name) ? lead : match))
+            .replace(/[ \t]+\n/g, '\n').trim()
+          const { attachments } = described
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
             ...(event.workflows?.length ? { workflows: event.workflows } : {}) })
         } else {
