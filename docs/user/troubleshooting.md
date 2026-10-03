@@ -65,3 +65,18 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 **Symptom:** The phone loads the page, but pairing is refused.
 *   **Likely Cause:** The 6-digit code was not matched, or you rejected the prompt on the Mac.
 *   **Recovery:** Close the browser tab on your phone. Go to Cockpit's Phone Access settings on the Mac, check that phone access is enabled, then repeat **Ask my Mac** and compare the new code.
+
+## Network problems
+
+Cockpit itself runs entirely on your Mac and never needs a Cockpit server. Three things do use the network, and a firewall, VPN, proxy or filtering app (Little Snitch, LuLu, a company network) can block each of them. When an error looks like one of these, Cockpit links here.
+
+**Symptom:** An agent stops with `ECONNREFUSED`, `ENOTFOUND`, `ETIMEDOUT`, "Connection error" or "fetch failed".
+*   **Likely Cause:** The agent CLI (Claude Code, Codex, OpenCode, Antigravity) cannot reach its provider. Cockpit only starts the CLI; the connection is the CLI's own.
+*   **Recovery:** Run the same CLI in Terminal (for example `claude`, then send a short message). If it fails there too, the problem is the network or the provider, not Cockpit: allow the CLI through your firewall or filtering app, set its proxy the way its own documentation describes (many read `HTTPS_PROXY`), or try another network. If it works in Terminal but not in Cockpit, a filtering app may be treating Cockpit's copy of the process differently: allow it there too, then quit and reopen Cockpit.
+
+**Symptom:** Check for Updates or Help → Release Notes says Cockpit could not reach GitHub, or timed out.
+*   **Likely Cause:** `api.github.com` is blocked or slow on this network.
+*   **Recovery:** Open https://github.com/Holodeck23/agent-cockpit/releases in your browser. If it loads, allow Cockpit to reach `api.github.com` in your firewall or filtering app. If it doesn't, the network is blocking GitHub; check for updates from another network. Nothing is installed automatically, so a failed check never changes your copy of Cockpit.
+
+**Symptom:** Phone access never connects.
+*   **Recovery:** See [Phone Access](#phone-access). Tailscale needs its own network access on both devices; a VPN running beside it can take its routes.

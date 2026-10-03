@@ -12,6 +12,7 @@ import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { shortcutFor } from './shortcuts.ts'
 import { ReleaseNotes } from './components/ReleaseNotes.tsx'
+import { TroubleshootingLink } from './components/TroubleshootingLink.tsx'
 import { checkForUpdateNotice } from './update-notice.ts'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
@@ -174,7 +175,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       ) : null}
       {cockpit.error ? (
         <div className="toast" role="alert">
-          {cockpit.error}
+          <span>{cockpit.error}<TroubleshootingLink text={cockpit.error} /></span>
           <button type="button" onClick={() => cockpit.reportError(undefined)} aria-label="Dismiss">
             ×
           </button>

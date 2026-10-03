@@ -31,3 +31,4 @@ code { font-family: var(--mono); font-size: 0.86em; }
 /* "Updated to Cockpit x" after an update (update-notice.ts); an error toast takes its place. */
 .toast.update-toast { align-items: center; border-color: var(--border); }
 .toast .update-toast-notes { font-size: 13px; color: var(--link); padding: 0 4px; }
+.troubleshooting-link { margin-left: 4px; color: var(--link); white-space: nowrap; }

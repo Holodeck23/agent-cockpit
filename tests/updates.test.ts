@@ -253,9 +253,16 @@ describe('updateDialog', () => {
       const dialog = updateDialog(result)
       expect(`${dialog.message} ${dialog.detail}`).not.toMatch(/you're up to date/i)
       expect(dialog.downloadUrl).toBeUndefined()
-      expect(dialog.buttons).toEqual(['OK'])
+      expect(dialog.buttons[0]).toBe('OK')
     }
     expect(updateDialog({ state: 'unavailable', current: '0.1.2', reason: 'x' }).detail).toMatch(/does not mean/i)
+  })
+
+  it('offers the network troubleshooting guide when GitHub could not be reached', () => {
+    const dialog = updateDialog({ state: 'unavailable', current: '0.1.2', reason: 'Cockpit could not reach GitHub.' })
+    expect(dialog.buttons).toEqual(['OK', 'Troubleshooting'])
+    expect(dialog.helpUrl).toBe('https://github.com/Holodeck23/agent-cockpit/blob/main/docs/user/troubleshooting.md#network-problems')
+    expect(dialog.downloadUrl).toBeUndefined()
   })
 
   it('confirms up to date with the installed version', () => {

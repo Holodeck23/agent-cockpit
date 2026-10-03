@@ -359,12 +359,13 @@ async function checkForUpdates(): Promise<void> {
     detail: content.detail,
     buttons: [...content.buttons],
     defaultId: 0,
-    cancelId: content.buttons.length - 1,
+    cancelId: content.helpUrl ? 0 : content.buttons.length - 1,
     noLink: true,
   }
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
   const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
   if (response === 0 && content.downloadUrl && isOfficialDownload(content.downloadUrl)) await shell.openExternal(content.downloadUrl)
+  if (response === 1 && content.helpUrl) await shell.openExternal(content.helpUrl)
 }
 
 // macOS convention: closing the window keeps the app (and running agents) alive;
