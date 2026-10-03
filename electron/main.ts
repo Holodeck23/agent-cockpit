@@ -69,6 +69,9 @@ async function boot(): Promise<void> {
     capturePreview,
   })
   writeAppPort(portFile, running.port)
+  // The Dock icon follows Cockpit's appearance (System, Light or Dark).
+  dock?.setDark(nativeTheme.shouldUseDarkColors)
+  nativeTheme.on('updated', () => dock?.setDark(nativeTheme.shouldUseDarkColors))
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
   registerIpc(running.url, join(running.store.root, 'threads'), (path) => running?.projects.list().some((p) => p.path === path) ?? false)
   mainWindow = createWindow(running.url)
@@ -208,9 +211,14 @@ function createWindow(url: string): BrowserWindow {
 
 // Calls go through app.dock each time (not a saved reference), so the proofs can watch them.
 const dockFrames = (name: string) => nativeImage.createFromPath(join(__dirname, 'dock', `${name}.png`))
+const dockLook = (dir: string) => ({
+  frames: Array.from({ length: 8 }, (_, i) => dockFrames(`${dir}frame-${i}`)).filter((image) => !image.isEmpty()),
+  rest: dockFrames(`${dir}rest`),
+})
+const darkDock = dockLook('dark/')
 const dock = process.platform === 'darwin' ? createDockActivity({
-  frames: Array.from({ length: 8 }, (_, i) => dockFrames(`frame-${i}`)).filter((image) => !image.isEmpty()),
-  rest: dockFrames('rest'),
+  ...dockLook(''),
+  dark: darkDock.rest.isEmpty() ? undefined : darkDock,
   setIcon: (image) => app.dock?.setIcon(image),
   setBadge: (text) => app.dock?.setBadge(text),
   setInterval: (run, ms) => setInterval(run, ms),
