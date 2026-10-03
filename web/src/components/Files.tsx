@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Project } from '../api.ts'
 import { isDirty, spaceOf } from '../file-text.ts'
 import { useOpenFiles } from '../useOpenFiles.ts'
 import { DocumentList } from './DocumentList.tsx'
-import { FileEditor } from './FileEditor.tsx'
+import { FileEditor, type Jump } from './FileEditor.tsx'
+import type { FileTarget } from '../markdown/file-links.ts'
 import { FileTree } from './FileTree.tsx'
 import { FolderIcon } from './icons.tsx'
 
@@ -11,9 +12,18 @@ type Space = 'project' | 'documents'
 const SPACE_KEY = 'cockpit:files-space'
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
-export function Files({ project, onAttach }: { project?: Project; onAttach: (reference: string) => void }) {
+export function Files({ project, onAttach, reveal }: { project?: Project; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number } }) {
   const open = useOpenFiles(project?.path)
   const [space, setSpace] = useState<Space>(loadSpace)
+  const [jump, setJump] = useState<Jump>()
+  // A reply's file link: open the file in Project files, then select its lines.
+  const { open: openPath } = open
+  useEffect(() => {
+    if (!reveal) return
+    setSpace('project')
+    const { path, line, endLine } = reveal.target
+    void openPath(path).then(() => { if (line) setJump({ path, line, endLine, nonce: reveal.nonce }) })
+  }, [reveal, openPath])
   const dirty = useMemo(() => new Set(open.files.filter(isDirty).map((f) => f.path)), [open.files])
   const choose = (next: Space): void => {
     setSpace(next)
@@ -54,6 +64,7 @@ export function Files({ project, onAttach }: { project?: Project; onAttach: (ref
         onOverwrite={(path) => void open.overwrite(path)}
         onSaveCopy={(path) => void open.saveCopy(path)}
         onAttach={(path) => { if (spaceOf(path).space === 'project') onAttach(`@file:${encodeURIComponent(path)}`) }}
+        jump={jump}
       />
     </div>
   )

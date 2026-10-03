@@ -21,3 +21,7 @@
 .reply hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 .reply a { color: var(--link); }
 .reply .reply-image { font-style: italic; }
+/* path:line references open Files at that line (markdown/file-links.ts). */
+.reply .file-link { display: inline; padding: 0; border: 0; background: none; font: inherit; color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+.reply .file-link code { color: var(--link); }
+.reply .file-link:hover { text-decoration-thickness: 2px; }
