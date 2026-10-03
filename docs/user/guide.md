@@ -1,10 +1,10 @@
 # User Guide
 
-> **v0.1.2 prerelease (2026-10-03).** This guide covers the updated tester build. Same-Mac acceptance passed on a second account; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
-*(Documented for v0.1.2)*
+*(Documented for v0.1.3)*
 
 ## Workspace & Projects
 
@@ -91,7 +91,7 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 
 ## Updates
 
--   **Check for Updates…** is in the Cockpit app menu (builds after v0.1.2). It reads the official GitHub release list, including prereleases, and only checks when you choose it.
+-   **Check for Updates…** is in the Cockpit app menu (v0.1.3 and later). It reads the official GitHub release list, including prereleases, and only checks when you choose it.
 -   **Download Update** opens the official Apple-silicon DMG for that release in your browser. Install it by hand: finish or stop running agents, quit Cockpit, open the DMG and drag Cockpit to Applications to replace the old copy. State in `~/.agent-cockpit/` is outside the app, so conversations and settings are kept.
 -   If the check fails (offline, rate-limited, or the newest release has no installer yet), Cockpit says so; a failed check never reports "up to date".
 

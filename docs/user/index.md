@@ -1,8 +1,8 @@
 # Installation and Updating Guide
 
-> **v0.1.2 prerelease (2026-10-03).** Same-Mac acceptance passed on a second account; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
-*(Documented for v0.1.2)*
+*(Documented for v0.1.3)*
 
 ## System Requirements
 
@@ -10,7 +10,7 @@ Agent Cockpit is built exclusively for macOS running on Apple Silicon. Other pla
 
 ## Installation
 
-1. Download the latest `Cockpit-0.1.2-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+1. Download the latest `Cockpit-0.1.3-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 2. Open the `.dmg` file.
 3. Drag **Cockpit.app** to your **Applications** folder.
 

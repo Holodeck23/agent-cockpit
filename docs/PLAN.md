@@ -1,6 +1,6 @@
 # Agent Cockpit: a real Mac app with an Enjoy-clone UI
 
-**Current 2026-10-03:** Claude CLI capability detection and the approval-preserving compatibility fix are ready for the [v0.1.2 prerelease](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.2). Same-Mac acceptance passed on a second account with Claude Code 2.1.220; independent human and other-Mac installation remain open. The next planned wave is Check for Updates, followed by the wargame workflow.
+**Current 2026-10-03:** The [v0.1.3 prerelease](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.3) adds Check for Updates (Cockpit menu; opens the official DMG, installation stays manual). v0.1.2 shipped Claude CLI capability detection; same-Mac acceptance passed on a second account with Claude Code 2.1.220. Independent human and other-Mac installation remain open. Next: the result card and Builder work mode, then the wargame workflow.
 
 **Release history 2026-09-30:** `v0.1.0` is published as a GitHub **pre-release** with `Cockpit-0.1.0-arm64.dmg` (built from `dd8aab1`, ad-hoc signed, arm64) for a small group of testers. Every P0 item in [RELEASE-ACCEPTANCE.md](RELEASE-ACCEPTANCE.md) is accepted; checkpoints 5a, 5b and 6 landed after acceptance with their gates green.
 

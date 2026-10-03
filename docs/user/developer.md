@@ -1,6 +1,6 @@
 # Developer Guide
 
-> **v0.1.2 prerelease (2026-10-03).** This guide covers the updated tester build. Same-Mac acceptance passed on a second account; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide is for developers looking to build, test, and package Agent Cockpit locally.
 
@@ -36,7 +36,7 @@ Ensure you have Node.js and `npm` installed. Run `npm ci` in the repository firs
 | `npm run dev:server` | Starts the backend server with hot-reload via `tsx watch`. |
 | `npm run dev:web` | Starts the Vite dev server for the React frontend. |
 | `npm run app` | Builds the project and opens the Electron desktop app locally. |
-| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.2-arm64.dmg`. |
+| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.3-arm64.dmg`. |
 
 ## Testing and Proofs
 
