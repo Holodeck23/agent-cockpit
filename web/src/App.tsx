@@ -2,8 +2,9 @@ import { FirstRun } from './components/FirstRun.tsx'
 import { api } from './api.ts'
 import { Workflows } from './components/Workflows.tsx'
 import { Memory } from './components/Memory.tsx'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { ConversationList } from './components/ConversationList.tsx'
+import { ListResize, useListWidth } from './components/ListResize.tsx'
 import { Files } from './components/Files.tsx'
 import { NewConversation } from './components/NewConversation.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
@@ -44,6 +45,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const { appearance, update: updateAppearance } = useAppearance()
   const { sounds, setSounds } = useSoundSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const listWidth = useListWidth()
+  const [listDraft, setListDraft] = useState<number>()
   // Desktop only: the phone has its own notifications.
   useStatusSounds(local ? cockpit.threads : NO_THREADS, sounds)
   // The Dock icon: moving bars while any agent works, a badge with how many need you (every project).
@@ -122,7 +125,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       <div className={`workspace${local && previewUrl ? ' has-preview' : ''}`}>
         <div className="workspace-main">
       {section === 'conversations' ? (
-        <div className={`layout${selectedId ? ' has-selection' : ''}`}>
+        <div className={`layout${selectedId ? ' has-selection' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
+          {phone ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
           <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
             {...(phone ? { projectName, canCreate: false } : {})} />
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (

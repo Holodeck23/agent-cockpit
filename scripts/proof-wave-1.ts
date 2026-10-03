@@ -143,6 +143,28 @@ try {
   await page.getByRole('button', { name: 'Reopen' }).first().click()
   check('B4 reopening does not bring the question back', await until('still no badge', async () => (await badge()) === '', 1500) || (await badge()) === '')
 
+  // A5: the conversation list resizes by dragging its edge, within bounds, and remembers it.
+  const listWidth = () => page.locator('.list').evaluate((el) => Math.round(el.getBoundingClientRect().width))
+  const handle = page.getByRole('separator', { name: 'Resize conversation list' })
+  const before = await listWidth()
+  const drag = async (dx: number) => {
+    const box = (await handle.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + 200)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + 200, { steps: 8 })
+    await page.mouse.up()
+  }
+  await drag(100)
+  check('A5 dragging the edge widens the list', Math.abs((await listWidth()) - (before + 100)) <= 2, `${before} → ${await listWidth()}`)
+  await drag(-600)
+  check('A5 the list stops at its minimum width', (await listWidth()) === 260, String(await listWidth()))
+  await handle.focus()
+  await page.keyboard.press('ArrowRight')
+  check('A5 arrow keys resize the focused handle', (await listWidth()) === 276)
+  await page.reload()
+  await page.locator('.list').waitFor()
+  check('A5 the width is remembered', (await listWidth()) === 276)
+
   // Themes and a narrow window for the screenshots.
   await open('Clips')
   await setTheme(page, 'Dark')
