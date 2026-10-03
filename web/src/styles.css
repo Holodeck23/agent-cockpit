@@ -28,3 +28,6 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .toast button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; }
 
 /* Narrow screens (the phone) are laid out in styles/phone.css. */
+/* "Updated to Cockpit x" after an update (update-notice.ts); an error toast takes its place. */
+.toast.update-toast { align-items: center; border-color: var(--border); }
+.toast .update-toast-notes { font-size: 13px; color: var(--link); padding: 0 4px; }

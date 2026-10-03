@@ -12,6 +12,7 @@ import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { shortcutFor } from './shortcuts.ts'
 import { ReleaseNotes } from './components/ReleaseNotes.tsx'
+import { checkForUpdateNotice } from './update-notice.ts'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
@@ -77,6 +78,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   // Help → Release Notes, or the "Updated to" view after an update (lead set).
   const [releaseNotes, setReleaseNotes] = useState<{ lead?: string }>()
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
+  const [updated, setUpdated] = useState<string>()
+  useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
   useEffect(() => local ? native?.onPreviewOpen(setPreviewUrl) : undefined, [local])
   // A clicked Mac notification opens its conversation, in whichever project it belongs to.
   const threadsRef = useRef(cockpit.threads)
@@ -157,6 +160,13 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}><SlidersIcon /></button></>
           : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
       />
+      {updated && !cockpit.error ? (
+        <div className="toast update-toast" role="status">
+          <span>{updated}</span>
+          <button type="button" className="update-toast-notes" onClick={() => { setReleaseNotes({ lead: updated }); setUpdated(undefined) }}>What’s new</button>
+          <button type="button" onClick={() => setUpdated(undefined)} aria-label="Dismiss">×</button>
+        </div>
+      ) : null}
       {releaseNotes ? <ReleaseNotes lead={releaseNotes.lead} onClose={() => setReleaseNotes(undefined)} /> : null}
       {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} notify={notify} onNotify={setNotify} onClose={() => setSettingsOpen(false)} /> : null}
       {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
