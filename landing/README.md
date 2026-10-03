@@ -1,6 +1,6 @@
 # Cockpit prerelease landing page
 
-`index.html` is the complete, self-contained v0.1.5 landing page. It includes inline styles, script, the Cockpit mark and four embedded screenshots from the packaged app. Open it directly from disk or host this directory as a static website. Outbound links point to the public repository, release asset, issues and Enjoy attribution.
+`index.html` is the complete, self-contained v0.1.4 landing page. It includes inline styles, script, the Cockpit mark and four embedded screenshots from the packaged app. Open it directly from disk or host this directory as a static website. Outbound links point to the public repository, release asset, issues and Enjoy attribution.
 
 The embedded workspace is explicitly labeled as a simulation. Resume the sample project, allow or deny startup, use the focus counter in the preview, switch agents, and move between conversations. Files lets visitors edit and explicitly save sample notes; Workflows reads the saved version and shows a fixed review checklist. State survives view changes and resets on Reset preview or reload. There is no provider call, backend, real command execution or model usage.
 
@@ -38,7 +38,7 @@ Set `LANDING_URL` to repeat the same full journey against the HTTP preview or de
 ## Release / portfolio handoff
 
 - Static publish root: `landing/`. Entry: `index.html`. No build command.
-- Release asset: `Cockpit-0.1.5-arm64.dmg` from tag `v0.1.5`.
+- Release asset: `Cockpit-0.1.4-arm64.dmg` from tag `v0.1.4`.
 - Suitable portfolio card title: **Cockpit**.
 - Label: **Mac app · prerelease**.
 - Suggested description: **A desktop workspace for coding agents, with recent-work recovery, inline approvals, embedded preview inspection, project files and repeatable workflows.**
