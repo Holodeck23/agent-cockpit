@@ -24,6 +24,8 @@ export type NormalizedEvent =
   | { kind: 'completion_changed'; completed: boolean }
   /** You dismissed the question or blocker the last turn ended with. */
   | { kind: 'awaiting_dismissed' }
+  /** Another conversation (or Cockpit) switched the project's branch; `byTitle` names that conversation. */
+  | { kind: 'branch_changed'; from: string; to: string; byTitle?: string }
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }

@@ -5,6 +5,8 @@ import { BranchIcon, ChevronDownIcon, PlusIcon } from './icons.tsx'
 
 interface BranchPickerProps {
   projectPath: string
+  /** The conversation the pill belongs to, named in the note other conversations get. */
+  threadId?: string
   /** Changes when the branch may have moved under us, e.g. a turn finished. */
   refreshKey?: string
 }
@@ -15,7 +17,7 @@ const label = (git: GitView): string => git.branch ?? (git.head ? `detached at $
  * The composer's branch pill: the project's current Git branch, with search, switch,
  * create-and-switch and push. Hidden when the folder is not a repository.
  */
-export function BranchPicker({ projectPath, refreshKey }: BranchPickerProps) {
+export function BranchPicker({ projectPath, threadId, refreshKey }: BranchPickerProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   const [git, setGit] = useState<GitView>()
   const [query, setQuery] = useState('')
@@ -59,8 +61,8 @@ export function BranchPicker({ projectPath, refreshKey }: BranchPickerProps) {
       setPending('')
     }
   }
-  const switchTo = (branch: string): Promise<void> => act(branch, () => api.switchBranch(projectPath, branch), (s) => `Switched to ${s.branch ?? branch}.`)
-  const create = (branch: string): Promise<void> => act(branch, () => api.createBranch(projectPath, branch), (s) => `Created and switched to ${s.branch ?? branch}.`)
+  const switchTo = (branch: string): Promise<void> => act(branch, () => api.switchBranch(projectPath, branch, threadId), (s) => `Switched to ${s.branch ?? branch}.`)
+  const create = (branch: string): Promise<void> => act(branch, () => api.createBranch(projectPath, branch, threadId), (s) => `Created and switched to ${s.branch ?? branch}.`)
   const push = (): Promise<void> => act('push', () => api.pushBranch(projectPath), (s) => `Pushed to ${s.pushedTo ?? 'the remote'}.`)
 
   const wanted = query.trim()

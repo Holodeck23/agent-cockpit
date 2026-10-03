@@ -308,6 +308,22 @@ describe('session lifecycle regressions', () => {
     await manager.shutdown()
   })
 
+  it("notes a branch change in the project's other conversations, without counting it as activity", async () => {
+    const { store, manager, settings } = setup()
+    const here = manager.create({ projectPath: '/tmp', settings, text: 'switch it' })
+    const other = manager.create({ projectPath: '/tmp', settings, text: 'other work' })
+    const elsewhere = manager.create({ projectPath: '/elsewhere', settings, text: 'unrelated' })
+    const before = manager.summaries().find((s) => s.meta.id === other.id)!.lastActivityAt
+    manager.noteBranchChange('/tmp', 'main', 'feature', here.id)
+    const kinds = (id: string) => store.events(id).map((e) => e.event.kind)
+    expect(kinds(other.id)).toContain('branch_changed')
+    expect(store.events(other.id).at(-1)?.event).toEqual({ kind: 'branch_changed', from: 'main', to: 'feature', byTitle: 'switch it' })
+    expect(kinds(here.id)).not.toContain('branch_changed')
+    expect(kinds(elsewhere.id)).not.toContain('branch_changed')
+    expect(manager.summaries().find((s) => s.meta.id === other.id)!.lastActivityAt).toBe(before)
+    await manager.shutdown()
+  })
+
   it('dismisses an open question; dismissing with nothing open is refused', async () => {
     const { manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'deploy?' })

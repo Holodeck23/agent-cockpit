@@ -179,6 +179,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         onDraftLoaded={onDraftLoaded}
         onBrowseFiles={phone ? undefined : onBrowseFiles}
         projectPath={phone ? undefined : meta.projectPath}
+        threadId={meta.id}
         draftKey={meta.id}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}

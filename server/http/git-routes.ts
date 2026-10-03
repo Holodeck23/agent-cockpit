@@ -9,7 +9,7 @@ import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 // and switching or creating waits until no conversation in the project is mid-turn.
 
 const projectBody = z.object({ projectPath: z.string().min(1).max(1000) })
-const branchBody = projectBody.extend({ branch: z.string().min(1).max(250) })
+const branchBody = projectBody.extend({ branch: z.string().min(1).max(250), threadId: z.string().min(1).max(80).optional() })
 
 export interface GitDeps {
   readonly projects: ProjectStore
@@ -49,11 +49,14 @@ export async function handleGitRoute(req: IncomingMessage, res: ServerResponse, 
       return
     }
     if (action === 'switch' || action === 'create') {
-      const { projectPath, branch } = parseBody(branchBody, await readJson(req))
+      const { projectPath, branch, threadId } = parseBody(branchBody, await readJson(req))
       requireOpen(projectPath)
       const working = busy(projectPath)
       if (working.length) throw new HttpError(409, `Wait until no conversation in this project is working (${working.join(', ')})`)
+      const from = (await gitState(projectPath)).branch
       const state = action === 'switch' ? await switchBranch(projectPath, branch) : await createBranch(projectPath, branch)
+      // The project's other conversations learn about it in their transcripts (B5).
+      if (from && state.branch && from !== state.branch) deps.manager.noteBranchChange(projectPath, from, state.branch, threadId)
       sendJson(res, 200, { data: { ...state, busy: [] } })
       return
     }

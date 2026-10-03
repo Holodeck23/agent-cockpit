@@ -60,8 +60,8 @@ export const api = {
   startDirector: (body: { kind: 'sample' } | { kind: 'project'; projectPath: string }) =>
     request<ThreadMeta>('/api/onboarding/start', { method: 'POST', body }),
   gitState: (projectPath: string) => request<GitView>(`/api/git?${new URLSearchParams({ projectPath })}`),
-  switchBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch } }),
-  createBranch: (projectPath: string, branch: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch } }),
+  switchBranch: (projectPath: string, branch: string, threadId?: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch, threadId } }),
+  createBranch: (projectPath: string, branch: string, threadId?: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch, threadId } }),
   pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   /** A "documents:" path reads from the project's documents; the result keeps the same naming. */

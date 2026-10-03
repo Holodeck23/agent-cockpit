@@ -1,5 +1,6 @@
 // Packaged gate for parity wave 1 (reading + attention). Stand-in agent, no provider usage.
 // Usage: npm run package (or COCKPIT_APP=<path>/Cockpit.app), then npm run proof:wave-1
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,6 +17,11 @@ const root = mkdtempSync(join(tmpdir(), 'cockpit-wave1-proof-'))
 const project = join(root, 'project')
 mkdirSync(project)
 writeFileSync(join(project, 'notes.md'), '# Notes\n')
+const git = (...args: string[]): string => execFileSync('git', args, { cwd: project, encoding: 'utf8' }).trim()
+git('init', '-q', '-b', 'main')
+git('-c', 'user.email=proof@example.com', '-c', 'user.name=proof', 'add', '.')
+git('-c', 'user.email=proof@example.com', '-c', 'user.name=proof', 'commit', '-q', '-m', 'first')
+git('branch', 'side')
 const store = createThreadStore(join(root, 'state'))
 mkdirSync(PROOF_DIR, { recursive: true })
 
@@ -209,6 +215,19 @@ try {
   await page.reload()
   await page.locator('.list').waitFor()
   check('A5 the width is remembered', (await listWidth()) === 276)
+
+  // B5: switching the branch from one conversation tells the project's others.
+  await open('Clips')
+  await page.getByRole('button', { name: 'Branch', exact: true }).click()
+  const branches = page.getByRole('dialog', { name: 'Branches' })
+  await branches.getByRole('option', { name: /^side\b/ }).click()
+  await branches.getByText('Switched to side.').waitFor()
+  check('B5 the switch happened', git('branch', '--show-current') === 'side')
+  await page.keyboard.press('Escape')
+  check('B5 the conversation that switched gets no note', (await page.getByText(/The project switched from main to side/).count()) === 0)
+  await open('Deploy question')
+  check('B5 another conversation says who switched what', await page.getByText('The project switched from main to side in “Clips”. Files here now reflect side.').isVisible())
+  await shot(page, 'b5-branch-note')
 
   // Themes and a narrow window for the screenshots.
   await open('Clips')

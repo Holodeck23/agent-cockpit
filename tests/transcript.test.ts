@@ -121,3 +121,16 @@ describe('cockpit MCP tools in the transcript', () => {
     expect(friendlyToolName('Bash')).toBe('Bash')
   })
 })
+
+describe('branch changes made elsewhere', () => {
+  it('say which branch, from where, as a plain note', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'branch_changed', from: 'main', to: 'feature/login', byTitle: 'Login work' }),
+      at(1, { kind: 'branch_changed', from: 'main', to: 'fix' }),
+    ], 'claude')
+    expect(items).toMatchObject([
+      { type: 'note', text: 'The project switched from main to feature/login in “Login work”. Files here now reflect feature/login.' },
+      { type: 'note', text: 'The project switched from main to fix. Files here now reflect fix.' },
+    ])
+  })
+})

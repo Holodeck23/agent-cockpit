@@ -22,8 +22,9 @@ export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate)
     if (t.meta.id !== update.threadId) return t
     const isMessage = update.event.kind === 'assistant_text' || update.event.kind === 'user_text'
     const text = isMessage && 'text' in update.event ? update.event.text : undefined
-    // Streaming deltas are not persisted server-side, so they don't count as activity either; nor does a dismissal.
-    const lastActivityAt = update.event.kind === 'text_delta' || update.event.kind === 'awaiting_dismissed' ? t.lastActivityAt : new Date().toISOString()
+    // Streaming deltas are not persisted server-side, so they don't count as activity either; nor do
+    // a dismissal or a branch note (server/threads/manager.ts QUIET).
+    const lastActivityAt = update.event.kind === 'text_delta' || update.event.kind === 'awaiting_dismissed' || update.event.kind === 'branch_changed' ? t.lastActivityAt : new Date().toISOString()
     // A reply, a dismissal or Mark complete settles a question (server/threads/turns.ts awaitingOf).
     const settles = update.event.kind === 'user_text' || update.event.kind === 'awaiting_dismissed' || (update.event.kind === 'completion_changed' && update.event.completed)
     return {

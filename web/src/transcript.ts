@@ -235,6 +235,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (at !== undefined && card?.type === 'approval') replace(at, { ...card, resolution: event.behavior })
         return
       }
+      case 'branch_changed':
+        items.push({ type: 'note', key, text: `The project switched from ${event.from} to ${event.to}${event.byTitle ? ` in “${event.byTitle}”` : ''}. Files here now reflect ${event.to}.`, tone: 'plain' })
+        return
       case 'agent_switch':
         agent = event.to
         items.push({ type: 'note', key, text: `Handed over from ${agentName(event.from)} to ${agentName(event.to)}. The conversation so far goes with it.`, tone: 'plain' })
