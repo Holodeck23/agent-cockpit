@@ -3,7 +3,7 @@ import type { Preset } from '../../server/presets/store.ts'
 import type { z } from 'zod'
 export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
-import type { DocumentEntry } from '../../server/files/documents.ts'
+import type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 import type { MemoryEntry } from '../../server/memory/store.ts'
 import type { SessionSummary } from '../../server/import/sessions.ts'
 import { inSpace, spaceOf } from './file-text.ts'
@@ -84,6 +84,7 @@ export const api = {
   importSession: (projectPath: string, agent: AgentId, sessionId: string) =>
     request<ThreadMeta>('/api/import', { method: 'POST', body: { projectPath, agent, sessionId } }),
   listDocuments: (projectPath: string) => request<DocumentEntry[]>(`/api/documents?${new URLSearchParams({ projectPath })}`),
+  searchDocuments: (projectPath: string, q: string) => request<DocumentMatch[]>(`/api/documents/search?${new URLSearchParams({ projectPath, q })}`),
   markDocument: (projectPath: string, path: string, change: { pinned?: boolean; archived?: boolean }) =>
     request<DocumentEntry[]>('/api/documents/mark', { method: 'POST', body: { projectPath, path, ...change } }),
   /** Renames in place; resolves to the new tab path. */
@@ -169,7 +170,7 @@ export function subscribe({ onUpdate, onProcess, onOpen, onRemote }: StreamHandl
 export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
-export type { DocumentEntry } from '../../server/files/documents.ts'
+export type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 export type { MemoryEntry } from '../../server/memory/store.ts'
 /** A session the CLI ran in this project, as the import window lists it. */
 export type ImportableSession = SessionSummary & { inCockpit: boolean }

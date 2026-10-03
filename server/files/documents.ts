@@ -59,6 +59,36 @@ export function listDocuments(root: string, projectPath: string): DocumentEntry[
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.modifiedAt.localeCompare(a.modifiedAt) || a.name.localeCompare(b.name))
 }
 
+export interface DocumentMatch extends DocumentEntry { readonly excerpt?: string }
+
+const MAX_SEARCH_BYTES = 100 * 1024
+
+/**
+ * Current and archived documents whose name or text holds every word of `query`, case-insensitive.
+ * A text match carries the first line with a matching word. Binary and oversized files match by name only.
+ */
+export function searchDocuments(root: string, projectPath: string, query: string): DocumentMatch[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return []
+  const dir = documentsDir(root, projectPath)
+  const found: DocumentMatch[] = []
+  for (const doc of listDocuments(root, projectPath)) {
+    let text = ''
+    try {
+      const file = join(dir, doc.path)
+      if (statSync(file).size <= MAX_SEARCH_BYTES) {
+        const raw = readFileSync(file, 'utf8')
+        if (!raw.includes('\0')) text = raw
+      }
+    } catch { /* unreadable: name only */ }
+    const haystack = `${doc.name.toLowerCase()}\n${text.toLowerCase()}`
+    if (!words.every((w) => haystack.includes(w))) continue
+    const line = text.split(/\r?\n/).map((l) => l.trim()).find((l) => words.some((w) => l.toLowerCase().includes(w)))
+    found.push(line ? { ...doc, excerpt: line.length > 160 ? `${line.slice(0, 160)}…` : line } : doc)
+  }
+  return found
+}
+
 /** Pins or archives a document; archiving also unpins it. */
 export function markDocument(root: string, projectPath: string, name: string, change: { pinned?: boolean; archived?: boolean }): void {
   if (!existsSync(join(documentsDir(root, projectPath), name)) || name.includes('/')) throw new Error(`Not found in your documents: ${name}`)

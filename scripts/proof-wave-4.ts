@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
+import { documentsDir, markDocument } from '../server/files/documents.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { apiPost, openProject, setTheme } from './lib/ui.ts'
@@ -24,6 +25,11 @@ writeFileSync(join(project, 'README.md'), '# App\n')
 writeFileSync(join(other, 'notes.txt'), 'other\n')
 
 const store = createThreadStore(join(root, 'state'))
+const docs = documentsDir(store.root, project)
+writeFileSync(join(docs, 'launch-plan.md'), '# Launch\n\nShip the beta on Friday.\n')
+writeFileSync(join(docs, 'old-pricing.md'), 'The beta pricing we dropped.\n')
+writeFileSync(join(docs, 'groceries.txt'), 'milk\n')
+markDocument(store.root, project, 'old-pricing.md', { archived: true })
 const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave1-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave4-${name}.png`) })
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {
@@ -118,6 +124,23 @@ try {
   check('F7 it stays hidden after a reload', await until('still hidden', async () => (await page.getByRole('button', { name: 'Show files' }).isVisible()) && !(await explorer.isVisible())))
   await page.getByRole('button', { name: 'Show files' }).click()
   check('F7 Show files brings it back', await until('shown', async () => explorer.isVisible()))
+  // F5: search your documents, the archive included, by name or by a word inside.
+  await page.getByRole('tab', { name: 'Your documents' }).click()
+  const docList = page.getByRole('navigation', { name: 'Your documents' })
+  check('F5 an archived document is not in the current list', await until('list', async () => (await docList.locator('.file-row', { hasText: 'launch-plan.md' }).count()) === 1)
+    && (await docList.locator('.file-row', { hasText: 'old-pricing.md' }).count()) === 0)
+  await docList.getByRole('searchbox', { name: 'Search documents' }).fill('beta')
+  const hit = (name: string) => docList.locator('.file-row', { hasText: name })
+  check('F5 searching finds current and archived documents by a word inside', await until('hits', async () => (await hit('launch-plan.md').count()) === 1 && (await hit('old-pricing.md').count()) === 1 && (await hit('groceries.txt').count()) === 0))
+  check('F5 an archived match says so and shows the matching line', (await hit('old-pricing.md').locator('.doc-archived-tag').innerText()) === 'Archived'
+    && (await hit('launch-plan.md').locator('.doc-excerpt').innerText()) === 'Ship the beta on Friday.')
+  await shot(page, 'f5-search')
+  await hit('old-pricing.md').click()
+  check('F5 a match opens like any document', await until('opened', async () => (await activeTab.innerText()).startsWith('old-pricing.md')))
+  await docList.getByRole('searchbox', { name: 'Search documents' }).fill('')
+  check('F5 clearing the search returns to the list', await until('cleared', async () => (await hit('old-pricing.md').count()) === 0 && (await hit('groceries.txt').count()) === 1))
+  await page.getByRole('tab', { name: 'Project files' }).click()
+
   await setTheme(page, 'Dark')
   await shot(page, 'files-dark')
   await setTheme(page, 'Light')

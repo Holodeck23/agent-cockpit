@@ -4,7 +4,7 @@ import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
 import { FileConflictError, writeProjectFile } from '../files/editor.ts'
 import { checkReferences, searchFiles } from '../files/search.ts'
-import { listDocuments, markDocument, renameFile, spaceRoot, spaceSchema } from '../files/documents.ts'
+import { listDocuments, markDocument, renameFile, searchDocuments, spaceRoot, spaceSchema } from '../files/documents.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -245,6 +245,12 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           const projectPath = url.searchParams.get('projectPath') ?? ''
           if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
           sendJson(res, 200, { data: listDocuments(store.root, projectPath) })
+          return true
+        }
+        if (method === 'GET' && parts[2] === 'search') {
+          const projectPath = url.searchParams.get('projectPath') ?? ''
+          if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+          sendJson(res, 200, { data: searchDocuments(store.root, projectPath, (url.searchParams.get('q') ?? '').slice(0, 200)) })
           return true
         }
         if (method === 'POST' && parts[2] === 'mark') {
