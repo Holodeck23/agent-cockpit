@@ -138,7 +138,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }} />
 
   return (
-    <div className="app">
+    <div className={`app${projects.active ? ` tint-${projects.active.color}` : ''}`}>
       {phone ? (
         <header className="tabbar phone-bar">
           <Mark className="tabbar-mark" />

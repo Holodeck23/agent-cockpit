@@ -35,7 +35,7 @@
 .tab.active .tab-main { color: var(--strong); font-weight: 500; }
 .tab:not(.active) .tab-main:hover { color: var(--body); background: color-mix(in srgb, var(--strong) 6%, transparent); }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
-.tab-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--body); }
+.tab-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--tab-tint, var(--body)); }
 .tab-needs { position: relative; display: inline-flex; color: var(--muted); }
 .tab-needs .icon { width: 20px; height: 20px; }
 .count-dot {
@@ -49,7 +49,7 @@
   background: var(--field); border: 0; border-radius: var(--r-sm); color: var(--muted); cursor: default;
 }
 .tab-pin .icon { width: 15px; height: 15px; }
-.tab-pin.pinned { color: var(--strong); }
+.tab-pin.pinned { color: var(--tab-tint, var(--strong)); }
 .tab-pin:hover { color: var(--strong); }
 
 .avatar {
@@ -104,7 +104,7 @@
 .subnav-item .icon { width: 17px; height: 17px; }
 .subnav-item[aria-selected='true'] { background: var(--subnav-active); color: var(--strong); font-weight: 500; }
 .subnav-item:not([aria-selected='true']):hover { color: var(--strong); }
-.subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
+.subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--project-tint, inherit); }
 .subnav-tools { display: flex; gap: 4px; }
 .icon-button {
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: none; border: 0;

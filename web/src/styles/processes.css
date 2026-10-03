@@ -39,5 +39,5 @@
 .processes-button[aria-pressed='true'] { background: var(--field); color: var(--strong); }
 .processes-badge {
   position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
-  background: var(--success); color: #fff; font-size: 10px; font-weight: 600; line-height: 15px; text-align: center;
+  background: var(--project-fill, var(--success)); color: #fff; font-size: 10px; font-weight: 600; line-height: 15px; text-align: center;
 }

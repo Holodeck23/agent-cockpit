@@ -48,7 +48,7 @@
 /* Stop and Complete sit under the title, quiet until hovered. */
 .head-action { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--secondary); font-size: 12.5px; }
 .head-action:hover { border-color: var(--border); background: var(--field); color: var(--strong); }
-.head-action[aria-pressed='true'] { color: var(--success); }
+.head-action[aria-pressed='true'] { color: var(--project-tint, var(--success)); }
 .head-action svg { width: 13px; height: 13px; }
 .menu-shortcut { margin-left: auto; padding-left: 16px; font: inherit; font-size: 12px; color: var(--muted); }
 .segment { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); }
@@ -140,10 +140,10 @@
 .composer-spacer { flex: 1; }
 .send {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: var(--r-xs);
-  background: var(--blue); color: #fff; box-shadow: 0 2px 0 var(--blue-shadow);
+  background: var(--project-fill, var(--blue)); color: #fff; box-shadow: 0 2px 0 var(--project-fill-shadow, var(--blue-shadow));
 }
 .send .icon { width: 18px; height: 18px; stroke-width: 2.2; }
-.send:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--blue-shadow); }
+.send:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--project-fill-shadow, var(--blue-shadow)); }
 .send:disabled { background: var(--field); color: var(--muted); box-shadow: none; }
 
 /* agent picker */

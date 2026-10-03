@@ -17,7 +17,7 @@
   min-height: 0; border-left: 1px solid var(--border); background: var(--subtle);
 }
 .activity-resize { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; z-index: 2; cursor: col-resize; touch-action: none; }
-.activity-resize:hover, .activity-resize:focus-visible { outline: none; background: linear-gradient(90deg, transparent 3px, var(--halo) 3px, var(--halo) 5px, transparent 5px); }
+.activity-resize:hover, .activity-resize:focus-visible { outline: none; background: linear-gradient(90deg, transparent 3px, var(--project-tint, var(--halo)) 3px, var(--project-tint, var(--halo)) 5px, transparent 5px); }
 
 .activity-head { display: flex; align-items: center; gap: 10px; padding: 18px 12px 12px 18px; border-bottom: 1px solid var(--border); }
 .activity-head h2 { margin: 0; font-size: 15px; font-weight: 650; color: var(--strong); }
