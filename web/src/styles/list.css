@@ -87,3 +87,4 @@
 }
 .check { display: inline-flex; align-items: center; gap: 7px; color: var(--body); }
 .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
+.card-excerpt { font-style: italic; }
