@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { lineRange } from '../web/src/file-text.ts'
+import { lineRange, peekText } from '../web/src/file-text.ts'
 import { fileLink } from '../web/src/markdown/file-links.ts'
 import { ReplyContext, ReplyMarkdown } from '../web/src/markdown/reply.tsx'
 
@@ -52,5 +52,18 @@ describe('jumping to lines', () => {
   it('clamps past the end of the file', () => {
     expect(lineRange(text, 99)).toEqual({ start: 14, end: 18 })
     expect(lineRange(text, 3, 99)).toEqual({ start: 8, end: 18 })
+  })
+})
+
+describe('peeking at an attached file', () => {
+  it('shows the first lines and says how many more there are', () => {
+    const text = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n')
+    expect(peekText(text, 40)).toEqual({ text: Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n'), more: 10 })
+    expect(peekText('short\nfile\n', 40)).toEqual({ text: 'short\nfile', more: 0 })
+  })
+  it('cuts a very long line so the peek stays small', () => {
+    const { text } = peekText('x'.repeat(5000), 40)
+    expect(text.length).toBeLessThanOrEqual(401)
+    expect(text.endsWith('…')).toBe(true)
   })
 })

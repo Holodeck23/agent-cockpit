@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import type { AgentId, ApprovalBehavior } from '../../../server/agents/types.ts'
 import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
@@ -6,7 +6,10 @@ import { AgentGlyph } from './AgentGlyph.tsx'
 import { CopyButton } from './CopyButton.tsx'
 import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
 import { TroubleshootingLink } from './TroubleshootingLink.tsx'
-import { ReplyMarkdown } from '../markdown/reply.tsx'
+import { ReplyContext, ReplyMarkdown } from '../markdown/reply.tsx'
+import { Peek } from './Peek.tsx'
+import { api } from '../api.ts'
+import { peekText } from '../file-text.ts'
 
 interface TranscriptViewProps {
   items: TranscriptItem[]
@@ -45,6 +48,7 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
 
 export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
+  const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
   const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
@@ -83,17 +87,29 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                   {item.author === 'you' ? item.text : <ReplyMarkdown text={item.text} />}
                   {item.attachments || item.workflows ? (
                     <div className={`message-clips${item.text ? '' : ' only'}`} role="list" aria-label="Sent with this message">
-                      {item.attachments?.map((path) => (
-                        <span key={`file:${path}`} role="listitem" className="reference-chip" title={path}>
-                          <FileIcon />
-                          <span>{path.split('/').pop() ?? path}</span>
-                        </span>
-                      ))}
+                      {item.attachments?.map((path) => {
+                        const chip = (
+                          <span role="listitem" className="reference-chip" title={path} tabIndex={replies.projectPath ? 0 : undefined}>
+                            <FileIcon />
+                            <span>{path.split('/').pop() ?? path}</span>
+                          </span>
+                        )
+                        // Peek at the file as it is now; Files is on the Mac only.
+                        const project = replies.projectPath
+                        return project ? (
+                          <Peek key={`file:${path}`} title={path} load={async () => peekText((await api.readFile(project, path)).text)}
+                            action={replies.onOpenFile ? { label: 'Open in Files', run: () => replies.onOpenFile?.({ path }) } : undefined}>
+                            {chip}
+                          </Peek>
+                        ) : <span key={`file:${path}`}>{chip}</span>
+                      })}
                       {item.workflows?.map((w) => (
-                        <details key={`workflow:${w.name}`} role="listitem" className="reference-chip workflow-clip">
-                          <summary title={`Workflow ${w.name}: show the instructions it sent`}><WorkflowIcon /><span>{w.name}</span></summary>
-                          <pre>{w.prompt}</pre>
-                        </details>
+                        <Peek key={`workflow:${w.name}`} title={`Workflow ${w.name}`} load={async () => peekText(w.prompt)}>
+                          <details role="listitem" className="reference-chip workflow-clip">
+                            <summary title={`Workflow ${w.name}: show the instructions it sent`}><WorkflowIcon /><span>{w.name}</span></summary>
+                            <pre>{w.prompt}</pre>
+                          </details>
+                        </Peek>
                       ))}
                     </div>
                   ) : null}
