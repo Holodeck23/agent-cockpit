@@ -1,0 +1,18 @@
+Usage: claude [options]
+  --print
+  --verbose
+  --input-format <format> (choices: "text", "stream-json")
+  --output-format <format> (choices: "text", "json", "stream-json")
+  --include-partial-messages
+  --permission-mode <mode> (choices: "manual", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions")
+  --permission-prompts <target> (choices: "host", "none")
+  --strict-mcp-config
+  --mcp-config <configs>
+  --settings <settings>
+  --disallowedTools, --disallowed-tools <tools>
+  --model <model>
+  --effort <level> (choices: "low", "medium", "high", "xhigh", "max")
+  --session-id <uuid>
+  --resume <id>
+  --allowedTools, --allowed-tools <tools>
+  --append-system-prompt <text>

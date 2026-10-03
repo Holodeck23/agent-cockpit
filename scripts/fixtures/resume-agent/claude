@@ -1,4 +1,5 @@
 #!/bin/sh
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
 # Stand-in `claude` for `npm run proof:import`: each reply names the session it was resumed with
 # (--resume) or says it is new, so the proof can see an imported conversation continue the same
 # session. Exits on stdin EOF, like the real CLI.

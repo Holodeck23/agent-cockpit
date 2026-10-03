@@ -36,7 +36,7 @@ The plan was a personal V1 in small phases, each with a proof gate that has to p
 
 **What.** Tool approvals answered from the UI (Allow, Allow for session, Deny), and Stop.
 
-**How.** Found by testing: approvals need both `--permission-prompts host` and `--permission-prompt-tool stdio`, and approving has to echo the tool's original input. Stop is an interrupt request; the failed result that follows is recorded as a stop, not an error. Also found: hook settings merge across sources, so only `disableAllHooks` keeps personal SessionStart hooks out of cockpit sessions.
+**How.** Original testing used `--permission-prompts host` with `--permission-prompt-tool stdio`; approving has to echo the tool's original input. Compatibility correction (2026-10-03): Claude 2.1.220 does not advertise the former switch. The candidate probes CLI capabilities and omits that switch on older CLIs while keeping stdio routing; real permission behavior needs its own proof. Stop is an interrupt request; the failed result that follows is recorded as a stop, not an error. Also found: hook settings merge across sources, so only `disableAllHooks` keeps personal SessionStart hooks out of cockpit sessions.
 
 **Gate.** Approve and deny real tool calls from the UI; interrupt a running turn without it showing as an error.
 

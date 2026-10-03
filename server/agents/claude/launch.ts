@@ -6,6 +6,7 @@ import { stopChild } from '../stop.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
+import { probeClaude, validateClaudeArgs } from './capabilities.ts'
 
 export interface ClaudeLaunchDeps {
   /** Override for tests or a non-PATH install. */
@@ -19,7 +20,53 @@ export interface ClaudeLaunchDeps {
  * stays alive across turns; each `send` is a new user message on stdin.
  */
 export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps = {}): AgentSession {
-  const args = buildClaudeArgs(input)
+  buildClaudeArgs(input) // Validate caller input synchronously, before probing any executable.
+  const controller = new AbortController()
+  let session: AgentSession | undefined
+  let ended = false
+  let pending: string | undefined
+  const finish = (error?: unknown, stopped = false) => {
+    if (ended) return
+    ended = true
+    pending = undefined
+    if (error) onEvent({ kind: 'error', message: error instanceof Error ? error.message : 'Could not check Claude Code compatibility' })
+    onEvent({ kind: 'result', ok: false, ...(stopped ? { stopped: true } : {}) })
+    onEvent({ kind: 'exit', code: null })
+  }
+  // Defer spawning until callers can register the session (or immediately close
+  // it). In particular, never abort an execFile whose spawn has already failed.
+  const ready = Promise.resolve().then(() => ended ? undefined :
+    probeClaude(deps.executable ?? 'claude', input.cwd, { ...process.env, ...deps.env }, controller.signal))
+    .then((capabilities) => {
+      if (ended || !capabilities) return
+      const args = buildClaudeArgs(input, capabilities)
+      validateClaudeArgs(args, capabilities)
+      session = spawnClaude(input, onEvent, deps, args)
+      if (pending !== undefined) { session.send(pending); pending = undefined }
+    }).catch((error: unknown) => finish(error))
+  return {
+    agent: 'claude',
+    send(text) {
+      if (session) session.send(text)
+      else if (!ended && pending === undefined) pending = text
+      else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
+    },
+    respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
+    interrupt() {
+      if (session) session.interrupt()
+      else { finish(undefined, true); controller.abort() }
+    },
+    async close() {
+      if (session) { await session.close(); return }
+      finish(undefined, true)
+      controller.abort()
+      await ready
+    },
+    alive: () => session ? session.alive() : !ended,
+  }
+}
+
+function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[]): AgentSession {
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],

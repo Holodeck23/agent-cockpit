@@ -1,3 +1,9 @@
 #!/bin/sh
+[ "$1" = "--help" ] && {
+  if [ "$COCKPIT_FIXTURE_LEGACY" = "1" ]; then
+    sed '/^  --permission-prompts/d' "$(dirname "$0")/../claude-help.txt"
+  else cat "$(dirname "$0")/../claude-help.txt"; fi
+  exit 0
+}
 [ "$1" = "--version" ] && { echo '0.0.0 (Recovery fixture)'; exit 0; }
 exec "$COCKPIT_FIXTURE_NODE" "$COCKPIT_RECOVERY_FIXTURE" "$@"

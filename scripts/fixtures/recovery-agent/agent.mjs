@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const args = process.argv.slice(2)
+if (args.includes('--permission-prompts') === (process.env.COCKPIT_FIXTURE_LEGACY === '1')) throw new Error('Wrong permission argv for fixture capabilities')
 const resume = args[args.indexOf('--resume') + 1]
 const session = args[args.indexOf('--session-id') + 1] ?? resume
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`)

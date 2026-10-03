@@ -22,6 +22,11 @@ Agent Cockpit provides a unified interface across different AI coding agents. Ho
 
 ## Known Agent Limitations
 
+### Claude Code
+* **Public v0.1.1:** Claude 2.1.220 fails at startup with `unknown option '--permission-prompts'`. The failure is in CLI launch compatibility, not sign-in or your project. Preserve your conversation; do not reset it to troubleshoot this error.
+* **0.1.2-rc.1 candidate:** checks the selected CLI's advertised options before launch, retains manual/stdio approval handling, and omits the newer permission-prompts switch when unavailable. Unsupported options or a failed check produce guidance to update the executable Cockpit uses or choose another agent. Cockpit does not upgrade your CLI automatically. This candidate is not yet a published update to the v0.1.1 download.
+* **Version evidence (2026-10-03):** real Deny, Allow and native-resume checks passed with 2.1.220 and 2.1.288 under the developer's account. This does not establish Nova's candidate GUI acceptance, that every version between them works, or that 2.1.220 is the earliest compatible release. Installation, authentication, advertised options and actual approval behavior are distinct checks.
+
 ### Google Antigravity
 *   **Headless Permissions:** Antigravity manages its own headless permissions internally. When run via Cockpit, workspace edits can proceed under the default or manual policy, but shell actions that would normally need approval are strictly denied. There are no host approval cards displayed in Cockpit for Antigravity, and no Cockpit MCP tools are injected into its context.
 *   **Per-Launch MCP:** Because Antigravity has no per-launch Cockpit MCP connection capability, it cannot be used for the first-run 90-second sample project (which relies heavily on MCP tool integration for process previews).

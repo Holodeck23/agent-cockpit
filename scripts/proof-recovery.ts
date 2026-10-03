@@ -19,6 +19,7 @@ writeFileSync(join(project, 'package.json'), JSON.stringify({ scripts: { dev: 'n
 writeImportHome(importHome, project)
 const source = join(claudeProjectDir(importHome, project), `${CLAUDE_SESSION}.jsonl`), before = readFileSync(source)
 const env = { COCKPIT_HOME: home, COCKPIT_IMPORT_HOME: importHome, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/recovery-agent'),
+  COCKPIT_FIXTURE_LEGACY: process.argv.includes('--legacy') ? '1' : '0',
   COCKPIT_FIXTURE_NODE: process.execPath, COCKPIT_RECOVERY_FIXTURE: join(ROOT, 'scripts/fixtures/recovery-agent/agent.mjs'), COCKPIT_FIXTURE_MCP: join(ROOT, 'dist-electron/mcp.cjs') }
 let app = await launchPackagedApp(env)
 let checks = 0
