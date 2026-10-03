@@ -11,7 +11,7 @@
 // Packaging writes to release/v<version>, never release/mac-arm64, which may be the running app.
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -113,7 +113,10 @@ async function build(): Promise<void> {
   await run('landing-render.log', 'node', ['landing/check-render.mjs', 'landing/index.html', '--width', '390,768,1280'])
   await run('landing-verify.log', 'node', ['landing/verify.mjs', join(EVIDENCE, 'landing-local')])
 
-  rmSync(OUT, { recursive: true, force: true })
+  // Clear earlier build outputs but keep evidence/, which already holds this run's verify logs.
+  for (const entry of existsSync(OUT) ? readdirSync(OUT) : []) {
+    if (join(OUT, entry) !== EVIDENCE) rmSync(join(OUT, entry), { recursive: true, force: true })
+  }
   await run('package.log', 'npx', ['electron-builder', '--mac', '--arm64', `-c.directories.output=release/v${version}`])
   if (!existsSync(DMG)) fail(`electron-builder did not produce ${DMG}`)
   const dmgSha = sha256(DMG)
