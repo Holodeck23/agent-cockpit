@@ -43,7 +43,7 @@ export function projectInstructionsBlock(text: string): string {
 
 /** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
 /** Events that inform without being activity: they never reorder the list or mark it unread. */
-const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed'])
+const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed'])
 
 export const instructionsFor = (req: LaunchRequest): string | undefined =>
   [
@@ -150,6 +150,8 @@ export interface ThreadManager {
   noteBranchChange(projectPath: string, from: string, to: string, byThreadId?: string): void
   /** Stops its agent session, deletes everything stored for it and tells every window. */
   remove(threadId: string): Promise<void>
+  /** Same agent, new model/effort/permissions: the native session resumes with them from the next message. */
+  changeSettings(threadId: string, settings: ThreadSettings): ThreadMeta
   /** Hand the thread to another agent/model; the transcript goes with it. */
   switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
   /** Resume with manual permissions and CLI defaults; retain the native session when the agent is unchanged. */
@@ -386,6 +388,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
       broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
+      return next
+    },
+    changeSettings(threadId, settings) {
+      const meta = requireMeta(threadId)
+      if (settings.agent !== meta.settings.agent) throw new Error('Switch agents to change the agent')
+      const entry = live.get(threadId)
+      if (entry?.turnRunning) throw new Error('Stop the current turn before changing settings')
+      // Close the idle session; the next message relaunches it with the new flags and resumes it.
+      generations.delete(threadId)
+      live.delete(threadId)
+      if (entry) void closeEntry(entry)
+      const next = store.update(threadId, { settings })
+      record(threadId, { kind: 'settings_changed', ...(settings.model ? { model: settings.model } : {}), ...(settings.effort ? { effort: settings.effort } : {}), permissionMode: settings.permissionMode })
       return next
     },
     resumeRecovered(threadId, agent, text, agentText) {

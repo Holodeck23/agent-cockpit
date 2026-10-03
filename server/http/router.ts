@@ -395,6 +395,9 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         await readJson(req)
         try { manager.dismissAwaiting(threadId) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
         sendJson(res, 200, { data: {} })
+      } else if (method === 'POST' && action === 'settings') {
+        const { settings } = parseBody(switchBody, await readJson(req))
+        try { sendJson(res, 200, { data: manager.changeSettings(threadId, settings) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
       } else if (method === 'POST' && action === 'agent') {
         sendJson(res, 200, { data: manager.switchAgent(threadId, parseBody(switchBody, await readJson(req)).settings) })
       } else {

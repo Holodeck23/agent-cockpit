@@ -192,6 +192,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             value={choice}
             lockedReason={running ? 'Stop the current turn before switching.' : undefined}
             onSwitch={(next) => guard(api.switchAgent(meta.id, settingsFromChoice(next, meta.settings)))}
+            onApply={(next) => guard(api.changeSettings(meta.id, settingsFromChoice(next, meta.settings)))}
           />
         )}
       />

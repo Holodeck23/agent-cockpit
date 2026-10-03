@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { api, type FileMatch, type Workflow } from '../api.ts'
 import { fileReference, tokenFor, type ReferenceKind } from '../draft-references.ts'
+import { focusComposer } from '../focus-composer.ts'
 import { usePopover } from '../usePopover.ts'
 import { displayTitle } from '../workflow-list.ts'
 import { FileIcon, PlusIcon, WorkflowIcon } from './icons.tsx'
@@ -18,7 +19,7 @@ interface ContextPickerProps {
 
 /** The composer's "+": search this project's files and workflows and add them to the message. */
 export function ContextPicker({ projectPath, attached, filesFull, onPick, onBrowseFiles }: ContextPickerProps) {
-  const { open, setOpen, ref } = usePopover<HTMLDivElement>()
+  const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
   const [query, setQuery] = useState('')
   // Results remember their query: Enter must never pick a row left over from earlier typing.
   const [files, setFiles] = useState<{ query: string; matches: FileMatch[]; truncated: boolean }>({ query: '', matches: [], truncated: false })
@@ -55,11 +56,11 @@ export function ContextPicker({ projectPath, attached, filesFull, onPick, onBrow
     ...flows.map((w): Option => ({ kind: 'workflow', token: tokenFor('workflow', w.name), title: displayTitle(w), detail: w.name })),
   ]
   const disabled = (o: Option): boolean => attached.has(o.token) || (o.kind === 'file' && filesFull)
+  // Stays open so several files and workflows can be added in a row; Escape returns to the message.
   const pick = (o: Option | undefined): void => {
     if (!o || disabled(o)) return
     onPick(o.token)
-    setQuery('')
-    setOpen(false)
+    input.current?.focus()
   }
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -100,6 +101,7 @@ export function ContextPicker({ projectPath, attached, filesFull, onPick, onBrow
             {options.length === 0 && !error && files.query === query ? <p className="picker-note">Nothing matches “{query}”.</p> : null}
           </div>
           {filesFull ? <p className="picker-note">A message can attach up to 8 files.</p> : null}
+          <p className="picker-note picker-hint">Add as many as you need. Esc returns to your message.</p>
           {onBrowseFiles ? <button type="button" className="picker-browse" onClick={() => { setOpen(false); onBrowseFiles() }}>Browse the Files panel…</button> : null}
         </div>
       ) : null}

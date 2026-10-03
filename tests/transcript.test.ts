@@ -134,3 +134,16 @@ describe('branch changes made elsewhere', () => {
     ])
   })
 })
+
+describe('settings changes', () => {
+  it('say what now applies, from the next message', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'settings_changed', model: 'opus', effort: 'high', permissionMode: 'acceptEdits' }),
+      at(1, { kind: 'settings_changed', permissionMode: 'manual' }),
+    ], 'claude')
+    expect(items).toMatchObject([
+      { type: 'note', text: 'Now opus, high effort, Edit files without asking. Applies from your next message.' },
+      { type: 'note', text: 'Now the default model, default effort, Ask before acting. Applies from your next message.' },
+    ])
+  })
+})

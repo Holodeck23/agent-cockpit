@@ -324,6 +324,21 @@ describe('session lifecycle regressions', () => {
     await manager.shutdown()
   })
 
+  it('changing settings for the same agent keeps its session and notes the change; another agent is refused', async () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    agent.emit({ kind: 'result', ok: true })
+    const before = store.get(meta.id)!
+    const next = manager.changeSettings(meta.id, { ...settings, effort: 'high', model: 'opus' })
+    expect(next.settings).toMatchObject({ effort: 'high', model: 'opus' })
+    expect(next.sessionId).toBe(before.sessionId)
+    expect(next.sessionStarted).toBe(before.sessionStarted)
+    expect(store.events(meta.id).map((e) => e.event.kind)).not.toContain('agent_switch')
+    expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'settings_changed', model: 'opus', effort: 'high', permissionMode: settings.permissionMode })
+    expect(() => manager.changeSettings(meta.id, { ...settings, agent: 'codex' })).toThrow(/Switch agents/)
+    await manager.shutdown()
+  })
+
   it('dismisses an open question; dismissing with nothing open is refused', async () => {
     const { manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'deploy?' })
