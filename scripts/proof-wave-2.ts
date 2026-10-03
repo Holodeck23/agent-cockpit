@@ -173,6 +173,8 @@ try {
   const sendFill = () => page.getByRole('button', { name: 'Send' }).evaluate((el) => getComputedStyle(el).backgroundColor)
   await messageBox(page).fill('x')
   check('E1 the send button takes the project tint', (await sendFill()) === 'rgb(181, 50, 112)', await sendFill())
+  const newFill = await page.getByRole('button', { name: 'New conversation' }).evaluate((el) => getComputedStyle(el).backgroundColor)
+  check('E1 so does the new-conversation button', newFill === 'rgb(181, 50, 112)', newFill)
   await page.getByRole('button', { name: 'Mark complete' }).click()
   const completeColor = () => page.locator('.head-action[aria-pressed="true"]').evaluate((el) => getComputedStyle(el).color)
   check('E1 the Complete control takes the tint', await until('tinted', async () => (await completeColor()) === 'rgb(181, 50, 112)'), await completeColor())

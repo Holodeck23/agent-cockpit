@@ -12,13 +12,13 @@
 /* The blue "3D" button: a 3px darker ledge that collapses when pressed. */
 .new-button {
   display: grid; place-items: center; width: 36px; height: 36px; padding: 0; flex: none;
-  background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md);
-  box-shadow: 0 3px 0 var(--blue-shadow); transform: translateY(-1px); cursor: default;
+  background: var(--project-fill, var(--blue)); color: #fff; border: 0; border-radius: var(--r-md);
+  box-shadow: 0 3px 0 var(--project-fill-shadow, var(--blue-shadow)); transform: translateY(-1px); cursor: default;
   transition: transform 80ms ease, box-shadow 80ms ease;
 }
 .new-button .icon { width: 20px; height: 20px; stroke-width: 2.4; }
-.new-button:hover { box-shadow: 0 3px 0 var(--blue-shadow), 0 0 0 4px var(--halo-soft); }
-.new-button:active { transform: translateY(2px); box-shadow: 0 0 0 var(--blue-shadow); }
+.new-button:hover { box-shadow: 0 3px 0 var(--project-fill-shadow, var(--blue-shadow)), 0 0 0 4px var(--halo-soft); }
+.new-button:active { transform: translateY(2px); box-shadow: 0 0 0 var(--project-fill-shadow, var(--blue-shadow)); }
 
 .search {
   display: flex; align-items: center; gap: 8px; margin: 0 14px; height: 38px; padding: 0 12px;
