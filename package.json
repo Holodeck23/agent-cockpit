@@ -61,7 +61,9 @@
     "proof:recovery": "tsx scripts/proof-recovery.ts",
     "proof:director": "tsx scripts/proof-director.ts",
     "proof:startup": "tsx scripts/proof-startup.ts",
-    "proof:updates": "tsx scripts/proof-updates.ts"
+    "proof:updates": "tsx scripts/proof-updates.ts",
+    "proof:wave-1": "tsx scripts/proof-wave-1.ts",
+    "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",

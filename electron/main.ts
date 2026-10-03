@@ -159,7 +159,12 @@ function createWindow(url: string): BrowserWindow {
     if (details.isMainFrame) return
     try { assertLocalUrl(details.url) } catch { details.preventDefault() }
   })
-  win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  // Everything is refused except copying text from the cockpit page itself (Copy message).
+  win.webContents.session.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    let fromCockpit = false
+    try { fromCockpit = new URL(details.requestingUrl).origin === origin } catch { /* not a URL */ }
+    callback(permission === 'clipboard-sanitized-write' && fromCockpit)
+  })
 
   win.once('ready-to-show', () => win.show())
   win.on('closed', () => {

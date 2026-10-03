@@ -1,0 +1,26 @@
+#!/bin/sh
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
+# Stand-in `claude` for proof:wave-1 (no provider usage). What it does depends on the message:
+#   "slow"  waits 4 s, then replies, so the proof can scroll away first;
+#   "ask"   ends the turn with a question;
+#   anything else replies with a long message that mentions "needle" three times.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 1 fixture)"; exit 0; }
+session=""
+previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave1-fixture"}\n' "$session"
+turn=0
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  turn=$((turn + 1))
+  case "$line" in
+    *'"text":"slow'*) sleep 4; text='Late reply.' ;;
+    *'"text":"ask'*) text='Question: Staging or production?' ;;
+    *) text='First paragraph mentions the needle.\n\nSecond paragraph has no match.\n\nThird paragraph: needle again, and a NEEDLE in capitals.' ;;
+  esac
+  printf '{"type":"assistant","message":{"id":"wave1-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$text"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'
+done
