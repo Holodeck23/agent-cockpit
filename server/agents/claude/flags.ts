@@ -35,7 +35,7 @@ export const claudeLaunchSchema = z
 export type ClaudeLaunchInput = z.input<typeof claudeLaunchSchema>
 export type ClaudeLaunchOptions = z.output<typeof claudeLaunchSchema>
 
-export function buildClaudeArgs(input: ClaudeLaunchInput): string[] {
+export function buildClaudeArgs(input: ClaudeLaunchInput, capabilities: { readonly permissionPrompts: boolean } = { permissionPrompts: true }): string[] {
   const o = claudeLaunchSchema.parse(input)
   const settings = o.useHooks ? {} : { disableAllHooks: true }
   return [
@@ -45,7 +45,7 @@ export function buildClaudeArgs(input: ClaudeLaunchInput): string[] {
     '--output-format', 'stream-json',
     '--include-partial-messages',
     '--permission-mode', o.permissionMode,
-    '--permission-prompts', 'host',
+    ...(capabilities.permissionPrompts ? ['--permission-prompts', 'host'] : []),
     '--permission-prompt-tool', 'stdio',
     '--strict-mcp-config',
     '--mcp-config', JSON.stringify(o.mcpConfig),

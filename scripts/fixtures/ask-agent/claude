@@ -1,4 +1,5 @@
 #!/bin/sh
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
 # Stand-in `claude` for `npm run proof:thread-menu`. Each turn asks permission for two shell
 # commands in a row, in the format Claude Code 2.1 uses (tests/fixtures/claude-turn-approval.jsonl),
 # waits for each answer, then finishes. Exits on stdin EOF, like the real CLI.

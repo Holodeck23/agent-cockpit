@@ -15,7 +15,7 @@ claude --print --verbose --input-format stream-json --output-format stream-json 
 
 Each user message is one JSON line on stdin; events come back one JSON line each on stdout. Built from a schema in `server/agents/claude/flags.ts`, so nothing raw from the UI ever reaches argv.
 
-- **Approvals need both flags.** `--permission-prompts host` alone makes every prompt silently denied. It also needs `--permission-prompt-tool stdio`.
+- **Approval routing is capability-aware.** Each new Claude process is preceded by a bounded `--help` probe of the same selected executable. Send `--permission-prompts host` only when advertised; always retain `--permission-prompt-tool stdio` and the selected permission mode. The latter is a hidden SDK option in the tested CLIs. The original observation was that `--permission-prompts host` alone did not route approvals over stdio; that does not mean older CLIs require that newer flag. Real Deny, Allow and native-resume behavior is tested separately from help parsing. Probe failure or missing required advertised options/choices ends the turn with actionable guidance without launching the provider or marking a session resumable. There is no persistent success cache or automatic CLI upgrade.
 - **A request** arrives as `control_request{request:{subtype:"can_use_tool", tool_name, input, permission_suggestions}}`. **The answer** is `control_response{response:{subtype:"success", request_id, response:{behavior, updatedInput | message}}}`.
 - **Approving must echo the original input** as `updatedInput`. An empty object replaces the tool's input with nothing.
 - **Allow for this session** is `updatedPermissions: permission_suggestions` alongside the allow.
