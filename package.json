@@ -58,7 +58,8 @@
     "proof:onboarding": "tsx scripts/proof-onboarding.ts",
     "proof:recovery": "tsx scripts/proof-recovery.ts",
     "proof:director": "tsx scripts/proof-director.ts",
-    "proof:startup": "tsx scripts/proof-startup.ts"
+    "proof:startup": "tsx scripts/proof-startup.ts",
+    "proof:updates": "tsx scripts/proof-updates.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",
