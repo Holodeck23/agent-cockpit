@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { colorFor, createProjectStore, PROJECT_COLORS } from '../server/projects/store.ts'
+import { tabOrder } from '../web/src/project-tabs.ts'
 
 const newRoot = (): string => mkdtempSync(join(tmpdir(), 'cockpit-projects-'))
 
@@ -56,5 +57,29 @@ describe('project store', () => {
   it('gives each folder a stable colour from the palette', () => {
     expect(colorFor('/work/sprout')).toBe(colorFor('/work/sprout'))
     expect(PROJECT_COLORS).toContain(colorFor('/any/where'))
+  })
+})
+
+describe('project tabs in pin order', () => {
+  it('numbers each new pin after the last; unpinning or removing clears it, re-pinning goes last', () => {
+    const store = createProjectStore(newRoot())
+    store.open('/work/zeta', { pinned: true })
+    store.open('/work/alpha', { pinned: true })
+    store.open('/work/mid', { pinned: true })
+    const order = () => Object.fromEntries(store.list().map((p) => [p.name, p.pinOrder]))
+    expect(order()).toEqual({ zeta: 1, alpha: 2, mid: 3 })
+    store.open('/work/zeta', { name: 'Zeta site' })
+    expect(order()).toMatchObject({ 'Zeta site': 1 })
+    store.open('/work/zeta', { pinned: false })
+    store.hide('/work/alpha')
+    expect(Object.fromEntries(store.list({ includeHidden: true }).map((p) => [p.name, p.pinOrder]))).toEqual({ 'Zeta site': undefined, alpha: undefined, mid: 3 })
+    store.open('/work/zeta', { pinned: true })
+    expect(order()).toMatchObject({ 'Zeta site': 4 })
+  })
+  it('lists pins in that order: older pins without a number first by name, then the active unpinned one', () => {
+    const p = (name: string, pinned: boolean, pinOrder?: number) => ({ path: `/w/${name}`, name, pinned, pinOrder })
+    const all = [p('c', true, 5), p('old-b', true), p('a', true, 2), p('loose', false), p('old-a', true), p('other', false)]
+    expect(tabOrder(all, '/w/loose').map((t) => t.name)).toEqual(['old-a', 'old-b', 'a', 'c', 'loose'])
+    expect(tabOrder(all, '/w/a').map((t) => t.name)).toEqual(['old-a', 'old-b', 'a', 'c'])
   })
 })

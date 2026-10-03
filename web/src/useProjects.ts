@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Project, type ThreadSummary } from './api.ts'
 import { needsYou } from './conversation-meta.ts'
+import { tabOrder } from './project-tabs.ts'
 
 const ACTIVE_KEY = 'cockpit:active-project'
 
@@ -13,7 +14,7 @@ export interface Projects {
   /** Every known project, most recently opened first (the Projects menu). */
   refresh(): Promise<void>
   readonly all: Project[]
-  /** Pinned projects plus the active one, in a stable order (the tab bar). */
+  /** Pinned projects in the order they were pinned, then the active one if unpinned (the tab bar). */
   readonly tabs: Project[]
   readonly active: Project | undefined
   countsFor(path: string): ProjectCounts
@@ -67,9 +68,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
   }, [])
 
   const active = all.find((p) => p.path === activePath) ?? all[0]
-  const tabs = all
-    .filter((p) => p.pinned || p.path === active?.path)
-    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
+  const tabs = tabOrder(all, active?.path)
 
   const counts = useMemo(() => {
     const byPath = new Map<string, ProjectCounts>()

@@ -15,6 +15,8 @@ const projectSchema = z.object({
   name: z.string().min(1).max(80),
   color: z.enum(PROJECT_COLORS),
   pinned: z.boolean(),
+  /** Pinned projects are tabs in this order: each new pin goes last. Absent when unpinned. */
+  pinOrder: z.number().int().min(1).optional(),
   lastOpenedAt: z.string(),
   /** Added to every agent session started in this project; never changes permissions. */
   instructions: z.string().max(MAX_INSTRUCTIONS_CHARS).optional(),
@@ -64,6 +66,13 @@ function instructionsChange(existing: Project, raw: string | undefined): Partial
   return { instructions: text || undefined, instructionsRevision: (existing.instructionsRevision ?? 0) + 1 }
 }
 
+/** A new pin goes after every other; unpinning drops the number. */
+function pinChange(all: readonly Project[], existing: Project, pinned: boolean | undefined): Partial<Project> {
+  if (pinned === false) return { pinOrder: undefined }
+  if (pinned !== true || existing.pinned) return {}
+  return { pinOrder: Math.max(0, ...all.map((p) => p.pinOrder ?? 0)) + 1 }
+}
+
 function fresh(path: string, now: string): Project {
   return { path, name: basename(path) || path, color: colorFor(path), pinned: false, lastOpenedAt: now }
 }
@@ -110,7 +119,7 @@ export function createProjectStore(root: string): ProjectStore {
       const existing = current.find((p) => p.path === path) ?? fresh(path, now)
       const { instructions: rawInstructions, ...rest } = patch
       // Opening a removed project on purpose brings it back.
-      const next: Project = { ...existing, ...rest, hidden: undefined, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions) }
+      const next: Project = { ...existing, ...rest, hidden: undefined, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions), ...pinChange(current, existing, rest.pinned) }
       write([...current.filter((p) => p.path !== path), next])
       return next
     },
@@ -126,7 +135,7 @@ export function createProjectStore(root: string): ProjectStore {
       const current = read()
       const existing = current.find((p) => p.path === path && !p.hidden)
       if (!existing) throw new Error('Unknown project')
-      const next: Project = { ...existing, hidden: true, pinned: false }
+      const next: Project = { ...existing, hidden: true, pinned: false, pinOrder: undefined }
       write(current.map((p) => (p.path === path ? next : p)))
       return next
     },
