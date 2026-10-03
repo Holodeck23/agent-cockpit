@@ -18,6 +18,7 @@ export const TURN_GUIDANCE = [
   'and end with a final message that holds the result.',
   'If you need an answer from the user before you can continue, start that final message with "Question:".',
   'If something outside your control stops you, start it with "Blocked:". Otherwise never start a message with those words.',
+  'If you made commits, name each one in that final message by its short hash in backticks, so Cockpit can link it.',
 ].join(' ')
 
 const MARKER = /^\s*(question|blocked)\s*:\s*/i

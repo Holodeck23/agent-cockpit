@@ -1,13 +1,18 @@
 // Agent replies are untrusted text rendered as Markdown. React builds every element (nothing is
 // ever set as HTML), raw HTML in a reply is shown as the text it is, links must be http(s) and
 // open in the browser, and images are never fetched: they show as their alt text.
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { commitOf, COMMIT_SCHEME, isCommitHash, linkCommitsInProse } from './commit-links.ts'
 import { fileLink, linkFilesInProse, type FileTarget } from './file-links.ts'
 
+/** What clicking a commit did: opened its page, copied it (no web page), or it isn't a commit here. */
+export type CommitOutcome = 'opened' | 'copied' | 'missing'
+const OUTCOME: Record<CommitOutcome, string> = { opened: '', copied: 'Copied (no web page for this repository)', missing: 'Not a commit in this project' }
+
 /** Where a reply's `path:line` references point and what opening one does. */
-export const ReplyContext = createContext<{ projectPath?: string; onOpenFile?: (target: FileTarget) => void }>({})
+export const ReplyContext = createContext<{ projectPath?: string; onOpenFile?: (target: FileTarget) => void; onOpenCommit?: (hash: string) => Promise<CommitOutcome> }>({})
 
 /** The address if it is an absolute http(s) URL, else ''. */
 export function safeUrl(url: string): string {
@@ -46,10 +51,29 @@ function FileButton({ target, children }: { target: FileTarget; children: ReactN
   )
 }
 
+function CommitButton({ hash, children }: { hash: string; children: ReactNode }) {
+  const { onOpenCommit } = useContext(ReplyContext)
+  const [note, setNote] = useState('')
+  const click = (): void => {
+    void onOpenCommit?.(hash).then((outcome) => {
+      setNote(OUTCOME[outcome])
+      if (outcome !== 'opened') setTimeout(() => setNote(''), 2500)
+    })
+  }
+  return (
+    <>
+      <button type="button" className="file-link commit-link" data-commit={hash} title={`Open commit ${hash}`} onClick={click}>{children}</button>
+      {note ? <span className="commit-note" role="status"> {note}</span> : null}
+    </>
+  )
+}
+
 function buildComponents(projectPath: string | undefined): Components {
   return {
     a: ({ href, children }) => {
       if (href && safeUrl(href)) return external(href, children)
+      const hash = href && projectPath ? commitOf(href) : undefined
+      if (hash) return <CommitButton hash={hash}>{children}</CommitButton>
       const target = href ? fileLink(href, projectPath) : undefined
       return target ? <FileButton target={target}>{children}</FileButton> : <span>{children}</span>
     },
@@ -59,7 +83,8 @@ function buildComponents(projectPath: string | undefined): Components {
       const text = typeof children === 'string' ? children : ''
       const target = !className && text && !text.includes('\n') ? fileLink(text, projectPath) : undefined
       const code = <code className={className}>{children}</code>
-      return target ? <FileButton target={target}>{code}</FileButton> : code
+      if (target) return <FileButton target={target}>{code}</FileButton>
+      return projectPath && !className && isCommitHash(text) ? <CommitButton hash={text}>{code}</CommitButton> : code
     },
   }
 }
@@ -67,9 +92,10 @@ function buildComponents(projectPath: string | undefined): Components {
 export function ReplyMarkdown({ text }: { text: string }) {
   const { projectPath } = useContext(ReplyContext)
   const components = useMemo(() => buildComponents(projectPath), [projectPath])
-  const plugins = useMemo(() => [remarkGfm, htmlAsText, linkFilesInProse(projectPath)], [projectPath])
+  const plugins = useMemo(() => [remarkGfm, htmlAsText, linkFilesInProse(projectPath), ...(projectPath ? [linkCommitsInProse] : [])], [projectPath])
   // Web addresses pass; a file reference passes to the link renderer, which checks it again.
-  const urlTransform = (url: string): string | undefined => safeUrl(url) || (fileLink(url, projectPath) ? url : undefined)
+  const urlTransform = (url: string): string | undefined =>
+    safeUrl(url) || (fileLink(url, projectPath) || (url.startsWith(COMMIT_SCHEME) && commitOf(url)) ? url : undefined)
   return (
     <Markdown remarkPlugins={plugins} components={components} urlTransform={urlTransform}>
       {text}

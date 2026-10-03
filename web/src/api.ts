@@ -63,6 +63,8 @@ export const api = {
   gitState: (projectPath: string) => request<GitView>(`/api/git?${new URLSearchParams({ projectPath })}`),
   switchBranch: (projectPath: string, branch: string, threadId?: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch, threadId } }),
   createBranch: (projectPath: string, branch: string, threadId?: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch, threadId } }),
+  /** A commit named in a reply: its full hash and web page, or a 404 when it isn't a commit here. */
+  gitCommit: (projectPath: string, hash: string) => request<{ hash: string; url?: string }>(`/api/git/commit?${new URLSearchParams({ projectPath, hash })}`),
   pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   /** A "documents:" path reads from the project's documents; the result keeps the same naming. */

@@ -12,7 +12,7 @@ import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
 import { shortcutFor } from './shortcuts.ts'
 import { ReleaseNotes } from './components/ReleaseNotes.tsx'
-import { ReplyContext } from './markdown/reply.tsx'
+import { ReplyContext, type CommitOutcome } from './markdown/reply.tsx'
 import type { FileTarget } from './markdown/file-links.ts'
 import { TroubleshootingLink } from './components/TroubleshootingLink.tsx'
 import { checkForUpdateNotice } from './update-notice.ts'
@@ -84,7 +84,18 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [reveal, setReveal] = useState<{ target: FileTarget; nonce: number }>()
   const openFileFromReply = useCallback((target: FileTarget) => { setReveal({ target, nonce: Date.now() }); setSection('files') }, [setSection])
   const replyProject = phone ? undefined : cockpit.detail?.meta.projectPath
-  const replyContext = useMemo(() => ({ projectPath: replyProject, onOpenFile: openFileFromReply }), [replyProject, openFileFromReply])
+  // A commit in a reply opens its page on the repository's host; without one the hash is copied.
+  const openCommitFromReply = useCallback(async (hash: string): Promise<CommitOutcome> => {
+    if (!replyProject) return 'missing'
+    const commit = await api.gitCommit(replyProject, hash).catch(() => undefined)
+    if (!commit) return 'missing'
+    if (commit.url) { window.open(commit.url, '_blank', 'noopener'); return 'opened' }
+    if (native) native.copyText(commit.hash.slice(0, 12))
+    else await navigator.clipboard?.writeText(commit.hash.slice(0, 12)).catch(() => undefined)
+    return 'copied'
+  }, [replyProject])
+  const replyContext = useMemo(() => ({ projectPath: replyProject, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply }),
+    [replyProject, openFileFromReply, openCommitFromReply])
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])

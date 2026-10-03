@@ -1,3 +1,5 @@
+import { linkInProse } from './prose-links.ts'
+
 // `path:line` references in agent replies. Only relative paths inside the project (or absolute
 // ones under it) with a real file extension count, so version numbers and prose stay text.
 
@@ -32,29 +34,7 @@ export function fileLink(raw: string, projectPath: string | undefined): FileTarg
 // In prose a reference needs its line number, so a file merely named stays plain text.
 const IN_PROSE = /(?<![\w/.@-])((?:\/|\.\/)?[\w@+-][\w.@+/-]*\.[A-Za-z][A-Za-z0-9]{0,9}:\d+(?:-\d+)?)(?!\w)/g
 
-interface MdNode { type: string; value?: string; url?: string; children?: MdNode[] }
-
 /** remark plugin: `path:line` written in prose becomes a link node, checked again when rendered. */
 export function linkFilesInProse(projectPath: string | undefined) {
-  return () => (tree: MdNode): void => {
-    if (!projectPath) return
-    const walk = (node: MdNode): void => {
-      if (!node.children || node.type === 'link' || node.type === 'linkReference') return
-      node.children = node.children.flatMap((child): MdNode[] => {
-        if (child.type !== 'text' || !child.value) { walk(child); return [child] }
-        const out: MdNode[] = []
-        let at = 0
-        for (const m of child.value.matchAll(IN_PROSE)) {
-          if (!fileLink(m[1]!, projectPath)) continue
-          if (m.index > at) out.push({ type: 'text', value: child.value.slice(at, m.index) })
-          out.push({ type: 'link', url: m[1]!, children: [{ type: 'text', value: m[1]! }] })
-          at = m.index + m[0].length
-        }
-        if (!out.length) return [child]
-        if (at < child.value.length) out.push({ type: 'text', value: child.value.slice(at) })
-        return out
-      })
-    }
-    walk(tree)
-  }
+  return linkInProse(IN_PROSE, (m) => (projectPath && fileLink(m[1]!, projectPath) ? { url: m[1]!, text: m[1]! } : undefined))
 }

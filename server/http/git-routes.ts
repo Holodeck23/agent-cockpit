@@ -4,6 +4,7 @@ import { createBranch, GitError, gitState, pushBranch, switchBranch } from '../g
 import type { ProjectStore } from '../projects/store.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
+import { findCommit } from '../git/commits.ts'
 
 // /api/git: the composer's branch pill. Reads work everywhere; changes are Mac-only,
 // and switching or creating waits until no conversation in the project is mid-turn.
@@ -36,6 +37,15 @@ export async function handleGitRoute(req: IncomingMessage, res: ServerResponse, 
       const projectPath = url.searchParams.get('projectPath') ?? ''
       requireOpen(projectPath)
       sendJson(res, 200, { data: { ...(await gitState(projectPath)), busy: busy(projectPath) } })
+      return
+    }
+    // A commit named in a reply: confirm it exists here and give its web page, if there is one.
+    if (method === 'GET' && action === 'commit') {
+      const projectPath = url.searchParams.get('projectPath') ?? ''
+      requireOpen(projectPath)
+      const commit = await findCommit(projectPath, url.searchParams.get('hash') ?? '')
+      if (!commit) throw new HttpError(404, 'Not a commit in this project')
+      sendJson(res, 200, { data: commit })
       return
     }
     if (method !== 'POST') throw new HttpError(404, 'Not found')
