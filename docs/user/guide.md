@@ -89,10 +89,16 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
     -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first).
 -   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are included in v0.1.1; the older September 30 v0.1.0 DMG does not have them.
 
+## Updates
+
+-   **Check for Updates…** is in the Cockpit app menu (builds after v0.1.2). It reads the official GitHub release list, including prereleases, and only checks when you choose it.
+-   **Download Update** opens the official Apple-silicon DMG for that release in your browser. Install it by hand: finish or stop running agents, quit Cockpit, open the DMG and drag Cockpit to Applications to replace the old copy. State in `~/.agent-cockpit/` is outside the app, so conversations and settings are kept.
+-   If the check fails (offline, rate-limited, or the newest release has no installer yet), Cockpit says so; a failed check never reports "up to date".
+
 ## Data, Backup, and Privacy
 
 -   **Data Location:** Cockpit state lives in `~/.agent-cockpit/` unless `COCKPIT_HOME` overrides it. Project files and the CLIs’ own credentials/session stores live separately.
--   **Privacy:** Cockpit does not send telemetry to a central server. Agent runs can send prompts, attachments and project content to the configured provider, including scheduled workflow runs. Tools may also contact external services. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
+-   **Privacy:** Cockpit does not send telemetry to a central server. Check for Updates, when you choose it, requests the public release list from GitHub's API (no account or project data is sent). Agent runs can send prompts, attachments and project content to the configured provider, including scheduled workflow runs. Tools may also contact external services. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
 -   **Backups:** To back up your Cockpit data, securely copy the `~/.agent-cockpit/` directory.
 
 ## Extension Notes for Developers
