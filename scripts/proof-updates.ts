@@ -54,7 +54,10 @@ function connect(url: string): Promise<(expression: string) => Promise<unknown>>
     pending.delete(message.id)
   })
   return new Promise((ready, fail) => {
-    socket.addEventListener('error', () => fail(new Error('inspector connection failed')))
+    // The handshake can stall while the app is still starting; give up and let the caller retry.
+    const stalled = setTimeout(() => { socket.close(); fail(new Error('inspector handshake timed out')) }, 10_000)
+    socket.addEventListener('open', () => clearTimeout(stalled))
+    socket.addEventListener('error', () => { clearTimeout(stalled); fail(new Error('inspector connection failed')) })
     socket.addEventListener('open', () => ready((expression) => new Promise((done) => {
       id += 1
       const call = id
@@ -70,6 +73,8 @@ function connect(url: string): Promise<(expression: string) => Promise<unknown>>
 // Runs inside the app's main process: click the menu item, answer the dialog with `button`,
 // and report what the app showed and what it asked the browser to open.
 const scenario = (button: number, offline: boolean): string => `(async () => {
+  // The inspector can attach before the app's main module has loaded.
+  for (let i = 0; i < 200 && !process.mainModule; i += 1) await new Promise((r) => setTimeout(r, 100))
   const { app, Menu, dialog, shell } = process.mainModule.require('electron')
   for (let i = 0; i < 100 && !Menu.getApplicationMenu(); i += 1) await new Promise((r) => setTimeout(r, 100))
   const appMenu = Menu.getApplicationMenu().items[0].submenu.items
@@ -97,7 +102,13 @@ interface ScenarioResult {
 }
 
 try {
-  const evaluate = await connect(await inspectorUrl())
+  let evaluate: ((expression: string) => Promise<unknown>) | undefined
+  for (let attempt = 1; !evaluate; attempt += 1) {
+    try { evaluate = await connect(await inspectorUrl()) } catch (error) {
+      if (attempt >= 3) throw error
+      await sleep(1000)
+    }
+  }
   const download = await evaluate(scenario(0, false)) as ScenarioResult
   if (download.error) throw new Error(download.error)
   const dialogShown = download.shown[0]
@@ -124,8 +135,11 @@ try {
   console.error(error)
   if (stderr) console.error(`app stderr:\n${stderr.slice(-2000)}`)
 } finally {
-  await sleep(500)
-  if (child.exitCode === null) child.kill('SIGTERM')
+  // Never leave the proof app running: it holds the inspector port for the next run.
+  for (let i = 0; i < 10 && child.exitCode === null && child.signalCode === null; i += 1) await sleep(100)
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+  for (let i = 0; i < 50 && child.exitCode === null && child.signalCode === null; i += 1) await sleep(100)
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
   rmSync(home, { recursive: true, force: true })
 }
 
