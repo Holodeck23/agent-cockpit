@@ -2,9 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { native } from '../native.ts'
 import type { Projects } from '../useProjects.ts'
 import { usePopover } from '../usePopover.ts'
-import { ChatIcon, ChevronDownIcon, FolderIcon, PinIcon, PlusIcon } from './icons.tsx'
+import { ChatIcon, ChevronDownIcon, FolderIcon, PinIcon, PlusIcon, TrashIcon } from './icons.tsx'
 import { ImportConversations } from './ImportConversations.tsx'
-import type { ThreadMeta } from '../api.ts'
+import type { Project, ThreadMeta } from '../api.ts'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 import { ProjectSettings } from './ProjectSettings.tsx'
 
@@ -19,7 +19,22 @@ export function ProjectsMenu({ projects, onImported }: ProjectsMenuProps) {
   const [typedPath, setTypedPath] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  // The row asking "Remove … from Cockpit?" inside the menu, and whether that removal is running.
+  const [removing, setRemoving] = useState<string>()
+  const [busy, setBusy] = useState(false)
   const active = projects.active
+
+  const remove = async (project: Project): Promise<void> => {
+    setBusy(true)
+    try {
+      await projects.remove(project)
+      setRemoving(undefined)
+    } catch (e: unknown) {
+      projects.reportError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const openPath = (path: string): void => {
     setOpen(false)
@@ -93,15 +108,29 @@ export function ProjectsMenu({ projects, onImported }: ProjectsMenuProps) {
           {projects.all.length > 0 ? <p className="menu-label">Recent</p> : null}
           <ul className="menu-list">
             {projects.all.map((project) => (
-              <li key={project.path}>
-                <button type="button" role="menuitem" className="menu-item project-item" title={project.path} onClick={() => openPath(project.path)}>
-                  <ProjectAvatar project={project} solid={project.path === projects.active?.path} />
-                  <span className="project-item-text">
-                    <span className="project-item-name">{project.name}</span>
-                    <span className="project-item-path"><bdi dir="ltr">{project.path}</bdi></span>
-                  </span>
-                  {project.pinned ? <PinIcon className="pinned-mark" title="Pinned" /> : null}
-                </button>
+              <li key={project.path} className="project-row">
+                {removing === project.path ? (
+                  <div className="project-remove" role="alertdialog" aria-label={`Remove ${project.name} from Cockpit`}>
+                    <span>Remove <strong>{project.name}</strong> from Cockpit? The folder and its conversations stay; schedules in it are paused.</span>
+                    <div>
+                      <button type="button" className="button-soft" disabled={busy} onClick={() => setRemoving(undefined)}>Cancel</button>
+                      <button type="button" className="button-danger" disabled={busy} onClick={() => void remove(project)}>Remove</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button type="button" role="menuitem" className="menu-item project-item" title={project.path} onClick={() => openPath(project.path)}>
+                      <ProjectAvatar project={project} solid={project.path === projects.active?.path} />
+                      <span className="project-item-text">
+                        <span className="project-item-name">{project.name}</span>
+                        <span className="project-item-path"><bdi dir="ltr">{project.path}</bdi></span>
+                      </span>
+                      {project.pinned ? <PinIcon className="pinned-mark" title="Pinned" /> : null}
+                    </button>
+                    <button type="button" className="project-remove-button" aria-label={`Remove ${project.name} from Cockpit`} title="Remove from Cockpit"
+                      onClick={() => setRemoving(project.path)}><TrashIcon /></button>
+                  </>
+                )}
               </li>
             ))}
           </ul>

@@ -123,8 +123,11 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
 
   const remove = async (project: Project): Promise<number> => {
     const { pausedSchedules } = await api.removeProject(project.path)
-    const next = all.find((p) => p.path !== project.path)
-    if (next) select(next.path)
+    // Removing another project from the menu leaves you where you are.
+    if (project.path === active?.path) {
+      const next = all.find((p) => p.path !== project.path)
+      if (next) select(next.path)
+    }
     await refresh()
     return pausedSchedules
   }
