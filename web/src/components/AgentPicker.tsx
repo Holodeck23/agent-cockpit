@@ -106,7 +106,7 @@ function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disable
       </button>
       {open ? (
         <div className="menu effort-menu" role="menu" aria-label="Effort">
-          {['', ...effortsFor(value.agent)].map((effort) => (
+          {['', ...effortsFor(value.agent, value.model)].map((effort) => (
             <button key={effort || 'default'} type="button" role="menuitemradio" aria-checked={value.effort === effort} className="menu-item"
               onClick={() => { onPick(effort); setOpen(false); focusComposer(ref.current) }}>
               {effort ? capitalize(effort) : 'Default'}
@@ -252,7 +252,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
                 Effort
                 <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
                   <option value="">Default</option>
-                  {effortsFor(current.agent).map((effort) => (
+                  {effortsFor(current.agent, current.model).map((effort) => (
                     <option key={effort} value={effort}>
                       {capitalize(effort)}
                     </option>

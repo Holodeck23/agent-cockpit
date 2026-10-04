@@ -8,7 +8,7 @@ import type { Page } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
 import { documentsDir } from '../server/files/documents.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { apiPost, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
+import { apiPost, chooseAgent, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave65-proof-'))
@@ -165,6 +165,27 @@ try {
   check('R6 the project keeps its documents folder', where.data.custom === false)
   const listed = await page.evaluate(async (dir) => JSON.stringify(await (await fetch(`/api/documents?projectPath=${encodeURIComponent(dir)}`)).json()), project)
   check('R6 and its documents are all still there', listed.includes('release-plan.md'))
+
+  // R7: Codex offers Ultra only on the models that have it, and a saved Ultra on another model
+  // reaches Codex as that model's highest level.
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  const effortsShown = async (model: string): Promise<string[]> => {
+    await chooseAgent(page, { agent: 'codex', model })
+    await page.getByRole('button', { name: /^Effort:/ }).click()
+    const shown = await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio').allTextContents()
+    await page.keyboard.press('Escape')
+    return shown
+  }
+  check('R7 gpt-5.6-sol offers Ultra', (await effortsShown('gpt-5.6-sol')).at(-1) === 'Ultra')
+  check('R7 gpt-5.6-luna stops at Max', (await effortsShown('gpt-5.6-luna')).at(-1) === 'Max')
+  check('R7 gpt-5.5 stops at Xhigh', (await effortsShown('gpt-5.5')).at(-1) === 'Xhigh')
+  await shot(page, 'r7-luna-efforts')
+  await chooseAgent(page, { agent: 'claude', model: '' })
+  const ultraOnLuna = await apiPost(page, '/api/threads', { projectPath: project, text: 'R7 ultra on luna', settings: { agent: 'codex', model: 'gpt-5.6-luna', effort: 'ultra' } }) as { data: { id: string } }
+  await page.evaluate((id) => { location.search = `?thread=${id}` }, ultraOnLuna.data.id)
+  const r7Reply = page.locator('.bubble').filter({ hasText: /Effort \w+\.$/ })
+  check('R7 a saved Ultra on gpt-5.6-luna reaches Codex as Max', await until('r7 reply', async () => /Effort max\.$/.test((await r7Reply.textContent().catch(() => '')) ?? '')),
+    (await r7Reply.textContent().catch(() => '')) ?? '')
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { codexEfforts } from '../codex/efforts.ts'
 
 // The UI never passes raw CLI arguments. Everything that reaches argv goes
 // through this schema first (same idea as Enjoy's per-flag allowlist).
@@ -6,14 +7,15 @@ import { z } from 'zod'
 export const PERMISSION_MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'] as const
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 /**
- * Every level any agent takes. Ultra is Codex's alone (C9): codex 0.147 advertises it for
- * gpt-5.6-sol and gpt-5.6-terra; Claude 2.1.289 stops at max.
+ * Every level any agent takes. Ultra is Codex's alone (C9), and only some Codex models have it
+ * (R7, codex/efforts.ts); Claude 2.1.289 stops at max.
  */
 export const ALL_EFFORTS = [...EFFORTS, 'ultra'] as const
 export type Effort = (typeof ALL_EFFORTS)[number]
 
-export function effortsFor(agent: string): readonly Effort[] {
-  return agent === 'codex' ? ALL_EFFORTS : EFFORTS
+/** The levels to offer; for Codex they depend on the model. */
+export function effortsFor(agent: string, model?: string): readonly Effort[] {
+  return agent === 'codex' ? codexEfforts(model) : EFFORTS
 }
 
 /** An agent that has no such level gets its highest one. */

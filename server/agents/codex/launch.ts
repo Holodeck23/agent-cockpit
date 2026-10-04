@@ -5,6 +5,7 @@ import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
 import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
 import { codexInput } from '../image-input.ts'
+import { codexEffort } from './efforts.ts'
 import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
 
@@ -153,8 +154,10 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       return
     }
     const input = codexInput(text, images)
+    // A level the model does not have (a saved Ultra on a model without it) becomes its highest (R7).
+    const effort = codexEffort(opts.model, opts.effort)
     const fail = (error: unknown): void => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) }
-    const start = (): Promise<unknown> => rpc.request('turn/start', { threadId, input, ...(opts.effort ? { effort: opts.effort } : {}) })
+    const start = (): Promise<unknown> => rpc.request('turn/start', { threadId, input, ...(effort ? { effort } : {}) })
     // Mid-turn, steer the running turn (J1 spike: folded cleanly; a second turn/start left a
     // phantom turn). If that turn ended in the meantime, start a new one instead.
     const running = currentTurnId

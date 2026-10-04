@@ -2,7 +2,8 @@
 # Stand-in `codex app-server` for proof:wave-6.5 (no provider usage). R1: it keeps the switch
 # handoff Cockpit starts the thread with and answers every turn with what that handoff says about
 # the conversation: the answer you gave a question card (Blue), the questions you dismissed,
-# a message you took back (marked WITHDRAWN-R1) and how many images you attached.
+# a message you took back (marked WITHDRAWN-R1) and how many images you attached. R7: it also
+# says which reasoning effort the turn asked for.
 use strict; use warnings;
 use JSON::PP;
 $| = 1;
@@ -24,8 +25,9 @@ while (my $line = <STDIN>) {
     $turn++;
     my $yes = sub { index($handoff, $_[0]) >= 0 ? 'yes' : 'no' };
     my $images = () = $handoff =~ /user attached an image/g;
-    my $text = sprintf('Handoff: answered Blue %s; dismissed %s; withdrawn %s; attached images %d.',
-      $yes->('USER ANSWERED: Blue'), $yes->('USER DISMISSED'), $yes->('WITHDRAWN-R1'), $images);
+    my $effort = $message->{params}{effort} // 'none';
+    my $text = sprintf('Handoff: answered Blue %s; dismissed %s; withdrawn %s; attached images %d. Effort %s.',
+      $yes->('USER ANSWERED: Blue'), $yes->('USER DISMISSED'), $yes->('WITHDRAWN-R1'), $images, $effort);
     reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
     reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
     reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => $text } } });
