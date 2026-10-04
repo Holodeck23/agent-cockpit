@@ -41,8 +41,8 @@ export function QuestionCard({ item, open, onAnswer }: QuestionCardProps) {
       {item.questions.map((q) => (
         <fieldset key={q.id} className="question" disabled={!open || settled || sending}>
           <legend>{q.header ? <span className="question-header">{q.header}</span> : null}{q.question}</legend>
-          {settled ? (
-            <div className="question-answer">{item.answers?.[q.id] || (item.dismissed ? 'Not answered' : 'No answer')}</div>
+          {item.dismissed ? null : settled ? (
+            <div className="question-answer">{item.answers?.[q.id] || 'No answer'}</div>
           ) : (
             <>
               {q.options.map((o) => (

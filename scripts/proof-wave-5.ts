@@ -83,7 +83,8 @@ try {
   await second.getByRole('button', { name: 'Dismiss' }).click()
   check('J6 Dismiss closes the questions and the agent carries on', await until('dismissed', async () =>
     (await page.getByText('You closed the questions; carrying on without them.').count()) === 1
-    && (await second.textContent())?.includes('Closed without answers') === true))
+    && (await second.textContent())?.includes('Closed without answers') === true
+    && (await second.locator('.question-answer').count()) === 0))
   await shot(page, 'j6-answered')
 
   // J3: compaction shows in the header while it runs, then as a line with the sizes.
