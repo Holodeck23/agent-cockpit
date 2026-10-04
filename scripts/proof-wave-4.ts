@@ -10,6 +10,7 @@ import type { Page } from 'playwright-core'
 import { documentsDir, markDocument } from '../server/files/documents.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
+import { createWorkflowStore } from '../server/workflows/store.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { apiPost, openProject, setTheme } from './lib/ui.ts'
 
@@ -34,6 +35,7 @@ writeFileSync(join(docs, 'launch-plan.md'), '# Launch\n\nShip the beta on Friday
 writeFileSync(join(docs, 'old-pricing.md'), 'The beta pricing we dropped.\n')
 writeFileSync(join(docs, 'groceries.txt'), 'milk\n')
 markDocument(store.root, project, 'old-pricing.md', { archived: true })
+createWorkflowStore(store.root).save({ projectPath: project, name: 'review', title: 'Review changes', prompt: 'Review the diff for risky changes.' })
 {
   // A sent message that asked about lines 3-5 of long.ts (F10's clip and peek).
   const ts = '2026-10-04T09:00:00.000Z'
@@ -306,10 +308,80 @@ try {
   await doc.click()
   await page.keyboard.press('Meta+z')
   check('F9 ⌘Z undoes it in the document', await until('doc undo', async () => (await doc.innerText()).includes('Ship the beta on Friday.')), await doc.innerText())
+  // Switching to Source straight after typing keeps what was typed (the listener had not reported it yet).
+  await doc.click()
+  await page.keyboard.press('Meta+ArrowDown')
+  await page.keyboard.type(' Typed last.')
+  await page.getByRole('button', { name: 'Source', exact: true }).click()
+  check('F9/F12 typing then switching to Source at once loses nothing', await until('flushed', async () => (await area.inputValue()).includes('Typed last.')), JSON.stringify(await area.inputValue().catch(() => '')))
+  await page.getByRole('button', { name: 'Document', exact: true }).click()
   await page.getByRole('button', { name: 'Close launch-plan.md' }).click()
   if (await page.getByRole('button', { name: 'Discard changes' }).isVisible().catch(() => false)) await page.getByRole('button', { name: 'Discard changes' }).click()
   await page.getByRole('tab', { name: 'Project files' }).click()
 
+  // F12: workflows as cards in a new conversation; instructions as a document with @ and find.
+  const sectionTab = (name: RegExp) => page.getByRole('tablist', { name: 'Sections' }).getByRole('tab', { name })
+  await sectionTab(/^Conversations/).click()
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  // With conversations already here, a new conversation first offers to pick up recent work.
+  const fresh = page.getByRole('button', { name: 'Start fresh' })
+  await fresh.waitFor({ timeout: 4000 }).then(() => fresh.click(), () => undefined)
+  const cards = page.getByRole('region', { name: 'Start with a workflow' })
+  check('F12 the project\'s workflows show as cards', await until('cards', async () => (await cards.locator('.workflow-card', { hasText: 'Review changes' }).count()) === 1))
+  await composer.fill('Before merging,')
+  await cards.locator('.workflow-card', { hasText: 'Review changes' }).click()
+  check('F12 a card adds the workflow to what you typed, without running it', await until('card draft', async () => (await composer.inputValue()) === 'Before merging, @workflow:review '),
+    JSON.stringify(await composer.inputValue()))
+  await shot(page, 'f12-cards')
+  await composer.fill('')
+  await sectionTab(/^Workflows/).click()
+  await page.getByRole('button', { name: 'New workflow' }).click()
+  const body = page.locator('.workflow-doc .ProseMirror')
+  check('F12 a new workflow puts the cursor in its instructions', await until('focus', async () => body.evaluate((el) => el.contains(document.activeElement))))
+  await page.keyboard.type('Then run @rev')
+  const atList = page.getByRole('dialog', { name: 'Files and workflows for @' })
+  check('F12 typing @ in the document lists workflows', await until('at list', async () => (await atList.getByText('Review changes').count()) > 0))
+  await shot(page, 'f12-at-document')
+  await page.keyboard.press('Enter')
+  check('F12 picking one writes its reference', await until('picked', async () => (await body.innerText()).includes('Then run @workflow:review')), await body.innerText())
+  await page.keyboard.press('Meta+f')
+  check('F12 ⌘F finds in the instructions too', await until('wf find', async () => bar.isVisible()))
+  await findBox.press('Escape')
+  await page.getByRole('group', { name: 'Instructions view' }).getByRole('button', { name: 'Source' }).click()
+  const source = page.getByRole('textbox', { name: 'Instructions' })
+  check('F12 Source shows the same instructions as text', await until('source', async () => (await source.inputValue()).trim() === 'Then run @workflow:review'), JSON.stringify(await source.inputValue().catch(() => '')))
+  await source.press('End')
+  await source.pressSequentially(' and @long')
+  check('F12 the @ list works in Source as well', await until('source at', async () => (await atList.getByText('src/long.ts').count()) > 0))
+  await source.press('Enter')
+  check('F12 and adds a file reference', await until('file ref', async () => (await source.inputValue()).includes('@file:src%2Flong.ts')), await source.inputValue())
+  await page.getByRole('textbox', { name: 'Reference name' }).fill('chain')
+  await page.getByRole('button', { name: 'Save workflow' }).click()
+  check('F12 the workflow saves with those instructions', await until('saved', async () => (await page.locator('.workflow-list').getByText('chain').count()) > 0))
+  await page.getByRole('group', { name: 'Instructions view' }).getByRole('button', { name: 'Document' }).click()
+  await shot(page, 'f12-workflow-document')
+
+  // F13: the Design workshop leads the gallery's featured workflows.
+  await page.locator('.workflow-gallery-link').click()
+  const featuredRow = page.getByRole('region', { name: 'Featured' })
+  check('F13 Design workshop is the first featured workflow', await until('featured', async () => (await featuredRow.locator('.gallery-card').first().innerText()).includes('Design workshop')),
+    (await featuredRow.innerText().catch(() => '')).slice(0, 120))
+  await shot(page, 'f13-gallery')
+
+  // P1 (decision 2): a project setting lets agents manage workflows; off by default.
+  await page.getByRole('button', { name: 'Projects', exact: true }).click()
+  await page.getByRole('menuitem', { name: /settings…$/ }).click()
+  const settings = page.getByRole('dialog', { name: 'App' })
+  const allow = settings.getByRole('checkbox', { name: /Let agents manage workflows/ })
+  check('P1 agents managing workflows is off by default', !(await allow.isChecked()))
+  await allow.check()
+  await shot(page, 'p1-setting')
+  await settings.locator('.button-primary').click()
+  const stored = async () => ((await page.evaluate(async () => (await (await fetch('/api/projects')).json()).data)) as Array<{ name: string; agentWorkflows?: boolean }>).find((p) => p.name === 'App')?.agentWorkflows
+  check('P1 the setting is saved on the project', await until('saved setting', async () => (await stored()) === true))
+  await settings.getByRole('button', { name: 'Done' }).click()
+
+  await sectionTab(/^Files/).click()
   await setTheme(page, 'Dark')
   await shot(page, 'files-dark')
   await setTheme(page, 'Light')
