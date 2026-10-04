@@ -128,6 +128,13 @@ export const ArrowUpLeftIcon = (p: IconProps) => (
   </Svg>
 )
 
+export const ContrastIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
 export const SidebarIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
