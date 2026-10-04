@@ -118,6 +118,21 @@ describe('POST images with a message (I2)', () => {
       expect((await post(`/api/threads/${meta.id}/messages`, { text: 'many', images: Array.from({ length: 9 }, () => ({ data: PNG.toString('base64') })) })).status).toBe(400)
       expect((await post(`/api/threads/${meta.id}/completed`, { completed: true, pad: 'x'.repeat(1_100_000) })).status).toBe(413)
       expect(sent.map((s) => s.text)).toEqual(['what is this?', 'and this'])
+
+      // R8: Retry and a restored chip send an image this conversation already holds, by its name.
+      const file = server.store.events(meta.id).find((e) => e.event.kind === 'image')!.event as { file: string }
+      expect((await post(`/api/threads/${meta.id}/messages`, { text: 'again', images: [{ stored: file.file, name: 'a.png' }] })).status).toBe(202)
+      const again = sent.at(-1)!.images as Array<{ path: string }>
+      expect(again).toHaveLength(1)
+      expect(readFileSync(again[0]!.path).equals(PNG)).toBe(true)
+      // Only a stored name, only this conversation's, and never on a new conversation.
+      for (const stored of ['../meta.json', `${'0'.repeat(64)}.png`, 'a.png']) {
+        expect((await post(`/api/threads/${meta.id}/messages`, { text: 'bad', images: [{ stored }] })).status, stored).toBe(400)
+      }
+      const other = await post('/api/threads', { projectPath: stateRoot, text: 'other' })
+      const { data: otherMeta } = await other.json() as { data: { id: string } }
+      expect((await post(`/api/threads/${otherMeta.id}/messages`, { text: 'steal', images: [{ stored: file.file }] })).status).toBe(400)
+      expect((await post('/api/threads', { projectPath: stateRoot, text: 'new', images: [{ stored: file.file }] })).status).toBe(400)
     } finally {
       await server.close()
     }

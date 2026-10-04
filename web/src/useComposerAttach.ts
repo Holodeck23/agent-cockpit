@@ -8,10 +8,17 @@ import { native } from './native.ts'
 export interface PendingImage {
   readonly id: string
   readonly name: string
-  /** Base64, as the server takes it. */
-  readonly data: string
-  /** A data: URL of the same bytes, for the chip's thumbnail. */
+  /** Base64, as the server takes it; absent for an image the conversation already holds. */
+  readonly data?: string
+  /** That held image's stored name (a taken-back message's images, R8): it is sent by name. */
+  readonly stored?: string
+  /** A data: URL of the same bytes, or the conversation's image URL, for the chip's thumbnail. */
   readonly url: string
+}
+
+/** What the server takes for one chip: its bytes, or its stored name in this conversation. */
+export function chipToSend({ data, stored, name }: PendingImage): { data: string; name: string } | { stored: string; name: string } {
+  return stored ? { stored, name } : { data: data ?? '', name }
 }
 
 const hasFiles = (types: readonly string[]): boolean => types.includes('Files')
@@ -53,6 +60,9 @@ export function useComposerAttach({ projectPath, onInsert }: { projectPath?: str
     dragging,
     remove: (id: string) => setImages((current) => current.filter((image) => image.id !== id)),
     clear: () => { setImages([]); setNote(undefined) },
+    /** Puts back the images of a message you took back, as chips that send them by name. */
+    restore: (threadId: string, held: readonly { file: string; name?: string }[]) => setImages((current) => [...current,
+      ...held.map(({ file, name }) => ({ id: crypto.randomUUID(), name: name ?? 'image', stored: file, url: `/api/threads/${threadId}/images/${file}` }))]),
     dropProps: {
       onDragOver: (event: DragEvent) => {
         if (!hasFiles(Array.from(event.dataTransfer.types))) return

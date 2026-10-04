@@ -30,7 +30,7 @@ interface TranscriptViewProps {
   /** Stops the current turn so waiting messages run now (J1). */
   onSendNow?: () => void
   /** Sends a failed turn's message again (J10). */
-  onRetry?: (text: string) => void
+  onRetry?: (text: string, images: readonly { file: string; name?: string }[]) => void
   /** Present while the last turn's question or blocker still waits on you. */
   onDismiss?: () => void
 }
@@ -212,7 +212,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                 <div className="failure-title">{item.title}</div>
                 {item.detail ? <div className="failure-detail">{item.detail}</div> : null}
                 <div className="failure-actions">
-                  {index === retryIndex && onRetry ? <button type="button" className="button-soft" onClick={() => onRetry(item.retryText!)}>Retry</button> : null}
+                  {index === retryIndex && onRetry ? <button type="button" className="button-soft" onClick={() => onRetry(item.retryText!, item.retryImages ?? [])}>Retry</button> : null}
                   {item.raw && item.raw !== item.detail ? (
                     <details className="failure-raw"><summary>Details</summary><pre>{item.raw}</pre></details>
                   ) : null}

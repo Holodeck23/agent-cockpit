@@ -55,7 +55,10 @@ export type GitView = GitState & { readonly busy: readonly string[]; readonly pu
 
 
 /** An image sent with a message: base64 bytes and the name it had. */
-export interface MessageImage { readonly data: string; readonly name?: string }
+/** An image to send: new bytes, or one this conversation already holds, by its stored name (R8). */
+export type MessageImage = { readonly data: string; readonly name?: string } | { readonly stored: string; readonly name?: string }
+/** An image a conversation holds, by its stored name. */
+export interface StoredImage { readonly file: string; readonly name?: string }
 export const api = {
   recentWork: (projectPath: string) => request<RecoveryView>(`/api/recovery?${new URLSearchParams({ projectPath })}`),
   resumeWork: (body: z.infer<typeof resumeRecoveryBody>) => request<ThreadMeta>('/api/recovery', { method: 'POST', body }),
@@ -127,9 +130,9 @@ export const api = {
     request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}) } }),
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
-  /** Takes a waiting message back; resolves to its text for the draft (J1). */
+  /** Takes a waiting message back; resolves to its text and images for the draft (J1, R8). */
   unqueue: (id: string, queuedId: string) =>
-    request<{ text: string }>(`/api/threads/${id}/queued/${queuedId}/remove`, { method: 'POST', body: {} }),
+    request<{ text: string; images: StoredImage[] }>(`/api/threads/${id}/queued/${queuedId}/remove`, { method: 'POST', body: {} }),
   /** No answers closes the agent's questions unanswered. */
   answerQuestion: (id: string, requestId: string, answers: Record<string, string> | undefined) =>
     request<unknown>(`/api/threads/${id}/questions/${requestId}`, { method: 'POST', body: answers ? { answers } : {} }),

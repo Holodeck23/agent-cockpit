@@ -36,14 +36,25 @@ import type { AgentStatus } from '../agents/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
 export const MAX_MESSAGE_IMAGES = 8
-const messageImages = z.array(z.object({
-  data: z.string().min(1).max(Math.ceil(MAX_ATTACHED_IMAGE_BYTES / 3) * 4 + 4).regex(/^[A-Za-z0-9+/]+={0,2}$/),
-  name: z.string().max(200).optional(),
-})).max(MAX_MESSAGE_IMAGES).optional()
+const messageImages = z.array(z.union([
+  z.object({
+    data: z.string().min(1).max(Math.ceil(MAX_ATTACHED_IMAGE_BYTES / 3) * 4 + 4).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    name: z.string().max(200).optional(),
+  }),
+  // An image this conversation already holds (Retry, a taken-back message's chips), by its stored name.
+  z.object({ stored: z.string().max(80), name: z.string().max(200).optional() }),
+])).max(MAX_MESSAGE_IMAGES).optional()
 /** Room for a full set of images on the two routes that take them; every other route keeps 1 MB. */
 const IMAGE_BODY_BYTES = MAX_MESSAGE_IMAGES * (Math.ceil(MAX_ATTACHED_IMAGE_BYTES / 3) * 4 + 1024) + 1_000_000
-const decodeImages = (images: z.infer<typeof messageImages>): IncomingImage[] =>
-  (images ?? []).map((image) => ({ bytes: Buffer.from(image.data, 'base64'), ...(image.name ? { name: image.name } : {}) }))
+/** `stored` images are read from `threadId`'s own images; a new conversation has none to name. */
+const decodeImages = (images: z.infer<typeof messageImages>, read?: (file: string) => Buffer | undefined): IncomingImage[] =>
+  (images ?? []).map((image) => {
+    const name = image.name ? { name: image.name } : {}
+    if ('data' in image) return { bytes: Buffer.from(image.data, 'base64'), ...name }
+    const bytes = IMAGE_FILE.test(image.stored) ? read?.(image.stored) : undefined
+    if (!bytes) throw new ImageAttachError('That image is not in this conversation any more; add it again')
+    return { bytes, ...name }
+  })
 const createThreadBody = z.object({
   projectPath: z.string().min(1).max(1000),
   title: z.string().max(200).optional(),
@@ -465,13 +476,13 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       } else if (method === 'POST' && action === 'messages') {
         const { text, images: attached } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
         const expanded = expandedFor(text, store.get(threadId)!.projectPath)
-        manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached))
+        manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes))
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'queued' && parts[4] && parts[5] === 'remove') {
-        sendJson(res, 200, { data: { text: await manager.unqueue(threadId, parts[4]) } })
+        sendJson(res, 200, { data: await manager.unqueue(threadId, parts[4]) })
       } else if (method === 'POST' && action === 'questions' && parts[4]) {
         manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })

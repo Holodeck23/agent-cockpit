@@ -146,7 +146,7 @@ describe('thread manager', () => {
     const queuedId = agent.sent[1]?.queuedId
     expect(queuedId).toMatch(/^[0-9a-f-]{36}$/)
     expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'user_text', text: 'second', queuedId })
-    await expect(manager.unqueue(meta.id, queuedId!)).resolves.toBe('second')
+    await expect(manager.unqueue(meta.id, queuedId!)).resolves.toEqual({ text: 'second', images: [] })
     expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'user_unqueued', id: queuedId })
     await expect(manager.unqueue(meta.id, queuedId!)).rejects.toThrow(/already taken/)
   })
@@ -173,7 +173,7 @@ describe('thread manager', () => {
     expect(manager.status(meta.id)).toBe('working')
     const statuses: string[] = []
     manager.subscribe((update) => { if (update.event.kind === 'user_unqueued') statuses.push(update.status) })
-    await expect(manager.unqueue(meta.id, queuedId)).resolves.toBe('second')
+    await expect(manager.unqueue(meta.id, queuedId)).resolves.toEqual({ text: 'second', images: [] })
     expect(manager.status(meta.id)).toBe('done')
     expect(statuses).toEqual(['done'])
     expect(manager.canControl(meta.id)).toBe(false)

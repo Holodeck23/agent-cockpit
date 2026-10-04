@@ -3,7 +3,7 @@ import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
 import { compactingNow, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
-import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
+import { api, type ProcessInfo, type StoredImage, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
 import { buildTranscript, followUpSuggestions } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
@@ -62,7 +62,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
   const [finding, setFinding] = useState(false)
   // A message taken back from the agent's queue returns to the draft (J1).
-  const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true }>()
+  const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true; readonly images?: readonly StoredImage[] }>()
   useEffect(() => { setFinding(false); setRestore(undefined) }, [meta.id])
   useEffect(() => {
     if (phone) return
@@ -173,9 +173,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
           onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
-          onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text }) => setRestore({ text, restore: true })))}
+          onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text, images }) => setRestore({ text, restore: true, images })))}
           onSendNow={() => guard(api.interrupt(meta.id))}
-          onRetry={(text) => guard(api.send(meta.id, text))}
+          onRetry={(text, images) => guard(api.send(meta.id, text, images.map(({ file, name }) => ({ stored: file, ...(name ? { name } : {}) }))))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (

@@ -70,6 +70,12 @@ try {
     (await waiting.filter({ hasText: 'WITHDRAWN-R1' }).count()) === 1))
   await waiting.filter({ hasText: 'WITHDRAWN-R1' }).getByRole('button', { name: 'Remove' }).click()
   check('R1 Remove takes it back', await until('taken back', async () => (await waiting.count()) === 0))
+  // R8: its image comes back to the composer with its text.
+  const chips = page.getByRole('list', { name: 'Images to send' }).locator('li')
+  check('R8 taking back a message puts its image back in the composer', await until('chip', async () => (await chips.count()) === 1
+    && await chips.locator('img').evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0)))
+  await shot(page, 'r8-restored-chip')
+  await page.getByRole('button', { name: 'Remove mongo.png' }).click()
   await messageBox(page).fill('')
   await until('turn over', async () => !(await working(page)), 20_000)
   await page.getByRole('button', { name: 'Agent settings' }).click()
@@ -186,6 +192,16 @@ try {
   const r7Reply = page.locator('.bubble').filter({ hasText: /Effort \w+\.$/ })
   check('R7 a saved Ultra on gpt-5.6-luna reaches Codex as Max', await until('r7 reply', async () => /Effort max\.$/.test((await r7Reply.textContent().catch(() => '')) ?? '')),
     (await r7Reply.textContent().catch(() => '')) ?? '')
+
+  // R8: Retry after a failed turn sends the images again, not just the text.
+  const flaky = await apiPost(page, '/api/threads', { projectPath: project, text: 'R8-flaky look at this', settings: { agent: 'codex', model: 'gpt-5.6-sol' }, images: [{ data: ICON, name: 'icon.png' }] }) as { data: { id: string } }
+  await page.evaluate((id) => { location.search = `?thread=${id}` }, flaky.data.id)
+  const retry = page.getByRole('button', { name: 'Retry', exact: true })
+  check('R8 the failed turn offers Retry', await until('retry', async () => (await retry.count()) === 1))
+  await retry.click()
+  check('R8 Retry delivers the image again', await until('retried', async () => (await page.locator('.bubble').filter({ hasText: 'Retried with 1 image(s).' }).count()) === 1),
+    (await page.locator('.bubble').last().textContent().catch(() => '')) ?? '')
+  await shot(page, 'r8-retried')
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {

@@ -170,8 +170,8 @@ export interface ThreadManager {
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
   send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, images?: readonly IncomingImage[]): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
-  /** Takes back a message still waiting in the agent's queue (J1); resolves to its text for your draft. */
-  unqueue(threadId: string, queuedId: string): Promise<string>
+  /** Takes back a message still waiting in the agent's queue (J1); resolves to its text and images for your draft. */
+  unqueue(threadId: string, queuedId: string): Promise<{ text: string; images: { file: string; name?: string }[] }>
   /** Answers the agent's open questions (J6), or with undefined closes them unanswered. */
   answerQuestion(threadId: string, requestId: string, answers: Readonly<Record<string, string>> | undefined): void
   interrupt(threadId: string): void
@@ -462,6 +462,13 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!entry?.waiting.has(queuedId) || sent?.kind !== 'user_text' || !entry.session.cancelQueued) throw new Error('The agent has already taken this message')
       if (!(await entry.session.cancelQueued(queuedId))) throw new Error('The agent has already taken this message')
       entry.waiting.delete(queuedId)
+      // The images sent with it are stored straight after it; they go back to the composer too.
+      const events = store.events(threadId)
+      const at = events.findIndex((e) => e.event.kind === 'user_text' && e.event.queuedId === queuedId)
+      const after = events.slice(at + 1)
+      const end = after.findIndex((e) => !(e.event.kind === 'image' && e.event.from === 'you'))
+      const images = (end < 0 ? after : after.slice(0, end)).flatMap(({ event }) =>
+        event.kind === 'image' ? [{ file: event.file, ...(event.name ? { name: event.name } : {}) }] : [])
       // The turn already ended and only this message kept it working: it is done now. Before
       // recording, so the update carries the new status.
       if (entry.afterResult && entry.waiting.size === 0) {
@@ -471,7 +478,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         if (entry.helpers.size === 0) armIdleClose(entry)
       }
       record(threadId, { kind: 'user_unqueued', id: queuedId })
-      return sent.text
+      return { text: sent.text, images }
     },
     answerQuestion(threadId, requestId, answers) {
       const entry = live.get(threadId)
