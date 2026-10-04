@@ -398,7 +398,10 @@ try {
   check('F14 the chosen folder is shown', (await settings.locator('.modal-path').first().innerText()) === elsewhere)
   const footBox = await settings.locator('.modal-foot').boundingBox()
   const dialogBox = await settings.boundingBox()
-  check('F14 the settings buttons stay in view as the dialog grows', !!footBox && !!dialogBox && footBox.y + footBox.height <= dialogBox.y + dialogBox.height + 1)
+  const scrollBox = await settings.locator('.project-settings-scroll').boundingBox()
+  check('F14 the settings buttons stay in view as the dialog grows, below the fields, not over them',
+    !!footBox && !!dialogBox && !!scrollBox && footBox.y + footBox.height <= dialogBox.y + dialogBox.height + 1 && scrollBox.y + scrollBox.height <= footBox.y + 1,
+    `scroll ends ${scrollBox && scrollBox.y + scrollBox.height}, footer starts ${footBox?.y}`)
   await shot(page, 'f14-folder')
   writeFileSync(join(elsewhere, 'added-there.md'), 'from Finder\n')
   await settings.getByRole('button', { name: 'Done' }).click()
@@ -435,6 +438,24 @@ try {
   check('F8 the list shows the copies', await until('rows', async () => (await row('logo.svg').count()) === 1 && (await row('find (copy).txt').count()) === 1))
   await shot(page, 'f8-dropped')
   await note.getByRole('button', { name: 'OK' }).click()
+
+  // A10: an empty filter says why, and offers the way back.
+  await sectionTab(/^Conversations/).click()
+  const filters = page.getByRole('tablist', { name: 'Filter conversations' })
+  await filters.getByRole('tab', { name: /^Unread/ }).click()
+  const empty = page.locator('.list-empty')
+  check('A10 Unread with nothing unread says All read', await until('all read', async () => (await empty.locator('strong').innerText()) === 'All read'))
+  await shot(page, 'a10-all-read')
+  await empty.getByRole('button', { name: '← View all conversations' }).click()
+  check('A10 View all conversations goes back to All', await until('all', async () => (await filters.getByRole('tab', { name: /^All/ }).getAttribute('aria-selected')) === 'true'))
+
+  // D10: one click flips light and dark; System stays in the Appearance popover.
+  await setTheme(page, 'Light')
+  await page.getByRole('button', { name: 'Switch to dark' }).click()
+  check('D10 one click turns the app dark', await until('dark', async () => (await page.evaluate(() => document.documentElement.dataset.theme)) === 'dark'))
+  await page.getByRole('button', { name: 'Switch to light' }).click()
+  check('D10 and back to light', await until('light', async () => (await page.evaluate(() => document.documentElement.dataset.theme)) === 'light'))
+  await sectionTab(/^Files/).click()
 
   await setTheme(page, 'Dark')
   await shot(page, 'files-dark')
