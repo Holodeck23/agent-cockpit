@@ -13,6 +13,16 @@ export function openApprovals(events: readonly StoredEvent[]): string[] {
   return [...pending]
 }
 
+/** The agent is summarising earlier context right now (J3): the last compaction started and has not finished. */
+export function compactingNow(events: readonly StoredEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const { event } = events[i]!
+    if (event.kind === 'compaction') return event.phase === 'started'
+    if (event.kind === 'result' || event.kind === 'exit' || event.kind === 'session_boundary') return false
+  }
+  return false
+}
+
 /** Helpers (sub-agents) started in the current agent session that have not finished. */
 export function runningHelpers(events: readonly StoredEvent[]): string[] {
   const running = new Set<string>()

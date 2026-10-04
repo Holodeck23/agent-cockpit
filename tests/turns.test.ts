@@ -75,3 +75,19 @@ describe('guidance', () => {
     expect(TURN_GUIDANCE).toMatch(/"Blocked:"/)
   })
 })
+
+describe('compactingNow and runningHelpers', async () => {
+  const { compactingNow, runningHelpers } = await import('../server/threads/status.ts')
+  const e = (event: NormalizedEvent): StoredEvent => ({ ts: '2026-10-04T10:00:00.000Z', event })
+  it('is compacting only between a start and its finish, within a turn', () => {
+    expect(compactingNow([e({ kind: 'compaction', phase: 'started' })])).toBe(true)
+    expect(compactingNow([e({ kind: 'compaction', phase: 'started' }), e({ kind: 'text_delta', text: 'x' })])).toBe(true)
+    expect(compactingNow([e({ kind: 'compaction', phase: 'started' }), e({ kind: 'compaction', phase: 'finished', ok: true })])).toBe(false)
+    expect(compactingNow([e({ kind: 'compaction', phase: 'started' }), e({ kind: 'result', ok: false })])).toBe(false)
+  })
+  it('counts helpers started and not finished in the current session', () => {
+    expect(runningHelpers([e({ kind: 'subagent', id: 'a', phase: 'started' }), e({ kind: 'subagent', id: 'b', phase: 'started' }),
+      e({ kind: 'subagent', id: 'a', phase: 'finished' })])).toEqual(['b'])
+    expect(runningHelpers([e({ kind: 'subagent', id: 'a', phase: 'started' }), e({ kind: 'exit', code: 0 })])).toEqual([])
+  })
+})

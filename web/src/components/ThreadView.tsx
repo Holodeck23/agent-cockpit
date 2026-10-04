@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
-import { openApprovals, runningHelpers } from '../../../server/threads/status.ts'
+import { compactingNow, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
@@ -40,6 +40,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const shown = !running && awaitingOf(events) ? 'needs_input' : status
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const helpers = useMemo(() => (running ? runningHelpers(events).length : 0), [events, running])
+  const compacting = useMemo(() => running && compactingNow(events), [events, running])
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
   const prefs = useActivityPrefs()
@@ -99,7 +100,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           <div className="thread-status">
             <span className={`status-text status-${shown}`}>
               {shown === 'working' ? <Bars live /> : null}
-              {STATUS_LABEL[shown]}
+              {compacting ? 'Compacting' : STATUS_LABEL[shown]}
             </span>
             {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
             {running ? (

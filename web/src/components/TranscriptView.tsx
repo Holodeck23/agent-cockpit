@@ -24,6 +24,9 @@ interface TranscriptViewProps {
   onDismiss?: () => void
 }
 
+/** 34052 → "34k"; small counts stay exact. */
+const tokens = (n: number): string => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
 const HELPER_LABEL = { running: 'Helper working', done: 'Helper finished', failed: 'Helper failed', stopped: 'Helper stopped' } as const
 
 const time = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -55,7 +58,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
   const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
-  const now = useTick(liveStep)
+  const now = useTick(liveStep || shown.some((i) => i.type === 'compaction' && i.state === 'running'))
   const last = shown.at(-1)
   const streamingShowsAuthor = !(last?.type === 'message' && last.author === streamingAuthor)
 
@@ -175,6 +178,18 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                 ) : (
                   <div className="approval-expired">No longer waiting: that turn has ended.</div>
                 )}
+              </div>
+            )
+          }
+          case 'compaction': {
+            const live = item.state === 'running'
+            const end = item.endedAt ? Date.parse(item.endedAt) : live ? now : undefined
+            const sizes = item.preTokens !== undefined && item.postTokens !== undefined ? ` · ${tokens(item.preTokens)} → ${tokens(item.postTokens)} tokens` : ''
+            return (
+              <div key={item.key} className={`step compaction${live ? ' live' : ''}${item.state === 'failed' ? ' compaction-failed' : ''}`}>
+                <Bars live={live} />
+                <span className="step-label">{live ? 'Making room: summarising the conversation so far' : item.state === 'failed' ? 'Could not summarise the conversation' : `Summarised the conversation to make room${sizes}`}</span>
+                {end !== undefined ? <span className="step-time">· {elapsed(item.startedAt, end)}</span> : null}
               </div>
             )
           }

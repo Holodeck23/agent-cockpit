@@ -174,3 +174,17 @@ describe('helpers in the transcript (J7)', () => {
     expect(items.map((i) => i.type === 'helper' && [i.description, i.state])).toEqual([['Count the lines', 'failed'], ['A helper', 'stopped']])
   })
 })
+
+describe('compaction in the transcript (J3)', () => {
+  it('shows a running line that ends with the sizes, or as failed when the turn fails first', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'compaction', phase: 'started' }),
+      at(22, { kind: 'compaction', phase: 'finished', ok: true, trigger: 'manual', preTokens: 34052, postTokens: 2775 }),
+      at(23, { kind: 'result', ok: true }),
+      at(30, { kind: 'compaction', phase: 'started' }),
+      at(31, { kind: 'result', ok: false }),
+    ], 'claude')
+    const compactions = items.filter((i) => i.type === 'compaction')
+    expect(compactions).toMatchObject([{ state: 'done', preTokens: 34052, postTokens: 2775, endedAt: at(22, { kind: 'thread_deleted' }).ts }, { state: 'failed' }])
+  })
+})

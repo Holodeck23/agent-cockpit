@@ -63,6 +63,16 @@ try {
   check('J7 and the conversation is no longer working', await until('idle', async () => (await page.locator('.helper-count').count()) === 0
     && (await headStatus(page).textContent())?.includes('Working') === false))
 
+  // J3: compaction shows in the header while it runs, then as a line with the sizes.
+  await send(page, 'compact')
+  const compaction = page.locator('.step.compaction')
+  check('J3 the header says Compacting while it runs', await until('compacting', async () => (await headStatus(page).textContent())?.includes('Compacting') === true))
+  check('J3 a live line says the agent is making room', (await compaction.last().textContent())?.includes('Making room') === true)
+  await shot(page, 'j3-compacting')
+  check('J3 it ends as a line with the sizes', await until('compacted', async () =>
+    (await compaction.last().textContent())?.includes('Summarised the conversation to make room · 34k → 2.8k tokens') === true))
+  check('J3 and the header goes back to the turn state', await until('done', async () => (await headStatus(page).textContent())?.includes('Compacting') === false))
+
   await setTheme(page, 'Dark')
   await shot(page, 'thread-dark')
   await setTheme(page, 'Light')

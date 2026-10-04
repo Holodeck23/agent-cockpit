@@ -28,6 +28,8 @@ export type TranscriptItem =
       resolution?: ApprovalBehavior
     }
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
+  /** The agent summarising earlier context to make room (J3); tokens as it reported them. */
+  | { type: 'compaction'; key: string; state: 'running' | 'done' | 'failed'; startedAt: string; endedAt?: string; preTokens?: number; postTokens?: number }
   /** A helper agent (J7): what it was asked, what it did, what it said back. */
   | {
       type: 'helper'; key: string; id: string; description: string; state: HelperState
@@ -189,6 +191,12 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
   const helpers = new Map<string, number>()
+  let compacting: number | undefined
+  const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
+    const item = compacting === undefined ? undefined : items[compacting]
+    if (compacting !== undefined && item?.type === 'compaction') replace(compacting, { ...item, state, endedAt: ts, ...sizes })
+    compacting = undefined
+  }
   const replace = (index: number, next: TranscriptItem): void => {
     items.splice(index, 1, next)
   }
@@ -288,9 +296,24 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         }
         return
       }
+      case 'compaction':
+        if (event.phase === 'started') {
+          compacting = items.length
+          items.push({ type: 'compaction', key, state: 'running', startedAt: ts })
+        } else if (compacting !== undefined) {
+          endCompaction(ts, event.ok === false ? 'failed' : 'done', {
+            ...(event.preTokens !== undefined ? { preTokens: event.preTokens } : {}),
+            ...(event.postTokens !== undefined ? { postTokens: event.postTokens } : {}),
+          })
+        } else if (event.ok !== false) {
+          // Codex can finish without a start we saw (a resumed session); still say it happened.
+          items.push({ type: 'compaction', key, state: 'done', startedAt: ts, endedAt: ts })
+        }
+        return
       case 'exit':
       case 'session_boundary':
         endRunningHelpers(ts)
+        if (compacting !== undefined) endCompaction(ts, 'failed')
         return
       case 'agent_switch':
         endRunningHelpers(ts)
@@ -298,6 +321,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         items.push({ type: 'note', key, text: `Handed over from ${agentName(event.from)} to ${agentName(event.to)}. The conversation so far goes with it.`, tone: 'plain' })
         return
       case 'result':
+        if (compacting !== undefined) endCompaction(ts, event.ok ? 'done' : 'failed')
         items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: event.ok || event.stopped ? 'plain' : 'error' })
         return
       case 'error':
