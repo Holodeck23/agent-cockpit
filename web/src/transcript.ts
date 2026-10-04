@@ -7,6 +7,7 @@ import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
+import { failureWords } from './agent-errors.ts'
 
 export type TranscriptItem =
   | {
@@ -31,6 +32,8 @@ export type TranscriptItem =
       resolution?: ApprovalBehavior
     }
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
+  /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
+  | { type: 'failure'; key: string; title: string; detail: string; raw: string; retryText?: string }
   /** The agent's questions with choices (J6); `answers` once you answered, `dismissed` once you closed them. */
   | { type: 'question'; key: string; requestId: string; agent: AgentId; questions: readonly AgentQuestion[]; answers?: Readonly<Record<string, string>>; dismissed?: boolean }
   /** The agent summarising earlier context to make room (J3); tokens as it reported them. */
@@ -200,6 +203,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const approvals = new Map<string, number>()
   const helpers = new Map<string, number>()
   let compacting: number | undefined
+  let lastUserText: string | undefined
+  /** A failure card already stands for the current turn, so its failed result adds nothing. */
+  let failedThisTurn = false
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
     const item = compacting === undefined ? undefined : items[compacting]
     if (compacting !== undefined && item?.type === 'compaction') replace(compacting, { ...item, state, endedAt: ts, ...sizes })
@@ -225,6 +231,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       case 'user_text':
       case 'assistant_text': {
         if (event.kind === 'user_text' && event.queuedId && takenBack.has(event.queuedId)) return
+        if (event.kind === 'user_text') { lastUserText = event.text; failedThisTurn = false }
         const author = event.kind === 'user_text' ? 'you' : agent
         const showAuthor = !(last?.type === 'message' && last.author === author)
         if (event.kind === 'user_text') {
@@ -339,12 +346,21 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         agent = event.to
         items.push({ type: 'note', key, text: `Handed over from ${agentName(event.from)} to ${agentName(event.to)}. The conversation so far goes with it.`, tone: 'plain' })
         return
-      case 'result':
+      case 'result': {
         if (compacting !== undefined) endCompaction(ts, event.ok ? 'done' : 'failed')
-        items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: event.ok || event.stopped ? 'plain' : 'error' })
+        const failed = !event.ok && !event.stopped
+        if (failed && !failedThisTurn) {
+          const words = failureWords(event.text)
+          items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText } : {}) })
+        } else if (!failed) {
+          items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: 'plain' })
+        }
+        failedThisTurn = false
         return
+      }
       case 'error':
-        items.push({ type: 'note', key, text: event.message, tone: 'error' })
+        failedThisTurn = true
+        items.push({ type: 'failure', key, ...failureWords(event.message), raw: event.message, ...(lastUserText ? { retryText: lastUserText } : {}) })
         return
       default:
         return

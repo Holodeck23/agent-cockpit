@@ -26,6 +26,8 @@ interface TranscriptViewProps {
   onUnqueue?: (queuedId: string) => void
   /** Stops the current turn so waiting messages run now (J1). */
   onSendNow?: () => void
+  /** Sends a failed turn's message again (J10). */
+  onRetry?: (text: string) => void
   /** Present while the last turn's question or blocker still waits on you. */
   onDismiss?: () => void
 }
@@ -58,11 +60,13 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onDismiss }: TranscriptViewProps) {
+export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
   const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
+  // Retry belongs to the latest failure only, and only once nothing runs.
+  const retryIndex = running ? -1 : shown.findLastIndex((i) => i.type === 'failure' && Boolean(i.retryText))
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
   const now = useTick(liveStep || shown.some((i) => i.type === 'compaction' && i.state === 'running'))
   const last = shown.at(-1)
@@ -197,6 +201,20 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
           }
           case 'question':
             return <QuestionCard key={item.key} item={item} open={openApprovals.has(item.requestId)} onAnswer={(answers) => onAnswer(item.requestId, answers)} />
+          case 'failure':
+            return (
+              <div key={item.key} className="failure" role="alert">
+                <div className="failure-title">{item.title}</div>
+                {item.detail ? <div className="failure-detail">{item.detail}</div> : null}
+                <div className="failure-actions">
+                  {index === retryIndex && onRetry ? <button type="button" className="button-soft" onClick={() => onRetry(item.retryText!)}>Retry</button> : null}
+                  {item.raw && item.raw !== item.detail ? (
+                    <details className="failure-raw"><summary>Details</summary><pre>{item.raw}</pre></details>
+                  ) : null}
+                  <TroubleshootingLink text={item.raw} />
+                </div>
+              </div>
+            )
           case 'compaction': {
             const live = item.state === 'running'
             const end = item.endedAt ? Date.parse(item.endedAt) : live ? now : undefined

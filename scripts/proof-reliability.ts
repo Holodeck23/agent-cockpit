@@ -146,7 +146,8 @@ try {
     await alpha.click()
     await gotSnapshot
     await apiPost(page, `/api/threads/${ids[0]}/messages`, { text: 'Please remember this' })
-    await alpha.getByText(mode === 'missing' ? 'Error' : 'Needs you', { exact: true }).waitFor()
+    // The Error pill carries the failed turn's time (A11): "Error · 0:00".
+    await alpha.getByText(mode === 'missing' ? /^Error( · \d+:\d\d)?$/ : 'Needs you', { exact: true }).waitFor()
     releaseSnapshot()
     if (mode === 'missing') await headStatus(page).filter({ hasText: 'Error' }).waitFor()
     else {

@@ -170,6 +170,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
           onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text }) => setRestore({ text, restore: true })))}
           onSendNow={() => guard(api.interrupt(meta.id))}
+          onRetry={(text) => guard(api.send(meta.id, text))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (

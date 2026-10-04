@@ -94,8 +94,8 @@ try {
   await headStatus(page).filter({ hasText: 'Error' }).waitFor()
   check('the header shows Error', true)
   await page.locator('.events').getByText('hit your session limit').first().waitFor()
-  await page.locator('.note-error').filter({ hasText: 'Turn failed' }).waitFor()
-  check('the limit message and a failed-turn note are visible in the conversation', true)
+  await page.locator('.failure').filter({ hasText: 'You have reached a usage limit' }).first().waitFor()
+  check('the limit message and a usage-limit error card are visible in the conversation', true)
 
   const limitUsage = lastUsage(failed)
   check('the rejected five-hour usage event was stored', limitUsage?.status === 'rejected' && typeof limitUsage.resetsAt === 'number')

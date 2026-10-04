@@ -116,6 +116,20 @@ try {
     (await page.locator('.bubble').filter({ hasText: /^Got: now please$/ }).count()) === 1, 3_000)
     && (await page.getByText('Work done.').count()) === 1)
 
+  // J10: a failed turn is a card in plain words, with the agent's own message and Retry.
+  await send(page, 'flaky')
+  const failure = page.locator('.failure').last()
+  check('J10 a failed turn shows as an error card with a plain title', await until('failure', async () =>
+    (await failure.locator('.failure-title').textContent()) === 'You have reached a usage limit'))
+  check('J10 the details say when the limit resets', /^Claude AI usage limit reached\. Resets .+\.$/.test((await failure.locator('.failure-detail').textContent()) ?? ''))
+  check("J10 the agent's raw message is under Details", (await failure.locator('.failure-raw pre').textContent({ timeout: 2_000 }).catch(() => '')) === 'Claude AI usage limit reached|1791100800')
+  check('J10 the pill keeps the failed turn\'s time', /^Error · 0:0\d$/.test((await headStatus(page).textContent())?.trim() ?? ''))
+  await shot(page, 'j10-failure')
+  await failure.getByRole('button', { name: 'Retry' }).click()
+  check('J10 Retry sends the message again', await until('recovered', async () => (await page.locator('.bubble').filter({ hasText: /^Recovered\.$/ }).count()) === 1)
+    && (await page.locator('.bubble').filter({ hasText: /^flaky$/ }).count()) === 2)
+  check('J10 Retry is gone once the turn ran', (await page.locator('.failure').getByRole('button', { name: 'Retry' }).count()) === 0)
+
   // J3: compaction shows in the header while it runs, then as a line with the sizes.
   await send(page, 'compact')
   const compaction = page.locator('.step.compaction')

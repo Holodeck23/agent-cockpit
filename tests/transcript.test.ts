@@ -86,7 +86,32 @@ describe('buildTranscript', () => {
       'claude',
     )
     expect(items[0]).toMatchObject({ error: 'exit 1' })
-    expect(items[1]).toMatchObject({ text: 'Turn failed', tone: 'error' })
+    expect(items[1]).toMatchObject({ type: 'failure', title: 'The turn failed' })
+  })
+})
+
+describe('failed turns as error cards (J10)', () => {
+  it('words the error plainly, keeps the agent message as details, and offers your last message to retry', () => {
+    const codex = '{\n  "type": "error",\n  "error": {\n    "type": "invalid_request_error",\n    "message": "Unsupported value: \'max\' is not supported with the \'gpt-5.5\' model."\n  },\n  "status": 400\n}'
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'Fix the build' }),
+      at(1, { kind: 'error', message: codex }),
+      at(2, { kind: 'result', ok: false, durationMs: 2000 }),
+    ], 'codex')
+    expect(items.slice(1)).toEqual([expect.objectContaining({ type: 'failure', title: 'The agent refused this request',
+      detail: "Unsupported value: 'max' is not supported with the 'gpt-5.5' model.", raw: codex, retryText: 'Fix the build' })])
+  })
+  it('names a usage limit, and leaves a stop as a plain note', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'go' }),
+      at(1, { kind: 'error', message: "Claude AI usage limit reached|1791100800" }),
+      at(2, { kind: 'result', ok: false }),
+      at(3, { kind: 'user_text', text: 'again' }),
+      at(4, { kind: 'result', ok: false, stopped: true }),
+    ], 'claude')
+    expect(items[1]).toMatchObject({ type: 'failure', title: 'You have reached a usage limit' })
+    expect((items[1] as { detail: string }).detail).toMatch(/^Claude AI usage limit reached\. Resets .+\.$/)
+    expect(items.at(-1)).toMatchObject({ type: 'note', text: 'Stopped' })
   })
 })
 
