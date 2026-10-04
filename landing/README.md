@@ -1,48 +1,75 @@
-# Cockpit prerelease landing page
+# Cockpit landing page
 
-`index.html` is the complete, self-contained v0.1.4 landing page. It includes inline styles, script, the Cockpit mark and four embedded screenshots from the packaged app. Open it directly from disk or host this directory as a static website. Outbound links point to the public repository, release asset, issues and Enjoy attribution.
+`index.html` is the self-contained release landing page, including the interactive demo,
+inline styles/scripts, Cockpit mark and four packaged-app screenshots. It opens from disk
+or any static host. The Mac download currently points to the published v0.1.4 prerelease.
 
-The embedded workspace is explicitly labeled as a simulation. Resume the sample project, allow or deny startup, use the focus counter in the preview, switch agents, and move between conversations. Files lets visitors edit and explicitly save sample notes; Workflows reads the saved version and shows a fixed review checklist. State survives view changes and resets on Reset preview or reload. There is no provider call, backend, real command execution or model usage.
+## The interactive demo
 
-Screenshot viewing, embedded Fraunces fonts, the workspace and FAQ work offline. Download and external links require a connection. Fraunces is distributed under the SIL Open Font License 1.1; its copyright notice and complete license are included in the HTML.
+The demo bundles **the actual React App, components and CSS from `web/src`**. It uses the
+real conversation list, transcript, approval card, composer, agent picker, Files,
+Workflows, Memory, recovery screen and preview chrome. The sample in Preview comes from
+`server/onboarding/sample.ts`, with copy adjusted to identify the browser simulation.
 
-When served over http(s) from a non-local host, the page loads Vercel Web Analytics (`/_vercel/insights/script.js`, cookieless page views). Opened from disk or localhost it loads nothing. DMG downloads are counted by GitHub: `gh api repos/Holodeck23/agent-cockpit/releases -q '.[].assets[]|.name+" "+(.download_count|tostring)'`.
+`demo/api.ts` replaces the API at build time. `demo/native.ts` replaces the native bridge.
+All fixtures and drafts are held in memory; reset or reload discards them. No provider,
+process, backend or real file is accessed. The frame CSP blocks network connections.
+Unknown operations explain that they need the installed app rather than claiming success.
+The outer iframe permits forms so real React Save/Run submit handlers work; CSP blocks
+native form navigation. The sandbox is a UI containment aid, not the security boundary:
+trusted bundled code, local adapters, escaped text and no connected backend define scope.
 
-Hosted on Vercel as project `agent-cockpit`: https://agent-cockpit-theta.vercel.app (`agent-cockpit.vercel.app` is someone else's site). Deploy the existing project with `vercel deploy landing --prod --yes --project prj_UW9WKWGF9SHNckMf2FiqLNpGiHtZ --scope davids-projects-3fd8f18a` from the repository root. `.vercelignore` restricts uploads to the static page. This is a CLI deployment; the Vercel project is not connected to Git.
+The visitor can approve or deny startup, use the launch counter, send sample messages,
+switch agents, edit/save notes, run a workflow against the saved version, recover a recent
+conversation, add/edit memory, filter conversations and reset. Replies and checklist output
+are explicitly fixed simulations. Native Mac actions and scheduling require the app.
 
-The page uses an editorial type system and cobalt stage around a sample workspace grounded in the product UI. This brief requests one landing page with an embedded demo, not a separate demo route.
+The landing page uses Cockpit's rounded system typography and light surfaces. Marketing
+body copy is 19–21px; main demo conversation text is 17px. `demo/readability.css` records
+only demo-specific reading-size and responsive adaptations. At narrow widths Preview
+occupies one pane; Close preview returns to the conversation. Expand opens a larger view;
+Escape closes it. The agent-team reference informed the guided actions and free exploration.
 
-## Preview
+## Edit and build
 
-From the repository root:
+- Marketing markup, release copy and screenshot gallery: `index.html`.
+- Landing styles: `page.css`.
+- Guided walkthrough: `demo-tour.js`.
+- Sample backend, native bridge and ephemeral storage: `demo/`.
+
+After editing source, regenerate the embedded UI/CSS/walkthrough:
+
+```sh
+node landing/build-demo.mjs
+```
+
+The build preserves release copy and screenshot data in `index.html`. Commit the generated
+HTML with its source. No build command is needed at the static host. Rebuild intentionally
+when production components change, then verify the resulting demo again.
+
+## Preview and verify
 
 ```sh
 python3 -m http.server 4388 --bind 127.0.0.1 --directory landing
-```
-
-Open http://127.0.0.1:4388. No app server or agent credentials are required.
-
-## Validate
-
-Uses the repo's `playwright-core` dependency and an existing Chrome installation, matching the product's UI proof scripts. Does not use provider allowances.
-
-```sh
+node node_modules/typescript/bin/tsc --project landing/tsconfig.demo.json
 node landing/check-render.mjs landing/index.html --width 390,768,1280
-node landing/verify.mjs
+LANDING_URL=http://127.0.0.1:4388/ node landing/verify.mjs /absolute/evidence/directory
 ```
 
-`check-render.mjs` checks computed contrast, specificity collisions and horizontal overflow. `verify.mjs` checks the complete visitor journey at 360, 390, 768 and 1280px: recovery, approval and denial, counter state, handoff, explicit note saving, workflow use of saved notes, safe text rendering, reset, gallery, dialog, FAQ and release navigation. It checks zero external requests offline and no JavaScript exceptions. To save screenshots, supply an output directory.
+The interaction suite exercises the same full journey offline and at LANDING_URL, at
+360, 390, 768, 1280 and 1440px, plus a JavaScript-disabled fallback. It verifies visible
+results, saved versus unsaved notes, literal rendering of user text, agent handoff,
+approval denial/retry, recovery, reset, expanded-view Escape, screenshots/FAQ, readable
+font sizes, overflow, exceptions and absence of API calls. Production verification still
+requires running the suite against the published URL; local checks and a push are not a
+deployment. Screenshot comparisons remain necessary even when browser tests pass.
 
-Set `LANDING_URL` to repeat the same full journey against the HTTP preview or deployed URL. Local passing checks do not establish that the production site is current or usable; exercise the actual delivery URL after publishing and visually inspect the result. Also review every element that looks actionable, not only elements already covered by the test.
+The hosted page retains Vercel Web Analytics. It is omitted on localhost and from disk.
+Outbound repository, release, DMG and feedback links require a network.
 
-## Release / portfolio handoff
+## Hosting
 
-- Static publish root: `landing/`. Entry: `index.html`. No build command.
-- Release asset: `Cockpit-0.1.4-arm64.dmg` from tag `v0.1.4`.
-- Suitable portfolio card title: **Cockpit**.
-- Label: **Mac app · prerelease**.
-- Suggested description: **A desktop workspace for coding agents, with recent-work recovery, inline approvals, embedded preview inspection, project files and repeatable workflows.**
-- Card CTA: **Explore Cockpit** → https://agent-cockpit-theta.vercel.app.
-- The portfolio itself has not been changed. The canonical site is the Vercel URL above; this folder is its source.
-
-Page claims are grounded in the release API response, README, release acceptance checklist, component source, and packaged-app captures. The original recon, release metadata, installed-DMG verification, timing evidence and page checks are kept in the maintainer's private release archive, not in this repository.
+Existing Vercel project: `agent-cockpit`; URL: https://agent-cockpit-theta.vercel.app.
+The project uses CLI deployment, not Git integration. The static publish root is `landing/`
+and its entry is `index.html`. Pushing the redesign branch does not update the live site.
+Use the established project/scope when publishing is authorized, then verify the public URL.
