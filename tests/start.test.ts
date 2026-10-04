@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { startServer, type RunningServer } from '../server/start.ts'
 
-function get(port: number, path: string, host = `127.0.0.1:${port}`): Promise<{ status: number; body: string }> {
+function get(port: number, path: string, host = `127.0.0.1:${port}`, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, headers: { host } }, (res) => {
+    const req = request({ host: '127.0.0.1', port, path, headers: { host, ...headers } }, (res) => {
       let body = ''
       res.on('data', (chunk: Buffer) => (body += chunk.toString()))
       res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
@@ -18,11 +18,11 @@ function get(port: number, path: string, host = `127.0.0.1:${port}`): Promise<{ 
   })
 }
 
-function post(port: number, path: string, body: unknown): Promise<{ status: number; body: string }> {
+function post(port: number, path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body)
     const req = request(
-      { host: '127.0.0.1', port, path, method: 'POST', headers: { 'content-type': 'application/json' } },
+      { host: '127.0.0.1', port, path, method: 'POST', headers: { 'content-type': 'application/json', ...headers } },
       (res) => {
         let text = ''
         res.on('data', (chunk: Buffer) => (text += chunk.toString()))
@@ -41,12 +41,32 @@ describe('startServer', () => {
     running = undefined
   })
 
-  const start = async (preferredPort?: number): Promise<RunningServer> => {
+  const start = async (preferredPort?: number, windowKey?: string): Promise<RunningServer> => {
     const webDist = mkdtempSync(join(tmpdir(), 'cockpit-web-'))
     writeFileSync(join(webDist, 'index.html'), '<h1>cockpit page</h1>')
-    running = await startServer({ port: 0, preferredPort, webDist, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-state-')) })
+    running = await startServer({ port: 0, preferredPort, webDist, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-state-')), windowKey })
     return running
   }
+
+  it('with a window key, refuses every desktop API request that does not carry it', async () => {
+    const key = 'a'.repeat(64)
+    const { port } = await start(undefined, key)
+    const origin = { origin: `http://127.0.0.1:${port}` }
+    // A forged Host and Origin are exactly what the page sends; only the key tells them apart.
+    expect((await get(port, '/api/threads', undefined, origin)).status).toBe(403)
+    expect((await post(port, '/api/threads/x/approvals/y', { decision: 'allow' }, origin)).status).toBe(403)
+    expect((await post(port, '/api/remote/pairings/x/approve', {}, origin)).status).toBe(403)
+    expect((await get(port, '/api/threads', undefined, { 'x-cockpit-window': 'b'.repeat(64) })).status).toBe(403)
+    expect((await get(port, '/api/threads', undefined, { 'x-cockpit-window': key })).status).toBe(200)
+    // The page itself (static files) still loads without it.
+    expect((await get(port, '/')).status).toBe(200)
+  })
+
+  it('with a window key, /api/mcp still answers to its own session token only', async () => {
+    const { port } = await start(undefined, 'a'.repeat(64))
+    const reply = await post(port, '/api/mcp/processes', { command: 'true' })
+    expect(reply.status).toBe(401)
+  })
 
   it('reuses a preferred port, so the page keeps its origin across restarts', async () => {
     const first = await start()

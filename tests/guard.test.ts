@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { isTrustedRequest } from '../server/http/guard.ts'
+import { hasWindowKey, isTrustedRequest, WINDOW_KEY_HEADER } from '../server/http/guard.ts'
 
 function req(method: string, headers: Record<string, string>): IncomingMessage {
   return { method, headers } as unknown as IncomingMessage
@@ -29,5 +29,19 @@ describe('isTrustedRequest', () => {
 
   it('rejects form-style posts that skip the CORS preflight', () => {
     expect(isTrustedRequest(req('POST', { host: '127.0.0.1:4317', 'content-type': 'text/plain' }), ports)).toBe(false)
+  })
+})
+
+describe('hasWindowKey', () => {
+  const key = 'k'.repeat(64)
+  it('accepts the exact key', () => {
+    expect(hasWindowKey(req('GET', { [WINDOW_KEY_HEADER]: key }), key)).toBe(true)
+  })
+  it('refuses a missing, wrong, shorter or longer key', () => {
+    expect(hasWindowKey(req('GET', {}), key)).toBe(false)
+    expect(hasWindowKey(req('GET', { [WINDOW_KEY_HEADER]: 'j'.repeat(64) }), key)).toBe(false)
+    expect(hasWindowKey(req('GET', { [WINDOW_KEY_HEADER]: key.slice(1) }), key)).toBe(false)
+    expect(hasWindowKey(req('GET', { [WINDOW_KEY_HEADER]: `${key}k` }), key)).toBe(false)
+    expect(hasWindowKey(req('GET', { [WINDOW_KEY_HEADER]: '' }), key)).toBe(false)
   })
 })

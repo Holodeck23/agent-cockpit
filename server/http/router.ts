@@ -21,7 +21,7 @@ import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
 import { createImageStore, IMAGE_FILE, ImageAttachError, MAX_ATTACHED_IMAGE_BYTES } from '../threads/images.ts'
 import type { IncomingImage } from '../threads/manager.ts'
-import { isTrustedRequest } from './guard.ts'
+import { hasWindowKey, isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
 import type { PresetStore } from '../presets/store.ts'
@@ -99,7 +99,7 @@ export interface ApiDeps {
   readonly importHome?: string
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[]) {
+export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -118,6 +118,12 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
 
     if (!viaPhone && !isTrustedRequest(req, allowedPorts)) {
       sendJson(res, 403, { error: 'Request did not come from the cockpit page' })
+      return true
+    }
+    // In the desktop app only the Cockpit window holds the key. /api/mcp has its own per-session
+    // token (the agent's MCP server calls it from Node), and phone requests are checked by the phone listener.
+    if (!viaPhone && windowKey !== undefined && parts[1] !== 'mcp' && !hasWindowKey(req, windowKey)) {
+      sendJson(res, 403, { error: 'Request did not come from the Cockpit window' })
       return true
     }
 

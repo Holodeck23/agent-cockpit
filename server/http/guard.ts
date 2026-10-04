@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http'
+import { timingSafeEqual } from 'node:crypto'
 
 // This server can start agents that edit files. A browser tab on any website
 // can reach 127.0.0.1, so every API request must prove it comes from the
@@ -31,4 +32,18 @@ export function isTrustedRequest(req: IncomingMessage, allowedPorts: readonly nu
     if (!contentType.startsWith('application/json')) return false
   }
   return true
+}
+
+// The checks above stop web pages, not other programs on the Mac: any local process can send
+// any Host, Origin and Content-Type. The desktop app closes that gap with a key made at each
+// launch. Its main process adds the key to requests from the Cockpit window only (see
+// electron/window-key.ts), so the page itself never sees it and an agent's shell cannot send it.
+export const WINDOW_KEY_HEADER = 'x-cockpit-window'
+
+export function hasWindowKey(req: IncomingMessage, key: string): boolean {
+  const sent = req.headers[WINDOW_KEY_HEADER]
+  if (typeof sent !== 'string') return false
+  const a = Buffer.from(sent)
+  const b = Buffer.from(key)
+  return a.length === b.length && timingSafeEqual(a, b)
 }

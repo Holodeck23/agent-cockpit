@@ -23,7 +23,7 @@
     "icon": "tsx scripts/make-icon.ts",
     "dmg-background": "tsx scripts/make-dmg-background.ts",
     "app": "npm run build && npm run build:electron && electron .",
-    "package": "npm run build && npm run build:electron && electron-builder --mac --arm64",
+    "package": "npm run build && COCKPIT_RELEASE_BUILD=1 npm run build:electron && electron-builder --mac --arm64 -c.electronFuses.enableNodeCliInspectArguments=false -c.electronFuses.enableNodeOptionsEnvironmentVariable=false",
     "proof:app": "tsx scripts/proof-app.ts",
     "proof:mcp": "tsx scripts/proof-4.ts",
     "proof:reliability": "tsx scripts/proof-reliability.ts",
@@ -69,7 +69,8 @@
     "proof:wave-5": "tsx scripts/proof-wave-5.ts",
     "proof:wave-6": "tsx scripts/proof-wave-6.ts",
     "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof",
-    "proof:quit": "tsx scripts/proof-quit.ts"
+    "proof:quit": "tsx scripts/proof-quit.ts",
+    "proof:window-key": "tsx scripts/proof-window-key.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",

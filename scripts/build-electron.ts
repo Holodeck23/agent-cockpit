@@ -13,6 +13,9 @@ const common: BuildOptions = {
   format: 'cjs',
   external: ['electron'],
   logLevel: 'warning',
+  // Fixed at bundle time, so nothing at run time can turn a release build into a debuggable one
+  // (electron/debug-flags.ts). Only `npm run package` and scripts/release.ts set it.
+  define: { 'process.env.COCKPIT_RELEASE_BUILD': JSON.stringify(process.env.COCKPIT_RELEASE_BUILD === '1' ? '1' : '') },
 }
 
 await Promise.all([
@@ -23,4 +26,4 @@ await Promise.all([
 ])
 // Dock animation frames (scripts/make-dock-frames.ts), loaded by electron/dock-activity.ts.
 cpSync(`${root}build/dock`, `${root}dist-electron/dock`, { recursive: true })
-console.log('[build-electron] dist-electron/dock/, dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs')
+console.log(`[build-electron] ${process.env.COCKPIT_RELEASE_BUILD === '1' ? 'RELEASE build (debug flags refused), ' : ''}dist-electron/dock/, dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs`)
