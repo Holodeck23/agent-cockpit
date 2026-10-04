@@ -4,6 +4,7 @@ import { inSpace, nextInFolder, type NewFileKind } from '../file-text.ts'
 import { FileRow } from './FileRow.tsx'
 import { SearchIcon } from './icons.tsx'
 import { announceDocuments } from '../usePinnedDocuments.ts'
+import { useFileDrop } from '../useFileDrop.ts'
 import { NewFileMenu } from './NewFileMenu.tsx'
 
 interface DocumentListProps {
@@ -41,11 +42,18 @@ export function DocumentList({ project, selected, dirty, onOpen, onCreate, onRen
     setDocs(await api.markDocument(project.path, path, change))
     announceDocuments()
   }
+  const [dropNote, setDropNote] = useState('')
+  const { dragging, dropProps } = useFileDrop({ projectPath: project.path, space: 'documents', folder: '' }, (result) => {
+    setDropNote(result.note)
+    reload()
+    if (result.copied.length === 1) onOpen(inSpace('documents', result.copied[0]!))
+  }, onError)
   const archivedCount = docs?.filter((d) => d.archived).length ?? 0
   const shown: readonly DocumentMatch[] = searching ? matches ?? [] : docs?.filter((d) => d.archived === showArchived) ?? []
 
   return (
-    <>
+    <div className={`file-drop${dragging ? ' dragging' : ''}`} {...dropProps}>
+      {dragging ? <p className="file-drop-hint" aria-hidden>Drop to copy into your documents</p> : null}
       <label className="search doc-search">
         <SearchIcon />
         <input type="search" placeholder="Search documents and the archive…" aria-label="Search documents" value={query}
@@ -80,6 +88,7 @@ export function DocumentList({ project, selected, dirty, onOpen, onCreate, onRen
             }} />
         )
       })}
-    </>
+      {dropNote ? <p className="file-drop-note" role="status">{dropNote} <button type="button" className="link-button" onClick={() => setDropNote('')}>OK</button></p> : null}
+    </div>
   )
 }

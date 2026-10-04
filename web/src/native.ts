@@ -10,6 +10,8 @@ export interface CockpitBridge {
   setTheme(mode: 'system' | 'light' | 'dark'): void
   revealTranscript(path: string): void
   openFolder(path: string): void
+  copyInto(request: { projectPath: string; space: 'project' | 'documents'; folder: string; files: readonly File[] }): Promise<
+    { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }>
   fileAction(request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined>
   setActivity(activity: { working: number; needs: number }): void
   openPreview(url: string): void

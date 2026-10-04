@@ -157,3 +157,9 @@
 .doc-view .editor-find { margin-left: auto; margin-bottom: 8px; }
 ::highlight(cockpit-editor-find) { background-color: color-mix(in srgb, #f5c542 45%, transparent); }
 ::highlight(cockpit-editor-find-current) { background-color: #f5a623; color: #1a1a1a; }
+
+/* Drop files from Finder to copy them in (F8). */
+.file-drop { position: relative; min-height: 160px; border-radius: 10px; }
+.file-drop.dragging { outline: 2px dashed color-mix(in srgb, var(--link) 60%, transparent); outline-offset: 4px; background: color-mix(in srgb, var(--link) 6%, transparent); }
+.file-drop-hint { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel); text-align: center; font-size: 13px; font-weight: 500; color: var(--link); pointer-events: none; }
+.file-drop-note { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--field); color: var(--body); font-size: 12.5px; line-height: 1.5; }

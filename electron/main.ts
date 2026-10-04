@@ -5,7 +5,8 @@ import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
-import { fileOnDisk, spaceSchema } from '../server/files/documents.ts'
+import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts'
+import { copyInto } from '../server/files/copy-in.ts'
 import { resolveAppPath } from './shell-path.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
@@ -289,6 +290,19 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
       return undefined
     } catch (error) {
       return error instanceof Error ? error.message : String(error)
+    }
+  })
+  // Files dropped on the Files explorer: copied (never moved, never over a file) into a folder of
+  // a known project or its documents. The paths come from the drop, through the preload.
+  ipcMain.handle('cockpit:copy-into', async (event, request: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || !running) return { error: 'Not allowed' }
+    const { projectPath, space, folder, sources } = (request ?? {}) as Record<string, unknown>
+    if (typeof projectPath !== 'string' || !isProject(projectPath)) return { error: 'Unknown project' }
+    if (typeof folder !== 'string' || !Array.isArray(sources) || sources.length > 100 || !sources.every((s) => typeof s === 'string')) return { error: 'Nothing to copy' }
+    try {
+      return copyInto(spaceRoot(running.store.root, projectPath, spaceSchema.parse(space ?? undefined)), folder, sources as string[])
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
     }
   })
   // Opens a project's folder in Finder; only folders Cockpit already lists as projects.

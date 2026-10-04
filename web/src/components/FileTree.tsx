@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type FileListing, type Project } from '../api.ts'
 import { nextInFolder, type NewFileKind } from '../file-text.ts'
 import { dropPin, renamePin, togglePin } from '../pins.ts'
+import { useFileDrop } from '../useFileDrop.ts'
 import { FileRow } from './FileRow.tsx'
 import { back, canGoBack, canGoForward, currentFolder, forward, parentOf, startHistory, visit } from '../folder-history.ts'
 import { ArrowUpLeftIcon, ChevronLeftIcon, ChevronRightIcon, FolderIcon, HomeIcon } from './icons.tsx'
@@ -43,10 +44,18 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
     return () => { active = false }
   }, [project, folder, refresh])
 
+  // Files dropped here are copied into this folder (F8); the list then shows them.
+  const [dropNote, setDropNote] = useState('')
+  const { dragging, dropProps } = useFileDrop({ projectPath: project.path, space: 'project', folder }, (result) => {
+    setDropNote(result.note)
+    reload()
+    if (result.copied.length === 1) onOpen(result.copied[0]!)
+  }, onError)
   const filePaths = listing?.entries.filter((e) => e.kind !== 'directory').map((e) => e.path) ?? []
 
   return (
-    <>
+    <div className={`file-drop${dragging ? ' dragging' : ''}`} {...dropProps}>
+      {dragging ? <p className="file-drop-hint" aria-hidden>Drop to copy into {folder || 'the project top'}</p> : null}
       <div className="file-location">
         <div className="file-nav" role="group" aria-label="Folder navigation">
           <button type="button" aria-label="Home" title="Project top" disabled={!folder} onClick={() => setFolder('')}><HomeIcon /></button>
@@ -80,6 +89,7 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
           }} />
       ))}
       {listing?.truncated ? <p>Showing the first 500 entries. Open a subfolder to narrow the list.</p> : null}
-    </>
+      {dropNote ? <p className="file-drop-note" role="status">{dropNote} <button type="button" className="link-button" onClick={() => setDropNote('')}>OK</button></p> : null}
+    </div>
   )
 }

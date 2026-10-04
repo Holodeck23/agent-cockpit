@@ -3,7 +3,7 @@
 // temporary file, so a proof run never fills the real Trash.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-4
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
@@ -28,6 +28,11 @@ writeFileSync(join(project, 'README.md'), '# App\n')
 writeFileSync(join(project, 'find.txt'), 'apple banana apple\nApple pie\n')
 writeFileSync(join(project, 'src', 'long.ts'), Array.from({ length: 200 }, (_, i) => `export const value${i} = "text ${i}" // line ${i + 1}`).join('\n') + '\n')
 writeFileSync(join(other, 'notes.txt'), 'other\n')
+// Files "from Finder" for F8's drop: one new, one whose name is already taken in the project.
+const outside = join(root, 'finder')
+mkdirSync(outside)
+writeFileSync(join(outside, 'logo.svg'), '<svg/>\n')
+writeFileSync(join(outside, 'find.txt'), 'dropped copy\n')
 
 const store = createThreadStore(join(root, 'state'))
 const docs = documentsDir(store.root, project)
@@ -382,6 +387,34 @@ try {
   await settings.getByRole('button', { name: 'Done' }).click()
 
   await sectionTab(/^Files/).click()
+  // F8: drop files from Finder onto the explorer; copied in, never over an existing file.
+  if (await nav('Home').isEnabled()) await nav('Home').click()
+  await page.evaluate(() => { const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.id = 'proof-drop'; input.hidden = true; document.body.append(input) })
+  await page.locator('#proof-drop').setInputFiles([join(outside, 'logo.svg'), join(outside, 'find.txt')])
+  const drop = async (selector: string, finish = true) => page.evaluate(([sel, done]) => {
+    const files = (document.getElementById('proof-drop') as HTMLInputElement).files!
+    const data = new DataTransfer()
+    for (const f of Array.from(files)) data.items.add(f)
+    const zone = document.querySelector(sel)!
+    zone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }))
+    if (done) zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }))
+  }, [selector, finish] as const)
+  await drop('nav[aria-label="Project files"] .file-drop', false)
+  check('F8 dragging files over the explorer shows where they will go', await until('hint', async () => (await explorer.locator('.file-drop-hint').innerText()) === 'Drop to copy into the project top'))
+  const hintBox = await explorer.locator('.file-drop-hint').boundingBox()
+  const rowBoxes = await explorer.locator('.file-row').evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom })))
+  check('F8 the hint covers no file row', !!hintBox && rowBoxes.every((r) => r.bottom <= hintBox.y || r.top >= hintBox.y + hintBox.height))
+  await shot(page, 'f8-dragging')
+  await drop('nav[aria-label="Project files"] .file-drop')
+  const note = explorer.locator('.file-drop-note')
+  check('F8 dropped files are copied into the folder shown', await until('copied', async () => existsSync(join(project, 'logo.svg')) && existsSync(join(project, 'find (copy).txt'))))
+  check('F8 a taken name gets its own copy; the original is untouched', readFileSync(join(project, 'find.txt'), 'utf8') === 'apple banana apple\nApple pie\n'
+    && readFileSync(join(project, 'find (copy).txt'), 'utf8') === 'dropped copy\n')
+  check('F8 the explorer says what happened', await until('note', async () => (await note.innerText()).startsWith('Copied 2 files. A file with that name was already there')), await note.innerText().catch(() => ''))
+  check('F8 the list shows the copies', await until('rows', async () => (await row('logo.svg').count()) === 1 && (await row('find (copy).txt').count()) === 1))
+  await shot(page, 'f8-dropped')
+  await note.getByRole('button', { name: 'OK' }).click()
+
   await setTheme(page, 'Dark')
   await shot(page, 'files-dark')
   await setTheme(page, 'Light')
