@@ -7,6 +7,7 @@ import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
+import { takenBackPositions } from '../../server/threads/taken-back.ts'
 import { failureWords } from './agent-errors.ts'
 
 /** An image stored with the conversation; `file` names it under /api/threads/:id/images/. */
@@ -214,15 +215,14 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const items: TranscriptItem[] = []
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
-  // A message you took back went to your draft; it is no longer part of the conversation.
-  const takenBack = new Set(events.flatMap((e) => (e.event.kind === 'user_unqueued' ? [e.event.id] : [])))
+  // A message you took back went to your draft; it, and the images sent with it, are no longer
+  // part of the conversation (the switch handoff uses the same rule).
+  const takenBack = takenBackPositions(events)
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
   const helpers = new Map<string, number>()
   let compacting: number | undefined
   let lastUserText: string | undefined
-  /** Images sent with a message you took back went with it. */
-  let skipYourImages = false
   /** A failure card already stands for the current turn, so its failed result adds nothing. */
   let failedThisTurn = false
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
@@ -246,12 +246,10 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   events.forEach(({ ts, event }, index) => {
     const key = `${ts}-${index}`
     const last = items.at(-1)
-    if (event.kind === 'image' && event.from === 'you' && skipYourImages) return
-    skipYourImages = false
+    if (takenBack.has(index)) return
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
-        if (event.kind === 'user_text' && event.queuedId && takenBack.has(event.queuedId)) { skipYourImages = true; return }
         if (event.kind === 'user_text') { lastUserText = event.text; failedThisTurn = false }
         const author = event.kind === 'user_text' ? 'you' : agent
         const showAuthor = !((last?.type === 'message' || last?.type === 'image') && last.author === author)

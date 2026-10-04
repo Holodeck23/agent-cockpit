@@ -70,7 +70,8 @@
     "proof:wave-6": "tsx scripts/proof-wave-6.ts",
     "package:proof": "npm run build && npm run build:electron && electron-builder --mac dir --arm64 -c.directories.output=release/proof",
     "proof:quit": "tsx scripts/proof-quit.ts",
-    "proof:window-key": "tsx scripts/proof-window-key.ts"
+    "proof:window-key": "tsx scripts/proof-window-key.ts",
+    "proof:wave-6.5": "tsx scripts/proof-wave-6.5.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",

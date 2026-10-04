@@ -58,3 +58,40 @@ describe('images in a handoff (wave 6)', () => {
     expect(text).toContain('(user attached an image: /state/attachments/t1/abc.png)')
   })
 })
+
+describe('switch handoff hands over the conversation as it stands (R1)', () => {
+  const at = (event: StoredEvent['event']): StoredEvent => ({ ts: '', event })
+  const events: StoredEvent[] = [
+    user('TASK: add a database'),
+    at({ kind: 'question', requestId: 'q1', questions: [
+      { id: 'Which database?', question: 'Which database?', header: 'Database', options: [{ label: 'SQLite' }, { label: 'Postgres' }], multiSelect: false }] }),
+    at({ kind: 'question_answered', requestId: 'q1', answers: { 'Which database?': 'SQLite' } }),
+    at({ kind: 'question', requestId: 'q2', questions: [
+      { id: 'q-style', question: 'Which naming style?', header: 'Style', options: [{ label: 'snake' }, { label: 'camel' }], multiSelect: false }] }),
+    at({ kind: 'question_answered', requestId: 'q2', answers: {}, dismissed: true }),
+    at({ kind: 'user_text', text: 'WITHDRAWN: use Mongo instead', queuedId: 'w1' }),
+    at({ kind: 'image', file: 'withdrawn.png', mediaType: 'image/png', from: 'you', name: 'mongo.png' }),
+    at({ kind: 'user_unqueued', id: 'w1' }),
+    at({ kind: 'user_text', text: 'Kept: add an index too', queuedId: 'k1' }),
+    at({ kind: 'image', file: 'kept.png', mediaType: 'image/png', from: 'you', name: 'schema.png' }),
+  ]
+  const handoff = buildHandoff(events, '/project', '/state/attachments/t')
+
+  it('leaves out a message you took back, and the images sent with it', () => {
+    expect(handoff).not.toContain('WITHDRAWN')
+    expect(handoff).not.toContain('withdrawn.png')
+    expect(handoff).toContain('USER: Kept: add an index too')
+    expect(handoff).toContain('/state/attachments/t/kept.png')
+  })
+
+  it('carries the questions the agent asked and what you answered', () => {
+    expect(handoff).toContain('Which database?')
+    expect(handoff).toContain('SQLite')
+    expect(handoff).toMatch(/Which database\?.*\n.*USER ANSWERED: SQLite/)
+  })
+
+  it('says when you dismissed a question instead of answering', () => {
+    expect(handoff).toContain('Which naming style?')
+    expect(handoff).toMatch(/dismissed/i)
+  })
+})

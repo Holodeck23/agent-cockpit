@@ -1,6 +1,8 @@
 import { join } from 'node:path'
 import { withAttachmentNote } from '../files/references.ts'
 import type { StoredEvent } from './types.ts'
+import type { AgentQuestion } from '../agents/types.ts'
+import { takenBackPositions } from './taken-back.ts'
 
 /**
  * How much conversation a switched-in agent receives (J5): about 100k tokens, half of a
@@ -17,7 +19,11 @@ export const HANDOFF_BUDGET = 400_000
  * (in `imagesDir`), so the new agent can open them.
  */
 export function buildHandoff(events: readonly StoredEvent[], projectPath: string, imagesDir?: string): string {
-  const lines = events.flatMap(({ event }): string[] => {
+  // The conversation as it stands: a message you took back (and its images) never reached anyone.
+  const skip = takenBackPositions(events)
+  const questions = new Map<string, readonly AgentQuestion[]>()
+  const lines = events.flatMap(({ event }, index): string[] => {
+    if (skip.has(index)) return []
     switch (event.kind) {
       case 'user_text':
         // References, not contents: the files on disk are current, a copy from then is not.
@@ -28,6 +34,17 @@ export function buildHandoff(events: readonly StoredEvent[], projectPath: string
         const input = event.input as Record<string, unknown> | null
         const target = input?.command ?? input?.file_path ?? input?.path ?? ''
         return [`(previous agent used ${event.name}${target ? `: ${String(target).slice(0, 200)}` : ''})`]
+      }
+      case 'question':
+        questions.set(event.requestId, event.questions)
+        return event.questions.map((q) => `PREVIOUS AGENT ASKED: ${q.question} (options: ${q.options.map((o) => o.label).join(' / ')})`)
+      case 'question_answered': {
+        if (event.dismissed) return ['USER DISMISSED the question without answering']
+        const asked = questions.get(event.requestId) ?? []
+        return Object.entries(event.answers).map(([key, answer]) => {
+          const question = asked.find((q) => q.id === key)?.question
+          return `USER ANSWERED: ${answer}${question && asked.length > 1 ? ` (to: ${question})` : ''}`
+        })
       }
       case 'agent_switch':
         return [`(switched from ${event.from} to ${event.to})`]
