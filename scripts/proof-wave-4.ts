@@ -239,7 +239,7 @@ try {
   check('F10 a sent range shows as path:lines', (await clip.innerText()) === 'long.ts:3-5')
   await clip.hover()
   // Scoped to this clip's own peek: another peek panel can still be closing (the wave-3 flake).
-  const linesPeek = page.locator('.peek', { has: clip }).locator('.peek-panel')
+  const linesPeek = page.locator('.peek', { has: page.locator('[title="src/long.ts:3-5"]') }).locator('.peek-panel')
   check('F10 its peek shows only those lines', await until('peek', async () => (await linesPeek.locator('.peek-text').innerText()) === [3, 4, 5].map((n) => `export const value${n - 1} = "text ${n - 1}" // line ${n}`).join('\n')),
     `panels open: ${await page.locator('.peek-panel').count()}; text: ${JSON.stringify(await linesPeek.locator('.peek-text').innerText().catch(() => ''))}`)
   await linesPeek.getByRole('button', { name: 'Open in Files' }).click()
