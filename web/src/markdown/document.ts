@@ -1,6 +1,7 @@
 // Connects the Milkdown editor to the splice: records where each block sat in the source
 // when the Document view opened, and turns the edited document back into Markdown that
 // keeps every untouched block byte for byte.
+import { Transform } from '@milkdown/kit/prose/transform'
 import { parserCtx, remarkCtx, schemaCtx } from '@milkdown/kit/core'
 import type { Ctx } from '@milkdown/kit/ctx'
 import { Mark, type Node } from '@milkdown/kit/prose/model'
@@ -96,6 +97,27 @@ function readBaseline(ctx: Ctx, markdown: string): BaselineResult {
 }
 
 /** Markdown for the edited document, or a refusal when writing it would not read back as shown. */
+/** The document with spaces trimmed from both ends of every paragraph and heading (never code). */
+export function withoutEdgeSpaces(doc: Node): Node {
+  const tr = new Transform(doc)
+  const cuts: Array<[number, number]> = []
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    if (node.type.spec.code) return false
+    const text = node.textContent
+    const lead = text.length - text.trimStart().length
+    const trail = text.length - text.trimEnd().length
+    const first = node.firstChild
+    const last = node.lastChild
+    // Only when the spaces sit in plain text at the block's edge.
+    if (trail > 0 && last?.isText && (last.text ?? '').length >= trail) cuts.push([pos + 1 + node.content.size - trail, pos + 1 + node.content.size])
+    if (lead > 0 && lead < text.length && first?.isText && (first.text ?? '').length >= lead) cuts.push([pos + 1, pos + 1 + lead])
+    return false
+  })
+  for (const [from, to] of cuts.sort((a, b) => b[0] - a[0])) tr.delete(from, to)
+  return tr.doc
+}
+
 export function markdownOf(ctx: Ctx, baseline: Baseline, doc: Node): MarkdownResult {
   if (sameContent(doc, baseline.doc)) return { ok: true, markdown: baseline.markdown }
   try { return writeMarkdown(ctx, baseline, doc) } catch (error) {
@@ -131,8 +153,10 @@ function writeMarkdown(ctx: Ctx, baseline: Baseline, doc: Node): MarkdownResult 
       return serializerFor({ ...defaults, ...own })(doc.type.create(null, block))
     },
   })
-  // What we write must read back as exactly what is on screen, or it is not written.
-  if (!sameContent(ctx.get(parserCtx)(body), doc)) {
+  // What we write must read back as exactly what is on screen, or it is not written. Spaces at
+  // either end of a paragraph or heading are the one exception: Markdown cannot keep them and
+  // nobody sees them, and refusing them refused every word typed with its space at a line's end.
+  if (!sameContent(ctx.get(parserCtx)(body), withoutEdgeSpaces(doc))) {
     console.warn('[cockpit] document view refused a change that would not read back as shown')
     return { ok: false, reason: 'This change cannot be written as Markdown without altering it. Undo it, or make it in Source.' }
   }

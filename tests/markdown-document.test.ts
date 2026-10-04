@@ -126,3 +126,18 @@ describe('document view writes Markdown back without reformatting', () => {
     expect(out).toEqual({ ok: true, markdown: FIXTURE.replace('- [ ] Open task', '- [x] Open task') })
   })
 })
+
+describe('a space typed at the end of a paragraph', () => {
+  it('is written as typed instead of being refused', () => {
+    const { baseline, doc } = open('Then run\n')
+    const at = findNode(doc, (n) => n.type.name === 'paragraph')
+    const end = at + 1 + doc.nodeAt(at)!.content.size
+    const typed = new Transform(doc).insert(end, doc.type.schema.text(' @workflow:review ')).doc
+    expect(write(baseline, typed)).toBe('Then run @workflow:review \n')
+  })
+  it('never trims spaces inside a code block', async () => {
+    const { withoutEdgeSpaces } = await import('../web/src/markdown/document.ts')
+    const { doc } = open('```\ncode  \n```\n')
+    expect(sameContent(withoutEdgeSpaces(doc), doc)).toBe(true)
+  })
+})
