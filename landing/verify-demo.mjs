@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright-core'
 const file = fileURLToPath(new URL('./index.html', import.meta.url))
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const featureGroups = JSON.parse(await readFile(new URL('./features.json', import.meta.url), 'utf8'))
+const featureCount = featureGroups.reduce((count, group) => count + group.items.length, 0)
 const evidence = process.argv[2] && resolve(process.argv[2])
 if (evidence) await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -90,6 +92,13 @@ try {
     }
     await page.getByRole('button', { name: 'Enlarge product screenshot' }).click(); assert.equal(await page.getByRole('dialog').isVisible(), true)
     await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').isVisible(), false)
+    await page.locator('#features').scrollIntoViewIfNeeded()
+    const directory = page.locator('#features details')
+    await directory.locator('summary').click()
+    assert.equal(await directory.locator('.feature-group').count(), featureGroups.length)
+    assert.equal(await directory.locator('li').count(), featureCount)
+    await noOverflow()
+    await directory.locator('summary').click()
     await page.getByText('What should I expect from the prerelease?', { exact: true }).click(); assert.equal(await page.locator('details[open]').count(), 1)
     assert.equal(await page.locator('#download').getAttribute('href'), `https://github.com/Holodeck23/agent-cockpit/releases/download/v${version}/Cockpit-${version}-arm64.dmg`)
     await noOverflow(); assert.deepEqual(errors, [])

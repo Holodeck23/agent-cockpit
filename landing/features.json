@@ -1,0 +1,143 @@
+[
+  {
+    "title": "Get started and pick up work",
+    "items": [
+      "Open an existing project folder or start with a guided sample app",
+      "See recent projects in tabs",
+      "Find recent Cockpit, Claude Code and Codex conversations for a project",
+      "See the latest task, agent, branch and changed files before resuming",
+      "Resume an existing native agent session",
+      "Choose a different recent conversation or agent",
+      "Start a fresh conversation or explore a project with no recent session",
+      "Resume and show the running app in an inspected preview",
+      "Skip the first-run guide and keep that preference"
+    ]
+  },
+  {
+    "title": "Agents and conversations",
+    "items": [
+      "Run installed Claude Code and Codex CLIs with your own accounts",
+      "Run Google Antigravity through its installed agy CLI",
+      "Run OpenCode, including OpenRouter models configured in OpenCode",
+      "Choose an agent per new conversation and remember the choice per project",
+      "Use the CLI's default model and effort, or choose supported settings",
+      "Set agent permission levels",
+      "Send prompts and follow-ups in a persistent conversation",
+      "Switch agents with the transcript carried into the new session",
+      "Allow or deny supported agent and Cockpit tool requests in the thread",
+      "Grant a session-wide approval where the agent supports it",
+      "Answer an agent question or dismiss a blocker",
+      "Stop a working turn",
+      "Mark a conversation complete and reopen it later",
+      "Mark a conversation unread or delete it with confirmation",
+      "Reveal a conversation's readable transcript in Finder",
+      "Find text in the open conversation with Command-F",
+      "Copy an individual message",
+      "Scroll up without the transcript jumping; use Jump to latest when ready",
+      "See attached files and workflows as clips on sent messages"
+    ]
+  },
+  {
+    "title": "Know what needs you",
+    "items": [
+      "See Working, Ready, Error and Needs you conversation states",
+      "Find conversations awaiting approval, an answer or attention",
+      "Receive Mac notifications when a turn finishes or needs you",
+      "Open the relevant conversation from a Mac notification",
+      "Turn completion and attention notifications off separately",
+      "Avoid a sound or banner for the conversation already in view",
+      "See the Needs you count on the Dock icon",
+      "See the Dock icon animate while an agent works",
+      "Use optional sounds for replies and decisions",
+      "Keep completed conversations out of Needs you counts",
+      "Dismiss a question or blocker without replying"
+    ]
+  },
+  {
+    "title": "Files, documents and context",
+    "items": [
+      "Browse project files and open several files in tabs",
+      "View files with line numbers and project-relative paths",
+      "Create, rename, pin, archive or trash supported project files",
+      "Edit text files with explicit Save, Command-S and Revert",
+      "Keep unsaved drafts and tabs when switching views",
+      "See a warning before closing an unsaved tab",
+      "Detect external edits and choose reload, save a copy or overwrite",
+      "Edit Markdown in Document or Source view",
+      "Format Markdown and toggle to-do boxes in Document view",
+      "Keep unedited Markdown blocks and front matter intact on save",
+      "Search project files and workflows from the composer's plus menu",
+      "Attach project files and saved workflows to a message",
+      "See removable attachment chips and errors before sending",
+      "Keep attachment references in the visible transcript"
+    ]
+  },
+  {
+    "title": "Projects and Git",
+    "items": [
+      "Name projects and choose a tab tint and picture",
+      "Open a project folder in Finder",
+      "Remove a project from Cockpit without deleting its folder",
+      "See the current branch beside the composer",
+      "Search, switch, create and push Git branches",
+      "Block branch switches while a project agent is working",
+      "Refuse a switch to an existing branch when changes are uncommitted",
+      "Tell other project conversations when a branch changes"
+    ]
+  },
+  {
+    "title": "Processes and live previews",
+    "items": [
+      "Let a compatible agent request a project-scoped development server",
+      "Approve process starts and stops before they happen",
+      "See running processes, ports and live logs",
+      "Search processes and stop or restart one from the app",
+      "Open local web apps beside the conversation",
+      "Let compatible agents inspect a preview screenshot",
+      "Shut down Cockpit-managed processes when the app quits"
+    ]
+  },
+  {
+    "title": "Workflows and schedules",
+    "items": [
+      "Browse a searchable gallery of 25 curated workflows",
+      "Copy a gallery workflow into a project without running it",
+      "Create and edit reusable project instructions",
+      "Run a workflow manually with chosen agent settings",
+      "Schedule an interval, daily, weekday or selected-day run",
+      "Pause, resume or archive a workflow",
+      "Keep suggested gallery schedules off until enabled",
+      "Run at most one missed schedule after Cockpit reopens",
+      "Show workflow failures in their conversations",
+      "Allow an agent to save a workflow only after approval"
+    ]
+  },
+  {
+    "title": "Memory and agent teamwork",
+    "items": [
+      "Keep dated memory for one project or everywhere",
+      "Read, add, edit and delete memories in the Memory view",
+      "Let an agent recall relevant memory across conversations",
+      "Require approval before an agent remembers something",
+      "Keep project instructions separate from cross-conversation memory",
+      "Let an agent list and read conversations in its project",
+      "Approve each agent-to-agent start, message or stop action separately"
+    ]
+  },
+  {
+    "title": "Phone, appearance and updates",
+    "items": [
+      "Pair a phone over your own Tailscale network with a six-digit code",
+      "Follow conversations and reply from the phone view",
+      "Approve requests or stop a turn from the paired phone",
+      "Revoke a paired phone or turn phone access off",
+      "Opt in to experimental phone push notifications",
+      "Choose System, Light or Dark appearance",
+      "Choose normal or compact conversation and message density",
+      "Choose which details appear in conversation rows",
+      "Check GitHub for updates from the Cockpit menu when you choose",
+      "Read release notes and open the official DMG for manual installation",
+      "Keep conversations and settings in local Cockpit files you can back up"
+    ]
+  }
+]

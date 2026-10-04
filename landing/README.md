@@ -34,6 +34,7 @@ Escape closes it. The agent-team reference informed the guided actions and free 
 
 - Marketing markup, release copy and screenshot gallery: `index.html`.
 - Landing styles: `page.css`.
+- Shipped-feature directory: `features.json`, generated into the page by `build-demo.mjs`.
 - Guided walkthrough: `demo-tour.js`.
 - Sample backend, native bridge and ephemeral storage: `demo/`.
 
@@ -46,6 +47,9 @@ node landing/build-demo.mjs
 The build preserves release copy and screenshot data in `index.html`. Commit the generated
 HTML with its source. No build command is needed at the static host. Rebuild intentionally
 when production components change, then verify the resulting demo again.
+The feature directory describes the downloadable v0.1.4 build. Check additions against
+the tagged user guide and release notes before changing it; features only on development
+branches belong in a later release's directory.
 
 ## Preview and verify
 
