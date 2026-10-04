@@ -10,6 +10,8 @@ import { NewConversation } from './components/NewConversation.tsx'
 import { ProjectTabBar } from './components/ProjectTabBar.tsx'
 import { Processes } from './components/Processes.tsx'
 import { SubNav, type Section } from './components/SubNav.tsx'
+import { usePinnedDocuments } from './usePinnedDocuments.ts'
+import { DOCUMENTS_PREFIX } from './file-text.ts'
 import { shortcutFor } from './shortcuts.ts'
 import { ReleaseNotes } from './components/ReleaseNotes.tsx'
 import { ReplyContext, type CommitOutcome } from './markdown/reply.tsx'
@@ -83,6 +85,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   // A reply's path:line link opens Files at that line (desktop only; Files stays on the Mac).
   const [reveal, setReveal] = useState<{ target: FileTarget; nonce: number }>()
   const openFileFromReply = useCallback((target: FileTarget) => { setReveal({ target, nonce: Date.now() }); setSection('files') }, [setSection])
+  const pinnedDocuments = usePinnedDocuments(phone ? undefined : projects.active?.path, !phone)
   const replyProject = phone ? undefined : cockpit.detail?.meta.projectPath
   // A commit in a reply opens its page on the repository's host; without one the hash is copied.
   const openCommitFromReply = useCallback(async (hash: string): Promise<CommitOutcome> => {
@@ -175,6 +178,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         appearance={<AppearanceMenu theme={theme.mode} onTheme={theme.set} appearance={appearance} onChange={updateAppearance} />}
         conversationsOnly={phone}
         runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}
+        pins={phone ? [] : [...(projects.active?.pinnedFiles ?? []), ...pinnedDocuments.map((name) => `${DOCUMENTS_PREFIX}${name}`)]}
+        onOpenPin={(path) => openFileFromReply({ path })}
         tools={local ? <><PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
           <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}><SlidersIcon /></button></>
           : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
@@ -233,6 +238,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onBrowseFiles={() => setSection('files')}
               onOpenProject={projects.open}
               onOpenGallery={openGallery}
+              onOpenWorkflows={() => setSection('workflows')}
               onError={cockpit.reportError}
               onCreated={(meta) => {
                 cockpit.refresh()
@@ -243,7 +249,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           )}
         </div>
       ) : section === 'files' ? (
-        <Files key={activePath ?? 'no-project'} project={projects.active} reveal={reveal} onAttach={(reference) => {
+        <Files key={activePath ?? 'no-project'} project={projects.active} reveal={reveal}
+          onPins={(pins) => { if (projects.active) void projects.setPinnedFiles(projects.active, pins) }} onAttach={(reference) => {
           if (!activePath) return
           setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
           setSection('conversations')

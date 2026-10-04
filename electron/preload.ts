@@ -1,6 +1,8 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { NewProject } from './new-project.ts'
 import type { ReleaseNotes } from './updates.ts'
+
+type CopyOutcome = { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }
 
 // The only native surface the page gets. Everything else goes through the
 // loopback HTTP API, exactly as in the browser.
@@ -18,6 +20,9 @@ const cockpit = {
   /** Opens a file in its default app, shows it in Finder, or moves it to the Trash. Resolves to an error message, if any. */
   fileAction: (request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined> =>
     ipcRenderer.invoke('cockpit:file-action', request) as Promise<string | undefined>,
+  /** Copies files dropped from Finder into a folder of the project (or its documents); never overwrites. */
+  copyInto: (request: { projectPath: string; space: 'project' | 'documents'; folder: string; files: readonly File[] }): Promise<CopyOutcome> =>
+    ipcRenderer.invoke('cockpit:copy-into', { ...request, files: undefined, sources: request.files.map((f) => webUtils.getPathForFile(f)) }) as Promise<CopyOutcome>,
   /** Drives the Dock icon: animated while agents work, badged with how many need you. */
   setActivity: (activity: { working: number; needs: number }): void => ipcRenderer.send('cockpit:activity', activity),
   /** Opens a local dev-server URL in Cockpit's embedded preview pane. */

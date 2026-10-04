@@ -94,3 +94,15 @@
 .memory-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .memory-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; max-width: 760px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
 .memory-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--strong); }
+
+/* Instructions as a document or as source (F12), with the @ list and find. */
+.workflow-instructions { margin-top: 20px; }
+.workflow-instructions-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.workflow-instructions-head .workflow-label { margin: 0; }
+.workflow-doc { min-height: 260px; }
+.workflow-doc .doc-view { min-height: 260px; }
+.workflow-source { position: relative; }
+.workflow-editor .editor-find input { padding: 5px 8px; border-radius: var(--r-sm); line-height: normal; font-size: 13px; }
+.doc-view { position: relative; }
+.doc-mention { position: absolute; z-index: 30; width: min(420px, calc(100% - 20px)); }
+.doc-mention .picker-panel { position: static; width: 100%; }

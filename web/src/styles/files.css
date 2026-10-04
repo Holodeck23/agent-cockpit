@@ -6,7 +6,8 @@
 .file-location { display: flex; align-items: center; gap: 12px; margin: 24px 0 12px; overflow-wrap: anywhere; }
 .file-location button { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); padding: 7px 10px; flex: none; }
 .file-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--body); }
-.file-row span:first-of-type { overflow-wrap: anywhere; flex: 1; }
+.file-row > span:first-of-type { overflow-wrap: anywhere; flex: 1; }
+.file-location[hidden] { display: none; }
 .file-row:hover { background: var(--field); }
 .file-row.selected { background: var(--project-soft); border-color: var(--halo); }
 .file-preview { min-width: 0; overflow: auto; background: var(--content); padding: 30px; }
@@ -33,6 +34,12 @@
 .file-location .file-new { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .file-location .file-new .icon { width: 14px; height: 14px; }
 .file-location code { overflow-wrap: anywhere; }
+.file-location { flex-wrap: wrap; row-gap: 8px; }
+.file-location .file-path { order: 3; flex-basis: 100%; font-size: 12.5px; color: var(--secondary); }
+.file-nav { display: inline-flex; gap: 2px; }
+.file-location .file-nav button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--body); }
+.file-location .file-nav button:disabled { color: var(--muted); opacity: 0.55; }
+.file-nav .icon, .file-nav svg { width: 15px; height: 15px; }
 .file-new-form { display: flex; gap: 8px; margin: 0 0 12px; }
 .file-new-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--body); }
 .file-views { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); }
@@ -56,9 +63,12 @@
 .file-menu, .new-file-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 200px; }
 .menu-item.danger { color: var(--danger); }
 .file-pin { width: 14px; height: 14px; color: var(--muted); flex: none; }
-.file-rename { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+.file-rename { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
 .file-rename input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--input-border); border-radius: 6px; background: var(--panel); color: var(--strong); }
 .file-rename .button-soft { padding: 5px 10px; font-size: 12.5px; }
+.file-rename .button-soft { margin-left: 4px; }
+.file-rename input.file-rename-ext { flex: 0 0 56px; }
+.file-row.file-rename .file-rename-dot { flex: none; color: var(--muted); }
 .file-confirm { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: min(300px, 90vw); padding: 12px; border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--panel); font-size: 13px; line-height: 1.5; box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
 .file-confirm button { justify-self: end; }
 /* The menu and the name box hang from the whole location row, so they never run off a narrow sidebar. */
@@ -84,3 +94,72 @@
 .file-gutter { margin: 0; padding: 20px 10px 20px 14px; min-width: 3ch; overflow: hidden; text-align: right; font: 13px/1.7 var(--mono); color: var(--muted); background: color-mix(in srgb, var(--field) 60%, transparent); border-right: 1px solid var(--border); user-select: none; }
 .file-source .file-text { border: 0; border-radius: 0; background: none; white-space: pre; overflow: auto; padding-left: 14px; }
 .file-source .file-text:focus { box-shadow: none; }
+
+/* Hideable explorer (F7): the editor takes the whole width. */
+.files-layout.explorer-hidden { grid-template-columns: minmax(0, 1fr); }
+.file-tab-list { display: contents; }
+.file-explorer-toggle { flex: none; align-self: center; margin-right: 4px; }
+.file-explorer-toggle[aria-pressed='true'] { color: var(--body); }
+@media (max-width: 800px) { .files-layout.explorer-hidden { grid-template-columns: minmax(0, 1fr); } }
+
+/* Search in Your documents (F5). */
+.doc-search { margin: 20px 0 0; }
+.doc-search-status { margin: 12px 0 4px; }
+.file-row .doc-match { flex-basis: 100%; display: flex; gap: 6px; align-items: baseline; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.file-row:has(.doc-match) { flex-wrap: wrap; row-gap: 2px; }
+.doc-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.doc-archived-tag { flex: none; padding: 0 6px; border-radius: 4px; background: var(--field); color: var(--secondary); font-size: 11.5px; }
+
+/* Syntax colours (F11): a coloured layer under a transparent textarea. Same font, padding and scroll. */
+.file-code { position: relative; display: flex; flex: 1; min-width: 0; }
+/* Scoped above `.file-preview pre`, whose padding, border and background would shift the layer off the text. */
+.file-code .file-highlight {
+  position: absolute; inset: 0; margin: 0; padding: 20px 20px 20px 14px; border: 0; border-radius: 0; background: none; overflow: hidden; pointer-events: none;
+  font: 13px/1.7 var(--mono); white-space: pre; tab-size: 2; color: var(--body);
+}
+.file-code.highlighted .file-text { position: relative; color: transparent; caret-color: var(--strong); background: none; }
+.file-code.highlighted .file-text[readonly] { color: transparent; }
+.file-highlight .hljs-keyword, .file-highlight .hljs-selector-tag, .file-highlight .hljs-built_in, .file-highlight .hljs-section { color: var(--hl-keyword); }
+.file-highlight .hljs-string, .file-highlight .hljs-regexp, .file-highlight .hljs-addition, .file-highlight .hljs-link { color: var(--hl-string); }
+.file-highlight .hljs-comment, .file-highlight .hljs-quote, .file-highlight .hljs-deletion { color: var(--hl-comment); font-style: italic; }
+.file-highlight .hljs-number, .file-highlight .hljs-literal, .file-highlight .hljs-symbol, .file-highlight .hljs-bullet { color: var(--hl-number); }
+.file-highlight .hljs-title, .file-highlight .hljs-title.function_, .file-highlight .hljs-name, .file-highlight .hljs-selector-id, .file-highlight .hljs-selector-class { color: var(--hl-title); }
+.file-highlight .hljs-attr, .file-highlight .hljs-attribute, .file-highlight .hljs-property, .file-highlight .hljs-variable, .file-highlight .hljs-params, .file-highlight .hljs-template-variable { color: var(--hl-attr); }
+.file-highlight .hljs-type, .file-highlight .hljs-title.class_, .file-highlight .hljs-meta, .file-highlight .hljs-tag { color: var(--hl-type); }
+.file-highlight .hljs-strong { font-weight: 700; }
+.file-highlight .hljs-emphasis { font-style: italic; }
+:root {
+  --hl-keyword: light-dark(#a3367a, #f08ac4); --hl-string: light-dark(#2f7a3d, #8fd18f); --hl-comment: light-dark(#8a8a85, #8b8b86);
+  --hl-number: light-dark(#b45a12, #f2a766); --hl-title: light-dark(#2357c6, #82aaff); --hl-attr: light-dark(#7d4fc2, #c3a6ff); --hl-type: light-dark(#0f7a86, #6fd3dc);
+}
+/* The gutter follows the text's scroll; it never shows a scrollbar of its own. */
+.file-source .file-gutter { overflow: hidden; }
+
+/* Find and replace in the editor (F9). Matches are painted with the Highlight API on the text layer
+   (Source) or the document (Document); neither editor's DOM changes. */
+.editor-find {
+  display: grid; gap: 6px; align-self: flex-end; width: min(520px, 100%); padding: 6px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.35);
+}
+.editor-find-row { display: flex; align-items: center; gap: 4px; }
+.editor-find input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 13px; }
+.editor-find input:disabled { background: var(--field); }
+.editor-find button { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: none; color: var(--secondary); font: inherit; font-size: 13px; flex: none; }
+.editor-find button:hover:not(:disabled) { background: var(--field); color: var(--strong); }
+.editor-find button:disabled { opacity: 0.4; }
+.editor-find button svg { width: 15px; height: 15px; }
+.editor-find .editor-find-text { border: 1px solid var(--border); padding: 0 10px; color: var(--body); }
+.editor-find-case { font-weight: 600; }
+.editor-find-case.on { background: var(--project-soft, var(--field)); color: var(--strong); box-shadow: inset 0 0 0 1px var(--halo); }
+.editor-find-spacer { width: 28px; flex: none; }
+.editor-find .find-count { min-width: 72px; }
+.file-find-button { width: 34px; height: 34px; }
+.doc-view .editor-find { margin-left: auto; margin-bottom: 8px; }
+::highlight(cockpit-editor-find) { background-color: color-mix(in srgb, #f5c542 45%, transparent); }
+::highlight(cockpit-editor-find-current) { background-color: #f5a623; color: #1a1a1a; }
+
+/* Drop files from Finder to copy them in (F8). */
+.file-drop { position: relative; min-height: 160px; border-radius: 10px; }
+.file-drop.dragging { outline: 2px dashed color-mix(in srgb, var(--link) 60%, transparent); outline-offset: 4px; background: color-mix(in srgb, var(--link) 6%, transparent); }
+.file-drop-hint { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel); text-align: center; font-size: 13px; font-weight: 500; color: var(--link); pointer-events: none; }
+.file-drop-note { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--field); color: var(--body); font-size: 12.5px; line-height: 1.5; }

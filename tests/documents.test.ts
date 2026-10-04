@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { documentsDir, fileOnDisk, listDocuments, markDocument, renameFile } from '../server/files/documents.ts'
+import { documentsDir, documentsFolder, fileOnDisk, listDocuments, markDocument, renameFile, searchDocuments, setDocumentsFolder } from '../server/files/documents.ts'
 import { readProjectFile } from '../server/files/browser.ts'
 import { writeProjectFile } from '../server/files/editor.ts'
 
@@ -79,3 +79,58 @@ describe('renaming', () => {
   })
 })
 
+
+describe('searching your documents', () => {
+  it('finds current and archived documents by name or by a word inside, with the matching line', () => {
+    const { root, project, dir } = setup()
+    writeFileSync(join(dir, 'launch-plan.md'), '# Launch\n\nShip the beta on Friday.\n')
+    writeFileSync(join(dir, 'old.md'), 'The Beta pricing we dropped.\n')
+    writeFileSync(join(dir, 'other.txt'), 'nothing here\n')
+    markDocument(root, project, 'old.md', { archived: true })
+    const found = searchDocuments(root, project, 'beta')
+    expect(found.map((d) => d.name).sort()).toEqual(['launch-plan.md', 'old.md'])
+    expect(found.find((d) => d.name === 'old.md')).toMatchObject({ archived: true, excerpt: 'The Beta pricing we dropped.' })
+    expect(found.find((d) => d.name === 'launch-plan.md')?.excerpt).toBe('Ship the beta on Friday.')
+    expect(searchDocuments(root, project, 'launch').map((d) => d.name)).toEqual(['launch-plan.md'])
+  })
+
+  it('needs every word, skips binary files and returns nothing for an empty query', () => {
+    const { root, project, dir } = setup()
+    writeFileSync(join(dir, 'a.md'), 'alpha beta\n')
+    writeFileSync(join(dir, 'b.bin'), Buffer.from([0, 98, 101, 116, 97]))
+    expect(searchDocuments(root, project, 'alpha beta').map((d) => d.name)).toEqual(['a.md'])
+    expect(searchDocuments(root, project, 'alpha gamma')).toEqual([])
+    expect(searchDocuments(root, project, 'beta').map((d) => d.name)).toEqual(['a.md'])
+    expect(searchDocuments(root, project, '  ')).toEqual([])
+  })
+})
+
+describe('a different documents folder per project (F14)', () => {
+  it('copies the documents to the chosen folder, keeps the old ones, and reads from there afterwards', () => {
+    const { root, project, dir } = setup()
+    writeFileSync(join(dir, 'plan.md'), 'plan')
+    markDocument(root, project, 'plan.md', { pinned: true })
+    const chosen = mkdtempSync(join(tmpdir(), 'cockpit-docs-elsewhere-'))
+    writeFileSync(join(chosen, 'plan.md'), 'already here')
+    const moved = setDocumentsFolder(root, project, chosen)
+    expect(moved).toEqual({ folder: chosen, copied: ['plan (copy).md'] })
+    expect(readFileSync(join(chosen, 'plan.md'), 'utf8')).toBe('already here')
+    expect(existsSync(join(dir, 'plan.md'))).toBe(true)
+    expect(documentsDir(root, project)).toBe(chosen)
+    expect(documentsFolder(root, project)).toEqual({ folder: chosen, custom: true })
+    expect(listDocuments(root, project).map((d) => d.name).sort()).toEqual(['plan (copy).md', 'plan.md'])
+  })
+
+  it('refuses a folder inside the project or one that does not exist, and can go back to Cockpit\'s folder', () => {
+    const { root, project, dir } = setup()
+    mkdirSync(join(project, 'notes'))
+    expect(() => setDocumentsFolder(root, project, join(project, 'notes'))).toThrow(/outside the project/)
+    expect(() => setDocumentsFolder(root, project, join(project, 'missing'))).toThrow()
+    expect(() => setDocumentsFolder(root, project, 'relative/path')).toThrow()
+    const chosen = mkdtempSync(join(tmpdir(), 'cockpit-docs-elsewhere-'))
+    setDocumentsFolder(root, project, chosen)
+    setDocumentsFolder(root, project, null)
+    expect(documentsDir(root, project)).toBe(dir)
+    expect(documentsFolder(root, project).custom).toBe(false)
+  })
+})

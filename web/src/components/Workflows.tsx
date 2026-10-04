@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type Project, type Workflow, type WorkflowInput } from '../api.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { WorkflowIcon } from './icons.tsx'
 import { RepeatPicker } from './RepeatPicker.tsx'
 import { WorkflowGallery } from './WorkflowGallery.tsx'
 import { WorkflowList } from './WorkflowList.tsx'
+import { WorkflowInstructions } from './WorkflowInstructions.tsx'
 import { canSchedule, localZone, repeatFrom, repeatInput } from '../repeat.ts'
 import { describeCalendar } from '../../../server/workflows/calendar.ts'
 import { displayTitle } from '../workflow-list.ts'
@@ -92,8 +93,13 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
   const [repeat, setRepeat] = useState(() => repeatFrom(workflow))
   const [choice, setChoice] = useState<AgentChoice>({ agent: workflow?.settings.agent ?? 'claude', model: workflow?.settings.model ?? '',
     effort: workflow?.settings.effort ?? '', permissionMode: workflow?.settings.permissionMode ?? 'manual' })
+  const form = useRef<HTMLFormElement>(null)
+  const [missing, setMissing] = useState(false)
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    // The document editor is not a form field, so the form cannot require it.
+    if (!prompt.trim()) { setMissing(true); return }
+    setMissing(false)
     const intent = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value as Intent | undefined
     void onSave({ name, title, collection, prompt, projectPath, ...repeatInput(repeat),
       settings: settingsFromChoice(choice, workflow?.settings) }, intent ?? 'save')
@@ -102,15 +108,16 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
     <header><span className="workflow-kicker">Reusable instructions</span><h1>{workflow ? displayTitle(workflow) : 'New workflow'}</h1>
       <p>{workflow?.enabled ? `Scheduled · ${workflow.calendar ? describeCalendar(workflow.calendar) : `Every ${workflow.intervalMinutes} min`} · Next run ${when(workflow.nextRunAt)}` : 'Run manually, or turn on a schedule when you’re ready.'}</p></header>
     {workflow?.lastError ? <div className="workflow-notice" role="alert"><strong>Schedule paused</strong><p>{workflow.lastError}</p></div> : null}
-    <form onSubmit={submit}><fieldset disabled={busy}>
+    <form ref={form} onSubmit={submit}><fieldset disabled={busy}>
       <label>Title<input maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Daily review" /></label>
       <label>Reference name<input required maxLength={60} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={name} readOnly={Boolean(workflow)}
         onChange={(e) => setName(e.target.value)} placeholder="daily-review" /></label>
       <small>{workflow ? <>Fixed once saved, so every <code>@workflow:{name}</code> mention keeps working. Change the title instead.</>
         : <>Lowercase words with hyphens. Mention it as <code>@workflow:{name || 'daily-review'}</code>.</>}</small>
       <label>Collection<input maxLength={40} value={collection} onChange={(e) => setCollection(e.target.value)} placeholder="Optional, e.g. Quality" /></label>
-      <label>Instructions<textarea required maxLength={40_000} rows={9} value={prompt} onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Review this project’s recent changes. Report bugs with file locations and suggested fixes." /></label>
+      <WorkflowInstructions projectPath={projectPath} value={prompt} onChange={setPrompt} autoFocus={!workflow} disabled={busy}
+        onSave={() => form.current?.requestSubmit()} />
+      {missing ? <p className="workflow-notice" role="alert">Write the instructions first.</p> : null}
       <small>Include another workflow with <code>@workflow:name</code>. Its instructions join this run; it does not launch another agent.</small>
       <div className="workflow-config"><div><span className="workflow-label">Agent and permissions</span><AgentPicker value={choice} onChange={setChoice} /></div>
         <RepeatPicker value={repeat} onChange={setRepeat} /></div>

@@ -5,6 +5,9 @@ import { tabOrder } from './project-tabs.ts'
 
 const ACTIVE_KEY = 'cockpit:active-project'
 
+/** What Project settings saves together. */
+export interface SettingsPatch { name: string; color: Project['color']; instructions: string; agentWorkflows: boolean }
+
 export interface ProjectCounts {
   readonly working: number
   readonly needsYou: number
@@ -27,11 +30,13 @@ export interface Projects {
   /** Saves a project's instructions; rejects with the server's message so the editor can show it. */
   saveInstructions(project: Project, instructions: string): Promise<Project>
   /** Saves name, tint and instructions together; rejects with the server's message. */
-  saveSettings(project: Project, patch: { name: string; color: Project['color']; instructions: string }): Promise<Project>
+  saveSettings(project: Project, patch: SettingsPatch): Promise<Project>
   /** Sets (a data: URL) or clears (null) the project's picture. */
   setImage(project: Project, image: string | null): Promise<Project>
   /** Takes the project off the tabs and the menu; the folder is never touched. Resolves to the schedules paused. */
   remove(project: Project): Promise<number>
+  /** Replaces the project's files pinned to the navigation; errors go to the toast. */
+  setPinnedFiles(project: Project, files: readonly string[]): Promise<void>
 }
 
 function loadActive(): string | undefined {
@@ -109,7 +114,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     return saved
   }
 
-  const saveSettings = async (project: Project, patch: { name: string; color: Project['color']; instructions: string }): Promise<Project> => {
+  const saveSettings = async (project: Project, patch: SettingsPatch): Promise<Project> => {
     const saved = await api.openProject(project.path, patch)
     await refresh()
     return saved
@@ -123,10 +128,22 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
 
   const remove = async (project: Project): Promise<number> => {
     const { pausedSchedules } = await api.removeProject(project.path)
-    const next = all.find((p) => p.path !== project.path)
-    if (next) select(next.path)
+    // Removing another project from the menu leaves you where you are.
+    if (project.path === active?.path) {
+      const next = all.find((p) => p.path !== project.path)
+      if (next) select(next.path)
+    }
     await refresh()
     return pausedSchedules
+  }
+
+  const setPinnedFiles = async (project: Project, files: readonly string[]): Promise<void> => {
+    try {
+      await api.setPinnedFiles(project.path, files)
+      await refresh()
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   return {
@@ -143,5 +160,6 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     saveSettings,
     setImage,
     remove,
+    setPinnedFiles,
   }
 }

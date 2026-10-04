@@ -115,6 +115,38 @@ export const ChevronLeftIcon = (p: IconProps) => (
     <path d="m14.5 6-6 6 6 6" />
   </Svg>
 )
+
+export const ChevronRightIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m9.5 6 6 6-6 6" />
+  </Svg>
+)
+
+export const ArrowUpLeftIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 19V6M6.5 11.5 12 6l5.5 5.5" />
+  </Svg>
+)
+
+export const ContrastIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
+export const SidebarIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+    <path d="M9.5 5v14" />
+  </Svg>
+)
+
+export const HomeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.5 10.5 12 4.5l7.5 6M6.5 9v10h11V9M10 19v-5h4v5" />
+  </Svg>
+)
 export const BellIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z" />

@@ -83,3 +83,23 @@ describe('project tabs in pin order', () => {
     expect(tabOrder(all, '/w/a').map((t) => t.name)).toEqual(['old-a', 'old-b', 'a', 'c'])
   })
 })
+
+describe('pinned project files', () => {
+  it('keeps them in pin order without counting as opening the project, drops duplicates and caps the list', () => {
+    const store = createProjectStore(newRoot())
+    const opened = store.open('/work/bakery').lastOpenedAt
+    const next = store.setPinnedFiles('/work/bakery', ['src/app.ts', 'README.md', 'src/app.ts'])
+    expect(next.pinnedFiles).toEqual(['src/app.ts', 'README.md'])
+    expect(next.lastOpenedAt).toBe(opened)
+    expect(store.setPinnedFiles('/work/bakery', Array.from({ length: 30 }, (_, i) => `f${i}.ts`)).pinnedFiles).toHaveLength(20)
+    expect(store.setPinnedFiles('/work/bakery', []).pinnedFiles).toBeUndefined()
+  })
+
+  it('refuses paths outside the project and unknown projects', () => {
+    const store = createProjectStore(newRoot())
+    store.open('/work/bakery')
+    expect(() => store.setPinnedFiles('/work/bakery', ['../secrets.txt'])).toThrow(/inside the project/)
+    expect(() => store.setPinnedFiles('/work/bakery', ['/etc/hosts'])).toThrow(/inside the project/)
+    expect(() => store.setPinnedFiles('/work/nowhere', ['a.ts'])).toThrow(/Unknown project/)
+  })
+})

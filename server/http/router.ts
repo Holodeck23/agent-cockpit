@@ -4,7 +4,7 @@ import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
 import { FileConflictError, writeProjectFile } from '../files/editor.ts'
 import { checkReferences, searchFiles } from '../files/search.ts'
-import { listDocuments, markDocument, renameFile, spaceRoot, spaceSchema } from '../files/documents.ts'
+import { documentsFolder, listDocuments, markDocument, renameFile, searchDocuments, setDocumentsFolder, spaceRoot, spaceSchema } from '../files/documents.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -247,6 +247,28 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           sendJson(res, 200, { data: listDocuments(store.root, projectPath) })
           return true
         }
+        // Where this project's documents live (F14): Cockpit's folder, or one the user chose.
+        if (parts[2] === 'location') {
+          if (method === 'GET') {
+            const projectPath = url.searchParams.get('projectPath') ?? ''
+            if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+            sendJson(res, 200, { data: documentsFolder(store.root, projectPath) })
+            return true
+          }
+          if (method === 'POST') {
+            const body = parseBody(z.object({ projectPath: z.string().min(1).max(1000), folder: z.string().min(1).max(1000).nullable() }), await readJson(req))
+            if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+            try { sendJson(res, 200, { data: setDocumentsFolder(store.root, body.projectPath, body.folder) }) }
+            catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+            return true
+          }
+        }
+        if (method === 'GET' && parts[2] === 'search') {
+          const projectPath = url.searchParams.get('projectPath') ?? ''
+          if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+          sendJson(res, 200, { data: searchDocuments(store.root, projectPath, (url.searchParams.get('q') ?? '').slice(0, 200)) })
+          return true
+        }
         if (method === 'POST' && parts[2] === 'mark') {
           const body = parseBody(markBody, await readJson(req))
           if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
@@ -335,6 +357,15 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           }
           return true
         }
+      }
+      // Project files pinned to the navigation.
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'pins' && method === 'POST') {
+        if (viaPhone) throw new HttpError(403, 'Pins can only be changed on the Mac')
+        const body = parseBody(z.object({ path: z.string().min(1).max(1000), files: z.array(z.string().min(1).max(1000)).max(100) }), await readJson(req))
+        if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
+        try { sendJson(res, 200, { data: projects.setPinnedFiles(body.path, body.files) }) }
+        catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
       }
       // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'remove' && method === 'POST') {

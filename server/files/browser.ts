@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { closeSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { decodeReference, FILE_REFERENCE, MAX_ATTACHED_FILES, MessageReferenceError } from './references.ts'
+import { FILE_REFERENCE, MAX_ATTACHED_FILES, MessageReferenceError, parseFileReference } from './references.ts'
 
 export const HIDDEN = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release'])
 export const MAX_BYTES = 100_000
@@ -90,15 +90,21 @@ export function expandFiles(text: string, projectPath: string): string {
   let count = 0
   const output = text.replace(FILE_REFERENCE, (_match, lead: string, encoded: string) => {
     if (++count > MAX_ATTACHED_FILES) throw new MessageReferenceError(`Attach at most ${MAX_ATTACHED_FILES} files per message`)
-    const path = decodeReference(encoded)
-    if (path === undefined) throw new MessageReferenceError(`This attachment is not a valid file reference: @file:${encoded}`)
+    const reference = parseFileReference(encoded)
+    if (!reference) throw new MessageReferenceError(`This attachment is not a valid file reference: @file:${encoded}`)
     let file: FilePreview
     try {
-      file = readProjectFile(projectPath, path)
+      file = readProjectFile(projectPath, reference.path)
     } catch (error) {
-      throw new MessageReferenceError(error instanceof Error ? error.message : `Could not attach ${path}`)
+      throw new MessageReferenceError(error instanceof Error ? error.message : `Could not attach ${reference.path}`)
     }
-    return `${lead}\nProject file: ${file.path}\n<file-content>\n${file.text}\n</file-content>\n`
+    if (!reference.line) return `${lead}\nProject file: ${file.path}\n<file-content>\n${file.text}\n</file-content>\n`
+    // Selected lines only (F10): the agent is told which lines of how many it is seeing.
+    const lines = file.text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n')
+    const end = Math.min(reference.endLine ?? reference.line, lines.length)
+    if (reference.line > lines.length) throw new MessageReferenceError(`Line ${reference.line} is past the end of ${file.path} (${lines.length} lines)`)
+    const span = end > reference.line ? `lines ${reference.line}-${end}` : `line ${reference.line}`
+    return `${lead}\nProject file: ${file.path} (${span} of ${lines.length})\n<file-content>\n${lines.slice(reference.line - 1, end).join('\n')}\n</file-content>\n`
   })
   if (output.length > 200_000) throw new MessageReferenceError('Message and attached files exceed 200,000 characters')
   return output

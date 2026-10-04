@@ -3,6 +3,7 @@ import { listConversationsInput, readConversationInput, type ConversationList, t
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Workflow } from '../workflows/store.ts'
+import { agentWorkflowShape, type AgentWorkflowInput } from '../workflows/agent-input.ts'
 import { workflowInputSchema } from '../workflows/store.ts'
 import type { OutputLine } from '../processes/output.ts'
 import type { ProcessInfo, ProcessRead } from '../processes/runner.ts'
@@ -16,7 +17,7 @@ export interface CockpitApi {
   stopConversation(input: z.input<typeof stopConversationInput>): Promise<ControlResult>
   listConversations(input: z.input<typeof listConversationsInput>): Promise<ConversationList>
   readConversation(input: z.input<typeof readConversationInput>): Promise<ConversationRead>
-  saveWorkflow(body: { name: string; prompt: string }): Promise<Workflow>
+  saveWorkflow(body: AgentWorkflowInput): Promise<Workflow & { updated: boolean }>
   list(): Promise<ProcessInfo[]>
   start(body: { command: string; name?: string }): Promise<{ process: ProcessInfo; reused: boolean }>
   read(id: string, options: { since?: number; tail?: number }): Promise<ProcessRead>
@@ -244,12 +245,15 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
 
   server.registerTool('save_workflow', {
     title: 'Save a workflow',
-    description: 'Save reusable instructions for this project. Creates a new, unscheduled workflow for the user to review in Workflows. Use @workflow:name in prompts to include another saved workflow. Does not run or schedule it.',
-    inputSchema: { name: workflowInputSchema.shape.name, prompt: workflowInputSchema.shape.prompt },
+    description: 'Save reusable instructions for this project. Use @workflow:name in prompts to include another saved workflow. Never runs it now. ' +
+      'Unless the user allowed agents to manage workflows in Project settings, it creates a new workflow with its schedule off, for the user to review; ' +
+      'with that setting on, it can also update an existing workflow by name and set a schedule.',
+    inputSchema: agentWorkflowShape,
   }, async (input) => {
     try {
       const saved = await api.saveWorkflow(input)
-      return text(`Saved ${saved.name}. Review it in Workflows; its schedule is paused.`)
+      const verb = saved.updated ? 'Updated' : 'Saved'
+      return text(saved.enabled ? `${verb} ${saved.name}; scheduled, next run ${saved.nextRunAt ?? 'soon'}.` : `${verb} ${saved.name}. Review it in Workflows; its schedule is paused.`)
     } catch (error) { return failure(error) }
   })
 

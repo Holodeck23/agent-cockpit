@@ -46,6 +46,8 @@ export interface McpCommand {
  */
 export interface CockpitMcpLaunch extends McpCommand {
   readonly secretEnv: Readonly<Record<string, string>>
+  /** Tools this session may also call without an approval card, from the project's settings. */
+  readonly alsoAllowed?: readonly string[]
 }
 
 export const MCP_SERVER_NAME = 'cockpit'

@@ -1,7 +1,8 @@
 import type { Appearance, Density, RowShows } from '../appearance.ts'
 import type { ThemeMode } from '../theme.ts'
 import { usePopover } from '../usePopover.ts'
-import { MonitorIcon, MoonIcon, SunIcon } from './icons.tsx'
+import { ContrastIcon, MonitorIcon, MoonIcon, SunIcon } from './icons.tsx'
+import { flippedTheme, shownTheme } from '../theme-toggle.ts'
 
 interface AppearanceMenuProps {
   theme: ThemeMode
@@ -32,10 +33,17 @@ function Choice<T extends string>({ label, options, value, onPick }: {
 /** The top-bar Appearance popover: theme, density, and what conversation rows show. */
 export function AppearanceMenu({ theme, onTheme, appearance, onChange }: AppearanceMenuProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
+  const systemDark = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
+  // One click flips light and dark (D10); System, density and rows stay in the popover.
+  const shown = shownTheme(theme, systemDark())
   return (
     <div className="appearance" ref={ref}>
+      <button type="button" className="icon-button theme-toggle" aria-label={shown === 'dark' ? 'Switch to light' : 'Switch to dark'}
+        title={shown === 'dark' ? 'Switch to light' : 'Switch to dark'} onClick={() => onTheme(flippedTheme(theme, systemDark()))}>
+        {shown === 'dark' ? <MoonIcon /> : <SunIcon />}
+      </button>
       <button type="button" className="icon-button" aria-label="Appearance" title="Appearance" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {theme === 'light' ? <SunIcon /> : theme === 'dark' ? <MoonIcon /> : <MonitorIcon />}
+        <ContrastIcon />
       </button>
       {open ? (
         <div className="appearance-panel" role="dialog" aria-label="Appearance">

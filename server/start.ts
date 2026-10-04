@@ -104,6 +104,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // Known once listening; sessions only start after that.
   let baseUrl = ''
   const mcpCommand = options.mcp
+  const agentWorkflowsAllowed = (projectPath: string): boolean =>
+    projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
   const manager = createThreadManager(store, {
     instructions: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
@@ -114,8 +116,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       ? {
           mcp: (grant) => {
             const token = sessions.issue(grant)
+            // Read when the session starts: a changed setting applies to the next agent session.
+            const alsoAllowed = agentWorkflowsAllowed(grant.projectPath) ? ['save_workflow'] : []
             return {
-              launch: { ...mcpCommand, secretEnv: { [MCP_URL_ENV]: baseUrl, [MCP_TOKEN_ENV]: token } },
+              launch: { ...mcpCommand, secretEnv: { [MCP_URL_ENV]: baseUrl, [MCP_TOKEN_ENV]: token }, alsoAllowed },
               release: () => sessions.revoke(token),
             }
           },
@@ -161,7 +165,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
   const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, presets, importHome: process.env.COCKPIT_IMPORT_HOME,
-    mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory } },
+    mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
+      agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true) } },
   [port, ...(options.trustedPorts ?? [])])
   remote.attach(api)
   server.on('request', (req, res) => {

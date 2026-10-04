@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../api.ts'
 import type { RowShows } from '../appearance.ts'
 import type { ThreadSummary } from '../api.ts'
-import { filterConversations, type ListFilter } from '../conversation-meta.ts'
+import { filterConversations, type ListFilter, emptyListState } from '../conversation-meta.ts'
 import { useSeen } from '../useSeen.ts'
 import { ConversationCard } from './ConversationCard.tsx'
-import { Bars, ChatIcon, PlusIcon, SearchIcon } from './icons.tsx'
+import { Bars, ChatIcon, PlusIcon, SearchIcon, CheckIcon } from './icons.tsx'
 import { ConversationsArt } from './illustrations.tsx'
 
 interface ConversationListProps {
@@ -64,6 +64,8 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
     }
   }
 
+  // Each filter says why it is empty, and offers the way back (A10).
+  const empty = emptyListState(filter, { total: threads.length, query })
   const tab = (id: ListFilter, label: string, icon?: ReactNode) => (
     <button type="button" role="tab" aria-selected={filter === id} className="filter" onClick={() => setFilter(id)}>
       {icon}
@@ -95,12 +97,13 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
       </div>
       <div className="cards">
         {rows.length === 0 ? (
-          <div className="list-empty">
-            <span className="list-empty-icon">
-              <ChatIcon />
+          <div className="list-empty" role="status">
+            <span className={`list-empty-icon${empty.done ? ' done' : ''}`}>
+              {empty.done ? <CheckIcon /> : <ChatIcon />}
             </span>
-            <strong>{threads.length === 0 ? 'No conversations yet' : 'Nothing here'}</strong>
-            <span>{threads.length === 0 ? 'Start something with your agent.' : 'Try another filter or search.'}</span>
+            <strong>{empty.title}</strong>
+            <span>{empty.detail}</span>
+            {empty.back ? <button type="button" className="button-soft list-empty-back" onClick={() => setFilter('all')}>← View all conversations</button> : null}
           </div>
         ) : (
           rows.map((thread) => (

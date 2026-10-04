@@ -95,10 +95,12 @@ describe('Claude compatibility', () => {
     const f = fixture(help, probe), events: NormalizedEvent[] = []
     const session = launchClaude({ cwd: f.cwd }, (e) => events.push(e), { executable: f.executable })
     session.send('hello')
-    await expect.poll(() => session.alive(), { timeout: 7000 }).toBe(false)
+    // The probe gives up after 5 s (capabilities.ts); spawning and the kill add time when the
+    // whole suite runs in parallel, which is where a 7 s wait flaked (2026-10-04).
+    await expect.poll(() => session.alive(), { timeout: 8500 }).toBe(false)
     await session.close()
     expect(events.some((e) => e.kind === 'error' && /Could not check Claude Code/.test(e.message))).toBe(true)
     expect(events.filter((e) => e.kind === 'exit')).toHaveLength(1)
     expect(existsSync(join(f.cwd, 'launched'))).toBe(false)
-  }, 9000)
+  }, 12_000)
 })

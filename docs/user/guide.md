@@ -13,6 +13,8 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Tabs:** The top tabs switch projects, in the order you pinned them. Files and the embedded preview open inside the workspace.
 -   **Shortcuts:** ⌘1–8 open the first eight tabs and ⌘9 the last one; ⌥⌘1–5 open Conversations, Files, Workflows, Memory and Processes. Hover a tab or section to see its shortcut.
 -   **Window:** Cockpit reopens at the size and place you left it, as long as that place is still on a screen.
+-   **Removing a project:** hover a project in the Projects menu and click the bin to remove it from Cockpit. Its folder and conversations stay; schedules in it are paused. Opening the folder again brings it back.
+-   **Pins in the navigation:** pin a project file or one of Your documents (**⋯ → Pin to navigation**) and it appears beside the sections, so you can reopen it from anywhere.
 -   **Settings:** Access overarching settings for appearance and workflows.
 
 ## Agents & Settings
@@ -41,6 +43,13 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 
 -   **Documents & Editing:** Open **Files** to view, edit, and save text files in your project. You can edit Markdown files in the dedicated Markdown Document view.
 -   **Attachments:** Add files and workflows to your message draft via the composer's **+** menu, or type **@** in the message and pick from the list (↑↓, then Enter or Tab; Esc hides it). Text files are limited to 100 KB, with a max of 8 attachments and 200,000 characters per prompt. Note that attachments and prompt text are sent directly to the agent (provider-bound).
+-   **Moving around:** Home, Back, Forward and Up move between folders. The sidebar button at the left of the tabs hides the file list for more room, and Cockpit remembers that choice.
+-   **Renaming and the Trash:** **⋯ → Rename…** edits the name and the extension in separate fields. When the file you are looking at goes to the Trash, the next file in that folder opens.
+-   **Copying files in:** drag files from Finder onto the file list to copy them into the folder shown, or onto Your documents. Nothing is ever replaced: if the name is taken, the copy is named "name (copy)". Folders and symbolic links are skipped, and the list says why.
+-   **Syntax colours:** code files are coloured by language in the Source view. Very large files (over about 120,000 characters) stay plain.
+-   **Find and replace:** ⌘F searches the open file, ⌥⌘F also opens Replace. Enter and Shift+Enter step between matches, **Aa** matches case, and **Replace all** is one step that ⌘Z undoes. This works in the Source and Document views and in workflow instructions.
+-   **Asking about lines:** select lines in a saved file and the main button becomes **Ask about lines a–b**. Only those lines go to the agent, labelled with their line numbers, and the message shows them as `file:a-b`. While the file has unsaved changes the button stays **Add to conversation**, because the lines on screen would not be the lines sent.
+-   **Your documents:** notes Cockpit keeps for the project, outside the repository. The search box finds them by name or by a word inside, archived ones included. In **Project settings → Your documents folder** you can keep them in a folder of your own. Cockpit copies them there, leaves the old folder as it was, and refuses a folder inside the project so that agents and git never see them.
 -   **Conflicts:** Cockpit detects if a file was changed externally while you or the agent were editing it and provides conflict handling (e.g., using **Reload from disk** or **Save mine as a copy**).
 
 ## Git & Version Control
@@ -58,6 +67,9 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 ## Workflows & Schedules
 
 -   **Gallery & Editing:** Open **Workflows** to access saved instructions and prompts. You can edit existing workflows or pause them. Archiving a workflow hides it from normal views.
+-   **Writing instructions:** instructions are a document with the Markdown toolbar, or plain Source. Type **@** in either to add a file or another workflow. ⌘F finds and replaces, ⌘S saves.
+-   **Starting from a workflow:** a new conversation shows the project's workflows as cards. A card adds `@workflow:name` to your message and runs nothing until you send it. The gallery's featured **Design workshop** proposes three directions for a screen, shows them in the preview, and applies the one you pick.
+-   **Agents and workflows:** by default an agent's `save_workflow` only adds a new workflow with its schedule off, after you approve. **Project settings → Let agents manage workflows** lets agents save, update and schedule them without asking, from the next agent session on.
 -   **Schedules:** You can schedule workflows (e.g., run daily tests) with an interval (5 minutes to 30 days), or at a daily, weekday, or selected-weekday time in the saved local timezone and clicking **Save and enable schedule**.
 -   **Missed Runs & Failures:** If Cockpit is closed, at most one missed run is started when you reopen it. Workflows that fail will not block subsequent scheduled runs but will report errors in their thread.
 
@@ -71,6 +83,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 
 ## Appearance & Sounds
 
+-   The sun or moon button in the top bar switches between light and dark in one click; the Appearance button next to it also offers System, list density and what rows show.
 -   Customize theme, sounds, and the activity view via settings.
 -   Cockpit integrates with the macOS Dock to show active states. The Dock icon follows Cockpit's appearance, with a dark version in Dark.
 -   A project's colour (Project settings) tints its tab, the send and primary buttons, the working and process badges, the Complete control and resize bars.
@@ -97,7 +110,7 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
     -   `read_process_output`: The log, incrementally.
     -   `open_preview`: Opens a local page (localhost only) in the preview pane.
     -   `inspect_preview`: Returns a screenshot of the local page to the agent.
-    -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first).
+    -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first). With **Let agents manage workflows** on in Project settings, it does not ask, can update a workflow by name, and can set a schedule.
 -   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are included in v0.1.1; the older September 30 v0.1.0 DMG does not have them.
 
 ## Updates

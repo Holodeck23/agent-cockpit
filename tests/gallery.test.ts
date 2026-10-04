@@ -58,9 +58,11 @@ describe('browsing', () => {
     const related = relatedTo(entry('commit-message'))
     expect(related).toHaveLength(3)
     expect(related.every((w) => w.category === 'Git and handoffs' && w.name !== 'commit-message')).toBe(true)
-    const fewer = relatedTo(entry('build-report'), 4)
-    expect(fewer.map((w) => w.category)).toEqual(['Run and debug', 'Run and debug', expect.any(String), expect.any(String)])
-    expect(fewer.slice(2).every((w) => w.featured)).toBe(true)
+    const same = inCategory(GALLERY, 'Run and debug').filter((w) => w.name !== 'build-report').length
+    const fewer = relatedTo(entry('build-report'), same + 2)
+    expect(fewer.slice(0, same).every((w) => w.category === 'Run and debug')).toBe(true)
+    expect(fewer.slice(same)).toHaveLength(2)
+    expect(fewer.slice(same).every((w) => w.featured && w.category !== 'Run and debug')).toBe(true)
   })
 
   it('labels schedules and tools in words', () => {
@@ -91,5 +93,16 @@ describe('adding', () => {
 
   it('leaves on-demand copies without any schedule', () => {
     expect(copyInput(entry('focused-review'), project, new Set(), 'UTC')).toMatchObject({ intervalMinutes: null, calendar: null })
+  })
+})
+
+describe('the design workshop (F13)', () => {
+  it('is featured first, asks before building, and compares options in the preview', () => {
+    const first = featured()[0]!
+    expect(first.name).toBe('design-workshop')
+    expect(first.permissionMode).toBe('manual')
+    expect(first.prompt).toMatch(/three/i)
+    expect(first.prompt).toMatch(/open_preview/)
+    expect(first.prompt).toMatch(/stop and ask/i)
   })
 })

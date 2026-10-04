@@ -35,7 +35,7 @@ afterEach(async () => {
   runner = undefined
 })
 
-async function harness(): Promise<Harness> {
+async function harness(options: { agentWorkflows?: boolean } = {}): Promise<Harness> {
   const sessions = createMcpSessions()
   const processes = createProcessRunner({ graceMs: 500 })
   runner = processes
@@ -47,6 +47,8 @@ async function harness(): Promise<Harness> {
   server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     handleMcpRoute(req, res, url, url.pathname.split('/').filter(Boolean), { sessions, processes, workflows, memory, openUrl: (u) => void opened.push(u),
+      agentWorkflows: () => options.agentWorkflows === true,
+      enableWorkflow: (id) => workflows.update(id, { enabled: true, nextRunAt: new Date(Date.now() + 60_000).toISOString() }),
       capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } } }).catch(
       (error: unknown) => sendJson(res, error instanceof HttpError ? error.status : 500, { error: (error as Error).message }),
     )
@@ -100,6 +102,28 @@ describe('cockpit MCP tools', () => {
     expect(saved.intervalMinutes).toBeNull()
     h.sessions.revoke(token)
     expect((await client.callTool({ name: 'save_workflow', arguments: { name: 'expired', prompt: 'Review' } })).isError).toBe(true)
+  })
+
+  it('keeps agents from scheduling or overwriting workflows unless the project allows it (P1)', async () => {
+    const h = await harness()
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const scheduled = await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', prompt: 'Check the build', schedule: { days: [1, 3], time: '09:00' } } })
+    expect(scheduled.isError).toBe(true)
+    expect(textOf(scheduled)).toMatch(/Project settings/)
+    await client.callTool({ name: 'save_workflow', arguments: { name: 'review', prompt: 'Review changes' } })
+    const again = await client.callTool({ name: 'save_workflow', arguments: { name: 'review', prompt: 'Something else' } })
+    expect(again.isError).toBe(true)
+    expect(textOf(again)).toMatch(/already exists/)
+  })
+
+  it('lets agents schedule and update workflows when the project allows it (P1)', async () => {
+    const h = await harness({ agentWorkflows: true })
+    const project = devProject()
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: project }))
+    expect(textOf(await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', title: 'Nightly check', prompt: 'Check the build', schedule: { days: [3, 1], time: '09:00' } } })))
+      .toMatch(/scheduled/i)
+    const updated = textOf(await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', prompt: 'Check the build and the tests' } }))
+    expect(updated).toMatch(/Updated nightly/)
   })
 
   it('starts a dev server, reads its log, and opens its URL for the user', async () => {
@@ -221,4 +245,14 @@ it('MCP recall and remember report bounded corruption errors and preserve origin
   expect((await client.callTool({ name: 'remember', arguments: { text: 'repaired', scope: 'project' } })).isError).not.toBe(true)
   expect(textOf(await client.callTool({ name: 'recall', arguments: { query: 'repaired' } }))).toContain('repaired')
   await client.close()
+})
+
+describe('approval for agent-managed workflows', () => {
+  it('skips the card for save_workflow only when the project allows it', async () => {
+    const { claudeMcpOptions, codexMcpConfigArgs } = await import('../server/mcp/wiring.ts')
+    const base = { command: 'node', args: ['mcp.js'], secretEnv: {} }
+    expect(claudeMcpOptions(base).allowedTools).not.toContain('mcp__cockpit__save_workflow')
+    expect(claudeMcpOptions({ ...base, alsoAllowed: ['save_workflow'] }).allowedTools).toContain('mcp__cockpit__save_workflow')
+    expect(codexMcpConfigArgs({ ...base, alsoAllowed: ['save_workflow'] })).toContain('mcp_servers.cockpit.tools.save_workflow.approval_mode="approve"')
+  })
 })

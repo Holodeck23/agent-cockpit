@@ -112,3 +112,37 @@ export function peekText(text: string, lines = 40): { text: string; more: number
   const shown = all.slice(0, lines).map((line) => (line.length > 400 ? `${line.slice(0, 400)}…` : line))
   return { text: shown.join('\n'), more: Math.max(0, all.length - lines) }
 }
+
+/** "notes.md" → { stem: "notes", ext: "md" }: the rename form edits the two apart. Names without an extension stay whole. */
+export function splitName(name: string): { stem: string; ext: string } {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 && dot < name.length - 1 ? { stem: name.slice(0, dot), ext: name.slice(dot + 1) } : { stem: name, ext: '' }
+}
+
+/** The rename form's two fields back into one name; a typed leading dot in the extension is fine. */
+export function joinName(stem: string, ext: string): string {
+  const cleanExt = ext.trim().replace(/^\.+/, '')
+  return cleanExt ? `${stem.trim()}.${cleanExt}` : stem.trim()
+}
+
+/** The file to show after `gone` leaves a folder listing: the next one, or the one before it at the end. */
+export function nextInFolder(paths: readonly string[], gone: string): string | undefined {
+  const at = paths.indexOf(gone)
+  if (at < 0) return undefined
+  return paths[at + 1] ?? paths[at - 1]
+}
+
+/** The lines a textarea selection covers (1-based); a selection that only reaches the start of a line leaves it out. Undefined when nothing is selected. */
+export function linesOfSelection(text: string, start: number, end: number): { line: number; endLine?: number } | undefined {
+  if (end <= start) return undefined
+  const lineAt = (offset: number): number => text.slice(0, offset).split('\n').length
+  const line = lineAt(start)
+  const last = text[end - 1] === '\n' ? lineAt(end - 1) : lineAt(end)
+  return last > line ? { line, endLine: last } : { line }
+}
+
+/** Just lines `line`…`endLine` of a file's text, for a peek at selected lines; the whole text without a line. */
+export function linesOf(text: string, target: { line?: number; endLine?: number }): string {
+  if (!target.line) return text
+  return text.replace(/\r\n?/g, '\n').split('\n').slice(target.line - 1, target.endLine ?? target.line).join('\n')
+}

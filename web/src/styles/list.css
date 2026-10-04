@@ -95,3 +95,5 @@
   .filter { font-size: 12.5px; gap: 3px; }
   .filter .icon, .filter .bars, .filter svg, .filter .unread-icon { display: none; }
 }
+.list-empty-icon.done { border-radius: 50%; color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.list-empty-back { margin-top: 12px; font-size: 13px; }

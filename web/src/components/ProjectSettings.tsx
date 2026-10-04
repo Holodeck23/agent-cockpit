@@ -1,3 +1,5 @@
+import { api } from '../api.ts'
+import type { SettingsPatch } from '../useProjects.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../api.ts'
 import { native } from '../native.ts'
@@ -14,7 +16,7 @@ const TINTS: ReadonlyArray<{ id: Project['color']; label: string }> = [
 
 interface ProjectSettingsProps {
   project: Project
-  onSave: (patch: { name: string; color: Project['color']; instructions: string }) => Promise<unknown>
+  onSave: (patch: SettingsPatch) => Promise<Project>
   onImage: (image: string | null) => Promise<unknown>
   /** Resolves to how many schedules were paused. */
   onRemove: () => Promise<number>
@@ -27,13 +29,14 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [name, setName] = useState(project.name)
   const [color, setColor] = useState(project.color)
   const [text, setText] = useState(project.instructions ?? '')
+  const [agentWorkflows, setAgentWorkflows] = useState(project.agentWorkflows === true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [saved, setSaved] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const nameBox = useRef<HTMLInputElement>(null)
   const filePicker = useRef<HTMLInputElement>(null)
-  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '')
+  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '') || agentWorkflows !== (project.agentWorkflows === true)
 
   useEffect(() => nameBox.current?.focus(), [])
   useEffect(() => {
@@ -49,7 +52,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     setError(undefined)
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
-  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text }), () => setSaved(true))
+  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows }), () => setSaved(true))
   const pick = (file: File | undefined): void => {
     if (file) run(async () => onImage(await avatarDataUrl(file)))
     if (filePicker.current) filePicker.current.value = ''
@@ -66,6 +69,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           </div>
           <button type="button" className="activity-close" aria-label="Close" onClick={onClose}>×</button>
         </header>
+        <div className="project-settings-scroll">
         <fieldset className="project-settings-body" disabled={busy}>
           <label className="field">
             Name
@@ -100,6 +104,15 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             Added to every agent session in this folder, alongside the repository&apos;s own instruction files, which Cockpit
             never edits. They apply when an agent next starts, and never change permissions.
           </p>
+          <label className="field-check">
+            <input type="checkbox" checked={agentWorkflows} onChange={(e) => { setAgentWorkflows(e.target.checked); setSaved(false) }} />
+            <span>
+              <strong>Let agents manage workflows</strong>
+              Agents may save, update and schedule this project&apos;s workflows without asking each time. Off, they can only add new
+              workflows with the schedule off, after you approve. Applies when an agent next starts.
+            </span>
+          </label>
+          <DocumentsFolder projectPath={project.path} />
           <div className="field">
             <span>Folder</span>
             <div className="project-folder">
@@ -108,6 +121,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             </div>
           </div>
         </fieldset>
+        </div>
         {error ? <p className="modal-error" role="alert">{error}</p> : null}
         {confirmRemove ? (
           <div className="remove-confirm" role="alertdialog" aria-labelledby="remove-title" aria-describedby="remove-detail">
@@ -134,6 +148,34 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           </footer>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Where "Your documents" live for this project (F14). Changing it copies them over at once. */
+function DocumentsFolder({ projectPath }: { projectPath: string }) {
+  const [where, setWhere] = useState<{ folder: string; custom: boolean }>()
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => { api.documentsFolder(projectPath).then(setWhere, (e: unknown) => setError(message(e))) }, [projectPath])
+  const move = (folder: string | null): void => {
+    setError('')
+    api.setDocumentsFolder(projectPath, folder).then((result) => {
+      setWhere({ folder: result.folder, custom: folder !== null })
+      const n = result.copied.length
+      setNote(`${n ? `Copied ${n} ${n === 1 ? 'document' : 'documents'} there.` : 'Nothing needed copying.'} The previous folder was left as it was.`)
+    }, (e: unknown) => setError(message(e)))
+  }
+  return (
+    <div className="field">
+      <span>Your documents folder</span>
+      <div className="project-folder">
+        <p className="modal-path" title={where?.folder}>{where ? (where.custom ? where.folder : 'Kept by Cockpit, outside this project') : '…'}</p>
+        {native ? <button type="button" className="button-soft" onClick={() => { void native?.pickFolder().then((picked) => { if (picked) move(picked) }) }}>Choose folder…</button> : null}
+        {where?.custom ? <button type="button" className="button-soft" onClick={() => move(null)}>Use Cockpit&apos;s folder</button> : null}
+      </div>
+      {note ? <small role="status">{note}</small> : null}
+      {error ? <small role="alert" className="field-error">{error}</small> : null}
     </div>
   )
 }

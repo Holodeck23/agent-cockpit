@@ -48,3 +48,12 @@
 .import-text small { font-size: 12px; color: var(--muted); }
 .import-row .button-soft { flex: none; padding: 5px 12px; font-size: 12.5px; }
 .import-done { flex: none; font-size: 12px; font-weight: 600; color: var(--success); }
+.field-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--secondary); }
+.field-check input { margin-top: 3px; flex: none; }
+.field-check strong { display: block; color: var(--strong); font-weight: 500; }
+/* Header and buttons stay in view; only the fields scroll when the window is short. */
+.modal.project-settings { display: flex; flex-direction: column; overflow: hidden; }
+.project-settings .project-settings-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: 4px; }
+.project-settings > header, .project-settings > footer, .project-settings > .remove-confirm { flex: none; }
+.field-error { color: var(--danger); }
+.project-settings > .modal-error { flex: none; }

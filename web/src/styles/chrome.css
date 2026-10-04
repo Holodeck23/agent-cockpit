@@ -88,6 +88,18 @@
 .project-item-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-item-path { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .pinned-mark { width: 14px; height: 14px; color: var(--muted); }
+.project-row { position: relative; }
+.project-row .project-item { padding-right: 40px; }
+.project-remove-button {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 28px; height: 28px;
+  padding: 0; background: none; border: 0; border-radius: var(--r-sm); color: var(--muted); opacity: 0; cursor: default;
+}
+.project-remove-button svg { width: 15px; height: 15px; }
+.project-row:hover .project-remove-button, .project-remove-button:focus-visible { opacity: 1; }
+.project-remove-button:hover, .project-remove-button:focus-visible { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); outline: none; }
+.project-remove { display: grid; gap: 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--field); font-size: 13px; color: var(--body); }
+.project-remove > div { display: flex; justify-content: flex-end; gap: 6px; }
+.project-remove .button-soft, .project-remove .button-danger { padding: 5px 12px; font-size: 12.5px; }
 .menu-path { display: flex; gap: 6px; padding: 4px; }
 .menu-path input { flex: 1; min-width: 0; padding: 6px 10px; background: var(--field); border: 1px solid var(--input-border); border-radius: var(--r-sm); color: var(--strong); }
 
@@ -106,6 +118,15 @@
 .subnav-item:not([aria-selected='true']):hover { color: var(--strong); }
 .subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--project-tint, inherit); }
 .subnav-tools { display: flex; gap: 4px; }
+/* Pinned files and documents (F6): reopen from any section. */
+.subnav-pins { display: flex; gap: 2px; min-width: 0; margin-right: auto; padding-left: 10px; border-left: 1px solid var(--border); overflow: hidden; }
+.subnav-pin {
+  display: flex; align-items: center; gap: 6px; max-width: 180px; padding: 6px 10px; background: none; border: 0; border-radius: var(--r-sm);
+  color: var(--secondary); font: inherit; font-size: 13px; cursor: default; flex: none;
+}
+.subnav-pin span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subnav-pin .icon, .subnav-pin svg { width: 15px; height: 15px; flex: none; color: var(--project-tint, var(--muted)); }
+.subnav-pin:hover, .subnav-pin:focus-visible { background: var(--field); color: var(--strong); outline: none; }
 .icon-button {
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: none; border: 0;
   border-radius: var(--r-sm); color: var(--secondary); cursor: default;

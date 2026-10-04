@@ -5,7 +5,8 @@ import { z } from 'zod'
 import type { McpSessions } from '../mcp/sessions.ts'
 import type { ProcessRunner } from '../processes/runner.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
-import { workflowInputSchema, type WorkflowStore } from '../workflows/store.ts'
+import type { Workflow, WorkflowStore } from '../workflows/store.ts'
+import { AgentWorkflowRefused, agentWorkflowSchema, saveAgentWorkflow } from '../workflows/agent-input.ts'
 import { readCursor } from './process-routes.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
 
@@ -41,6 +42,10 @@ export interface McpRouteDeps {
   readonly openUrl: (url: string) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   readonly memory?: MemoryStore
+  /** Whether the project lets agents update and schedule workflows (Project settings). */
+  readonly agentWorkflows?: (projectPath: string) => boolean
+  /** Turns a workflow's schedule on, as the Workflows page does. */
+  readonly enableWorkflow?: (id: string) => Workflow
 }
 
 export async function handleMcpRoute(
@@ -48,7 +53,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl, capturePreview, workflows, memory, conversations, control }: McpRouteDeps,
+  { sessions, processes, openUrl, capturePreview, workflows, memory, conversations, control, agentWorkflows, enableWorkflow }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -80,8 +85,22 @@ export async function handleMcpRoute(
   }
   if (parts[2] === 'workflows' && method === 'POST') {
     if (!workflows) throw new HttpError(503, 'Workflows unavailable')
-    const body = parseBody(workflowInputSchema.pick({ name: true, prompt: true }), await readJson(req))
-    return sendJson(res, 201, { data: workflows.save({ ...body, projectPath }) })
+    // Only the fields an agent may set: never another project, never a schedule unless allowed.
+    const body = parseBody(agentWorkflowSchema, await readJson(req))
+    try {
+      const saved = saveAgentWorkflow(workflows, projectPath, body, {
+        allowed: agentWorkflows?.(projectPath) === true,
+        enable: (id) => {
+          if (!enableWorkflow) throw new HttpError(503, 'Schedules unavailable')
+          return enableWorkflow(id)
+        },
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+      return sendJson(res, saved.updated ? 200 : 201, { data: saved })
+    } catch (error) {
+      if (error instanceof AgentWorkflowRefused) throw new HttpError(error.status, error.message)
+      throw error
+    }
   }
   // Memory: recall searches this project's and the everywhere entries; remember (approved by the
   // user before the agent can call it) records which conversation it came from.
