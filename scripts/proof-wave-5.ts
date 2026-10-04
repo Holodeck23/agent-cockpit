@@ -193,6 +193,13 @@ try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(980, 640))
   await page.waitForTimeout(400)
   await shot(page, 'thread-narrow')
+  // A long title (the J5 conversation's) must ellipsize, not widen the pane past the window.
+  const fits = await page.evaluate(() => {
+    const pane = document.querySelector('.thread')!
+    const menu = [...pane.querySelectorAll('.thread-head button')].at(-1)!.getBoundingClientRect()
+    return pane.scrollWidth <= pane.clientWidth && menu.right <= window.innerWidth
+  })
+  check('narrow: a long title ellipsizes and the pane fits the window', fits)
   // C9: Codex offers an effort above Max; Claude does not.
   await page.getByRole('button', { name: 'New conversation' }).click()
   await chooseAgent(page, { agent: 'codex' })

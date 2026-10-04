@@ -1,6 +1,7 @@
 /* Conversation pane: header, transcript, composer, new-conversation start. */
 
-.thread { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; background: var(--content); }
+/* minmax(0, 1fr): the implicit auto column grew to a long title's full width and pushed the pane off-screen. */
+.thread { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; background: var(--content); }
 
 /* ---------- header ---------- */
 .thread-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px 14px 28px; border-bottom: 1px solid var(--border); }
