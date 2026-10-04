@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -119,6 +119,22 @@ describe('a different documents folder per project (F14)', () => {
     expect(documentsDir(root, project)).toBe(chosen)
     expect(documentsFolder(root, project)).toEqual({ folder: chosen, custom: true })
     expect(listDocuments(root, project).map((d) => d.name).sort()).toEqual(['plan (copy).md', 'plan.md'])
+  })
+
+  it('stays where it is, and names the files, when the chosen folder will not take a copy (R6)', () => {
+    const { root, project, dir } = setup()
+    writeFileSync(join(dir, 'plan.md'), 'plan')
+    writeFileSync(join(dir, 'notes.md'), 'notes')
+    const chosen = mkdtempSync(join(tmpdir(), 'cockpit-docs-readonly-'))
+    chmodSync(chosen, 0o500)
+    try {
+      expect(() => setDocumentsFolder(root, project, chosen)).toThrow(/notes\.md.*plan\.md|plan\.md.*notes\.md/s)
+      expect(documentsDir(root, project)).toBe(dir)
+      expect(documentsFolder(root, project).custom).toBe(false)
+      expect(listDocuments(root, project).map((d) => d.name).sort()).toEqual(['notes.md', 'plan.md'])
+    } finally {
+      chmodSync(chosen, 0o700)
+    }
   })
 
   it('refuses a folder inside the project or one that does not exist, and can go back to Cockpit\'s folder', () => {

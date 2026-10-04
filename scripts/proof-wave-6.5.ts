@@ -1,11 +1,12 @@
 // Packaged gate for wave 6.5, the repair checkpoint (R1–R8). Stand-in agents speak the shapes
 // recorded from Claude 2.1.289 and Codex 0.147 (scripts/fixtures/wave65-agent), no provider usage.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-6.5
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
+import { documentsDir } from '../server/files/documents.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { apiPost, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
 
@@ -17,6 +18,10 @@ writeFileSync(join(project, 'notes.txt'), 'alpha\nbeta\ngamma\n')
 const store = createThreadStore(join(root, 'state'))
 mkdirSync(PROOF_DIR, { recursive: true })
 const ICON = readFileSync(join(ROOT, 'build/icon-1024.png')).toString('base64')
+// R6: a document in Cockpit's own folder, and a folder that will not take a copy.
+writeFileSync(join(documentsDir(store.root, project), 'release-plan.md'), '# Release plan\n')
+const readOnly = mkdtempSync(join(tmpdir(), 'cockpit-wave65-readonly-'))
+chmodSync(readOnly, 0o500)
 
 const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave65-${name}.png`) })
@@ -144,9 +149,22 @@ try {
   check('R4 after the turn it is offered', await until('enabled', () => completeItem.isEnabled()))
   await completeItem.click()
   check('R4 and completes the conversation', await until('completed', async () => (await page.getByRole('button', { name: 'Reopen' }).count()) === 1))
+
+  // R6: moving the documents to a folder that refuses the copies changes nothing, and says which.
+  const moved = await page.evaluate(async ([dir, folder]) => {
+    const res = await fetch('/api/documents/location', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectPath: dir, folder }) })
+    return { status: res.status, body: await res.text() }
+  }, [project, readOnly] as const)
+  check('R6 a folder that will not take the documents is refused', moved.status === 400, `${moved.status} ${moved.body}`)
+  check('R6 and the error names the document', moved.body.includes('release-plan.md'), moved.body)
+  const where = await page.evaluate(async (dir) => (await (await fetch(`/api/documents/location?projectPath=${encodeURIComponent(dir)}`)).json()) as { data: { custom: boolean } }, project)
+  check('R6 the project keeps its documents folder', where.data.custom === false)
+  const listed = await page.evaluate(async (dir) => JSON.stringify(await (await fetch(`/api/documents?projectPath=${encodeURIComponent(dir)}`)).json()), project)
+  check('R6 and its documents are all still there', listed.includes('release-plan.md'))
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {
   await app.close().catch(() => {})
+  chmodSync(readOnly, 0o700)
 }
 finish('PROOF WAVE 6.5')
