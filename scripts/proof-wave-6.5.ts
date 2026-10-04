@@ -61,9 +61,10 @@ try {
   const r1Thread = await threadIdByTitle(page, 'ask')
   await apiPost(page, `/api/threads/${r1Thread}/messages`, { text: 'WITHDRAWN-R1 use Mongo instead', images: [{ data: ICON, name: 'mongo.png' }] })
   const waiting = page.locator('.message.waiting')
-  await until('waiting message', async () => (await waiting.filter({ hasText: 'WITHDRAWN-R1' }).count()) === 1)
+  check('R1 a message with an image waits while the agent works', await until('waiting message', async () =>
+    (await waiting.filter({ hasText: 'WITHDRAWN-R1' }).count()) === 1))
   await waiting.filter({ hasText: 'WITHDRAWN-R1' }).getByRole('button', { name: 'Remove' }).click()
-  await until('taken back', async () => (await waiting.count()) === 0)
+  check('R1 Remove takes it back', await until('taken back', async () => (await waiting.count()) === 0))
   await messageBox(page).fill('')
   await until('turn over', async () => !(await working(page)), 20_000)
   await page.getByRole('button', { name: 'Agent settings' }).click()
@@ -79,6 +80,29 @@ try {
   check('R1 the handoff leaves out the message you took back', carried.includes('withdrawn no'), carried)
   check('R1 and the image you sent with it', carried.includes('attached images 0'), carried)
   await shot(page, 'r1-switched')
+
+  // R2: one ⌘S in a new workflow's document saves it once, with the text just typed.
+  const workflowPosts: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/workflows') workflowPosts.push(request.postData() ?? '')
+  })
+  await page.getByRole('tablist', { name: 'Sections' }).getByRole('tab', { name: /^Workflows/ }).click()
+  await page.getByRole('button', { name: 'New workflow' }).click()
+  await page.getByRole('textbox', { name: 'Reference name' }).fill('nightly')
+  const body = page.locator('.workflow-doc .ProseMirror')
+  await body.click()
+  await page.keyboard.type('Watch the nightly build')
+  await page.keyboard.press('Meta+s')
+  check('R2 the workflow appears in the list', await until('saved', async () => (await page.locator('.workflow-list').getByText('nightly').count()) > 0))
+  await page.waitForTimeout(800)
+  check('R2 one ⌘S sends one save', workflowPosts.length === 1, `${workflowPosts.length} saves`)
+  const saved = await page.evaluate(async (dir) => {
+    const list = (await (await fetch(`/api/workflows?projectPath=${encodeURIComponent(dir)}`)).json()) as { data: { name: string; prompt: string }[] }
+    return list.data.filter((w) => w.name === 'nightly').map((w) => w.prompt.trim())
+  }, project)
+  check('R2 it saves the text just typed', JSON.stringify(saved) === JSON.stringify(['Watch the nightly build']), JSON.stringify(saved))
+  check('R2 no "already exists" error', (await page.getByText('already exists').count()) === 0)
+  await shot(page, 'r2-saved')
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {

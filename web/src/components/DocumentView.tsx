@@ -217,6 +217,8 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
       }} onKeyUp={() => { if (mentions) trackMention() }} onKeyDown={(event) => {
         if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return
         event.preventDefault()
+        // This is the save; a ⌘S handler around the document must not save a second time.
+        event.stopPropagation()
         // Save exactly what is on screen, including edits the listener has not reported yet.
         const latest = current.current?.write()
         if (latest !== undefined) callbacks.current.onSave(latest)
