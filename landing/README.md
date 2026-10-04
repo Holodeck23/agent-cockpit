@@ -8,8 +8,9 @@ or any static host. The Mac download currently points to the published v0.1.4 pr
 
 The demo bundles **the actual React App, components and CSS from `web/src`**. It uses the
 real conversation list, transcript, approval card, composer, agent picker, Files,
-Workflows, Memory, recovery screen and preview chrome. The sample in Preview comes from
-`server/onboarding/sample.ts`, with copy adjusted to identify the browser simulation.
+Workflows, Memory, recovery screen and preview chrome. The Garden Notes app in Preview is
+a browser-only sample built for this tour. The installed app's first-run sample is
+separate. The project story, files and replies are synthetic.
 
 `demo/api.ts` replaces the API at build time. `demo/native.ts` replaces the native bridge.
 All fixtures and drafts are held in memory; reset or reload discards them. No provider,
@@ -19,7 +20,8 @@ The outer iframe permits forms so real React Save/Run submit handlers work; CSP 
 native form navigation. The sandbox is a UI containment aid, not the security boundary:
 trusted bundled code, local adapters, escaped text and no connected backend define scope.
 
-The visitor can approve or deny startup, use the launch counter, send sample messages,
+The visitor can approve or deny startup, mark a plant watered and filter the care list,
+send sample messages,
 switch agents, edit/save notes, run a workflow against the saved version, recover a recent
 conversation, add/edit memory, filter conversations and reset. Replies and checklist output
 are explicitly fixed simulations. Native Mac actions and scheduling require the app.
@@ -36,6 +38,7 @@ Escape closes it. The agent-team reference informed the guided actions and free 
 - Landing styles: `page.css`.
 - Shipped-feature directory: `features.json`, generated into the page by `build-demo.mjs`.
 - Guided walkthrough: `demo-tour.js`.
+- Browser-only Garden Notes app shown inside Preview: `demo/sample-app.html`.
 - Sample backend, native bridge and ephemeral storage: `demo/`.
 
 After editing source, regenerate the embedded UI/CSS/walkthrough:

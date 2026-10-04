@@ -27,12 +27,12 @@ const methods = {
   },
   removeProject: () => { state.projects[0] = { ...state.projects[0]!, hidden: true }; return { project: state.projects[0], pausedSchedules: 0 } },
   recentWork: () => ({ offerId: 'sample', agents: ['claude', 'codex', 'opencode'], warnings: [], git,
-    choices: [...state.threads.values()].map(t => ({ key: t.meta.id, sessionId: t.meta.id, agent: t.meta.settings.agent, title: t.meta.title, task: t.meta.id === 'theme' ? 'Now make it follow the system setting' : 'Check the layout on narrow screens', updatedAt: t.meta.createdAt, busy: false })) }),
+    choices: [...state.threads.values()].map(t => ({ key: t.meta.id, sessionId: t.meta.id, agent: t.meta.settings.agent, title: t.meta.title, task: t.meta.id === 'garden' ? 'Try the new watering view in the app' : 'Check the plant cards on a small screen', updatedAt: t.meta.createdAt, busy: false })) }),
   resumeWork: ({ key, agent }: any) => {
     const row = get(key); row.meta = { ...row.meta, settings: { ...row.meta.settings, agent } }
     requestStartup(key); state.director = false; tell('approval'); return row.meta
   },
-  startDirector: () => { requestStartup(); state.director = false; tell('approval'); return get('theme').meta },
+  startDirector: () => { requestStartup(); state.director = false; tell('approval'); return get('garden').meta },
   listThreads: () => [...state.threads.values()].map(t => {
     const last = t.events.map(e => e.event).filter(e => e.kind === 'assistant_text').at(-1)
     return { meta: t.meta, status: t.status, messageCount: t.events.filter(e => /^(user_text|assistant_text)$/.test(e.event.kind)).length, lastActivityAt: t.meta.updatedAt, preview: last?.text ?? '' }
@@ -45,19 +45,19 @@ const methods = {
       reply(id, 'Startup denied. Nothing started. Send “start the app” to request approval again.'); tell('denied')
     } else {
       processUpdate('running')
-      reply(id, 'The sample is open in Preview. Try Count a launch. Then edit notes.md or switch the agent below to continue in the same conversation.')
+      reply(id, 'Garden Notes is open in Preview. Mark Basil watered and see the progress change. Then edit the project brief in notes.md or carry this conversation to another agent.')
       previewListeners.forEach(fn => fn(SAMPLE_URL)); tell('preview')
     }
     return {}
   },
   send: (id: string, text: string) => {
-    if (/start|resume|preview/i.test(text)) { requestStartup(id); tell('approval'); return {} }
+    if (/start|resume|preview|open the app/i.test(text)) { requestStartup(id); tell('approval'); return {} }
     emit(id, { kind: 'user_text', text })
-    reply(id, 'Sample response: your message is now in this conversation. This demo does not call an AI model. Try “start the app”, edit notes.md in Files, or run Review the next step in Workflows.'); tell('message'); return {}
+    reply(id, 'Your message is part of this sample conversation. No AI model is connected here. In the Mac app, your selected agent would use it as context. Try the preview, edit notes.md, or run Review before sharing.'); tell('message'); return {}
   },
   createThread: ({ text, title, settings: choice }: any) => {
     const meta = createThread(title || text.slice(0, 64), text, { ...settings, ...choice })
-    reply(meta.id, 'Your sample conversation is ready. Try “start the app” to request the preview. No model is connected.'); return meta
+    reply(meta.id, 'Your sample conversation is ready. Ask to open the app to see the preview. No model is connected in this browser tour.'); return meta
   },
   switchAgent: (id: string, choice: any) => {
     const row = get(id), from = row.meta.settings.agent
@@ -98,8 +98,8 @@ const methods = {
     if (!w) throw new Error('This sample workflow is no longer available.')
     const meta = createThread(w.title || w.name, w.prompt, w.settings)
     // The copied file is a user message, so literal HTML/Markdown stays literal.
-    emit(meta.id, { kind: 'user_text', text: 'Saved notes used for this sample run:\n\n' + (state.files.get('notes.md') ?? '(No notes.md file)') })
-    reply(meta.id, 'Sample checklist (fixed, no model call):\n\n- Try the launch counter.\n- Check the layout on a narrow screen.\n- Record the next step in notes.md.')
+    emit(meta.id, { kind: 'user_text', text: 'Saved project brief used for this sample run:\n\n' + (state.files.get('notes.md') ?? '(No notes.md file)') })
+    reply(meta.id, 'Sample review (fixed, no model call):\n\n- Try the watering action and Needs water filter.\n- Check the cards on a narrow screen.\n- Confirm the next step in notes.md before sharing.')
     w.lastThreadId = meta.id; w.lastRunAt = now(); tell('workflow'); return meta
   },
   archiveWorkflow: (id: string) => { const w = state.workflows.find(w => w.id === id); if (!w) throw new Error('Workflow not found.'); w.archived = true; return w },
@@ -112,7 +112,7 @@ const methods = {
   listProcesses: () => state.processes,
   stopProcess: () => processUpdate('exited'),
   restartProcess: () => processUpdate('running'),
-  readProcess: (_id: string, options: { since?: number }) => ({ process: state.processes[0], lines: options.since ? [] : [{ seq: 1, stream: 'stdout', text: 'Sample log: dev server ready. Local: http://127.0.0.1:5173/', ts: now() }], next: 1, dropped: 0 }),
+  readProcess: (_id: string, options: { since?: number }) => ({ process: state.processes[0], lines: options.since ? [] : [{ seq: 1, stream: 'stdout', text: 'Garden Notes sample ready. Local: http://127.0.0.1:5173/', ts: now() }], next: 1, dropped: 0 }),
   remoteStatus: () => remote,
   setRemote: () => { throw new Error(remote.problem) },
   presets: () => state.presets,

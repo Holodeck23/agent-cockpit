@@ -5,10 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = resolve(here, '..')
-const sampleSource = await readFile(resolve(repo, 'server/onboarding/sample.ts'), 'utf8')
-const sample = sampleSource.match(/const html = '([^\n]+)';/)[1]
-  .replace('A real app, running on your Mac.', 'A sample app, running in this browser.')
-  .replace('Your agent can open it, inspect it, and help you change it.', 'In Cockpit, your agent opens the real app here. Try the counter.')
+const sample = await readFile(resolve(here, 'demo/sample-app.html'), 'utf8')
 const result = await build({
   entryPoints: [resolve(here, 'demo/entry.tsx')], bundle: true, write: false, outdir: 'out', minify: true,
   jsx: 'automatic', format: 'iife', target: ['chrome120', 'safari17'], legalComments: 'inline',

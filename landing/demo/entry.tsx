@@ -36,16 +36,21 @@ window.addEventListener('message', event => {
   if (state.director) { tell('native', 'Open the sample project and resume first, or choose Reset demo.'); return }
   const tab = [...document.querySelectorAll<HTMLButtonElement>('.subnav-item')].find(t => t.textContent?.trim() === action)
   tab?.click()
-  if (action === 'Conversations') threadListeners.forEach(fn => fn('theme'))
+  if (action === 'Conversations') threadListeners.forEach(fn => fn('garden'))
 })
 // Explain simulation boundaries at the point of use, without changing production components.
 const observer = new MutationObserver(() => {
   const area = document.querySelector<HTMLTextAreaElement>('.composer textarea')
-  if (area) area.placeholder = 'Try “start the app”, or leave a sample message…'
+  if (area) area.placeholder = 'Ask a follow-up or try “open the app”…'
 })
 observer.observe(document.getElementById('root')!, { subtree: true, childList: true })
 tell('ready')
 window.addEventListener('keydown', event => { if (event.key === 'Escape') tell('escape') })
+window.addEventListener('message', event => {
+  const sampleFrame = document.querySelector<HTMLIFrameElement>('.preview-pane iframe')
+  if (event.source !== sampleFrame?.contentWindow || event.data?.source !== 'garden-notes-demo') return
+  if (event.data.kind === 'watered' && typeof event.data.plant === 'string') tell('plant-watered', event.data.plant)
+})
 document.addEventListener('click', event => {
   const tab = (event.target as Element).closest('.subnav-item')
   if (innerWidth <= 760 && tab && tab.textContent?.trim() !== 'Conversations') {

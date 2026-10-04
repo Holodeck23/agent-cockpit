@@ -15,7 +15,7 @@ export const native = {
   onPreviewOpen: (fn: (url: string) => void) => { previewListeners.add(fn); return () => { previewListeners.delete(fn) } },
   onOpenThread: (fn: (id: string) => void) => {
     threadListeners.add(fn)
-    const timer = setTimeout(() => { if (!state.director && state.threads.has('theme')) fn('theme') }, 150)
+    const timer = setTimeout(() => { if (!state.director && state.threads.has('garden')) fn('garden') }, 150)
     return () => { clearTimeout(timer); threadListeners.delete(fn) }
   },
 }
