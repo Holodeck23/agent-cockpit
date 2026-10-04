@@ -85,11 +85,11 @@ try {
   check('the approval card arrives over the event stream', await until('card', async () => (await card.count()) === 1))
   check('the event stream itself is served to the window', statuses.get('stream') === 200, `status ${statuses.get('stream')}`)
   const threadId = await page.evaluate(async () => {
-    const list = (await (await fetch('/api/threads')).json()) as { data: { id: string; title: string }[] }
-    return list.data.find((t) => t.title.startsWith('Run the two steps'))?.id ?? ''
+    const list = (await (await fetch('/api/threads')).json()) as { data: { meta: { id: string; title: string } }[] }
+    return list.data.find((t) => t.meta.title.startsWith('Run the two steps'))?.meta.id ?? ''
   })
-  const fromPage = await page.evaluate(async (id) => (await (await fetch(`/api/threads/${id}/events`)).json()) as { data: { events: { kind: string; requestId?: string }[] } }, threadId)
-  const approvalId = fromPage.data.events.find((e) => e.kind === 'approval_request')?.requestId ?? ''
+  const fromPage = await page.evaluate(async (id) => (await (await fetch(`/api/threads/${id}/events`)).json()) as { data: { events: { event: { kind: string; requestId?: string } }[] } }, threadId)
+  const approvalId = fromPage.data.events.find((e) => e.event.kind === 'approval_request')?.event.requestId ?? ''
   check('the window reads the conversation and its approval id', approvalId.length > 0)
 
   // Another program on the Mac: forged Host and Origin, valid ids.
@@ -129,8 +129,14 @@ try {
   await openPreview(devUrl)
   const frame = page.frameLocator('.preview-pane iframe')
   await frame.getByText('Preview page').waitFor()
-  await until('iframe probes', async () => statuses.has('iframe-img') && statuses.has('iframe-nocors'))
-  check(label('a conversation image asked for by a preview page'), blocked(statuses.get('iframe-img')), `status ${statuses.get('iframe-img')}`)
+  await until('iframe probe', async () => statuses.has('iframe-nocors'))
+  // A refused image never shows as a response (the browser blocks the JSON error body), so look at
+  // what the preview page got: pixels, or none.
+  const devFrame = page.frames().find((f) => f.url() === devUrl)
+  const settled = devFrame ? await until('probe image settled', () => devFrame.evaluate(() => (document.getElementById('probe') as HTMLImageElement).complete)) : false
+  const pixels = settled && devFrame ? await devFrame.evaluate(() => (document.getElementById('probe') as HTMLImageElement).naturalWidth) : -1
+  check(control ? 'CONTROL (build without the key): a preview page shows a conversation image' : 'a preview page cannot show a conversation image',
+    control ? pixels > 0 : pixels === 0, `naturalWidth ${pixels}`)
   check(label('an API read by a preview page'), blocked(statuses.get('iframe-nocors')), `status ${statuses.get('iframe-nocors')}`)
   await shot(page, 'preview-other-port')
   await openPreview(`http://127.0.0.1:${cockpitPort}/?probe=iframe-self`)
