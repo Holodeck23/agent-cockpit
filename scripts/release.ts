@@ -2,8 +2,9 @@
 // can be re-run after a failure without repeating the ones before it.
 //
 //   npm run release -- prepare 0.1.4   bump package.json + release links; list prose to rewrite
-//   npm run release -- build 0.1.4     verify, landing checks, package to release/v0.1.4,
-//                                      SHA256SUMS, isolated install check, installed-copy proofs
+//   npm run release -- build 0.1.4     verify, landing checks, proofs on a proof build of this commit,
+//                                      package to release/v0.1.4, SHA256SUMS, isolated install check,
+//                                      installed copy: debug flags refused, window-only API
 //   npm run release -- publish 0.1.4 --notes notes.md   GitHub prerelease from a pushed main
 //   npm run release -- deploy 0.1.4    Vercel landing deploy, live page check, live update feed
 //
@@ -44,6 +45,10 @@ const DMG = join(OUT, `Cockpit-${version}-arm64.dmg`)
 const SUMS = join(OUT, 'SHA256SUMS')
 const EVIDENCE = resolve(flag('evidence') ?? join(OUT, 'evidence'))
 const INSTALLED = join(OUT, 'installed', 'Cockpit.app')
+const PROOF_APP = join(OUT, 'proof', 'mac-arm64', 'Cockpit.app')
+// Node ignores --inspect and NODE_OPTIONS in the release app. RunAsNode stays on: each agent's
+// cockpit MCP server runs on the app's own binary with ELECTRON_RUN_AS_NODE (electron/main.ts).
+const RELEASE_FUSES = ['-c.electronFuses.enableNodeCliInspectArguments=false', '-c.electronFuses.enableNodeOptionsEnvironmentVariable=false']
 
 const git = (...args: string[]): string => {
   const result = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' })
@@ -117,7 +122,17 @@ async function build(): Promise<void> {
   for (const entry of existsSync(OUT) ? readdirSync(OUT) : []) {
     if (join(OUT, entry) !== EVIDENCE) rmSync(join(OUT, entry), { recursive: true, force: true })
   }
-  await run('package.log', 'npx', ['electron-builder', '--mac', '--arm64', `-c.directories.output=release/v${version}`])
+  // The release build refuses debuggers (electron/debug-flags.ts), and Playwright drives the app
+  // through one, so the Playwright proofs run on a proof build of the same commit, made first.
+  await run('package-proof.log', 'npx', ['electron-builder', '--mac', 'dir', '--arm64', `-c.directories.output=release/v${version}/proof`])
+  const proofEnv = (name: string) => ({ COCKPIT_APP: PROOF_APP, COCKPIT_PROOF_DIR: join(EVIDENCE, name) })
+  await run('proof-startup.log', 'npx', ['tsx', 'scripts/proof-startup.ts'], proofEnv('proof-startup'))
+  await run('proof-recovery.log', 'npx', ['tsx', 'scripts/proof-recovery.ts'], proofEnv('proof-recovery'))
+  await run('proof-recovery-legacy.log', 'npx', ['tsx', 'scripts/proof-recovery.ts', '--legacy'], proofEnv('proof-recovery-legacy'))
+  await run('proof-window-key.log', 'npx', ['tsx', 'scripts/proof-window-key.ts'], proofEnv('proof-window-key'))
+
+  await run('build-electron-release.log', 'npm', ['run', 'build:electron'], { COCKPIT_RELEASE_BUILD: '1' })
+  await run('package.log', 'npx', ['electron-builder', '--mac', '--arm64', `-c.directories.output=release/v${version}`, ...RELEASE_FUSES])
   if (!existsSync(DMG)) fail(`electron-builder did not produce ${DMG}`)
   const dmgSha = sha256(DMG)
   writeFileSync(SUMS, `${dmgSha}  Cockpit-${version}-arm64.dmg\n`)
@@ -128,11 +143,7 @@ async function build(): Promise<void> {
     fail(`install check failed: ${JSON.stringify(verification)}`)
   }
   console.log(`install check: v${verification.version}, signature ok, app.asar matches the packaged build`)
-
-  const proofEnv = (name: string) => ({ COCKPIT_APP: INSTALLED, COCKPIT_PROOF_DIR: join(EVIDENCE, name) })
-  await run('proof-startup-installed.log', 'npx', ['tsx', 'scripts/proof-startup.ts'], proofEnv('proof-startup-installed'))
-  await run('proof-recovery-installed.log', 'npx', ['tsx', 'scripts/proof-recovery.ts'], proofEnv('proof-recovery-installed'))
-  await run('proof-recovery-legacy-installed.log', 'npx', ['tsx', 'scripts/proof-recovery.ts', '--legacy'], proofEnv('proof-recovery-legacy-installed'))
+  await run('installed-lockdown.log', 'npx', ['tsx', 'scripts/check-release-lockdown.ts', INSTALLED])
 
   const bytes = readFileSync(DMG).length
   const landing = readFileSync(LANDING, 'utf8')

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
@@ -14,6 +14,8 @@ import { placeWindow, readWindowState, writeWindowState } from './window-state.t
 import { assertLocalUrl } from '../server/http/mcp-routes.ts'
 import { HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
+import { createWindowKey, installWindowKey } from './window-key.ts'
+import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -33,6 +35,12 @@ let mainWindow: BrowserWindow | undefined
 let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
 const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init) })
+
+// A released app will not run under a debugger (electron/debug-flags.ts).
+if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
+  console.error(`Cockpit does not start with ${debugSwitches(process.argv).join(' ')}.`)
+  process.exit(1)
+}
 
 // A separate state folder is a separate cockpit: give it its own Electron profile, so
 // the single-instance lock (and window state) never collide with the installed app.
@@ -55,6 +63,7 @@ if (!app.requestSingleInstanceLock()) {
 
 async function boot(): Promise<void> {
   const portFile = join(defaultRoot(), 'app-port')
+  const windowKey = createWindowKey()
   running = await startServer({
     port: 0,
     preferredPort: readAppPort(portFile),
@@ -68,7 +77,10 @@ async function boot(): Promise<void> {
     },
     openUrl: showPreview,
     capturePreview,
+    windowKey,
   })
+  // Before the window loads, so its very first API call carries the key.
+  installWindowKey(session.defaultSession, new URL(running.url).origin, windowKey, () => mainWindow)
   writeAppPort(portFile, running.port)
   // The Dock icon follows Cockpit's appearance (System, Light or Dark).
   dock?.setDark(nativeTheme.shouldUseDarkColors)

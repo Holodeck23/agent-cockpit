@@ -47,6 +47,11 @@ export interface StartOptions {
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
   /** How agent CLIs are checked for the picker; a fake in tests. */
   readonly agentProbe?: VersionProbe
+  /**
+   * The desktop app's per-launch key: every desktop /api request must carry it (guard.ts).
+   * Without it, any local process can use the API, which only `npm start` should allow.
+   */
+  readonly windowKey?: string
 }
 
 function openWithSystem(url: string): Promise<void> {
@@ -167,7 +172,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, presets, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true) } },
-  [port, ...(options.trustedPorts ?? [])])
+  [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {

@@ -15,6 +15,7 @@ const running = await startServer({
   ...(existsSync(mcpScript) ? { mcp: { command: process.execPath, args: [mcpScript] } } : {}),
 })
 console.log(`[cockpit] ${running.url}  (threads in ${running.store.root})`)
+console.warn('[cockpit] development server: any program on this Mac can use its API. The desktop app locks the API to its own window.')
 
 const stop = (): void => {
   void running.close().finally(() => process.exit(0))
