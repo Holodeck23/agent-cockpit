@@ -123,6 +123,7 @@ export interface ManagerOptions {
 
 interface Live {
   readonly pending: Map<string, PendingApproval>
+  readonly questions: Map<string, { readonly request: PendingApproval; readonly ids: ReadonlySet<string> }>
   readonly session: AgentSession
   turnRunning: boolean
   stopRequested: boolean
@@ -142,6 +143,8 @@ export interface ThreadManager {
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
   send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
+  /** Answers the agent's open questions (J6), or with undefined closes them unanswered. */
+  answerQuestion(threadId: string, requestId: string, answers: Readonly<Record<string, string>> | undefined): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
   /** Clears the question or blocker the last turn ended with, without replying. */
@@ -213,6 +216,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     }
     if (entry && event.kind === 'result') {
       entry.pending.clear()
+      entry.questions.clear()
       entry.turnRunning = false
       entry.stopRequested = false
       entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
@@ -231,6 +235,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const generation = Symbol()
     generations.set(meta.id, generation)
     const pending = new Map<string, PendingApproval>()
+    const questions: Live['questions'] = new Map()
     const requestIds = new Map<string, string>()
     record(meta.id, { kind: 'session_boundary' })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
@@ -252,6 +257,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         requestIds.set(event.requestId, publicId)
         pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
         record(meta.id, { ...event, requestId: publicId })
+      } else if (event.kind === 'question') {
+        const publicId = randomUUID()
+        requestIds.set(event.requestId, publicId)
+        // Claude echoes its tool input back with the answers; this is that input, field for field.
+        const input = { questions: event.questions.map(({ question, header, options, multiSelect }) => ({ question, header, options, multiSelect })) }
+        questions.set(publicId, { request: { requestId: event.requestId, input, suggestions: [] }, ids: new Set(event.questions.map((q) => q.id)) })
+        record(meta.id, { ...event, requestId: publicId })
+      } else if (event.kind === 'question_answered') {
+        const publicId = requestIds.get(event.requestId)
+        if (!publicId) return
+        questions.delete(publicId)
+        requestIds.delete(event.requestId)
+        record(meta.id, { ...event, requestId: publicId })
       } else if (event.kind === 'approval_resolved') {
         const publicId = requestIds.get(event.requestId)
         if (!publicId) return
@@ -261,6 +279,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       } else {
         if (event.kind === 'result' || event.kind === 'exit') {
           pending.clear()
+          questions.clear()
           requestIds.clear()
         }
         record(meta.id, event)
@@ -278,7 +297,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, questions, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -339,6 +358,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!request || !entry.turnRunning) throw new Error('Unknown or expired approval request')
       entry.pending.delete(requestId)
       entry.session.respondApproval(request, behavior)
+    },
+    answerQuestion(threadId, requestId, answers) {
+      const entry = live.get(threadId)
+      if (!entry?.session.alive()) throw new Error('These questions belong to a session that has ended')
+      const open = entry.questions.get(requestId)
+      if (!open || !entry.turnRunning || !entry.session.respondQuestion) throw new Error('Unknown or expired questions')
+      // Only answers to the questions asked, so a stale or forged key never reaches the agent.
+      const kept = answers ? Object.fromEntries(Object.entries(answers).filter(([id, value]) => open.ids.has(id) && value.trim().length > 0)) : undefined
+      entry.questions.delete(requestId)
+      entry.session.respondQuestion(open.request, kept && Object.keys(kept).length > 0 ? kept : undefined)
     },
     interrupt(threadId) {
       hostActions.cancel(threadId)

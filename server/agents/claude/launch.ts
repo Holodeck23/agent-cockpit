@@ -52,6 +52,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
       else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
+    respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
     interrupt() {
       if (session) session.interrupt()
       else { finish(undefined, true); controller.abort() }
@@ -125,6 +126,14 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
             }
       write({ type: 'control_response', response: { subtype: 'success', request_id: approval.requestId, response } })
       onEvent({ kind: 'approval_resolved', requestId: approval.requestId, behavior })
+    },
+    respondQuestion(question: PendingApproval, answers: Readonly<Record<string, string>> | undefined) {
+      // AskUserQuestion reads the answers from its own input, keyed by question text.
+      const response = answers
+        ? { behavior: 'allow', updatedInput: { ...(question.input as object), answers } }
+        : { behavior: 'deny', message: 'The user closed the questions without answering. Carry on without the answers, or ask in your reply.' }
+      write({ type: 'control_response', response: { subtype: 'success', request_id: question.requestId, response } })
+      onEvent({ kind: 'question_answered', requestId: question.requestId, answers: answers ?? {}, ...(answers ? {} : { dismissed: true }) })
     },
     interrupt() {
       write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })

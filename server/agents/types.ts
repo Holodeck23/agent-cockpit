@@ -18,6 +18,16 @@ export interface WorkflowSnapshot {
   readonly prompt: string
 }
 
+/** One question an agent asks with fixed choices (Claude AskUserQuestion, Codex request_user_input). */
+export interface AgentQuestion {
+  /** The answer key: Claude keys answers by the question text, Codex by an id. */
+  readonly id: string
+  readonly question: string
+  readonly header: string
+  readonly options: readonly { readonly label: string; readonly description?: string }[]
+  readonly multiSelect: boolean
+}
+
 export type NormalizedEvent =
   | { kind: 'session_boundary' }
   | { kind: 'delegation_started'; requestKey: string }
@@ -32,10 +42,27 @@ export type NormalizedEvent =
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
   | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[] }
+  /** The agent took a message you sent while it was working (it had been waiting in line until now). */
+  | { kind: 'user_taken'; text: string }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }
   | { kind: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+  /** The agent is summarising earlier context to make room (started), or has finished doing so. */
+  | { kind: 'compaction'; phase: 'started' | 'finished'; ok?: boolean; trigger?: string; preTokens?: number; postTokens?: number }
+  /**
+   * A helper agent, keyed by the tool call that started it. Its own words and tool calls arrive as
+   * progress (`text`, `tool`), never as the main agent's messages, so nothing reads them as the reply.
+   */
+  | {
+      kind: 'subagent'; id: string; phase: 'started' | 'progress' | 'finished'
+      description?: string; status?: string; lastTool?: string; text?: string; tool?: { name: string; input: unknown }
+    }
+  | { kind: 'question'; requestId: string; questions: readonly AgentQuestion[] }
+  /** Answers keyed by question id; `dismissed` when you closed the questions without answering. */
+  | { kind: 'question_answered'; requestId: string; answers: Readonly<Record<string, string>>; dismissed?: boolean }
+  /** A predicted next message the agent offers as a one-click follow-up. */
+  | { kind: 'suggestion'; text: string }
   | {
       kind: 'approval_request'
       requestId: string
@@ -58,6 +85,8 @@ export interface AgentSession {
   /** Delivers a turn to the agent. The thread manager records the user's own message. */
   send(text: string): void
   respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
+  /** Answers (or, with undefined, dismisses) a `question` event; absent where the agent cannot ask. */
+  respondQuestion?(question: PendingApproval, answers: Readonly<Record<string, string>> | undefined): void
   interrupt(): void
   /** Stdin EOF, escalating to SIGTERM/SIGKILL if the agent hangs on; resolves once it has exited. */
   close(): Promise<void>

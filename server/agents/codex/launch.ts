@@ -3,8 +3,8 @@ import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
-import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
-import { parseCodexNotification } from './parse.ts'
+import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
+import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
 
 export const codexLaunchSchema = z.object({
@@ -41,6 +41,25 @@ export function codexPolicy(mode: (typeof PERMISSION_MODES)[number]): Policy {
 }
 
 const ELICITATION_METHOD = 'mcpServer/elicitation/request'
+/** Codex's (experimental) questions with fixed choices. */
+const QUESTION_METHOD = 'item/tool/requestUserInput'
+
+const userInputSchema = z.object({
+  questions: z.array(z.looseObject({
+    id: z.string(), question: z.string(), header: z.string(),
+    options: z.array(z.looseObject({ label: z.string(), description: z.string().optional() })).nullable().optional(),
+  })).min(1),
+})
+
+/** request_user_input as questions; Codex takes one answer per question id. */
+export function codexQuestions(params: unknown): AgentQuestion[] | undefined {
+  const parsed = userInputSchema.safeParse(params)
+  if (!parsed.success) return undefined
+  return parsed.data.questions.map((q) => ({
+    id: q.id, question: q.question, header: q.header, multiSelect: false,
+    options: (q.options ?? []).map((o) => ({ label: o.label, ...(o.description ? { description: o.description } : {}) })),
+  }))
+}
 const APPROVAL_METHODS = new Set([
   'item/commandExecution/requestApproval',
   'item/fileChange/requestApproval',
@@ -82,6 +101,9 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   let exited = false
   let threadId: string | undefined
   let currentTurnId: string | undefined
+  const stream = createCodexStreamState()
+  // Helper threads' running turns, so Stop stops the helpers too (J7).
+  const childTurns = new Map<string, string>()
   const queued: string[] = []
   // Approval request id (as a string) -> JSON-RPC id to reply to.
   const approvalIds = new Map<string, number | string>()
@@ -90,14 +112,25 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
 
   const rpc = createRpcClient(child, {
     onNotification(method, params) {
+      const p = params as { threadId?: unknown; turn?: { id?: string } } | undefined
+      const helper = typeof p?.threadId === 'string' && threadId !== undefined && p.threadId !== threadId ? p.threadId : undefined
       if (method === 'turn/started') {
-        const turn = (params as { turn?: { id?: string } } | undefined)?.turn
-        currentTurnId = turn?.id
+        if (helper) { if (p?.turn?.id) childTurns.set(helper, p.turn.id) } else currentTurnId = p?.turn?.id
       }
-      if (method === 'turn/completed') currentTurnId = undefined
-      for (const event of parseCodexNotification(method, params)) onEvent(event)
+      if (method === 'turn/completed') {
+        if (helper) childTurns.delete(helper)
+        else currentTurnId = undefined
+      }
+      for (const event of parseCodexNotification(method, params, stream)) onEvent(event)
     },
     onServerRequest(request) {
+      const questions = request.method === QUESTION_METHOD ? codexQuestions(request.params) : undefined
+      if (questions) {
+        const requestId = String(request.id)
+        approvalIds.set(requestId, request.id)
+        onEvent({ kind: 'question', requestId, questions })
+        return
+      }
       if (!APPROVAL_METHODS.has(request.method)) {
         // Unsupported interactive requests are declined rather than left hanging.
         rpc.respond(request.id, { decision: 'decline' })
@@ -145,6 +178,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
             ...(opts.developerInstructions ? { developerInstructions: opts.developerInstructions } : {}),
           })
       threadId = response.thread.id
+      stream.mainThreadId = threadId
       onEvent({ kind: 'session', sessionId: threadId })
       for (const text of queued.splice(0)) startTurn(text)
     } catch (error: unknown) {
@@ -187,9 +221,19 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       }
       onEvent({ kind: 'approval_resolved', requestId: approval.requestId, behavior })
     },
+    respondQuestion(question: PendingApproval, answers: Readonly<Record<string, string>> | undefined) {
+      const rpcId = approvalIds.get(question.requestId)
+      if (rpcId === undefined) return
+      approvalIds.delete(question.requestId)
+      rpc.respond(rpcId, { answers: Object.fromEntries(Object.entries(answers ?? {}).map(([id, answer]) => [id, { answers: [answer] }])) })
+      onEvent({ kind: 'question_answered', requestId: question.requestId, answers: answers ?? {}, ...(answers ? {} : { dismissed: true }) })
+    },
     interrupt() {
       if (threadId && currentTurnId) {
         rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
+      }
+      for (const [helper, turnId] of childTurns) {
+        rpc.request('turn/interrupt', { threadId: helper, turnId }).catch(() => undefined)
       }
     },
     close: () => stopChild(child, () => !exited),

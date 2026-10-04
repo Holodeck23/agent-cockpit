@@ -60,3 +60,72 @@ describe('parseClaudeLine robustness', () => {
     expect(event?.kind).toBe('error')
   })
 })
+
+describe('parseClaudeLine on a real question, sub-agent and compaction session (Claude 2.1.289)', () => {
+  const events = parseFixture('claude-turn-question-subagent-compact.jsonl')
+
+  it('turns AskUserQuestion into a question with its options, not an approval', () => {
+    const question = events.find((e) => e.kind === 'question')
+    expect(question).toMatchObject({
+      kind: 'question',
+      questions: [{ id: 'Which colour do you prefer?', header: 'Color preference', multiSelect: false,
+        options: [{ label: 'Red', description: 'A warm, bold colour' }, { label: 'Blue', description: 'A cool, calm colour' }] }],
+    })
+    expect(events.some((e) => e.kind === 'approval_request')).toBe(false)
+  })
+
+  it('reports each message you sent at the moment Claude takes it', () => {
+    const taken = events.flatMap((e) => (e.kind === 'user_taken' ? [e.text] : []))
+    expect(taken).toHaveLength(2)
+    expect(taken[0]).toMatch(/^Use the AskUserQuestion tool/)
+    // The "Compacted" echo of /compact is the CLI's own output, not your message.
+    expect(taken.some((t) => t.includes('local-command'))).toBe(false)
+  })
+
+  it('follows the sub-agent from start to finish, keyed by the tool call that started it', () => {
+    const sub = events.filter((e) => e.kind === 'subagent' && !e.text && !e.tool)
+    expect(sub.map((e) => e.kind === 'subagent' && e.phase)).toEqual(['started', 'progress', 'finished'])
+    expect(sub[0]).toMatchObject({ id: 'toolu_01JSTmvfu3LaG9RffEsKuk93', description: 'Count lines in notes.txt' })
+    expect(sub[1]).toMatchObject({ lastTool: 'Read' })
+    expect(sub[2]).toMatchObject({ status: 'completed' })
+  })
+
+  it("reports the sub-agent's own tool calls and words as its progress, never as the main agent's", () => {
+    const progress = events.filter((e) => e.kind === 'subagent' && e.phase === 'progress' && (e.text || e.tool))
+    expect(progress).toEqual([
+      { kind: 'subagent', id: 'toolu_01JSTmvfu3LaG9RffEsKuk93', phase: 'progress', tool: { name: 'Read', input: { file_path: '/tmp/fixture/notes.txt' } } },
+      { kind: 'subagent', id: 'toolu_01JSTmvfu3LaG9RffEsKuk93', phase: 'progress', text: '4' },
+    ])
+    expect(events.filter((e) => e.kind === 'tool_result').map((e) => e.kind === 'tool_result' && e.toolUseId))
+      .not.toContain('toolu_018mYgEmH6Zru9cameHyafd8')
+    const mainText = events.flatMap((e) => (e.kind === 'assistant_text' ? [e.text] : []))
+    expect(mainText).toEqual(['You chose Red.', expect.stringMatching(/^Agent is running/), '4'])
+  })
+
+  it('reports compaction as started, then finished with the sizes', () => {
+    const compaction = events.filter((e) => e.kind === 'compaction')
+    expect(compaction).toEqual([
+      { kind: 'compaction', phase: 'started' },
+      { kind: 'compaction', phase: 'finished', ok: true, trigger: 'manual', preTokens: 34052, postTokens: 2775 },
+    ])
+  })
+})
+
+describe('parseClaudeLine on shapes this account does not receive', () => {
+  it('reads a prompt suggestion (shape from the CLI source; behind a server-side flag)', () => {
+    expect(parseClaudeLine(JSON.stringify({ type: 'prompt_suggestion', suggestion: ' Run the tests ', uuid: 'u', session_id: 's' })))
+      .toEqual([{ kind: 'suggestion', text: 'Run the tests' }])
+    expect(parseClaudeLine(JSON.stringify({ type: 'prompt_suggestion', suggestion: '  ' }))).toEqual([])
+  })
+
+  it('reports a failed compaction', () => {
+    expect(parseClaudeLine(JSON.stringify({ type: 'system', subtype: 'status', status: null, compact_result: 'failed' })))
+      .toEqual([{ kind: 'compaction', phase: 'finished', ok: false }])
+  })
+
+  it('keeps an AskUserQuestion it cannot read as an ordinary approval', () => {
+    const [event] = parseClaudeLine(JSON.stringify({ type: 'control_request', request_id: 'r1',
+      request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: { questions: [] } } }))
+    expect(event).toMatchObject({ kind: 'approval_request', toolName: 'AskUserQuestion' })
+  })
+})
