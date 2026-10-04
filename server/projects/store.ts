@@ -9,6 +9,7 @@ export const PROJECT_COLORS = ['blue', 'pink', 'orange', 'green', 'purple', 'gra
 export type ProjectColor = (typeof PROJECT_COLORS)[number]
 /** Enough for real guidance, small enough to stay a fraction of any agent's context. */
 export const MAX_INSTRUCTIONS_CHARS = 8000
+export const MAX_PINNED_FILES = 20
 
 const projectSchema = z.object({
   path: z.string().min(1),
@@ -26,6 +27,8 @@ const projectSchema = z.object({
   image: z.string().regex(/^[a-f0-9]{16}-\d+\.(png|jpg|gif|webp)$/).optional(),
   /** Removed from Cockpit: off the tabs and the menu, folder and conversations untouched. Opening it again brings it back. */
   hidden: z.boolean().optional(),
+  /** Project files pinned to the navigation, as paths relative to the folder, in pin order. */
+  pinnedFiles: z.array(z.string().min(1).max(1000)).max(MAX_PINNED_FILES).optional(),
 })
 export type Project = z.output<typeof projectSchema>
 
@@ -49,6 +52,15 @@ export interface ProjectStore {
   setImage(path: string, image: string | undefined): Project
   /** Takes a project off the tabs and the menu. Never touches the folder. */
   hide(path: string): Project
+  /** Replaces the project's pinned files (relative paths, kept in order); doesn't count as opening it. */
+  setPinnedFiles(path: string, files: readonly string[]): Project
+}
+
+/** A pinned file must be a plain path inside the project: no absolute paths, no "..". */
+function pinnablePath(file: string): string {
+  const parts = file.replace(/\\/g, '/').split('/')
+  if (isAbsolute(file) || parts.some((p) => p === '..' || p === '')) throw new Error(`Pin files inside the project: ${file}`)
+  return parts.join('/')
 }
 
 /** Stable colour per folder, so a project keeps its colour before anyone picks one. */
@@ -128,6 +140,15 @@ export function createProjectStore(root: string): ProjectStore {
       const existing = current.find((p) => p.path === path && !p.hidden)
       if (!existing) throw new Error('Unknown project')
       const next = projectSchema.parse({ ...existing, image })
+      write(current.map((p) => (p.path === path ? next : p)))
+      return next
+    },
+    setPinnedFiles(path, files) {
+      const current = read()
+      const existing = current.find((p) => p.path === path && !p.hidden)
+      if (!existing) throw new Error('Unknown project')
+      const unique = [...new Set(files.map(pinnablePath))].slice(0, MAX_PINNED_FILES)
+      const next = projectSchema.parse({ ...existing, pinnedFiles: unique.length > 0 ? unique : undefined })
       write(current.map((p) => (p.path === path ? next : p)))
       return next
     },

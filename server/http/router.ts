@@ -342,6 +342,15 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           return true
         }
       }
+      // Project files pinned to the navigation.
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'pins' && method === 'POST') {
+        if (viaPhone) throw new HttpError(403, 'Pins can only be changed on the Mac')
+        const body = parseBody(z.object({ path: z.string().min(1).max(1000), files: z.array(z.string().min(1).max(1000)).max(100) }), await readJson(req))
+        if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
+        try { sendJson(res, 200, { data: projects.setPinnedFiles(body.path, body.files) }) }
+        catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
+      }
       // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'remove' && method === 'POST') {
         const { path } = parseBody(z.object({ path: z.string().min(1).max(1000) }), await readJson(req))

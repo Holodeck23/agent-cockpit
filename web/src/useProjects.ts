@@ -32,6 +32,8 @@ export interface Projects {
   setImage(project: Project, image: string | null): Promise<Project>
   /** Takes the project off the tabs and the menu; the folder is never touched. Resolves to the schedules paused. */
   remove(project: Project): Promise<number>
+  /** Replaces the project's files pinned to the navigation; errors go to the toast. */
+  setPinnedFiles(project: Project, files: readonly string[]): Promise<void>
 }
 
 function loadActive(): string | undefined {
@@ -132,6 +134,15 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     return pausedSchedules
   }
 
+  const setPinnedFiles = async (project: Project, files: readonly string[]): Promise<void> => {
+    try {
+      await api.setPinnedFiles(project.path, files)
+      await refresh()
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   return {
     refresh,
     all,
@@ -146,5 +157,6 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     saveSettings,
     setImage,
     remove,
+    setPinnedFiles,
   }
 }

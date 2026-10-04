@@ -6,7 +6,8 @@
 .file-location { display: flex; align-items: center; gap: 12px; margin: 24px 0 12px; overflow-wrap: anywhere; }
 .file-location button { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); padding: 7px 10px; flex: none; }
 .file-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--body); }
-.file-row span:first-of-type { overflow-wrap: anywhere; flex: 1; }
+.file-row > span:first-of-type { overflow-wrap: anywhere; flex: 1; }
+.file-location[hidden] { display: none; }
 .file-row:hover { background: var(--field); }
 .file-row.selected { background: var(--project-soft); border-color: var(--halo); }
 .file-preview { min-width: 0; overflow: auto; background: var(--content); padding: 30px; }
@@ -67,7 +68,7 @@
 .file-rename .button-soft { padding: 5px 10px; font-size: 12.5px; }
 .file-rename .button-soft { margin-left: 4px; }
 .file-rename input.file-rename-ext { flex: 0 0 56px; }
-.file-rename .file-rename-dot { flex: none; color: var(--muted); }
+.file-row.file-rename .file-rename-dot { flex: none; color: var(--muted); }
 .file-confirm { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: min(300px, 90vw); padding: 12px; border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--panel); font-size: 13px; line-height: 1.5; box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
 .file-confirm button { justify-self: end; }
 /* The menu and the name box hang from the whole location row, so they never run off a narrow sidebar. */

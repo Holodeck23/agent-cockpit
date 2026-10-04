@@ -85,7 +85,8 @@ try {
   check('F4 Back works after Home', await until('back again', async () => (await where.innerText()) === 'src'))
 
   // F2: rename with the name and extension apart.
-  const row = (name: string) => explorer.locator('.file-row-wrap').filter({ has: page.locator('.file-row', { hasText: new RegExp(`^${name.replace('.', '\\.')}$`) }) })
+  // By the name's own element: a pinned row's text also holds the pin icon's title.
+  const row = (name: string) => explorer.locator('.file-row-wrap').filter({ has: page.locator('.file-row > span:first-of-type').getByText(name, { exact: true }) })
   await row('b.ts').getByRole('button', { name: 'More for b.ts' }).click()
   await page.getByRole('menuitem', { name: 'Rename…' }).click()
   const stem = explorer.getByRole('textbox', { name: 'New name for b.ts' })
@@ -134,12 +135,44 @@ try {
   check('F5 searching finds current and archived documents by a word inside', await until('hits', async () => (await hit('launch-plan.md').count()) === 1 && (await hit('old-pricing.md').count()) === 1 && (await hit('groceries.txt').count()) === 0))
   check('F5 an archived match says so and shows the matching line', (await hit('old-pricing.md').locator('.doc-archived-tag').innerText()) === 'Archived'
     && (await hit('launch-plan.md').locator('.doc-excerpt').innerText()) === 'Ship the beta on Friday.')
+  check('F5 while searching, the Current/Archived switch and New file step aside', !(await docList.getByRole('tab', { name: /^Archived/ }).isVisible()))
+  check('F5 the Archived tag is a small label, not a stretched bar', ((await hit('old-pricing.md').locator('.doc-archived-tag').boundingBox())?.width ?? 999) < 90)
   await shot(page, 'f5-search')
   await hit('old-pricing.md').click()
   check('F5 a match opens like any document', await until('opened', async () => (await activeTab.innerText()).startsWith('old-pricing.md')))
   await docList.getByRole('searchbox', { name: 'Search documents' }).fill('')
   check('F5 clearing the search returns to the list', await until('cleared', async () => (await hit('old-pricing.md').count()) === 0 && (await hit('groceries.txt').count()) === 1))
   await page.getByRole('tab', { name: 'Project files' }).click()
+
+  // F6: pin a project file and a document; both reopen from the navigation in any section.
+  const sections = page.getByRole('tablist', { name: 'Sections' })
+  const pinsNav = page.getByRole('group', { name: 'Pinned files' })
+  if (await nav('Home').isEnabled()) await nav('Home').click()
+  await until('top', async () => (await where.innerText()) === '/')
+  await row('README.md').getByRole('button', { name: 'More for README.md' }).click()
+  await page.getByRole('menuitem', { name: 'Pin to navigation' }).click()
+  check('F6 a pinned project file appears in the navigation', await until('pin', async () => (await pinsNav.getByRole('button', { name: 'README.md' }).count()) === 1))
+  check('F6 its row shows the pin', await until('row pin', async () => (await row('README.md').locator('.file-pin').count()) === 1))
+  await page.getByRole('tab', { name: 'Your documents' }).click()
+  await docList.locator('.file-row-wrap').filter({ hasText: 'launch-plan.md' }).getByRole('button', { name: 'More for launch-plan.md' }).click()
+  await page.getByRole('menuitem', { name: 'Pin to navigation' }).click()
+  check('F6 a pinned document appears there too, after the files', await until('doc pin', async () => (await pinsNav.getByRole('button').allInnerTexts()).join('|') === 'README.md|launch-plan.md'),
+    (await pinsNav.getByRole('button').allInnerTexts().catch(() => [])).join('|'))
+  await sections.getByRole('tab', { name: /^Workflows/ }).click()
+  await pinsNav.getByRole('button', { name: 'launch-plan.md' }).click()
+  check('F6 a document pin reopens it in Your documents from another section', await until('doc reopened', async () => (await activeTab.innerText()).startsWith('launch-plan.md')
+    && (await page.getByRole('tab', { name: 'Your documents' }).getAttribute('aria-selected')) === 'true'))
+  await sections.getByRole('tab', { name: /^Conversations/ }).click()
+  await pinsNav.getByRole('button', { name: 'README.md' }).click()
+  check('F6 a file pin reopens it in Project files', await until('file reopened', async () => (await activeTab.innerText()).startsWith('README.md')
+    && (await page.getByRole('tab', { name: 'Project files' }).getAttribute('aria-selected')) === 'true'))
+  await shot(page, 'f6-pins')
+  await row('README.md').getByRole('button', { name: 'More for README.md' }).click()
+  await page.getByRole('menuitem', { name: 'Rename…' }).click()
+  await explorer.getByRole('textbox', { name: 'New name for README.md' }).fill('GUIDE')
+  await explorer.getByRole('textbox', { name: 'New name for README.md' }).press('Enter')
+  check('F6 a renamed pinned file keeps its pin under the new name', await until('renamed pin', async () => (await pinsNav.getByRole('button').allInnerTexts()).join('|') === 'GUIDE.md|launch-plan.md'),
+    (await pinsNav.getByRole('button').allInnerTexts().catch(() => [])).join('|'))
 
   await setTheme(page, 'Dark')
   await shot(page, 'files-dark')

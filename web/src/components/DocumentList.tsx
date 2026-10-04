@@ -3,6 +3,7 @@ import { api, type DocumentEntry, type DocumentMatch, type Project } from '../ap
 import { inSpace, nextInFolder, type NewFileKind } from '../file-text.ts'
 import { FileRow } from './FileRow.tsx'
 import { SearchIcon } from './icons.tsx'
+import { announceDocuments } from '../usePinnedDocuments.ts'
 import { NewFileMenu } from './NewFileMenu.tsx'
 
 interface DocumentListProps {
@@ -33,11 +34,12 @@ export function DocumentList({ project, selected, dirty, onOpen, onCreate, onRen
     return () => { active = false; clearTimeout(timer) }
   }, [project.path, query, searching, docs, onError])
   const reload = useCallback((): void => {
-    api.listDocuments(project.path).then(setDocs, (e: unknown) => onError(e instanceof Error ? e.message : String(e)))
+    api.listDocuments(project.path).then((next) => { setDocs(next); announceDocuments() }, (e: unknown) => onError(e instanceof Error ? e.message : String(e)))
   }, [project.path, onError])
   useEffect(reload, [reload])
   const mark = (path: string, change: { pinned?: boolean; archived?: boolean }) => async (): Promise<void> => {
     setDocs(await api.markDocument(project.path, path, change))
+    announceDocuments()
   }
   const archivedCount = docs?.filter((d) => d.archived).length ?? 0
   const shown: readonly DocumentMatch[] = searching ? matches ?? [] : docs?.filter((d) => d.archived === showArchived) ?? []
@@ -65,7 +67,7 @@ export function DocumentList({ project, selected, dirty, onOpen, onCreate, onRen
         const path = inSpace('documents', doc.path)
         const extra = doc.archived
           ? [{ label: 'Unarchive', run: mark(doc.path, { archived: false }) }]
-          : [{ label: doc.pinned ? 'Unpin' : 'Pin', run: mark(doc.path, { pinned: !doc.pinned }) }, { label: 'Archive', run: mark(doc.path, { archived: true }) }]
+          : [{ label: doc.pinned ? 'Unpin from navigation' : 'Pin to navigation', run: mark(doc.path, { pinned: !doc.pinned }) }, { label: 'Archive', run: mark(doc.path, { archived: true }) }]
         return (
           <FileRow key={doc.path} projectPath={project.path} path={path} selected={selected === path} pinned={doc.pinned} dirty={dirty.has(path)}
             extra={extra} onOpen={() => onOpen(path)} onError={onError}

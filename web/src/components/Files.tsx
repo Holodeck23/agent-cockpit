@@ -14,7 +14,9 @@ const EXPLORER_KEY = 'cockpit:files-explorer-hidden'
 const loadHidden = (): boolean => { try { return localStorage.getItem(EXPLORER_KEY) === '1' } catch { return false } }
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
-export function Files({ project, onAttach, reveal }: { project?: Project; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number } }) {
+export function Files({ project, onAttach, reveal, onPins }: {
+  project?: Project; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
+}) {
   const open = useOpenFiles(project?.path)
   const [space, setSpace] = useState<Space>(loadSpace)
   const [jump, setJump] = useState<Jump>()
@@ -27,8 +29,8 @@ export function Files({ project, onAttach, reveal }: { project?: Project; onAtta
   const { open: openPath } = open
   useEffect(() => {
     if (!reveal) return
-    setSpace('project')
     const { path, line, endLine } = reveal.target
+    setSpace(spaceOf(path).space)
     void openPath(path).then(() => { if (line) setJump({ path, line, endLine, nonce: reveal.nonce }) })
   }, [reveal, openPath])
   const dirty = useMemo(() => new Set(open.files.filter(isDirty).map((f) => f.path)), [open.files])
@@ -54,7 +56,7 @@ export function Files({ project, onAttach, reveal }: { project?: Project; onAtta
           <p>{space === 'project' ? 'Edit a text file, or add it to a conversation draft.' : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
         </header>
         {space === 'project'
-          ? <FileTree key={project.path} {...shared} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />
+          ? <FileTree key={project.path} {...shared} pins={project.pinnedFiles ?? []} onPins={onPins} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />
           : <DocumentList {...shared} onCreate={(name, kind) => open.create('', name, kind, 'documents')} />}
         <footer>Generated folders, dependencies and symbolic links are hidden. UTF-8 text files up to 100 KB can be edited.</footer>
       </nav>

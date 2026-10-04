@@ -110,6 +110,7 @@ export const api = {
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
+  setPinnedFiles: (path: string, files: readonly string[]) => request<Project>('/api/projects/pins', { method: 'POST', body: { path, files } }),
   removeProject: (path: string) => request<{ project: Project; pausedSchedules: number }>('/api/projects/remove', { method: 'POST', body: { path } }),
   openProject: (path: string, patch: ProjectPatch = {}) =>
     request<Project>('/api/projects', { method: 'POST', body: { path, ...patch } }),

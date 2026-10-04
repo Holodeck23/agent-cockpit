@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type FileListing, type Project } from '../api.ts'
 import { nextInFolder, type NewFileKind } from '../file-text.ts'
+import { dropPin, renamePin, togglePin } from '../pins.ts'
 import { FileRow } from './FileRow.tsx'
 import { back, canGoBack, canGoForward, currentFolder, forward, parentOf, startHistory, visit } from '../folder-history.ts'
 import { ArrowUpLeftIcon, ChevronLeftIcon, ChevronRightIcon, FolderIcon, HomeIcon } from './icons.tsx'
@@ -17,9 +18,12 @@ interface FileTreeProps {
   onRenamed: (from: string, to: string) => void
   onTrashed: (path: string) => void
   onError: (message: string) => void
+  /** Files pinned to the navigation, in order, and how to change them. */
+  pins: readonly string[]
+  onPins: (pins: readonly string[]) => void
 }
 
-export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed, onTrashed, onError }: FileTreeProps) {
+export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed, onTrashed, onError, pins, onPins }: FileTreeProps) {
   const [history, setHistory] = useState(startHistory)
   const folder = currentFolder(history)
   const setFolder = (next: string): void => setHistory((h) => visit(h, next))
@@ -62,12 +66,15 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
         </button>
       ) : (
         <FileRow key={entry.path} projectPath={project.path} path={entry.path} selected={selected === entry.path} dirty={dirty.has(entry.path)}
+          pinned={pins.includes(entry.path)}
+          extra={[{ label: pins.includes(entry.path) ? 'Unpin from navigation' : 'Pin to navigation', run: async () => onPins(togglePin(pins, entry.path)) }]}
           onOpen={() => onOpen(entry.path)} onError={onError}
-          onRenamed={(to) => { onRenamed(entry.path, to); reload() }}
+          onRenamed={(to) => { onRenamed(entry.path, to); if (pins.includes(entry.path)) onPins(renamePin(pins, entry.path, to)); reload() }}
           onTrashed={() => {
             // The file you were looking at went to the Trash: show the next one in this folder.
             const next = selected === entry.path ? nextInFolder(filePaths, entry.path) : undefined
             onTrashed(entry.path)
+            if (pins.includes(entry.path)) onPins(dropPin(pins, entry.path))
             reload()
             if (next) onOpen(next)
           }} />
