@@ -53,6 +53,7 @@
 .field-check strong { display: block; color: var(--strong); font-weight: 500; }
 /* Header and buttons stay in view; only the fields scroll when the window is short. */
 .modal.project-settings { display: flex; flex-direction: column; overflow: hidden; }
-.project-settings .project-settings-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: 4px; }
+.project-settings .project-settings-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: 4px; }
 .project-settings > header, .project-settings > footer, .project-settings > .remove-confirm { flex: none; }
 .field-error { color: var(--danger); }
+.project-settings > .modal-error { flex: none; }

@@ -69,6 +69,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           </div>
           <button type="button" className="activity-close" aria-label="Close" onClick={onClose}>×</button>
         </header>
+        <div className="project-settings-scroll">
         <fieldset className="project-settings-body" disabled={busy}>
           <label className="field">
             Name
@@ -120,6 +121,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             </div>
           </div>
         </fieldset>
+        </div>
         {error ? <p className="modal-error" role="alert">{error}</p> : null}
         {confirmRemove ? (
           <div className="remove-confirm" role="alertdialog" aria-labelledby="remove-title" aria-describedby="remove-detail">
