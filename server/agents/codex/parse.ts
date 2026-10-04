@@ -106,6 +106,13 @@ function itemCompleted(item: z.infer<typeof itemSchema>): NormalizedEvent[] {
   if (item.type === 'mcpToolCall') {
     return [{ kind: 'tool_result', toolUseId: item.id, content: mcpResultText(item).slice(0, 4000), isError: item.status === 'failed' }]
   }
+  // G4: an image the agent looked at, or one it made (its saved file, else its base64 result).
+  if (item.type === 'imageView' && typeof item.path === 'string' && item.path) return [{ kind: 'image_data', source: { path: item.path } }]
+  if (item.type === 'imageGeneration' && item.status !== 'failed') {
+    const name = typeof item.revisedPrompt === 'string' && item.revisedPrompt ? { name: item.revisedPrompt.slice(0, 200) } : {}
+    if (typeof item.savedPath === 'string' && item.savedPath) return [{ kind: 'image_data', source: { path: item.savedPath } }]
+    if (typeof item.result === 'string' && item.result) return [{ kind: 'image_data', source: { data: item.result }, ...name }]
+  }
   return []
 }
 

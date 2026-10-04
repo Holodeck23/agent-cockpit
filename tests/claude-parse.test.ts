@@ -129,3 +129,21 @@ describe('parseClaudeLine on shapes this account does not receive', () => {
     expect(event).toMatchObject({ kind: 'approval_request', toolName: 'AskUserQuestion' })
   })
 })
+
+describe('images Claude shows (G4)', () => {
+  it('a tool result holding an image (Read of a PNG, recorded from 2.1.289) emits its bytes once', async () => {
+    const { readFileSync } = await import('node:fs')
+    const lines = readFileSync(new URL('./fixtures/claude-2.1.289-image.jsonl', import.meta.url), 'utf8').trim().split('\n')
+    const events = lines.flatMap((line) => parseClaudeLine(line))
+    const images = events.filter((e) => e.kind === 'image_data')
+    expect(images).toHaveLength(1)
+    expect(images[0]).toMatchObject({ kind: 'image_data', source: { data: expect.stringMatching(/^iVBORw0KGgo/) } })
+    // The step still ends, and the text before and after it is still the reply.
+    expect(events.find((e) => e.kind === 'tool_result')).toMatchObject({ toolUseId: 'toolu_01DZNPhL5QCGQGVBuZdfPA6N', isError: false })
+    expect(events.filter((e) => e.kind === 'assistant_text').map((e) => (e as { text: string }).text)).toEqual(['Calculator icon on light gray.\n\nNow let me read the icon.png file:', 'Calculator icon with button grid.'])
+  })
+  it('a helper’s images stay inside the helper', () => {
+    const line = JSON.stringify({ type: 'user', parent_tool_use_id: 'toolu_parent', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }] }] } })
+    expect(parseClaudeLine(line)).toEqual([])
+  })
+})

@@ -66,6 +66,13 @@ export type NormalizedEvent =
   | { kind: 'question_answered'; requestId: string; answers: Readonly<Record<string, string>>; dismissed?: boolean }
   /** A predicted next message the agent offers as a one-click follow-up. */
   | { kind: 'suggestion'; text: string }
+  /** An image you attached or the agent showed, stored in Cockpit's state folder (`file` names it there). */
+  | { kind: 'image'; file: string; mediaType: string; from: 'you' | 'agent'; name?: string }
+  /**
+   * Never stored: an image a parser met on the wire, as its bytes (base64) or the file the agent named.
+   * The thread manager saves it and records an `image` event instead, so the log never holds the bytes.
+   */
+  | { kind: 'image_data'; source: { readonly data: string } | { readonly path: string }; name?: string }
   | {
       kind: 'approval_request'
       requestId: string
@@ -82,11 +89,18 @@ export type NormalizedEvent =
   | { kind: 'exit'; code: number | null }
   | { kind: 'error'; message: string }
 
+/** An image going to the agent with a message: Claude and ACP take the bytes, Codex and Antigravity the stored file. */
+export interface OutgoingImage {
+  readonly path: string
+  readonly mediaType: string
+  /** Base64. */
+  readonly data: string
+}
+
 export interface AgentSession {
   readonly agent: AgentId
-  /** Send a user message. Resolves once written to the agent's stdin. */
   /** Delivers a turn to the agent. The thread manager records the user's own message. */
-  send(text: string, queuedId?: string): void
+  send(text: string, queuedId?: string, images?: readonly OutgoingImage[]): void
   /** True when a message sent mid-turn waits in the agent's own queue and can be taken back (J1). */
   queues?(): boolean
   /** Takes back a queued message; false once the agent has taken it. */

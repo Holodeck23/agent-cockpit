@@ -14,6 +14,17 @@ const toolResultBlock = z.object({
   is_error: z.boolean().optional(),
 })
 
+const imageBlock = z.object({ type: z.literal('image'), source: z.looseObject({ type: z.literal('base64'), data: z.string().min(1) }) })
+
+/** Images inside a tool result (Read of a PNG, a screenshot tool), as bytes for the manager to keep (G4). */
+function imagesIn(content: unknown): NormalizedEvent[] {
+  if (!Array.isArray(content)) return []
+  return content.flatMap((part): NormalizedEvent[] => {
+    const image = imageBlock.safeParse(part)
+    return image.success ? [{ kind: 'image_data', source: { data: image.data.source.data } }] : []
+  })
+}
+
 const lineSchema = z.looseObject({ type: z.string() })
 
 function stringifyContent(content: unknown): string {
@@ -73,6 +84,8 @@ function parseUser(raw: Record<string, unknown>): NormalizedEvent[] {
         content: stringifyContent(result.data.content),
         isError: result.data.is_error ?? false,
       },
+      // The same bytes also come as tool_use_result.file.base64; the content blocks are read once.
+      ...imagesIn(result.data.content),
     ]
   })
 }

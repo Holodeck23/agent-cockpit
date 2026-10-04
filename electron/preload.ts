@@ -23,6 +23,8 @@ const cockpit = {
   /** Copies files dropped from Finder into a folder of the project (or its documents); never overwrites. */
   copyInto: (request: { projectPath: string; space: 'project' | 'documents'; folder: string; files: readonly File[] }): Promise<CopyOutcome> =>
     ipcRenderer.invoke('cockpit:copy-into', { ...request, files: undefined, sources: request.files.map((f) => webUtils.getPathForFile(f)) }) as Promise<CopyOutcome>,
+  /** Where a dropped or pasted file is on disk (I1); '' when it has none. */
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
   /** Drives the Dock icon: animated while agents work, badged with how many need you. */
   setActivity: (activity: { working: number; needs: number }): void => ipcRenderer.send('cockpit:activity', activity),
   /** Opens a local dev-server URL in Cockpit's embedded preview pane. */

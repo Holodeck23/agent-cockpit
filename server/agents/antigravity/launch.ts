@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
-import type { AgentSession, EventSink } from '../types.ts'
+import type { AgentSession, EventSink, OutgoingImage } from '../types.ts'
+import { withImagePaths } from '../image-input.ts'
 import { parseAntigravityLine } from './parse.ts'
 
 const inputSchema = z.object({
@@ -14,6 +16,8 @@ const inputSchema = z.object({
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   resume: z.uuid().optional(),
   instructions: z.string().max(500_000).optional(),
+  /** The conversation's image folder: agy reads only its workspace in manual mode, so it is added to it. */
+  imagesDir: z.string().min(1).optional(),
 })
 
 export type AntigravityLaunchInput = z.input<typeof inputSchema>
@@ -41,6 +45,7 @@ export function buildAntigravityArgs(input: AntigravityLaunchInput): string[] {
     ...(value.resume ? ['--conversation', value.resume] : []),
     ...(value.permissionMode === 'plan' ? ['--mode', 'plan'] : []),
     ...(auto ? ['--dangerously-skip-permissions'] : []),
+    ...(value.imagesDir ? ['--add-dir', value.imagesDir] : []),
   ]
 }
 
@@ -51,6 +56,8 @@ export interface AntigravityLaunchDeps {
 
 export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventSink, deps: AntigravityLaunchDeps = {}): AgentSession {
   const value = inputSchema.parse(input)
+  // --add-dir needs the folder to exist, even before the first image arrives.
+  if (value.imagesDir) mkdirSync(value.imagesDir, { recursive: true, mode: 0o700 })
   const child = spawn(deps.executable ?? 'agy', buildAntigravityArgs(value), {
     cwd: value.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -85,14 +92,16 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
 
   return {
     agent: 'antigravity',
-    send(text: string) {
+    send(text: string, _queuedId?: string, images?: readonly OutgoingImage[]) {
       if (exited || !child.stdin.writable) {
         onEvent({ kind: 'error', message: 'Agent process is not running' })
         return
       }
+      // stream-json takes text blocks only (1.2.14: 'image is not supported'), so images go by path.
+      const message = withImagePaths(text, images)
       const content = firstTurn && value.instructions
-        ? `<cockpit-instructions>\n${value.instructions}\n</cockpit-instructions>\n\n${text}`
-        : text
+        ? `<cockpit-instructions>\n${value.instructions}\n</cockpit-instructions>\n\n${message}`
+        : message
       firstTurn = false
       child.stdin.write(`${JSON.stringify({ event: 'user', message: { content } })}\n`)
     },

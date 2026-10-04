@@ -6,6 +6,8 @@ import { ContextPicker } from './ContextPicker.tsx'
 import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
 import { ArrowUpIcon } from './icons.tsx'
+import { useComposerAttach } from '../useComposerAttach.ts'
+import type { MessageImage } from '../api.ts'
 
 interface ComposerProps {
   /** Drafts are kept per conversation in localStorage and survive reloads. */
@@ -25,7 +27,8 @@ interface ComposerProps {
   picker: ReactNode
   /** Re-reads the branch pill when it changes, e.g. the conversation's status. */
   branchRefreshKey?: string
-  onSubmit: (text: string) => Promise<void>
+  /** `images` are the ones dropped or pasted in (I1), empty when there are none. */
+  onSubmit: (text: string, images: readonly MessageImage[]) => Promise<void>
 }
 
 const MAX_HEIGHT = 220
@@ -104,6 +107,16 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     setSubmitError(undefined)
     saveDraft(draftKey, value)
   }
+  const attach = useComposerAttach({
+    projectPath,
+    onInsert: (pieces) => {
+      update(pieces.reduce((draft, piece) => addReference(draft, piece), box.current?.value ?? text))
+      box.current?.focus()
+    },
+  })
+  // Images belong to the draft they were added to; another conversation starts without them.
+  const { clear: clearImages } = attach
+  useEffect(() => { clearImages() }, [draftKey])
 
   const submit = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault()
@@ -112,9 +125,10 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     setSending(true)
     setSubmitError(undefined)
     try {
-      await onSubmit(trimmed)
+      await onSubmit(trimmed, attach.images.map(({ data, name }) => ({ data, name })))
       // Whatever you typed while it was sending stays; only the sent text leaves the box.
       update(draftAfterSend(box.current?.value ?? '', trimmed))
+      attach.clear()
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -139,8 +153,20 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
   return (
     <form className="composer" onSubmit={(e) => void submit(e)}>
       {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
-      <div className="composer-card">
+      {attach.note ? <p className="workflow-notice" role="status">{attach.note}</p> : null}
+      <div className={`composer-card${attach.dragging ? ' dropping' : ''}`} {...attach.dropProps}>
         {mentions.menu}
+        {attach.images.length ? (
+          <ul className="reference-chips image-chips" aria-label="Images to send">
+            {attach.images.map((image) => (
+              <li key={image.id} className="reference-chip image-chip" title={image.name}>
+                <img src={image.url} alt="" />
+                <span>{image.name}</span>
+                <button type="button" aria-label={`Remove ${image.name}`} onClick={() => { attach.remove(image.id); box.current?.focus() }}>×</button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <ReferenceChips projectPath={projectPath} text={text} onRemove={(token) => { update(removeReference(text, token)); box.current?.focus() }} />
         <div className="composer-top">
           <textarea
@@ -156,6 +182,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             onFocus={(e) => setCaret(e.currentTarget.selectionStart)}
             onBlur={() => setCaret(undefined)}
             onKeyDown={onKeyDown}
+            onPaste={attach.onPaste}
           />
         </div>
         <div className="composer-foot">

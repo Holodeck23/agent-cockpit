@@ -310,3 +310,15 @@
 .failure-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; }
 .failure-raw summary { cursor: pointer; color: var(--muted); }
 .failure-raw pre { margin: 6px 0 0; padding: 8px 10px; max-height: 220px; overflow: auto; border-radius: var(--r-sm); background: var(--field); font: 12px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Images in a conversation (wave 6): thumbnails that open whole in a viewer. */
+.message-images { display: flex; flex-wrap: wrap; gap: 8px; }
+.bubble .message-images { margin-top: 8px; }
+.bubble .message-images:first-child { margin-top: 0; }
+.conversation-image { display: block; max-width: min(320px, 100%); padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--field); cursor: zoom-in; }
+.conversation-image img { display: block; max-width: 100%; max-height: 240px; object-fit: contain; }
+.image-item.from-you .message-images { justify-content: flex-end; }
+.image-viewer { max-width: 94vw; max-height: 94vh; padding: 0; border: 0; background: transparent; cursor: zoom-out; }
+.image-viewer::backdrop { background: rgb(0 0 0 / 0.72); }
+.image-viewer img { display: block; max-width: 94vw; max-height: 86vh; object-fit: contain; border-radius: 8px; }
+.image-viewer p { width: fit-content; max-width: 100%; margin: 8px auto 0; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.66); color: #fff; font-size: 12.5px; overflow-wrap: anywhere; }

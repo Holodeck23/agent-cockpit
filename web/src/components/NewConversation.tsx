@@ -1,6 +1,6 @@
 import { RecoveryCard } from './RecoveryCard.tsx'
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, type Project, type ThreadMeta, type Workflow } from '../api.ts'
+import { api, type Project, type ThreadMeta, type MessageImage, type Workflow } from '../api.ts'
 import { displayTitle } from '../workflow-list.ts'
 import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
@@ -103,11 +103,11 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
     }
   }
 
-  const start = async (text: string): Promise<void> => {
+  const start = async (text: string, images: readonly MessageImage[]): Promise<void> => {
     if (!project) return
     setStarting(true)
     try {
-      onCreated(await api.createThread({ projectPath: project.path, text, settings: settingsFromChoice(choice) }))
+      onCreated(await api.createThread({ projectPath: project.path, text, settings: settingsFromChoice(choice), ...(images.length ? { images } : {}) }))
     } catch (e: unknown) {
       onError(e instanceof Error ? e.message : String(e))
       throw e

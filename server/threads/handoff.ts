@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { withAttachmentNote } from '../files/references.ts'
 import type { StoredEvent } from './types.ts'
 
@@ -12,9 +13,10 @@ export const HANDOFF_BUDGET = 400_000
  * Builds the context a newly switched-in agent receives: the conversation so
  * far, whole when it fits. Past the budget it keeps the opening request and the
  * newest messages, never half a message. Provider-side history can't be
- * transferred, so this transcript is the handoff.
+ * transferred, so this transcript is the handoff. Images are named by their stored file
+ * (in `imagesDir`), so the new agent can open them.
  */
-export function buildHandoff(events: readonly StoredEvent[], projectPath: string): string {
+export function buildHandoff(events: readonly StoredEvent[], projectPath: string, imagesDir?: string): string {
   const lines = events.flatMap(({ event }): string[] => {
     switch (event.kind) {
       case 'user_text':
@@ -29,6 +31,8 @@ export function buildHandoff(events: readonly StoredEvent[], projectPath: string
       }
       case 'agent_switch':
         return [`(switched from ${event.from} to ${event.to})`]
+      case 'image':
+        return imagesDir ? [`(${event.from === 'you' ? 'user attached' : 'previous agent showed'} an image: ${join(imagesDir, event.file)})`] : []
       default:
         return []
     }
