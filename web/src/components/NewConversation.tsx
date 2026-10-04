@@ -1,6 +1,7 @@
 import { RecoveryCard } from './RecoveryCard.tsx'
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, type Project, type ThreadMeta } from '../api.ts'
+import { api, type Project, type ThreadMeta, type Workflow } from '../api.ts'
+import { displayTitle } from '../workflow-list.ts'
 import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
@@ -17,7 +18,12 @@ interface NewConversationProps {
   onError: (message: string) => void
   /** Shown while the project has no workflows yet. */
   onOpenGallery?: () => void
+  /** The project's workflow list. */
+  onOpenWorkflows?: () => void
 }
+
+/** Workflow cards shown above the message box; the rest are a click away. */
+const WORKFLOW_CARDS = 4
 
 // Last choice per project, falling back to the last choice anywhere. A default for new
 // conversations only: it never changes an existing conversation's settings.
@@ -28,6 +34,9 @@ const SUGGESTIONS = [
   'Find one bug and fix it, with a test',
   'Tidy up the README so a newcomer can get started',
 ]
+
+/** A workflow's first line of instructions, as the card's second line. */
+const firstLine = (prompt: string): string => prompt.split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) ?? ''
 
 function loadChoice(projectPath: string | undefined): AgentChoice {
   const fallback: AgentChoice = { agent: 'claude', model: '', effort: '', permissionMode: 'manual' }
@@ -66,22 +75,23 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
   // through from the native folder picker) must never start an agent run.
-  const [prefill, setPrefill] = useState<{ text: string }>()
-  // Unknown until loaded; a failed check just leaves the pointer out.
-  const [noWorkflows, setNoWorkflows] = useState(false)
+  const [prefill, setPrefill] = useState<{ text: string; reference?: boolean }>()
+  // Unknown until loaded; a failed check just leaves the cards and the pointer out.
+  const [workflows, setWorkflows] = useState<Workflow[]>()
+  const noWorkflows = workflows?.length === 0
   const [fresh, setFresh] = useState(Boolean(initialDraft))
   const projectPath = project?.path
   useEffect(() => {
-    if (!projectPath || !onOpenGallery) return
+    if (!projectPath) return
     let live = true
-    api.listWorkflows(projectPath).then((rows) => { if (live) setNoWorkflows(rows.length === 0) }, () => undefined)
+    api.listWorkflows(projectPath).then((rows) => { if (live) setWorkflows(rows) }, () => undefined)
     return () => { live = false }
-  }, [projectPath, onOpenGallery])
+  }, [projectPath])
 
   const changeChoice = (next: AgentChoice): void => {
     setChoice(next)
@@ -123,6 +133,23 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
               <p>
                 Say it in plain words. Your agent works in <strong title={project.path}>{project.name}</strong>.
               </p>
+              {workflows && workflows.length > 0 ? (
+                <section className="workflow-cards" aria-label="Start with a workflow">
+                  <h3>Start with a workflow</h3>
+                  <div className="workflow-card-grid">
+                    {workflows.slice(0, WORKFLOW_CARDS).map((w) => (
+                      // Like the starters, a card fills the message box; nothing runs until you send.
+                      <button key={w.id} type="button" className="workflow-card" disabled={starting} title={`Add @workflow:${w.name} to the message`}
+                        onClick={() => setPrefill({ text: `@workflow:${w.name}`, reference: true })}>
+                        <WorkflowIcon />
+                        <span className="workflow-card-text"><strong>{displayTitle(w)}</strong><span>{firstLine(w.prompt)}</span></span>
+                      </button>
+                    ))}
+                  </div>
+                  {onOpenWorkflows ? <button type="button" className="link-button" onClick={onOpenWorkflows}>
+                    {workflows.length > WORKFLOW_CARDS ? `All ${workflows.length} workflows →` : 'Browse workflows →'}</button> : null}
+                </section>
+              ) : null}
               <div className="suggestions">
                 {SUGGESTIONS.map((suggestion) => (
                   <button key={suggestion} type="button" className="suggestion" disabled={starting} title="Put this in the message box" onClick={() => setPrefill({ text: suggestion })}>

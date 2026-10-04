@@ -13,7 +13,8 @@ interface ComposerProps {
   initialDraft?: string
   onDraftLoaded?: () => void
   /** Replaces the draft and focuses the box, e.g. from a starter suggestion. A new object each time. */
-  prefill?: { readonly text: string }
+  /** Fills the message box; with `reference`, adds that token to what is already typed instead. */
+  prefill?: { readonly text: string; readonly reference?: boolean }
   projectPath?: string
   /** Set in a conversation (not on New conversation). */
   threadId?: string
@@ -69,10 +70,11 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
 
   useEffect(() => {
     if (!prefill) return
-    setText(prefill.text)
-    saveDraft(draftKey, prefill.text)
+    const next = prefill.reference ? addReference(box.current?.value ?? '', prefill.text) : prefill.text
+    setText(next)
+    saveDraft(draftKey, next)
     const el = box.current
-    if (el) { el.focus(); el.setSelectionRange(prefill.text.length, prefill.text.length) }
+    if (el) { el.focus(); requestAnimationFrame(() => el.setSelectionRange(next.length, next.length)) }
     // Only a new prefill applies; draftKey is read at that moment.
   }, [prefill])
 

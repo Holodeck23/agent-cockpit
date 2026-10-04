@@ -238,6 +238,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onBrowseFiles={() => setSection('files')}
               onOpenProject={projects.open}
               onOpenGallery={openGallery}
+              onOpenWorkflows={() => setSection('workflows')}
               onError={cockpit.reportError}
               onCreated={(meta) => {
                 cockpit.refresh()

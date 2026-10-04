@@ -243,3 +243,20 @@
 .conclusion-tag.blocker { background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
 .conclusion-question .bubble { border-color: var(--needs-border); }
 .conclusion-blocker .bubble { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+
+/* Project workflows as cards on a new conversation (F12). A card adds @workflow:name to the message. */
+.workflow-cards { display: grid; gap: 8px; width: 100%; margin: 4px 0 14px; }
+.workflow-cards h3 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.workflow-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.workflow-card {
+  display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); color: var(--strong); font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.workflow-card:hover:not(:disabled) { border-color: color-mix(in srgb, var(--link) 45%, var(--border)); box-shadow: 0 0 0 3px var(--focus-ring); }
+.workflow-card > .icon { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--blue); }
+.workflow-card-text { display: grid; gap: 2px; min-width: 0; }
+.workflow-card-text strong { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-card-text span { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-button { justify-self: start; padding: 2px 0; border: 0; background: none; color: var(--link); font: inherit; font-size: 13px; }
+.link-button:hover { text-decoration: underline; }

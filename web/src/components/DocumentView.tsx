@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { defaultValueCtx, Editor, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/kit/core'
 import { history } from '@milkdown/kit/plugin/history'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
@@ -11,6 +11,8 @@ import { TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import { findIn } from '../editor-find.ts'
 import { clearPaint, EditorFindBar, paintRanges, type FindAdapter } from './EditorFindBar.tsx'
+import { mentionAt } from '../draft-references.ts'
+import { useReferenceMenu } from './MentionMenu.tsx'
 import '../styles/document.css'
 
 // The rich Document view of a Markdown file. It edits the same draft as the Source view:
@@ -28,7 +30,13 @@ interface DocumentViewProps {
   /** The find bar is open (⌘F), with Replace (⌥⌘F). */
   find?: 'find' | 'replace'
   onCloseFind?: () => void
+  /** Typing @ lists this project's files and workflows (workflow instructions). */
+  mentions?: { readonly projectPath: string; readonly attached: ReadonlySet<string>; readonly filesFull: boolean }
+  /** Put the cursor in the document once it is ready (a new workflow). */
+  autoFocus?: boolean
 }
+
+interface DocMention { readonly query: string; readonly from: number; readonly to: number; readonly left: number; readonly top: number }
 
 interface DocMatch { readonly from: number; readonly to: number }
 
@@ -46,6 +54,16 @@ function docMatches(view: EditorView, query: string, matchCase: boolean): DocMat
   return found
 }
 
+/** The @word just before the cursor, read from the editor as it is now. */
+function mentionIn(view: EditorView): { query: string; from: number; to: number } | undefined {
+  if (!view.state.selection.empty) return undefined
+  const { $from } = view.state.selection
+  // A leaf in the block (a hard break) stands in as one character, so offsets stay positions.
+  const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '\uFFFC')
+  const found = mentionAt(before, before.length)
+  return found ? { query: found.query, from: $from.pos - (before.length - found.start), to: $from.pos } : undefined
+}
+
 function domRange(view: EditorView, match: DocMatch): Range | undefined {
   try {
     const start = view.domAtPos(match.from)
@@ -59,15 +77,26 @@ function domRange(view: EditorView, match: DocMatch): Range | undefined {
   }
 }
 
-export default function DocumentView({ draft, readOnly, onChange, onSave, onUnavailable, find, onCloseFind }: DocumentViewProps) {
+export default function DocumentView({ draft, readOnly, onChange, onSave, onUnavailable, find, onCloseFind, mentions, autoFocus }: DocumentViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const [editor, setEditor] = useState<Editor>()
   const [problem, setProblem] = useState<string>()
   const baseline = useRef<Baseline | undefined>(undefined)
   const emitted = useRef<string | undefined>(draft)
   const current = useRef<{ editor: Editor; write: () => string | undefined } | undefined>(undefined)
-  const callbacks = useRef({ onChange, onSave, onUnavailable })
-  callbacks.current = { onChange, onSave, onUnavailable }
+  const autoFocusRef = useRef(autoFocus)
+  // The @word before the cursor, while there is one (only with `mentions`).
+  const [mention, setMention] = useState<DocMention>()
+  const trackMention = (): void => {
+    const view = current.current?.editor.action((ctx) => ctx.get(editorViewCtx))
+    const box = host.current?.parentElement?.getBoundingClientRect()
+    const found = mentions && view ? mentionIn(view) : undefined
+    if (!found || !view || !box) { setMention(undefined); return }
+    const at = view.coordsAtPos(found.from)
+    setMention({ ...found, left: at.left - box.left, top: at.bottom - box.top + 6 })
+  }
+  const callbacks = useRef({ onChange, onSave, onUnavailable, trackMention })
+  callbacks.current = { onChange, onSave, onUnavailable, trackMention }
 
   // A draft that did not come from this view (open, reload, conflict copy) rebuilds it.
   const external = draft !== emitted.current
@@ -96,7 +125,8 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
         // Parsed once as the initial state, so it is not an undoable step.
         ctx.set(defaultValueCtx, splitFrontMatter(source).body)
         ctx.update(editorViewOptionsCtx, (options) => ({ ...options, editable: () => !readOnly }))
-        ctx.get(listenerCtx).updated(() => { if (alive) write() })
+        ctx.get(listenerCtx).updated(() => { if (alive) { write(); callbacks.current.trackMention() } })
+        ctx.get(listenerCtx).selectionUpdated(() => { if (alive) callbacks.current.trackMention() })
       })
       .use(commonmark).use(gfm).use(history).use(listener).use(taskToggle)
       .create()
@@ -108,6 +138,7 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
         baseline.current = result.baseline
         current.current = { editor: created, write }
         setEditor(created)
+        if (autoFocusRef.current) created.action((ctx) => ctx.get(editorViewCtx).focus())
       })
     return () => {
       alive = false
@@ -120,9 +151,26 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
   }, [generation, readOnly])
 
   // Leaving the view keeps keystrokes the listener has not reported yet. Only on unmount:
-  // a rebuild after a reload must not write the old text back over the new one.
-  useEffect(() => () => { current.current?.write() }, [])
+  // a rebuild after a reload must not write the old text back over the new one. A layout
+  // effect, so its cleanup runs before the editor effect's cleanup destroys the editor
+  // (with a plain effect, an edit made just before switching to Source was lost).
+  useLayoutEffect(() => () => { current.current?.write() }, [])
 
+  const { menu: mentionMenu, onKey: onMentionKey } = useReferenceMenu({
+    projectPath: mentions?.projectPath, query: mention?.query, anchor: mention?.from,
+    attached: mentions?.attached ?? new Set(), filesFull: mentions?.filesFull ?? false,
+    onPick: (token) => {
+      const view = viewOf()
+      // The listener reports changes a moment late, so the @word is read again now: typing
+      // "@rev" and Enter straight away must replace all of it.
+      const live = view ? mentionIn(view) : undefined
+      if (!view || !live) return
+      const after = view.state.doc.textBetween(live.to, Math.min(live.to + 1, view.state.doc.content.size - 1), undefined, ' ')
+      view.dispatch(view.state.tr.insertText(`${token}${/^\s/.test(after) ? '' : ' '}`, live.from, live.to))
+      setMention(undefined)
+      view.focus()
+    },
+  })
   const matches = useRef<DocMatch[]>([])
   const viewOf = (): EditorView | undefined => current.current?.editor.action((ctx) => ctx.get(editorViewCtx))
   const adapter: FindAdapter = {
@@ -161,7 +209,12 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
       {editor && !readOnly ? <DocumentToolbar editor={editor} /> : null}
       {baseline.current?.frontMatter ? <p className="file-help">Front matter is kept as it is. Edit it in Source.</p> : null}
       {problem ? <div className="workflow-notice" role="alert">{problem}</div> : null}
-      <div className="doc-surface" ref={host} aria-label="Document" onKeyDown={(event) => {
+      {mentionMenu && mention ? <div className="doc-mention" style={{ left: mention.left, top: mention.top }}>{mentionMenu}</div> : null}
+      <div className="doc-surface" ref={host} aria-label="Document" onKeyDownCapture={(event) => {
+        // The @ list takes its keys before the editor does.
+        onMentionKey({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing,
+          preventDefault: () => event.preventDefault(), stopPropagation: () => event.stopPropagation() })
+      }} onKeyUp={() => { if (mentions) trackMention() }} onKeyDown={(event) => {
         if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return
         event.preventDefault()
         // Save exactly what is on screen, including edits the listener has not reported yet.
