@@ -123,7 +123,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
                 className="head-action"
                 aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
                 aria-pressed={meta.completed}
-                title={meta.completed ? 'Reopen this conversation' : 'Mark this conversation complete'}
+                // J11: nothing to complete while the agent is still at it.
+                disabled={running && !meta.completed}
+                title={meta.completed ? 'Reopen this conversation' : running ? 'Available when the turn ends' : 'Mark this conversation complete'}
                 onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
               >
                 <CheckIcon />

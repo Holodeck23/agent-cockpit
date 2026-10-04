@@ -47,7 +47,8 @@
 .thread-actions { display: flex; gap: 8px; flex: none; }
 /* Stop and Complete sit under the title, quiet until hovered. */
 .head-action { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--secondary); font-size: 12.5px; }
-.head-action:hover { border-color: var(--border); background: var(--field); color: var(--strong); }
+.head-action:disabled { opacity: 0.45; cursor: default; }
+.head-action:hover:not(:disabled) { border-color: var(--border); background: var(--field); color: var(--strong); }
 .head-action[aria-pressed='true'] { color: var(--project-tint, var(--success)); }
 .head-action svg { width: 13px; height: 13px; }
 .menu-shortcut { margin-left: auto; padding-left: 16px; font: inherit; font-size: 12px; color: var(--muted); }

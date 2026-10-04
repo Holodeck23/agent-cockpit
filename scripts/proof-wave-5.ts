@@ -91,6 +91,8 @@ try {
   await send(page, 'work')
   await until('working', async () => (await headStatus(page).textContent())?.includes('Working') === true)
   check('A11 the header counts the turn up', await until('timer', async () => /^Working · 0:0[1-9]$/.test((await headStatus(page).textContent())?.trim() ?? ''), 4_000))
+  const complete = page.getByRole('button', { name: 'Mark complete' })
+  check('J11 Complete waits while the agent works', await complete.isDisabled())
   check('A11 so does the list pill', /Working · 0:0\d/.test(await page.locator('.conversation-card .pill-working, .pill-working').first().textContent() ?? ''))
   await send(page, 'keep me')
   await until('first bubble', async () => (await page.locator('.bubble').filter({ hasText: /^keep me$/ }).count()) === 1)
@@ -108,6 +110,7 @@ try {
     (await page.locator('.bubble').filter({ hasText: /^Got: keep me$/ }).count()) === 1 && (await waiting.count()) === 0, 20_000)
     && (await page.locator('.bubble').filter({ hasText: 'Got: take me back' }).count()) === 0)
   check('J1 the conversation is done once the queue is empty', await until('done', async () => (await headStatus(page).textContent())?.includes('Working') === false))
+  check('J11 and is offered once the turn ends', await until('complete enabled', async () => await complete.isEnabled()))
 
   // J1: Stop and send now stops the turn and runs the waiting message straight away.
   await send(page, 'work')
