@@ -28,6 +28,20 @@ export type TranscriptItem =
       resolution?: ApprovalBehavior
     }
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
+  /** A helper agent (J7): what it was asked, what it did, what it said back. */
+  | {
+      type: 'helper'; key: string; id: string; description: string; state: HelperState
+      steps: readonly string[]; answer?: string; startedAt: string; endedAt?: string
+    }
+
+export type HelperState = 'running' | 'done' | 'failed' | 'stopped'
+
+/** The agents' own words for how a helper ended, as one of ours. */
+export function helperState(status: string | undefined): HelperState {
+  if (status === 'failed' || status === 'errored' || status === 'notFound') return 'failed'
+  if (status === 'stopped' || status === 'killed' || status === 'interrupted' || status === 'shutdown') return 'stopped'
+  return 'done'
+}
 
 export function agentName(agent: AgentId): string {
   return agent === 'codex' ? 'Codex' : agent === 'antigravity' ? 'Antigravity' : agent === 'opencode' ? 'OpenCode' : 'Claude Code'
@@ -174,8 +188,18 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const roles = turnRoles(events)
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
+  const helpers = new Map<string, number>()
   const replace = (index: number, next: TranscriptItem): void => {
     items.splice(index, 1, next)
+  }
+  const updateHelper = (id: string, change: (helper: Extract<TranscriptItem, { type: 'helper' }>) => TranscriptItem): void => {
+    const at = helpers.get(id)
+    const helper = at === undefined ? undefined : items[at]
+    if (at !== undefined && helper?.type === 'helper') replace(at, change(helper))
+  }
+  /** A helper cannot outlive its agent session. */
+  const endRunningHelpers = (ts: string): void => {
+    for (const id of helpers.keys()) updateHelper(id, (h) => (h.state === 'running' ? { ...h, state: 'stopped', endedAt: ts } : h))
   }
 
   events.forEach(({ ts, event }, index) => {
@@ -244,7 +268,32 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       case 'branch_changed':
         items.push({ type: 'note', key, text: `The project switched from ${event.from} to ${event.to}${event.byTitle ? ` in “${event.byTitle}”` : ''}. Files here now reflect ${event.to}.`, tone: 'plain' })
         return
+      case 'subagent': {
+        if (event.phase === 'started') {
+          const helper: TranscriptItem = { type: 'helper', key, id: event.id, description: event.description ?? 'A helper', state: 'running', steps: [], startedAt: ts }
+          // Claude's own "Delegating" step for the call that started it becomes the helper.
+          const stepAt = steps.get(event.id)
+          if (stepAt !== undefined && items[stepAt]?.type === 'step') {
+            replace(stepAt, { ...helper, startedAt: (items[stepAt] as { startedAt: string }).startedAt })
+            helpers.set(event.id, stepAt)
+          } else {
+            helpers.set(event.id, items.length)
+            items.push(helper)
+          }
+        } else if (event.phase === 'progress') {
+          const { tool, text } = event
+          updateHelper(event.id, (h) => ({ ...h, ...(tool ? { steps: [...h.steps, describeTool(tool.name, tool.input)] } : {}), ...(text ? { answer: text } : {}) }))
+        } else {
+          updateHelper(event.id, (h) => ({ ...h, state: helperState(event.status), endedAt: ts }))
+        }
+        return
+      }
+      case 'exit':
+      case 'session_boundary':
+        endRunningHelpers(ts)
+        return
       case 'agent_switch':
+        endRunningHelpers(ts)
         agent = event.to
         items.push({ type: 'note', key, text: `Handed over from ${agentName(event.from)} to ${agentName(event.to)}. The conversation so far goes with it.`, tone: 'plain' })
         return

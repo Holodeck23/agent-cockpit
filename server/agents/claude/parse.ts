@@ -130,6 +130,9 @@ function parseSystem(raw: Record<string, unknown>): NormalizedEvent[] {
     case 'task_progress':
     case 'task_notification': {
       if (typeof raw.tool_use_id !== 'string') return []
+      // Background shells are tasks too; only agents are helpers. Later events for a task that
+      // never started as one are ignored downstream.
+      if (raw.subtype === 'task_started' && typeof raw.task_type === 'string' && !raw.task_type.includes('agent')) return []
       const phase = raw.subtype === 'task_started' ? 'started' : raw.subtype === 'task_progress' ? 'progress' : 'finished'
       return [{
         kind: 'subagent', id: raw.tool_use_id, phase,

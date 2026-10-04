@@ -13,6 +13,17 @@ export function openApprovals(events: readonly StoredEvent[]): string[] {
   return [...pending]
 }
 
+/** Helpers (sub-agents) started in the current agent session that have not finished. */
+export function runningHelpers(events: readonly StoredEvent[]): string[] {
+  const running = new Set<string>()
+  for (const { event } of events) {
+    if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch') running.clear()
+    else if (event.kind === 'subagent' && event.phase === 'started') running.add(event.id)
+    else if (event.kind === 'subagent' && event.phase === 'finished') running.delete(event.id)
+  }
+  return [...running]
+}
+
 /**
  * Status comes from the event log alone, plus whether a turn is in flight.
  * Approvals from a process that has since exited are dead, so they only count

@@ -147,3 +147,30 @@ describe('settings changes', () => {
     ])
   })
 })
+
+describe('helpers in the transcript (J7)', () => {
+  it("turns Claude's delegating step into a helper with its steps, report and end", () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'Count the lines' }),
+      at(1, { kind: 'tool_use', id: 'a1', name: 'Agent', input: { description: 'Count lines in notes.txt' } }),
+      at(2, { kind: 'subagent', id: 'a1', phase: 'started', description: 'Count lines in notes.txt' }),
+      at(2, { kind: 'tool_result', toolUseId: 'a1', content: 'Async agent launched', isError: false }),
+      at(3, { kind: 'subagent', id: 'a1', phase: 'progress', tool: { name: 'Read', input: { file_path: '/p/notes.txt' } } }),
+      at(4, { kind: 'subagent', id: 'a1', phase: 'progress', lastTool: 'Read' }),
+      at(5, { kind: 'subagent', id: 'a1', phase: 'progress', text: '4' }),
+      at(7, { kind: 'subagent', id: 'a1', phase: 'finished', status: 'completed' }),
+    ], 'claude')
+    expect(items.filter((i) => i.type === 'step')).toEqual([])
+    expect(items[1]).toMatchObject({ type: 'helper', description: 'Count lines in notes.txt', state: 'done', steps: ['Reading notes.txt'], answer: '4', startedAt: at(1, { kind: 'thread_deleted' }).ts })
+  })
+
+  it('shows a Codex helper with no step of its own, and a helper cut off by its session ending as stopped', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'subagent', id: 'c1', phase: 'started', description: 'Count the lines' }),
+      at(1, { kind: 'subagent', id: 'c2', phase: 'started' }),
+      at(2, { kind: 'subagent', id: 'c1', phase: 'finished', status: 'failed' }),
+      at(3, { kind: 'exit', code: 0 }),
+    ], 'codex')
+    expect(items.map((i) => i.type === 'helper' && [i.description, i.state])).toEqual([['Count the lines', 'failed'], ['A helper', 'stopped']])
+  })
+})

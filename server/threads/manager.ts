@@ -126,6 +126,10 @@ interface Live {
   readonly questions: Map<string, { readonly request: PendingApproval; readonly ids: ReadonlySet<string> }>
   readonly session: AgentSession
   turnRunning: boolean
+  /** Helpers (sub-agents) still running; they keep the session open and the conversation working (J7). */
+  readonly helpers: Set<string>
+  /** A helper finished between turns: the agent reports back on its own, so its next output starts a turn. */
+  followUp: boolean
   stopRequested: boolean
   /** Text streamed so far for the message in progress, so a late viewer sees all of it. */
   partial: string
@@ -188,8 +192,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return closingSession
   }
 
-  const statusOf = (threadId: string): ThreadStatus =>
-    deriveStatus(store.events(threadId), live.get(threadId)?.turnRunning ?? false)
+  const busy = (entry: Live | undefined): boolean => Boolean(entry && (entry.turnRunning || entry.helpers.size > 0))
+  const statusOf = (threadId: string): ThreadStatus => deriveStatus(store.events(threadId), busy(live.get(threadId)))
+  const armIdleClose = (entry: Live): void => {
+    if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
+  }
 
   const broadcast = (threadId: string, event: NormalizedEvent): void => {
     const update: ThreadUpdate = { threadId, event, status: statusOf(threadId) }
@@ -209,6 +217,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (event.kind !== 'text_delta') store.append(threadId, event)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
     if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
+    if (entry && event.kind === 'subagent') {
+      if (event.phase === 'started') entry.helpers.add(event.id)
+      if (event.phase === 'finished' && entry.helpers.delete(event.id) && !entry.turnRunning) {
+        // A helper you stopped does not get reported on.
+        entry.followUp = !entry.stopRequested
+        if (entry.helpers.size === 0) { entry.stopRequested = false; armIdleClose(entry) }
+      }
+    }
+    if (entry?.followUp && !entry.turnRunning && (event.kind === 'text_delta' || event.kind === 'assistant_text' || event.kind === 'tool_use')) {
+      entry.followUp = false
+      entry.turnRunning = true
+      if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    }
     // Only provider evidence makes a session resumable; constructing a process does not.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
@@ -219,7 +240,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       entry.questions.clear()
       entry.turnRunning = false
       entry.stopRequested = false
-      entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
+      // Closing the process would kill helpers still at work.
+      if (entry.helpers.size === 0) armIdleClose(entry)
     }
     if (event.kind === 'exit') {
       if (entry?.idleTimer) clearTimeout(entry.idleTimer)
@@ -297,7 +319,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, questions, session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, questions, helpers: new Set(), followUp: false, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -409,7 +431,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     switchAgent(threadId, settings) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
-      if (entry?.turnRunning) throw new Error('Stop the current turn before switching agents')
+      if (busy(entry)) throw new Error('Stop the current turn before switching agents')
       generations.delete(threadId)
       live.delete(threadId)
       if (entry) void closeEntry(entry)
@@ -423,7 +445,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const meta = requireMeta(threadId)
       if (settings.agent !== meta.settings.agent) throw new Error('Switch agents to change the agent')
       const entry = live.get(threadId)
-      if (entry?.turnRunning) throw new Error('Stop the current turn before changing settings')
+      if (busy(entry)) throw new Error('Stop the current turn before changing settings')
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
       generations.delete(threadId)
       live.delete(threadId)
@@ -435,7 +457,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     resumeRecovered(threadId, agent, text, agentText) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
-      if (entry?.turnRunning) throw new Error('Stop the current turn before resuming recent work')
+      if (busy(entry)) throw new Error('Stop the current turn before resuming recent work')
       const settings: ThreadSettings = { agent, permissionMode: 'manual', useHooks: false }
       if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
       else {
@@ -453,7 +475,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         const events = store.events(meta.id)
         return {
           meta,
-          status: deriveStatus(events, live.get(meta.id)?.turnRunning ?? false),
+          status: deriveStatus(events, busy(live.get(meta.id))),
           preview: previewOf(events),
           messageCount: messageCountOf(events),
           lastActivityAt: events.findLast((e) => !QUIET.has(e.event.kind))?.ts ?? meta.updatedAt,

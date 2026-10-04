@@ -105,6 +105,33 @@ describe('thread manager', () => {
     expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'question_answered', dismissed: true })
   })
 
+  it('stays working while a helper runs after the turn, and counts its report as a turn of its own (J7)', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'delegate' })
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'started', description: 'Count lines' })
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('working')
+    expect(() => manager.changeSettings(meta.id, settings)).toThrow(/Stop the current turn/)
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'finished', status: 'completed' })
+    expect(manager.status(meta.id)).toBe('done')
+    // Claude reports back on its own: that output is a turn until its result.
+    agent.emit({ kind: 'assistant_text', messageId: 'm2', text: 'It has 4 lines.' })
+    expect(manager.status(meta.id)).toBe('working')
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('does not start a report turn for helpers you stopped', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'delegate' })
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'started' })
+    agent.emit({ kind: 'result', ok: true })
+    manager.interrupt(meta.id)
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'finished', status: 'stopped' })
+    agent.emit({ kind: 'assistant_text', messageId: 'late', text: 'stray' })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
   it('keeps the message being streamed for viewers who open the thread mid-turn', () => {
     const { manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'hi' })

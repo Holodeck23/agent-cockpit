@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
-import { openApprovals } from '../../../server/threads/status.ts'
+import { openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
@@ -39,6 +39,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
   const shown = !running && awaitingOf(events) ? 'needs_input' : status
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
+  const helpers = useMemo(() => (running ? runningHelpers(events).length : 0), [events, running])
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
   const prefs = useActivityPrefs()
@@ -100,8 +101,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               {shown === 'working' ? <Bars live /> : null}
               {STATUS_LABEL[shown]}
             </span>
+            {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
             {running ? (
-              <button type="button" className="head-action" aria-label="Stop" title="Stop the current turn" onClick={() => guard(api.interrupt(meta.id))}>
+              <button type="button" className="head-action" aria-label="Stop" title={helpers > 0 ? 'Stop the current turn and its helpers' : 'Stop the current turn'} onClick={() => guard(api.interrupt(meta.id))}>
                 <StopIcon />
                 Stop
               </button>

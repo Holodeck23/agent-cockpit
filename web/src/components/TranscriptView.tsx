@@ -24,6 +24,8 @@ interface TranscriptViewProps {
   onDismiss?: () => void
 }
 
+const HELPER_LABEL = { running: 'Helper working', done: 'Helper finished', failed: 'Helper failed', stopped: 'Helper stopped' } as const
+
 const time = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
 /** Re-renders every second while `active`, for the running step's timer. */
@@ -174,6 +176,21 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                   <div className="approval-expired">No longer waiting: that turn has ended.</div>
                 )}
               </div>
+            )
+          }
+          case 'helper': {
+            const live = item.state === 'running'
+            const end = item.endedAt ? Date.parse(item.endedAt) : undefined
+            return (
+              <details key={item.key} className={`helper helper-${item.state}`}>
+                <summary>
+                  <Bars live={live} />
+                  <span className="helper-label">{item.description}</span>
+                  <span className="helper-meta">· {HELPER_LABEL[item.state]}{item.steps.length ? ` · ${item.steps.length} step${item.steps.length === 1 ? '' : 's'}` : ''}{end !== undefined ? ` · ${elapsed(item.startedAt, end)}` : ''}</span>
+                </summary>
+                {item.steps.length ? <ol className="helper-steps">{item.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : null}
+                {item.answer ? <div className="helper-answer reply"><ReplyMarkdown text={item.answer} /></div> : live ? null : <div className="helper-empty">No report.</div>}
+              </details>
             )
           }
           case 'note':

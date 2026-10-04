@@ -107,6 +107,20 @@
 .step-time { color: var(--muted); font-variant-numeric: tabular-nums; }
 .step-error { flex-basis: 100%; margin-left: 22px; font: 12.5px var(--mono); color: var(--danger); white-space: pre-wrap; }
 
+/* A helper agent (J7): one line like a step, opening to what it did and said. */
+.helper { padding: 0 4px; font-size: 14px; color: var(--secondary); }
+.helper > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+.helper > summary::-webkit-details-marker { display: none; }
+.helper .bars { width: 14px; height: 14px; }
+.helper:not(.helper-running) .bars { opacity: 0.5; }
+.helper-label { color: var(--body); }
+.helper-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.helper-failed .helper-meta { color: var(--danger); }
+.helper-steps { margin: 6px 0 0 22px; padding-left: 16px; color: var(--muted); font-size: 13px; }
+.helper-answer, .helper-empty { margin: 6px 0 0 22px; padding: 8px 12px; border-left: 2px solid var(--border); font-size: 13.5px; }
+.helper-empty { color: var(--muted); }
+.helper-count { font-size: 12.5px; color: var(--secondary); padding: 2px 8px; border-radius: 999px; background: var(--field); }
+
 .approval { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--needs-bg); border: 1px solid var(--needs-border); color: var(--needs-ink); }
 .approval:not(.open) { opacity: 0.7; }
 .approval-title { font-size: 14px; }
