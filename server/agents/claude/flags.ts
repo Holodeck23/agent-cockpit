@@ -34,8 +34,10 @@ export const claudeLaunchSchema = z
     sessionId: z.uuid().optional(),
     resume: z.uuid().optional(),
     useHooks: z.boolean().default(false),
-    // Guidance + project instructions + a switch handoff (up to 24k) must fit; same bound as Codex.
-    appendSystemPrompt: z.string().max(100_000).optional(),
+    // Guidance + project instructions + a whole switch handoff (J5, 400k) must fit; same bound as Codex.
+    appendSystemPrompt: z.string().max(500_000).optional(),
+    /** The same prompt, written to a private file by the launcher: kept out of argv, which any local user can read. */
+    appendSystemPromptFile: z.string().min(1).max(4096).optional(),
     mcpConfig: mcpConfigSchema.default({ mcpServers: {} }),
     /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
     allowedTools: z
@@ -44,6 +46,7 @@ export const claudeLaunchSchema = z
       .default([]),
   })
   .refine((o) => !(o.sessionId && o.resume), { message: 'sessionId and resume are mutually exclusive' })
+  .refine((o) => !(o.appendSystemPrompt && o.appendSystemPromptFile), { message: 'pass the appended prompt as text or as a file, not both' })
 
 export type ClaudeLaunchInput = z.input<typeof claudeLaunchSchema>
 export type ClaudeLaunchOptions = z.output<typeof claudeLaunchSchema>
@@ -75,5 +78,6 @@ export function buildClaudeArgs(
     ...(o.resume ? ['--resume', o.resume] : []),
     ...(o.allowedTools.length ? ['--allowedTools', o.allowedTools.join(',')] : []),
     ...(o.appendSystemPrompt ? ['--append-system-prompt', o.appendSystemPrompt] : []),
+    ...(o.appendSystemPromptFile ? ['--append-system-prompt-file', o.appendSystemPromptFile] : []),
   ]
 }

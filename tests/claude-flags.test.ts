@@ -39,6 +39,18 @@ describe('buildClaudeArgs', () => {
   })
 })
 
+describe('the appended system prompt (J5)', () => {
+  it('passes a prompt file instead of the text, never both', () => {
+    const args = buildClaudeArgs({ ...base, appendSystemPromptFile: '/tmp/cockpit-prompt-x/prompt.md' })
+    expect(args[args.indexOf('--append-system-prompt-file') + 1]).toBe('/tmp/cockpit-prompt-x/prompt.md')
+    expect(args).not.toContain('--append-system-prompt')
+    expect(() => buildClaudeArgs({ ...base, appendSystemPrompt: 'a', appendSystemPromptFile: '/tmp/p.md' })).toThrow()
+  })
+  it('takes a whole switch handoff', () => {
+    expect(() => buildClaudeArgs({ ...base, appendSystemPrompt: 'x'.repeat(450_000) })).not.toThrow()
+  })
+})
+
 describe('effort levels per agent (C9)', async () => {
   const { effortsFor, effortForClaude } = await import('../server/agents/claude/flags.ts')
   it('offers Ultra for Codex only, and gives agents without it their highest level', () => {

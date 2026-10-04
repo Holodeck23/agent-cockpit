@@ -5,6 +5,8 @@ export interface ClaudeCapabilities {
   readonly permissionPrompts: boolean
   /** --replay-user-messages: Claude says when it takes each message, so mid-turn messages can wait visibly (J1). */
   readonly replayUserMessages: boolean
+  /** --append-system-prompt-file (J5). 2.1.289 never declares it; it names it only in --bare's prose. */
+  readonly appendSystemPromptFile: boolean
   readonly options: ReadonlyMap<string, string>
 }
 
@@ -21,7 +23,12 @@ export function parseClaudeHelp(help: string): ClaudeCapabilities {
   if (!options.has('--print') || !options.has('--permission-mode')) {
     throw new Error('Could not read Claude Code capabilities. Check that the selected claude executable is Claude Code, then retry. No agent turn was started.')
   }
-  return { permissionPrompts: options.has('--permission-prompts'), replayUserMessages: options.has('--replay-user-messages'), options }
+  return {
+    permissionPrompts: options.has('--permission-prompts'),
+    replayUserMessages: options.has('--replay-user-messages'),
+    appendSystemPromptFile: options.has('--append-system-prompt-file') || help.includes('--append-system-prompt[-file]'),
+    options,
+  }
 }
 
 export function validateClaudeArgs(args: readonly string[], capabilities: ClaudeCapabilities): void {
@@ -32,7 +39,8 @@ export function validateClaudeArgs(args: readonly string[], capabilities: Claude
   for (let i = 0; i < args.length; i++) {
     const option = args[i]!
     const block = capabilities.options.get(option)
-    if (!block && option !== hidden) throw incompatible(option)
+    const named = option === '--append-system-prompt-file' && capabilities.appendSystemPromptFile
+    if (!block && option !== hidden && !named) throw incompatible(option)
     if (switches.has(option)) continue
     const value = args[++i]!
     if (['--permission-mode', '--effort', '--input-format', '--output-format', '--permission-prompts'].includes(option)) {

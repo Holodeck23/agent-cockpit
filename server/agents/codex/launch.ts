@@ -19,7 +19,7 @@ export const codexLaunchSchema = z.object({
   /** Codex thread id to resume; absent means start a new thread. */
   resume: z.string().min(1).max(200).optional(),
   /** Seed context for a brand-new thread (used when switching agents). */
-  developerInstructions: z.string().max(100_000).optional(),
+  developerInstructions: z.string().max(500_000).optional(),
 })
 export type CodexLaunchInput = z.input<typeof codexLaunchSchema>
 

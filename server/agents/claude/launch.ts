@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
@@ -40,10 +43,16 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
     probeClaude(deps.executable ?? 'claude', input.cwd, { ...process.env, ...deps.env }, controller.signal))
     .then((capabilities) => {
       if (ended || !capabilities) return
-      const args = buildClaudeArgs(input, capabilities)
-      validateClaudeArgs(args, capabilities)
-      replays = capabilities.replayUserMessages
-      session = spawnClaude(input, onEvent, deps, args)
+      const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
+      try {
+        const args = buildClaudeArgs(prompt ? { ...input, appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : input, capabilities)
+        validateClaudeArgs(args, capabilities)
+        replays = capabilities.replayUserMessages
+        session = spawnClaude(input, onEvent, deps, args, () => prompt?.remove())
+      } catch (error) {
+        prompt?.remove()
+        throw error
+      }
       if (pending !== undefined) { session.send(pending); pending = undefined }
     }).catch((error: unknown) => finish(error))
   return {
@@ -71,7 +80,19 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   }
 }
 
-function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[]): AgentSession {
+/**
+ * The appended prompt (guidance, project instructions, a switch handoff) goes in a file only
+ * this user can read: argv is visible to every account on the Mac, and a whole handoff (J5)
+ * would crowd argv's 1 MB limit. Claude reads it at startup; it is removed when the process ends.
+ */
+function writePromptFile(text: string): { readonly file: string; remove(): void } {
+  const dir = mkdtempSync(join(tmpdir(), 'cockpit-prompt-'))
+  const file = join(dir, 'prompt.md')
+  writeFileSync(file, text, { mode: 0o600 })
+  return { file, remove: () => rmSync(dir, { recursive: true, force: true }) }
+}
+
+function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[], cleanup: () => void): AgentSession {
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -117,6 +138,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true
+      cleanup()
       onEvent({ kind: 'result', ok: false })
       onEvent({ kind: 'exit', code: null })
     }
@@ -124,6 +146,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   child.on('exit', (code) => {
     if (exited) return
     exited = true
+    cleanup()
     for (const resolve of replies.values()) resolve(undefined)
     replies.clear()
     if (code !== 0 && code !== null && stderrTail.length > 0) {

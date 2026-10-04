@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -12,6 +12,11 @@ const help = readFileSync('scripts/fixtures/claude-help.txt', 'utf8')
 // stand-in's first --help can outlast expect.poll's 1 s default. The probe itself allows 5 s.
 const FIRST_RUN = { timeout: 5000 }
 const legacyHelp = help.replace(/^  --permission-prompts.*\n/m, '')
+// 2.1.289 never declares the prompt-file options; it names them only in --bare's prose.
+const fileHelp = `${help}  --bare                                Minimal mode. Explicitly provide context
+                                        via: --system-prompt[-file],
+                                        --append-system-prompt[-file], --add-dir
+`
 function fixture(helpText = help, probe = '') {
   const cwd = mkdtempSync(join(tmpdir(), 'cockpit-cli-capabilities-'))
   const executable = join(cwd, 'claude')
@@ -53,6 +58,39 @@ describe('Claude compatibility', () => {
     }
     expect(() => validateClaudeArgs(args, parseClaudeHelp(help.replace('"max"', '"medium"')))).toThrow(/--effort max/)
     expect(() => validateClaudeArgs(args, parseClaudeHelp(help.replace('"manual"', '"default"')))).toThrow(/--permission-mode manual/)
+  })
+  it('accepts the prompt file only where the CLI names it (J5)', () => {
+    const args = buildClaudeArgs({ cwd: '/p', appendSystemPromptFile: '/tmp/p.md' })
+    expect(parseClaudeHelp(fileHelp).appendSystemPromptFile).toBe(true)
+    expect(parseClaudeHelp(help).appendSystemPromptFile).toBe(false)
+    validateClaudeArgs(args, parseClaudeHelp(fileHelp))
+    expect(() => validateClaudeArgs(args, parseClaudeHelp(help))).toThrow(/does not support --append-system-prompt-file/)
+  })
+  it('hands the appended prompt over in a private file, gone when the agent exits (J5)', async () => {
+    const f = fixture(fileHelp), events: NormalizedEvent[] = []
+    const prompt = `Conversation so far:\n${'y'.repeat(300_000)}`
+    const session = launchClaude({ cwd: f.cwd, appendSystemPrompt: prompt }, (e) => events.push(e), { executable: f.executable })
+    let file = ''
+    try {
+      session.send('hello')
+      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok), FIRST_RUN).toBe(true)
+      const launched = readFileSync(join(f.cwd, 'launched'), 'utf8').split('\n')
+      expect(launched).not.toContain('--append-system-prompt')
+      file = launched[launched.indexOf('--append-system-prompt-file') + 1]!
+      expect(readFileSync(file, 'utf8')).toBe(prompt)
+      expect(statSync(file).mode & 0o777).toBe(0o600)
+    } finally { await session.close() }
+    await expect.poll(() => existsSync(file)).toBe(false)
+  })
+  it('keeps the prompt inline on a CLI without the file option', async () => {
+    const f = fixture(help), events: NormalizedEvent[] = []
+    const session = launchClaude({ cwd: f.cwd, appendSystemPrompt: 'short guidance' }, (e) => events.push(e), { executable: f.executable })
+    try {
+      session.send('hello')
+      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok), FIRST_RUN).toBe(true)
+      const launched = readFileSync(join(f.cwd, 'launched'), 'utf8').split('\n')
+      expect(launched[launched.indexOf('--append-system-prompt') + 1]).toBe('short guidance')
+    } finally { await session.close() }
   })
   it.each([help, legacyHelp])('probes the chosen executable, then delivers the queued message', async (text) => {
     const f = fixture(text), events: NormalizedEvent[] = []

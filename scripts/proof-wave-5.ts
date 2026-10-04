@@ -150,6 +150,25 @@ try {
     (await compaction.last().textContent())?.includes('Summarised the conversation to make room · 34k → 2.8k tokens') === true))
   check('J3 and the header goes back to the turn state', await until('done', async () => (await headStatus(page).textContent())?.includes('Compacting') === false))
 
+  // J5: switching agents hands over the whole conversation. The opening request alone is past
+  // the old 24k cap, which used to cut it; the Codex stand-in reports what it was given.
+  await startConversation(page, `J5-OPENING port the parser. ${'Context line for the handoff. '.repeat(1_000)}`)
+  await until('opening reply', async () => (await page.locator('.bubble').filter({ hasText: /^ok$/ }).count()) === 1)
+  await send(page, 'J5-NEWEST keep the tests green')
+  await until('newest reply', async () => (await page.locator('.bubble').filter({ hasText: /^ok$/ }).count()) === 2)
+  await page.getByRole('button', { name: 'Agent settings' }).click()
+  const picker = page.getByRole('dialog', { name: 'Agent settings' })
+  await picker.getByRole('radio', { name: 'Codex', exact: true }).click()
+  await picker.getByRole('button', { name: 'Switch' }).click()
+  await send(page, 'What do you have?')
+  const handoff = page.locator('.bubble').filter({ hasText: /^Handoff \d+ characters/ })
+  check('J5 the new agent answers after the switch', await until('codex reply', async () => (await handoff.count()) === 1))
+  const carried = (await handoff.textContent().catch(() => '')) ?? ''
+  check('J5 the handoff carries the opening request and the newest message',
+    /opening request yes; newest message yes\.$/.test(carried), carried)
+  check('J5 the handoff is past the old 24k cap', Number(/Handoff (\d+)/.exec(carried)?.[1] ?? 0) > 30_000, carried)
+  await shot(page, 'j5-switched')
+
   await setTheme(page, 'Dark')
   await shot(page, 'thread-dark')
   await setTheme(page, 'Light')
