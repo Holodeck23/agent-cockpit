@@ -84,6 +84,9 @@ export const api = {
   importSession: (projectPath: string, agent: AgentId, sessionId: string) =>
     request<ThreadMeta>('/api/import', { method: 'POST', body: { projectPath, agent, sessionId } }),
   listDocuments: (projectPath: string) => request<DocumentEntry[]>(`/api/documents?${new URLSearchParams({ projectPath })}`),
+  documentsFolder: (projectPath: string) => request<{ folder: string; custom: boolean }>(`/api/documents/location?${new URLSearchParams({ projectPath })}`),
+  setDocumentsFolder: (projectPath: string, folder: string | null) =>
+    request<{ folder: string; copied: string[] }>('/api/documents/location', { method: 'POST', body: { projectPath, folder } }),
   searchDocuments: (projectPath: string, q: string) => request<DocumentMatch[]>(`/api/documents/search?${new URLSearchParams({ projectPath, q })}`),
   markDocument: (projectPath: string, path: string, change: { pinned?: boolean; archived?: boolean }) =>
     request<DocumentEntry[]>('/api/documents/mark', { method: 'POST', body: { projectPath, path, ...change } }),

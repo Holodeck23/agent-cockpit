@@ -1,3 +1,4 @@
+import { api } from '../api.ts'
 import type { SettingsPatch } from '../useProjects.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../api.ts'
@@ -110,6 +111,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
               workflows with the schedule off, after you approve. Applies when an agent next starts.
             </span>
           </label>
+          <DocumentsFolder projectPath={project.path} />
           <div className="field">
             <span>Folder</span>
             <div className="project-folder">
@@ -144,6 +146,34 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           </footer>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Where "Your documents" live for this project (F14). Changing it copies them over at once. */
+function DocumentsFolder({ projectPath }: { projectPath: string }) {
+  const [where, setWhere] = useState<{ folder: string; custom: boolean }>()
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => { api.documentsFolder(projectPath).then(setWhere, (e: unknown) => setError(message(e))) }, [projectPath])
+  const move = (folder: string | null): void => {
+    setError('')
+    api.setDocumentsFolder(projectPath, folder).then((result) => {
+      setWhere({ folder: result.folder, custom: folder !== null })
+      const n = result.copied.length
+      setNote(`${n ? `Copied ${n} ${n === 1 ? 'document' : 'documents'} there.` : 'Nothing needed copying.'} The previous folder was left as it was.`)
+    }, (e: unknown) => setError(message(e)))
+  }
+  return (
+    <div className="field">
+      <span>Your documents folder</span>
+      <div className="project-folder">
+        <p className="modal-path" title={where?.folder}>{where ? (where.custom ? where.folder : 'Kept by Cockpit, outside this project') : '…'}</p>
+        {native ? <button type="button" className="button-soft" onClick={() => { void native?.pickFolder().then((picked) => { if (picked) move(picked) }) }}>Choose folder…</button> : null}
+        {where?.custom ? <button type="button" className="button-soft" onClick={() => move(null)}>Use Cockpit&apos;s folder</button> : null}
+      </div>
+      {note ? <small role="status">{note}</small> : null}
+      {error ? <small role="alert" className="field-error">{error}</small> : null}
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { expandFiles, listFiles, readProjectFile } from '../files/browser.ts'
 import { MessageReferenceError } from '../files/references.ts'
 import { FileConflictError, writeProjectFile } from '../files/editor.ts'
 import { checkReferences, searchFiles } from '../files/search.ts'
-import { listDocuments, markDocument, renameFile, searchDocuments, spaceRoot, spaceSchema } from '../files/documents.ts'
+import { documentsFolder, listDocuments, markDocument, renameFile, searchDocuments, setDocumentsFolder, spaceRoot, spaceSchema } from '../files/documents.ts'
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -246,6 +246,22 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
           if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
           sendJson(res, 200, { data: listDocuments(store.root, projectPath) })
           return true
+        }
+        // Where this project's documents live (F14): Cockpit's folder, or one the user chose.
+        if (parts[2] === 'location') {
+          if (method === 'GET') {
+            const projectPath = url.searchParams.get('projectPath') ?? ''
+            if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+            sendJson(res, 200, { data: documentsFolder(store.root, projectPath) })
+            return true
+          }
+          if (method === 'POST') {
+            const body = parseBody(z.object({ projectPath: z.string().min(1).max(1000), folder: z.string().min(1).max(1000).nullable() }), await readJson(req))
+            if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+            try { sendJson(res, 200, { data: setDocumentsFolder(store.root, body.projectPath, body.folder) }) }
+            catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+            return true
+          }
         }
         if (method === 'GET' && parts[2] === 'search') {
           const projectPath = url.searchParams.get('projectPath') ?? ''

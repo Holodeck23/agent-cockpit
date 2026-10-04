@@ -384,7 +384,28 @@ try {
   await settings.locator('.button-primary').click()
   const stored = async () => ((await page.evaluate(async () => (await (await fetch('/api/projects')).json()).data)) as Array<{ name: string; agentWorkflows?: boolean }>).find((p) => p.name === 'App')?.agentWorkflows
   check('P1 the setting is saved on the project', await until('saved setting', async () => (await stored()) === true))
+
+  // F14: keep this project's documents in a folder of your choosing (the native picker is stubbed).
+  const elsewhere = join(root, 'my-notes')
+  mkdirSync(elsewhere)
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as unknown as typeof dialog.showOpenDialog
+  }, elsewhere)
+  check('F14 documents start in Cockpit\'s own folder', await until('default', async () => (await settings.locator('.modal-path').first().innerText()) === 'Kept by Cockpit, outside this project'))
+  await settings.getByRole('button', { name: 'Choose folder…' }).click()
+  check('F14 choosing a folder copies the documents there', await until('copied docs', async () => existsSync(join(elsewhere, 'launch-plan.md')) && existsSync(join(elsewhere, 'groceries.txt'))))
+  check('F14 and says the previous folder was kept', await until('note', async () => (await settings.locator('small[role=status]').innerText()).endsWith('The previous folder was left as it was.')))
+  check('F14 the chosen folder is shown', (await settings.locator('.modal-path').first().innerText()) === elsewhere)
+  const footBox = await settings.locator('.modal-foot').boundingBox()
+  const dialogBox = await settings.boundingBox()
+  check('F14 the settings buttons stay in view as the dialog grows', !!footBox && !!dialogBox && footBox.y + footBox.height <= dialogBox.y + dialogBox.height + 1)
+  await shot(page, 'f14-folder')
+  writeFileSync(join(elsewhere, 'added-there.md'), 'from Finder\n')
   await settings.getByRole('button', { name: 'Done' }).click()
+  await sectionTab(/^Files/).click()
+  await page.getByRole('tab', { name: 'Your documents' }).click()
+  check('F14 Your documents now reads from that folder', await until('reads there', async () => (await docList.locator('.file-row', { hasText: 'added-there.md' }).count()) === 1))
+  await page.getByRole('tab', { name: 'Project files' }).click()
 
   await sectionTab(/^Files/).click()
   // F8: drop files from Finder onto the explorer; copied in, never over an existing file.
