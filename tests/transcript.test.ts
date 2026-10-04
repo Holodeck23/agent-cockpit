@@ -210,3 +210,20 @@ describe('agent questions in the transcript (J6)', () => {
     expect(items[0]).toMatchObject({ type: 'question', dismissed: true })
   })
 })
+
+describe('messages waiting in the agent queue (J1)', () => {
+  it('marks a queued message as waiting until taken, and leaves out one you took back', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'work' }),
+      at(1, { kind: 'user_text', text: 'keep me', queuedId: 'u1' }),
+      at(2, { kind: 'user_text', text: 'take me back', queuedId: 'u2' }),
+      at(3, { kind: 'user_unqueued', id: 'u2' }),
+    ], 'claude')
+    expect(items.map((i) => i.type === 'message' && [i.text, i.queuedId])).toEqual([['work', undefined], ['keep me', 'u1']])
+    const taken = buildTranscript([
+      at(1, { kind: 'user_text', text: 'keep me', queuedId: 'u1' }),
+      at(5, { kind: 'user_taken', text: 'keep me', id: 'u1' }),
+    ], 'claude')
+    expect(taken[0]).not.toHaveProperty('queuedId')
+  })
+})

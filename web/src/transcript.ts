@@ -6,6 +6,7 @@ import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
+import { waitingMessages } from '../../server/threads/status.ts'
 
 export type TranscriptItem =
   | {
@@ -15,6 +16,8 @@ export type TranscriptItem =
       phase?: 'acknowledgement' | 'update'
       /** A conclusion that asks you something or reports a blocker; its marker is removed from `text`. */
       conclusion?: 'question' | 'blocker'
+      /** Sent mid-turn and not taken by the agent yet (J1): it can still be taken back. */
+      queuedId?: string
     }
   | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string }
   | {
@@ -190,6 +193,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
 
   const items: TranscriptItem[] = []
   const roles = turnRoles(events)
+  const waiting = new Set(waitingMessages(events))
+  // A message you took back went to your draft; it is no longer part of the conversation.
+  const takenBack = new Set(events.flatMap((e) => (e.event.kind === 'user_unqueued' ? [e.event.id] : [])))
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
   const helpers = new Map<string, number>()
@@ -218,6 +224,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
+        if (event.kind === 'user_text' && event.queuedId && takenBack.has(event.queuedId)) return
         const author = event.kind === 'user_text' ? 'you' : agent
         const showAuthor = !(last?.type === 'message' && last.author === author)
         if (event.kind === 'user_text') {
@@ -230,7 +237,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
             .replace(/[ \t]+\n/g, '\n').trim()
           const { attachments } = described
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
-            ...(event.workflows?.length ? { workflows: event.workflows } : {}) })
+            ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}) })
         } else {
           const role = roles.get(index)
           const parsed = role === 'conclusion' ? parseConclusion(event.text) : undefined

@@ -58,7 +58,8 @@ function parseUser(raw: Record<string, unknown>): NormalizedEvent[] {
   // --replay-user-messages echoes a message you sent at the moment Claude takes it.
   if (raw.isReplay === true) {
     const text = stringifyContent(message.data.content)
-    return text.length > 0 && !text.startsWith('<local-command-') ? [{ kind: 'user_taken', text }] : []
+    if (text.length === 0 || text.startsWith('<local-command-')) return []
+    return [{ kind: 'user_taken', text, ...(typeof raw.uuid === 'string' ? { id: raw.uuid } : {}) }]
   }
   // A sub-agent's tool results stay inside it; its progress already names the tool.
   if (!Array.isArray(message.data.content) || parentOf(raw)) return []

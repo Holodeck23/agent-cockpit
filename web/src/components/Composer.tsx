@@ -14,7 +14,7 @@ interface ComposerProps {
   onDraftLoaded?: () => void
   /** Replaces the draft and focuses the box, e.g. from a starter suggestion. A new object each time. */
   /** Fills the message box; with `reference`, adds that token to what is already typed instead. */
-  prefill?: { readonly text: string; readonly reference?: boolean }
+  prefill?: { readonly text: string; readonly reference?: boolean; readonly restore?: boolean }
   projectPath?: string
   /** Set in a conversation (not on New conversation). */
   threadId?: string
@@ -70,7 +70,9 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
 
   useEffect(() => {
     if (!prefill) return
-    const next = prefill.reference ? addReference(box.current?.value ?? '', prefill.text) : prefill.text
+    const current = box.current?.value ?? ''
+    // A restored message goes above whatever you have typed since, never over it.
+    const next = prefill.reference ? addReference(current, prefill.text) : prefill.restore && current.trim() ? `${prefill.text}\n${current}` : prefill.text
     setText(next)
     saveDraft(draftKey, next)
     const el = box.current

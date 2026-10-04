@@ -13,17 +13,22 @@ interface FakeAgent {
   emit: EventSink
   readonly approvals: Array<{ requestId: string; behavior: string; input: unknown }>
   readonly answers: Array<{ requestId: string; input: unknown; answers: Readonly<Record<string, string>> | undefined }>
+  readonly sent: Array<{ text: string; queuedId?: string }>
+  /** What the fake's cancelQueued answers; queueing is on when set. */
+  cancel?: boolean
 }
 
 function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
-  const agent: FakeAgent = { requests: [], emit: () => undefined, approvals: [], answers: [] }
+  const agent: FakeAgent = { requests: [], emit: () => undefined, approvals: [], answers: [], sent: [] }
   const launcher: Launcher = (request, onEvent) => {
     agent.requests.push(request)
     agent.emit = onEvent
     let alive = true
     const session: AgentSession = {
       agent: 'claude',
-      send: () => {},
+      send: (text, queuedId) => { agent.sent.push({ text, ...(queuedId ? { queuedId } : {}) }) },
+      queues: () => agent.cancel !== undefined,
+      cancelQueued: () => Promise.resolve(agent.cancel ?? false),
       respondApproval: ({ requestId, input }, behavior) => {
         agent.approvals.push({ requestId, behavior, input })
         onEvent({ kind: 'approval_resolved', requestId, behavior })
@@ -130,6 +135,45 @@ describe('thread manager', () => {
     agent.emit({ kind: 'subagent', id: 't1', phase: 'finished', status: 'stopped' })
     agent.emit({ kind: 'assistant_text', messageId: 'late', text: 'stray' })
     expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('queues a message sent mid-turn, and takes it back to your draft before the agent takes it (J1)', async () => {
+    const { store, manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    expect(agent.sent[0]).toEqual({ text: 'first' })
+    manager.send(meta.id, 'second')
+    const queuedId = agent.sent[1]?.queuedId
+    expect(queuedId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'user_text', text: 'second', queuedId })
+    await expect(manager.unqueue(meta.id, queuedId!)).resolves.toBe('second')
+    expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'user_unqueued', id: queuedId })
+    await expect(manager.unqueue(meta.id, queuedId!)).rejects.toThrow(/already taken/)
+  })
+
+  it('runs a waiting message after the turn, and says when the agent already took it (J1)', async () => {
+    const { store, manager, agent, settings } = setup()
+    agent.cancel = false
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    const queuedId = agent.sent[1]!.queuedId!
+    agent.emit({ kind: 'user_taken', text: 'first' })
+    expect(store.events(meta.id).some((e) => e.event.kind === 'user_taken')).toBe(false)
+    agent.emit({ kind: 'result', ok: true })
+    // Still waiting: the agent runs it next.
+    expect(manager.status(meta.id)).toBe('working')
+    await expect(manager.unqueue(meta.id, queuedId)).rejects.toThrow(/already taken/)
+    agent.emit({ kind: 'user_taken', text: 'second', id: queuedId })
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'user_taken', id: queuedId })
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('sends straight away when the agent cannot queue', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    expect(agent.sent[1]).toEqual({ text: 'second' })
   })
 
   it('keeps the message being streamed for viewers who open the thread mid-turn', () => {

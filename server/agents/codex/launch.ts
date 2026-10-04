@@ -151,13 +151,14 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       queued.push(text)
       return
     }
-    rpc
-      .request('turn/start', {
-        threadId,
-        input: [{ type: 'text', text, text_elements: [] }],
-        ...(opts.effort ? { effort: opts.effort } : {}),
-      })
-      .catch((error: unknown) => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) })
+    const input = [{ type: 'text', text, text_elements: [] }]
+    const fail = (error: unknown): void => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) }
+    const start = (): Promise<unknown> => rpc.request('turn/start', { threadId, input, ...(opts.effort ? { effort: opts.effort } : {}) })
+    // Mid-turn, steer the running turn (J1 spike: folded cleanly; a second turn/start left a
+    // phantom turn). If that turn ended in the meantime, start a new one instead.
+    const running = currentTurnId
+    if (running) rpc.request('turn/steer', { threadId, input, expectedTurnId: running }).catch(() => start().catch(fail))
+    else start().catch(fail)
   }
 
   const policy = codexPolicy(opts.permissionMode)

@@ -438,6 +438,8 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
+      } else if (method === 'POST' && action === 'queued' && parts[4] && parts[5] === 'remove') {
+        sendJson(res, 200, { data: { text: await manager.unqueue(threadId, parts[4]) } })
       } else if (method === 'POST' && action === 'questions' && parts[4]) {
         manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })

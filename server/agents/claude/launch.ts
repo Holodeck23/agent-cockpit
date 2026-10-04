@@ -25,6 +25,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   let session: AgentSession | undefined
   let ended = false
   let pending: string | undefined
+  let replays = false
   const finish = (error?: unknown, stopped = false) => {
     if (ended) return
     ended = true
@@ -41,18 +42,21 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
       if (ended || !capabilities) return
       const args = buildClaudeArgs(input, capabilities)
       validateClaudeArgs(args, capabilities)
+      replays = capabilities.replayUserMessages
       session = spawnClaude(input, onEvent, deps, args)
       if (pending !== undefined) { session.send(pending); pending = undefined }
     }).catch((error: unknown) => finish(error))
   return {
     agent: 'claude',
-    send(text) {
-      if (session) session.send(text)
+    send(text, queuedId) {
+      if (session) session.send(text, queuedId)
       else if (!ended && pending === undefined) pending = text
       else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
     respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
+    queues: () => Boolean(session && replays),
+    cancelQueued: (queuedId) => session?.cancelQueued?.(queuedId) ?? Promise.resolve(false),
     interrupt() {
       if (session) session.interrupt()
       else { finish(undefined, true); controller.abort() }
@@ -84,7 +88,24 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     child.stdin.write(`${JSON.stringify(message)}\n`)
   }
 
+  // Our own control requests that wait for Claude's answer (cancel_async_message).
+  const replies = new Map<string, (response: unknown) => void>()
+  const ask = (request: Record<string, unknown>): Promise<unknown> => new Promise((resolve) => {
+    if (exited || !child.stdin.writable) { resolve(undefined); return }
+    const id = randomUUID()
+    replies.set(id, resolve)
+    write({ type: 'control_request', request_id: id, request })
+    setTimeout(() => { if (replies.delete(id)) resolve(undefined) }, 5000)
+  })
+
   createInterface({ input: child.stdout }).on('line', (line) => {
+    if (replies.size > 0 && line.includes('"control_response"')) {
+      try {
+        const message = JSON.parse(line) as { response?: { request_id?: string; response?: unknown } }
+        const id = message.response?.request_id
+        if (id && replies.has(id)) { replies.get(id)!(message.response?.response); replies.delete(id); return }
+      } catch { /* parsed below as usual */ }
+    }
     for (const event of parseClaudeLine(line)) onEvent(event)
   })
   createInterface({ input: child.stderr }).on('line', (line) => {
@@ -103,6 +124,8 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   child.on('exit', (code) => {
     if (exited) return
     exited = true
+    for (const resolve of replies.values()) resolve(undefined)
+    replies.clear()
     if (code !== 0 && code !== null && stderrTail.length > 0) {
       onEvent({ kind: 'error', message: stderrTail.join('\n') })
     }
@@ -111,8 +134,12 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
 
   return {
     agent: 'claude',
-    send(text: string) {
-      write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } })
+    send(text: string, queuedId?: string) {
+      write({ type: 'user', ...(queuedId ? { uuid: queuedId } : {}), message: { role: 'user', content: [{ type: 'text', text }] } })
+    },
+    async cancelQueued(queuedId: string) {
+      const response = await ask({ subtype: 'cancel_async_message', message_uuid: queuedId })
+      return typeof response === 'object' && response !== null && (response as { cancelled?: unknown }).cancelled === true
     },
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {
       // updatedInput must echo the original input: an empty object would replace it.

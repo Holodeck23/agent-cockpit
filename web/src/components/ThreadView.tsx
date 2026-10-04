@@ -55,7 +55,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
 
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
   const [finding, setFinding] = useState(false)
-  useEffect(() => setFinding(false), [meta.id])
+  // A message taken back from the agent's queue returns to the draft (J1).
+  const [restore, setRestore] = useState<{ readonly text: string; readonly restore: true }>()
+  useEffect(() => { setFinding(false); setRestore(undefined) }, [meta.id])
   useEffect(() => {
     if (phone) return
     const onKey = (event: globalThis.KeyboardEvent): void => {
@@ -162,6 +164,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
           onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
+          onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text }) => setRestore({ text, restore: true })))}
+          onSendNow={() => guard(api.interrupt(meta.id))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (
@@ -185,6 +189,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         projectPath={phone ? undefined : meta.projectPath}
         threadId={meta.id}
         draftKey={meta.id}
+        prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         onSubmit={(text) => api.send(meta.id, text).then(() => undefined)}

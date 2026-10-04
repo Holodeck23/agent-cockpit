@@ -22,6 +22,10 @@ interface TranscriptViewProps {
   streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
   onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void
+  /** Takes a waiting message back to the draft (J1). */
+  onUnqueue?: (queuedId: string) => void
+  /** Stops the current turn so waiting messages run now (J1). */
+  onSendNow?: () => void
   /** Present while the last turn's question or blocker still waits on you. */
   onDismiss?: () => void
 }
@@ -54,7 +58,7 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onDismiss }: TranscriptViewProps) {
+export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
@@ -82,7 +86,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
               )
             }
             return (
-              <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}`}>
+              <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}${item.queuedId ? ' waiting' : ''}`}>
                 {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
                 {item.conclusion ? (
                   <div className="conclusion-head">
@@ -125,6 +129,13 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                     </div>
                   ) : null}
                 </div>
+                {item.queuedId && running ? (
+                  <div className="waiting-row" role="status">
+                    <span>Waiting: the agent takes it at its next step</span>
+                    {onUnqueue ? <button type="button" className="button-soft" onClick={() => onUnqueue(item.queuedId!)}>Remove</button> : null}
+                    {onSendNow ? <button type="button" className="button-soft" onClick={onSendNow}>Stop and send now</button> : null}
+                  </div>
+                ) : null}
                 {item.text.trim() ? <CopyButton text={item.text} /> : null}
               </section>
             )

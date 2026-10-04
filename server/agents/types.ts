@@ -41,9 +41,12 @@ export type NormalizedEvent =
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
-  | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[] }
-  /** The agent took a message you sent while it was working (it had been waiting in line until now). */
-  | { kind: 'user_taken'; text: string }
+  /** `queuedId` is set when you sent it while the agent was working and the agent queues it (J1). */
+  | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[]; queuedId?: string }
+  /** The agent took a message you sent; `id` names a queued one (J1). */
+  | { kind: 'user_taken'; text: string; id?: string }
+  /** You took a queued message back before the agent took it (J1); it went back to your draft. */
+  | { kind: 'user_unqueued'; id: string }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }
@@ -83,7 +86,11 @@ export interface AgentSession {
   readonly agent: AgentId
   /** Send a user message. Resolves once written to the agent's stdin. */
   /** Delivers a turn to the agent. The thread manager records the user's own message. */
-  send(text: string): void
+  send(text: string, queuedId?: string): void
+  /** True when a message sent mid-turn waits in the agent's own queue and can be taken back (J1). */
+  queues?(): boolean
+  /** Takes back a queued message; false once the agent has taken it. */
+  cancelQueued?(queuedId: string): Promise<boolean>
   respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
   /** Answers (or, with undefined, dismisses) a `question` event; absent where the agent cannot ask. */
   respondQuestion?(question: PendingApproval, answers: Readonly<Record<string, string>> | undefined): void

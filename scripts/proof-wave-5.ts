@@ -87,6 +87,32 @@ try {
     && (await second.locator('.question-answer').count()) === 0))
   await shot(page, 'j6-answered')
 
+  // J1: a message sent mid-turn waits visibly; Remove puts it back in the draft; the rest run after the turn.
+  await send(page, 'work')
+  await until('working', async () => (await headStatus(page).textContent())?.includes('Working') === true)
+  await send(page, 'keep me')
+  await send(page, 'take me back')
+  const waiting = page.locator('.message.waiting')
+  check('J1 messages sent mid-turn show as waiting', await until('waiting', async () => (await waiting.count()) === 2))
+  await shot(page, 'j1-waiting')
+  await waiting.filter({ hasText: 'take me back' }).getByRole('button', { name: 'Remove' }).click()
+  check('J1 Remove takes the message back into the draft', await until('draft', async () =>
+    (await messageBox(page).inputValue()) === 'take me back' && (await waiting.count()) === 1))
+  await messageBox(page).fill('')
+  check('J1 the waiting message runs after the turn, and the removed one never does', await until('drained', async () =>
+    (await page.locator('.bubble').filter({ hasText: /^Got: keep me$/ }).count()) === 1 && (await waiting.count()) === 0, 15_000)
+    && (await page.locator('.bubble').filter({ hasText: 'Got: take me back' }).count()) === 0)
+  check('J1 the conversation is done once the queue is empty', await until('done', async () => (await headStatus(page).textContent())?.includes('Working') === false))
+
+  // J1: Stop and send now stops the turn and runs the waiting message straight away.
+  await send(page, 'work')
+  await until('working', async () => (await headStatus(page).textContent())?.includes('Working') === true)
+  await send(page, 'now please')
+  await waiting.filter({ hasText: 'now please' }).getByRole('button', { name: 'Stop and send now' }).click()
+  check('J1 Stop and send now runs the waiting message at once', await until('now', async () =>
+    (await page.locator('.bubble').filter({ hasText: /^Got: now please$/ }).count()) === 1, 3_000)
+    && (await page.getByText('Work done.').count()) === 1)
+
   // J3: compaction shows in the header while it runs, then as a line with the sizes.
   await send(page, 'compact')
   const compaction = page.locator('.step.compaction')

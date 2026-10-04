@@ -20,6 +20,18 @@ export function openQuestion(events: readonly StoredEvent[]): string | undefined
   return undefined
 }
 
+/** Messages you sent mid-turn that the agent has not taken yet (J1), by queued id. */
+export function waitingMessages(events: readonly StoredEvent[]): string[] {
+  const waiting = new Set<string>()
+  for (const { event } of events) {
+    if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch') waiting.clear()
+    else if (event.kind === 'user_text' && event.queuedId) waiting.add(event.queuedId)
+    else if (event.kind === 'user_taken' && event.id) waiting.delete(event.id)
+    else if (event.kind === 'user_unqueued') waiting.delete(event.id)
+  }
+  return [...waiting]
+}
+
 /** The agent is summarising earlier context right now (J3): the last compaction started and has not finished. */
 export function compactingNow(events: readonly StoredEvent[]): boolean {
   for (let i = events.length - 1; i >= 0; i -= 1) {

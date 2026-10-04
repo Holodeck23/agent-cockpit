@@ -128,6 +128,8 @@ interface Live {
   turnRunning: boolean
   /** Helpers (sub-agents) still running; they keep the session open and the conversation working (J7). */
   readonly helpers: Set<string>
+  /** Messages you sent mid-turn that wait in the agent's queue, until it takes them (J1). */
+  readonly waiting: Set<string>
   /** A helper finished between turns: the agent reports back on its own, so its next output starts a turn. */
   followUp: boolean
   stopRequested: boolean
@@ -147,6 +149,8 @@ export interface ThreadManager {
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
   send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
+  /** Takes back a message still waiting in the agent's queue (J1); resolves to its text for your draft. */
+  unqueue(threadId: string, queuedId: string): Promise<string>
   /** Answers the agent's open questions (J6), or with undefined closes them unanswered. */
   answerQuestion(threadId: string, requestId: string, answers: Readonly<Record<string, string>> | undefined): void
   interrupt(threadId: string): void
@@ -206,6 +210,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
+    // Taken signals matter only for messages that waited; the rest would just fill the log.
+    if (incoming.kind === 'user_taken') {
+      const waiting = live.get(threadId)?.waiting
+      if (!incoming.id || !waiting?.delete(incoming.id)) return
+      const entry = live.get(threadId)!
+      // A message queued past the end of a turn (or a Stop) starts the next one when taken.
+      if (!entry.turnRunning) {
+        entry.turnRunning = true
+        if (entry.idleTimer) clearTimeout(entry.idleTimer)
+      }
+    }
     if (incoming.kind === 'result' || incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.cancel(threadId)
     const entry = live.get(threadId)
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
@@ -238,10 +253,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (entry && event.kind === 'result') {
       entry.pending.clear()
       entry.questions.clear()
-      entry.turnRunning = false
+      // Messages still waiting run next, without you sending again.
+      entry.turnRunning = entry.waiting.size > 0
       entry.stopRequested = false
-      // Closing the process would kill helpers still at work.
-      if (entry.helpers.size === 0) armIdleClose(entry)
+      // Closing the process would kill helpers still at work, or drop waiting messages.
+      if (entry.helpers.size === 0 && !entry.turnRunning) armIdleClose(entry)
     }
     if (event.kind === 'exit') {
       if (entry?.idleTimer) clearTimeout(entry.idleTimer)
@@ -319,7 +335,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, questions, helpers: new Set(), followUp: false, session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -337,13 +353,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const meta = requireMeta(threadId)
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
+    const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
+    if (queuedId) entry.waiting.add(queuedId)
     entry.turnRunning = true
     if (meta.completed) {
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}) })
-    entry.session.send(agentText)
+    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}) })
+    entry.session.send(agentText, queuedId)
   }
 
   return {
@@ -380,6 +399,15 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!request || !entry.turnRunning) throw new Error('Unknown or expired approval request')
       entry.pending.delete(requestId)
       entry.session.respondApproval(request, behavior)
+    },
+    async unqueue(threadId, queuedId) {
+      const entry = live.get(threadId)
+      const sent = store.events(threadId).find((e) => e.event.kind === 'user_text' && e.event.queuedId === queuedId)?.event
+      if (!entry?.waiting.has(queuedId) || sent?.kind !== 'user_text' || !entry.session.cancelQueued) throw new Error('The agent has already taken this message')
+      if (!(await entry.session.cancelQueued(queuedId))) throw new Error('The agent has already taken this message')
+      entry.waiting.delete(queuedId)
+      record(threadId, { kind: 'user_unqueued', id: queuedId })
+      return sent.text
     },
     answerQuestion(threadId, requestId, answers) {
       const entry = live.get(threadId)
