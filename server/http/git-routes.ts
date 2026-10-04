@@ -6,6 +6,7 @@ import type { ThreadManager } from '../threads/manager.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { findCommit } from '../git/commits.ts'
 import { isBusy } from '../threads/status.ts'
+import { fileDiff, listChanges } from '../git/changes.ts'
 
 // /api/git: the composer's branch pill. Reads work everywhere; changes are Mac-only,
 // and switching or creating waits until no conversation in the project is mid-turn.
@@ -47,6 +48,19 @@ export async function handleGitRoute(req: IncomingMessage, res: ServerResponse, 
       const commit = await findCommit(projectPath, url.searchParams.get('hash') ?? '')
       if (!commit) throw new HttpError(404, 'Not a commit in this project')
       sendJson(res, 200, { data: commit })
+      return
+    }
+    // J4: the project's uncommitted changes, and one changed file's diff. Reads, so the phone may too.
+    if (method === 'GET' && action === 'changes') {
+      const projectPath = url.searchParams.get('projectPath') ?? ''
+      requireOpen(projectPath)
+      sendJson(res, 200, { data: await listChanges(projectPath) })
+      return
+    }
+    if (method === 'GET' && action === 'diff') {
+      const projectPath = url.searchParams.get('projectPath') ?? ''
+      requireOpen(projectPath)
+      sendJson(res, 200, { data: await fileDiff(projectPath, url.searchParams.get('path') ?? '') })
       return
     }
     if (method !== 'POST') throw new HttpError(404, 'Not found')
