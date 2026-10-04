@@ -57,4 +57,6 @@ export interface ThreadSummary {
   readonly lastActivityAt: string
   /** The last turn ended with a question or a blocker you haven't answered (U12). */
   readonly awaiting?: 'question' | 'blocker'
+  /** The first question the agent is asking right now with choices (J6), while it waits on you. */
+  readonly asking?: string
 }

@@ -13,6 +13,13 @@ export function openApprovals(events: readonly StoredEvent[]): string[] {
   return [...pending]
 }
 
+/** The first open agent question (J6), oldest first; undefined when none waits. */
+export function openQuestion(events: readonly StoredEvent[]): string | undefined {
+  const open = new Set(openApprovals(events))
+  for (const { event } of events) if (event.kind === 'question' && open.has(event.requestId)) return event.questions[0]?.question
+  return undefined
+}
+
 /** The agent is summarising earlier context right now (J3): the last compaction started and has not finished. */
 export function compactingNow(events: readonly StoredEvent[]): boolean {
   for (let i = events.length - 1; i >= 0; i -= 1) {

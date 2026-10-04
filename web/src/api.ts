@@ -123,6 +123,9 @@ export const api = {
   send: (id: string, text: string) => request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text } }),
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
+  /** No answers closes the agent's questions unanswered. */
+  answerQuestion: (id: string, requestId: string, answers: Record<string, string> | undefined) =>
+    request<unknown>(`/api/threads/${id}/questions/${requestId}`, { method: 'POST', body: answers ? { answers } : {} }),
   interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
   switchAgent: (id: string, settings: Partial<ThreadSettings>) =>
     request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),

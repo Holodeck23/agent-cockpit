@@ -1,7 +1,7 @@
 // Turns a thread's raw event log into what the thread view draws: messages with
 // author rows, tool calls collapsed into one activity line each, approvals as
 // cards, and small notes. Pure, so it's unit-tested without a browser.
-import type { AgentId, ApprovalBehavior, WorkflowSnapshot } from '../../server/agents/types.ts'
+import type { AgentId, AgentQuestion, ApprovalBehavior, WorkflowSnapshot } from '../../server/agents/types.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
@@ -28,6 +28,8 @@ export type TranscriptItem =
       resolution?: ApprovalBehavior
     }
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
+  /** The agent's questions with choices (J6); `answers` once you answered, `dismissed` once you closed them. */
+  | { type: 'question'; key: string; requestId: string; agent: AgentId; questions: readonly AgentQuestion[]; answers?: Readonly<Record<string, string>>; dismissed?: boolean }
   /** The agent summarising earlier context to make room (J3); tokens as it reported them. */
   | { type: 'compaction'; key: string; state: 'running' | 'done' | 'failed'; startedAt: string; endedAt?: string; preTokens?: number; postTokens?: number }
   /** A helper agent (J7): what it was asked, what it did, what it said back. */
@@ -262,6 +264,16 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           canAllowForSession: event.suggestions.length > 0,
         })
         return
+      case 'question':
+        approvals.set(event.requestId, items.length)
+        items.push({ type: 'question', key, requestId: event.requestId, agent, questions: event.questions })
+        return
+      case 'question_answered': {
+        const at = approvals.get(event.requestId)
+        const card = at === undefined ? undefined : items[at]
+        if (at !== undefined && card?.type === 'question') replace(at, { ...card, answers: event.answers, ...(event.dismissed ? { dismissed: true } : {}) })
+        return
+      }
       case 'approval_resolved': {
         const at = approvals.get(event.requestId)
         const card = at === undefined ? undefined : items[at]

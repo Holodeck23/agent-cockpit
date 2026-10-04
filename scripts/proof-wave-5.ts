@@ -63,6 +63,29 @@ try {
   check('J7 and the conversation is no longer working', await until('idle', async () => (await page.locator('.helper-count').count()) === 0
     && (await headStatus(page).textContent())?.includes('Working') === false))
 
+  // J6: the agent's questions arrive as one card with choices; the answers go back and stay shown.
+  await send(page, 'ask')
+  const card = page.locator('.question-card').last()
+  check('J6 the questions arrive as one card and the conversation needs you', await until('card', async () =>
+    (await card.locator('.question').count()) === 2 && (await headStatus(page).textContent())?.includes('Needs you') === true))
+  check('J6 each choice shows its description', (await card.getByText('Cool and calm').count()) === 1)
+  await card.getByRole('radio', { name: /^Blue/ }).check()
+  await card.getByRole('checkbox', { name: /^Small/ }).check()
+  await card.getByRole('checkbox', { name: /^Large/ }).check()
+  await shot(page, 'j6-question')
+  await card.getByRole('button', { name: 'Send answers' }).click()
+  check('J6 the agent gets the answers', await until('answers', async () =>
+    (await page.locator('.bubble').filter({ hasText: 'Noted: "Which colour?":"Blue","Which sizes?":"Small, Large"' }).count()) === 1))
+  check('J6 the card keeps the answers', (await card.locator('.question-answer').allTextContents()).join('|') === 'Blue|Small, Large')
+  await send(page, 'ask')
+  const second = page.locator('.question-card').last()
+  await until('second card', async () => (await page.locator('.question-card').count()) === 2)
+  await second.getByRole('button', { name: 'Dismiss' }).click()
+  check('J6 Dismiss closes the questions and the agent carries on', await until('dismissed', async () =>
+    (await page.getByText('You closed the questions; carrying on without them.').count()) === 1
+    && (await second.textContent())?.includes('Closed without answers') === true))
+  await shot(page, 'j6-answered')
+
   // J3: compaction shows in the header while it runs, then as a line with the sizes.
   await send(page, 'compact')
   const compaction = page.locator('.step.compaction')

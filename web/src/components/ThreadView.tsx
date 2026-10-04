@@ -161,6 +161,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streaming={streaming}
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
+          onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (

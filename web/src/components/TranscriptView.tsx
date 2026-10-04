@@ -8,6 +8,7 @@ import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
 import { TroubleshootingLink } from './TroubleshootingLink.tsx'
 import { ReplyContext, ReplyMarkdown } from '../markdown/reply.tsx'
 import { Peek } from './Peek.tsx'
+import { QuestionCard } from './QuestionCard.tsx'
 import { api } from '../api.ts'
 import { linesOf, peekText } from '../file-text.ts'
 import { labelTarget } from '../../../server/files/references.ts'
@@ -20,6 +21,7 @@ interface TranscriptViewProps {
   streaming: string
   streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
+  onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void
   /** Present while the last turn's question or blocker still waits on you. */
   onDismiss?: () => void
 }
@@ -52,7 +54,7 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onDismiss }: TranscriptViewProps) {
+export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
@@ -181,6 +183,8 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
               </div>
             )
           }
+          case 'question':
+            return <QuestionCard key={item.key} item={item} open={openApprovals.has(item.requestId)} onAnswer={(answers) => onAnswer(item.requestId, answers)} />
           case 'compaction': {
             const live = item.state === 'running'
             const end = item.endedAt ? Date.parse(item.endedAt) : live ? now : undefined

@@ -23,13 +23,14 @@ export function parseNotify(raw: string | null): NotifySettings {
 
 const clip = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text)
 
-type Row = Pick<ThreadSummary, 'preview' | 'status' | 'awaiting'> & { meta: Pick<ThreadSummary['meta'], 'title'> }
+type Row = Pick<ThreadSummary, 'preview' | 'status' | 'awaiting' | 'asking'> & { meta: Pick<ThreadSummary['meta'], 'title'> }
 
 export function notificationText(thread: Row, kind: SoundKind): { title: string; body: string } {
   const preview = thread.preview.replace(/\s+/g, ' ').trim()
   const label = thread.awaiting === 'question' ? 'Question' : 'Blocked'
   const body = kind === 'reply'
     ? (preview ? `Finished: ${preview}` : 'Finished')
+    : thread.asking ? `Question: ${thread.asking}`
     : thread.awaiting ? `${label}: ${preview.replace(/^(question|blocked)\s*:\s*/i, '') || 'see the conversation'}` : 'Waiting for your approval'
   return { title: clip(thread.meta.title, 80), body: clip(body, 160) }
 }

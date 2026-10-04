@@ -188,3 +188,25 @@ describe('compaction in the transcript (J3)', () => {
     expect(compactions).toMatchObject([{ state: 'done', preTokens: 34052, postTokens: 2775, endedAt: at(22, { kind: 'thread_deleted' }).ts }, { state: 'failed' }])
   })
 })
+
+describe('agent questions in the transcript (J6)', () => {
+  const questions = [
+    { id: 'Which colour?', question: 'Which colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] },
+    { id: 'Which sizes?', question: 'Which sizes?', header: 'Sizes', multiSelect: true, options: [{ label: 'Small' }, { label: 'Large' }] },
+  ]
+  it('shows the questions as one card that keeps the answers you gave', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'question', requestId: 'q1', questions }),
+      at(5, { kind: 'question_answered', requestId: 'q1', answers: { 'Which colour?': 'Blue', 'Which sizes?': 'Small, Large' } }),
+    ], 'claude')
+    expect(items).toEqual([expect.objectContaining({ type: 'question', requestId: 'q1', agent: 'claude', questions,
+      answers: { 'Which colour?': 'Blue', 'Which sizes?': 'Small, Large' } })])
+  })
+  it('marks questions you closed without answering', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'question', requestId: 'q1', questions }),
+      at(5, { kind: 'question_answered', requestId: 'q1', answers: {}, dismissed: true }),
+    ], 'codex')
+    expect(items[0]).toMatchObject({ type: 'question', dismissed: true })
+  })
+})
