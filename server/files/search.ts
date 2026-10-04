@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { contained, explained, HIDDEN, readProjectFile } from './browser.ts'
-import { decodeReference, FILE_REFERENCE, WORKFLOW_REFERENCE } from './references.ts'
+import { FILE_REFERENCE, parseFileReference, WORKFLOW_REFERENCE } from './references.ts'
 import type { WorkflowStore } from '../workflows/store.ts'
 
 // Finding files for the composer's context picker, and checking a draft's references
@@ -56,7 +56,7 @@ export function checkReferences(text: string, projectPath: string, workflows: Wo
   for (const [, , encoded] of text.matchAll(FILE_REFERENCE)) {
     if (!encoded || seen.has(`file:${encoded}`)) continue
     seen.add(`file:${encoded}`)
-    const path = decodeReference(encoded)
+    const path = parseFileReference(encoded)?.path
     if (path === undefined) { checks.push({ kind: 'file', reference: encoded, ok: false, problem: 'Not a valid file reference' }); continue }
     try { readProjectFile(projectPath, path); checks.push({ kind: 'file', reference: encoded, ok: true }) }
     catch (error) { checks.push({ kind: 'file', reference: encoded, ok: false, problem: error instanceof Error ? error.message : String(error) }) }

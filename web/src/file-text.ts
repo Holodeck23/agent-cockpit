@@ -131,3 +131,18 @@ export function nextInFolder(paths: readonly string[], gone: string): string | u
   if (at < 0) return undefined
   return paths[at + 1] ?? paths[at - 1]
 }
+
+/** The lines a textarea selection covers (1-based); a selection that only reaches the start of a line leaves it out. Undefined when nothing is selected. */
+export function linesOfSelection(text: string, start: number, end: number): { line: number; endLine?: number } | undefined {
+  if (end <= start) return undefined
+  const lineAt = (offset: number): number => text.slice(0, offset).split('\n').length
+  const line = lineAt(start)
+  const last = text[end - 1] === '\n' ? lineAt(end - 1) : lineAt(end)
+  return last > line ? { line, endLine: last } : { line }
+}
+
+/** Just lines `line`…`endLine` of a file's text, for a peek at selected lines; the whole text without a line. */
+export function linesOf(text: string, target: { line?: number; endLine?: number }): string {
+  if (!target.line) return text
+  return text.replace(/\r\n?/g, '\n').split('\n').slice(target.line - 1, target.endLine ?? target.line).join('\n')
+}

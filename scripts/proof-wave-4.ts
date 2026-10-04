@@ -2,12 +2,14 @@
 // no agent runs, no network. Moving to the Trash is stubbed in main to a plain delete of the
 // temporary file, so a proof run never fills the real Trash.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-4
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { documentsDir, markDocument } from '../server/files/documents.ts'
 import { createThreadStore } from '../server/threads/store.ts'
+import { threadSettingsSchema } from '../server/threads/types.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { apiPost, openProject, setTheme } from './lib/ui.ts'
 
@@ -32,6 +34,13 @@ writeFileSync(join(docs, 'launch-plan.md'), '# Launch\n\nShip the beta on Friday
 writeFileSync(join(docs, 'old-pricing.md'), 'The beta pricing we dropped.\n')
 writeFileSync(join(docs, 'groceries.txt'), 'milk\n')
 markDocument(store.root, project, 'old-pricing.md', { archived: true })
+{
+  // A sent message that asked about lines 3-5 of long.ts (F10's clip and peek).
+  const ts = '2026-10-04T09:00:00.000Z'
+  const meta = store.create({ id: randomUUID(), title: 'Lines question', projectPath: project, settings: threadSettingsSchema.parse({}), sessionId: randomUUID(), sessionStarted: false, completed: false, createdAt: ts, updatedAt: ts })
+  store.append(meta.id, { kind: 'user_text', text: '@file:src%2Flong.ts#L3-L5 Why these?' }, ts)
+  store.append(meta.id, { kind: 'result', ok: true }, ts)
+}
 const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave1-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave4-${name}.png`) })
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {
@@ -206,7 +215,40 @@ try {
   // Leave long.ts unchanged and closed.
   await page.getByRole('button', { name: 'Close long.ts' }).click()
   await page.getByRole('button', { name: 'Discard changes' }).click()
-  await nav('Home').click()
+
+  // F10: select lines to start a conversation about them.
+  await explorer.locator('.file-row', { hasText: /^long\.ts$/ }).click()
+  await until('long.ts', async () => (await activeTab.innerText()).startsWith('long.ts'))
+  await area.click()
+  await page.keyboard.press('Meta+ArrowUp')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+ArrowDown')
+  const ask = page.getByRole('button', { name: 'Ask about lines 3–5' })
+  check('F10 selecting lines offers to ask about them', await until('ask', async () => ask.isVisible()))
+  await shot(page, 'f10-ask')
+  await ask.click()
+  const composer = page.getByRole('textbox', { name: 'Message' })
+  check('F10 the draft gets a reference to just those lines', await until('draft', async () => (await composer.inputValue()).includes('@file:src%2Flong.ts#L3-L5')), await composer.inputValue().catch(() => ''))
+  check('F10 its chip names the lines', await until('chip', async () => (await page.locator('.reference-chip', { hasText: 'long.ts:3-5' }).count()) >= 1))
+  await shot(page, 'f10-draft')
+  await composer.fill('')
+  await page.locator('.card').filter({ hasText: 'Lines question' }).click()
+  await page.getByRole('heading', { level: 1, name: 'Lines question' }).waitFor()
+  const clip = page.locator('.message-clips [title="src/long.ts:3-5"]')
+  check('F10 a sent range shows as path:lines', (await clip.innerText()) === 'long.ts:3-5')
+  await clip.hover()
+  // Scoped to this clip's own peek: another peek panel can still be closing (the wave-3 flake).
+  const linesPeek = page.locator('.peek', { has: clip }).locator('.peek-panel')
+  check('F10 its peek shows only those lines', await until('peek', async () => (await linesPeek.locator('.peek-text').innerText()) === [3, 4, 5].map((n) => `export const value${n - 1} = "text ${n - 1}" // line ${n}`).join('\n')),
+    `panels open: ${await page.locator('.peek-panel').count()}; text: ${JSON.stringify(await linesPeek.locator('.peek-text').innerText().catch(() => ''))}`)
+  await linesPeek.getByRole('button', { name: 'Open in Files' }).click()
+  const selection = () => area.evaluate((el: HTMLTextAreaElement) => el.value.slice(el.selectionStart, el.selectionEnd))
+  check('F10 Open in Files selects those lines', await until('selected', async () => (await selection()).startsWith('export const value2') && (await selection()).endsWith('// line 5')),
+    await selection().catch(() => ''))
+  await page.getByRole('button', { name: 'Close long.ts' }).click()
+  // Files opened afresh from the conversation, so the explorer may already be at the top.
+  if (await nav('Home').isEnabled()) await nav('Home').click()
 
   // F9: find and replace in the Source view (any text file) and the Document view (Markdown).
   const painted = (name: string) => page.evaluate((n) => CSS.highlights.get(n)?.size ?? 0, name)

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Project } from '../api.ts'
+import { fileReferenceToken } from '../../../server/files/references.ts'
 import { isDirty, spaceOf } from '../file-text.ts'
 import { useOpenFiles } from '../useOpenFiles.ts'
 import { DocumentList } from './DocumentList.tsx'
@@ -72,7 +73,7 @@ export function Files({ project, onAttach, reveal, onPins }: {
         onReload={(path) => void open.reload(path)}
         onOverwrite={(path) => void open.overwrite(path)}
         onSaveCopy={(path) => void open.saveCopy(path)}
-        onAttach={(path) => { if (spaceOf(path).space === 'project') onAttach(`@file:${encodeURIComponent(path)}`) }}
+        onAttach={(path, lines) => { if (spaceOf(path).space === 'project') onAttach(fileReferenceToken({ path, ...lines })) }}
         jump={jump}
         explorer={{ hidden, toggle: toggleExplorer }}
       />

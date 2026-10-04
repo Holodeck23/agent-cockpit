@@ -9,7 +9,8 @@ import { TroubleshootingLink } from './TroubleshootingLink.tsx'
 import { ReplyContext, ReplyMarkdown } from '../markdown/reply.tsx'
 import { Peek } from './Peek.tsx'
 import { api } from '../api.ts'
-import { peekText } from '../file-text.ts'
+import { linesOf, peekText } from '../file-text.ts'
+import { labelTarget } from '../../../server/files/references.ts'
 
 interface TranscriptViewProps {
   items: TranscriptItem[]
@@ -87,21 +88,24 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                   {item.author === 'you' ? item.text : <ReplyMarkdown text={item.text} />}
                   {item.attachments || item.workflows ? (
                     <div className={`message-clips${item.text ? '' : ' only'}`} role="list" aria-label="Sent with this message">
-                      {item.attachments?.map((path) => {
+                      {item.attachments?.map((label) => {
+                        // "src/a.ts" or, for selected lines, "src/a.ts:3-7".
+                        const target = labelTarget(label)
+                        const { path } = target
                         const chip = (
-                          <span role="listitem" className="reference-chip" title={path} tabIndex={replies.projectPath ? 0 : undefined}>
+                          <span role="listitem" className="reference-chip" title={label} tabIndex={replies.projectPath ? 0 : undefined}>
                             <FileIcon />
-                            <span>{path.split('/').pop() ?? path}</span>
+                            <span>{label.split('/').pop() ?? label}</span>
                           </span>
                         )
-                        // Peek at the file as it is now; Files is on the Mac only.
+                        // Peek at the file (or those lines) as it is now; Files is on the Mac only.
                         const project = replies.projectPath
                         return project ? (
-                          <Peek key={`file:${path}`} title={path} load={async () => peekText((await api.readFile(project, path)).text)}
-                            action={replies.onOpenFile ? { label: 'Open in Files', run: () => replies.onOpenFile?.({ path }) } : undefined}>
+                          <Peek key={`file:${label}`} title={label} load={async () => peekText(linesOf((await api.readFile(project, path)).text, target))}
+                            action={replies.onOpenFile ? { label: 'Open in Files', run: () => replies.onOpenFile?.(target) } : undefined}>
                             {chip}
                           </Peek>
-                        ) : <span key={`file:${path}`}>{chip}</span>
+                        ) : <span key={`file:${label}`}>{chip}</span>
                       })}
                       {item.workflows?.map((w) => (
                         <Peek key={`workflow:${w.name}`} title={`Workflow ${w.name}`} load={async () => peekText(w.prompt)}>

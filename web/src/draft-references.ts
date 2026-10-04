@@ -1,7 +1,7 @@
 // The references in a composer draft, as the context picker's chips show them. The draft
 // text stays the single source of truth: chips are read from it and edit it. Pure, so it
 // is unit-tested without a browser.
-import { decodeReference, FILE_REFERENCE, WORKFLOW_REFERENCE } from '../../server/files/references.ts'
+import { decodeReference, FILE_REFERENCE, parseFileReference, referenceLabel, WORKFLOW_REFERENCE } from '../../server/files/references.ts'
 
 export type ReferenceKind = 'file' | 'workflow'
 
@@ -25,7 +25,7 @@ export function referencesIn(text: string): DraftReference[] {
     const existing = found.get(key)
     found.set(key, existing ? { ...existing, count: existing.count + 1 } : { kind, reference, label, count: 1 })
   }
-  for (const [, , encoded] of text.matchAll(FILE_REFERENCE)) if (encoded) add('file', encoded, decodeReference(encoded) ?? encoded)
+  for (const [, , encoded] of text.matchAll(FILE_REFERENCE)) if (encoded) { const ref = parseFileReference(encoded); add('file', encoded, ref ? referenceLabel(ref) : decodeReference(encoded) ?? encoded) }
   for (const [, , name] of text.matchAll(WORKFLOW_REFERENCE)) if (name) add('workflow', name, name)
   return [...found.values()]
 }
