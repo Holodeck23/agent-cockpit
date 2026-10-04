@@ -127,6 +127,23 @@ try {
   await r3Picker.getByRole('button', { name: 'Switch' }).click()
   check('R3 switching agents is allowed', await until('switched', async () => (await page.getByText('Handed over from Claude Code to Codex').count()) >= 1))
   await shot(page, 'r3-taken-back')
+
+  // R4: while the agent works, Mark as complete is refused in the ⋯ menu and by the server too.
+  await startConversation(page, 'worklag again')
+  await until('working', () => working(page))
+  const r4Thread = await threadIdByTitle(page, 'worklag again')
+  await page.locator('.thread-actions').getByRole('button', { name: 'More', exact: true }).click()
+  const completeItem = page.getByRole('menuitem', { name: 'Mark as complete' })
+  check('R4 the ⋯ menu offers no Mark as complete during a turn', await completeItem.isDisabled())
+  await shot(page, 'r4-menu-working')
+  await page.keyboard.press('Escape')
+  const refused = await page.evaluate(async (id) => (await fetch(`/api/threads/${id}/completed`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: true }) })).status, r4Thread)
+  check('R4 the server refuses it while the agent works (409)', refused === 409, `status ${refused}`)
+  await until('turn over', async () => !(await working(page)), 15_000)
+  await page.locator('.thread-actions').getByRole('button', { name: 'More', exact: true }).click()
+  check('R4 after the turn it is offered', await until('enabled', () => completeItem.isEnabled()))
+  await completeItem.click()
+  check('R4 and completes the conversation', await until('completed', async () => (await page.getByRole('button', { name: 'Reopen' }).count()) === 1))
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {

@@ -155,6 +155,9 @@ interface Live {
   idleTimer?: NodeJS.Timeout
 }
 
+/** The conversation's agent is still working, so this cannot happen yet (HTTP 409). */
+export class ThreadBusyError extends Error {}
+
 export interface ThreadManager {
   /**
    * `text` is what the user wrote (stored, titled, shown); `agentText` is what the
@@ -489,6 +492,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     setCompleted(threadId, completed) {
       requireMeta(threadId)
+      // J11: nothing to complete while the agent is still at it. Reopening is always allowed.
+      if (completed && busy(live.get(threadId))) throw new ThreadBusyError('Mark it complete when the agent has finished')
       const meta = store.update(threadId, { completed })
       record(threadId, { kind: 'completion_changed', completed })
       return meta

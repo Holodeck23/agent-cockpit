@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink } from '../server/agents/types.ts'
-import { createThreadManager, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
+import { createThreadManager, ThreadBusyError, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { openApprovals } from '../server/threads/status.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
@@ -149,6 +149,18 @@ describe('thread manager', () => {
     await expect(manager.unqueue(meta.id, queuedId!)).resolves.toBe('second')
     expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'user_unqueued', id: queuedId })
     await expect(manager.unqueue(meta.id, queuedId!)).rejects.toThrow(/already taken/)
+  })
+
+  it('refuses Mark as complete while the agent works, and always allows Reopen (R4)', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    expect(() => manager.setCompleted(meta.id, true)).toThrow(ThreadBusyError)
+    expect(store.get(meta.id)?.completed).toBe(false)
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.setCompleted(meta.id, true).completed).toBe(true)
+    // Sending again reopens it and starts a turn; Reopen while working is fine.
+    manager.send(meta.id, 'again')
+    expect(manager.setCompleted(meta.id, false).completed).toBe(false)
   })
 
   it('taking back the last waiting message after the turn ended leaves the conversation done (R3)', async () => {
@@ -433,8 +445,9 @@ describe('session lifecycle regressions', () => {
   })
 
   it('broadcasts completion, reopening, and automatic reopening on a new message', async () => {
-    const { store, manager, settings } = setup()
+    const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    agent.emit({ kind: 'result', ok: true })
     const seen: boolean[] = []
     manager.subscribe(({ event }) => { if (event.kind === 'completion_changed') seen.push(event.completed) })
     manager.setCompleted(meta.id, true)
