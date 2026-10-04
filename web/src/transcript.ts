@@ -9,9 +9,14 @@ import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
 import { failureWords } from './agent-errors.ts'
 
+/** An image stored with the conversation; `file` names it under /api/threads/:id/images/. */
+export interface ImageRef { readonly file: string; readonly name?: string }
+
 export type TranscriptItem =
   | {
       type: 'message'; key: string; author: 'you' | AgentId; text: string; ts: string; showAuthor: boolean; attachments?: string[]; workflows?: readonly WorkflowSnapshot[]
+      /** Images you sent with this message. */
+      images?: readonly ImageRef[]
       /** Agent messages before the conclusion (U12); absent on conclusions and your messages. */
       fromConversation?: { id: string; title: string }
       phase?: 'acknowledgement' | 'update'
@@ -32,6 +37,8 @@ export type TranscriptItem =
       resolution?: ApprovalBehavior
     }
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
+  /** An image the agent showed (G4), or one of yours with no message to sit under. */
+  | ({ type: 'image'; key: string; author: 'you' | AgentId } & ImageRef)
   /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
   | { type: 'failure'; key: string; title: string; detail: string; raw: string; retryText?: string }
   /** The agent's questions with choices (J6); `answers` once you answered, `dismissed` once you closed them. */
@@ -262,6 +269,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
             ...(role === 'acknowledgement' || role === 'update' ? { phase: role } : {}),
             ...(parsed && parsed.kind !== 'answer' ? { conclusion: parsed.kind } : {}) })
         }
+        return
+      }
+      case 'image': {
+        const ref: ImageRef = { file: event.file, ...(event.name ? { name: event.name } : {}) }
+        if (event.from === 'you' && last?.type === 'message' && last.author === 'you') {
+          replace(items.length - 1, { ...last, images: [...(last.images ?? []), ref] })
+        } else items.push({ type: 'image', key, author: event.from === 'you' ? 'you' : agent, ...ref })
         return
       }
       case 'tool_use':

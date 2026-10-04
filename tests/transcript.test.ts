@@ -274,3 +274,23 @@ describe('follow-up suggestions (J2)', () => {
     expect(buildTranscript([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' })], 'claude').some((item) => 'text' in item && item.text === 'Run the tests')).toBe(false)
   })
 })
+
+describe('images in the transcript (wave 6)', () => {
+  const file = `${'a'.repeat(64)}.png`
+  it('your images ride with the message they were sent with', () => {
+    const items = buildTranscript([
+      at(1, { kind: 'user_text', text: 'what is this?' }),
+      at(1, { kind: 'image', file, mediaType: 'image/png', from: 'you', name: 'shot.png' }),
+      at(1, { kind: 'image', file: file.replace('a', 'b'), mediaType: 'image/png', from: 'you' }),
+    ], 'claude')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ type: 'message', author: 'you', images: [{ file, name: 'shot.png' }, { file: file.replace('a', 'b') }] })
+  })
+  it('an image the agent shows is its own item, by that agent', () => {
+    const items = buildTranscript([
+      at(1, { kind: 'user_text', text: 'chart it' }),
+      at(2, { kind: 'image', file, mediaType: 'image/png', from: 'agent', name: 'chart.png' }),
+    ], 'codex')
+    expect(items[1]).toMatchObject({ type: 'image', author: 'codex', file, name: 'chart.png' })
+  })
+})

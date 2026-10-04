@@ -9,11 +9,14 @@ import { TroubleshootingLink } from './TroubleshootingLink.tsx'
 import { ReplyContext, ReplyMarkdown } from '../markdown/reply.tsx'
 import { Peek } from './Peek.tsx'
 import { QuestionCard } from './QuestionCard.tsx'
+import { ConversationImages } from './ConversationImage.tsx'
 import { api } from '../api.ts'
 import { linesOf, peekText } from '../file-text.ts'
 import { labelTarget } from '../../../server/files/references.ts'
 
 interface TranscriptViewProps {
+  /** The conversation, for its images' addresses. */
+  threadId: string
   items: TranscriptItem[]
   /** Approval ids that can still be answered (a turn is running). */
   openApprovals: ReadonlySet<string>
@@ -60,7 +63,7 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss }: TranscriptViewProps) {
+export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
@@ -102,6 +105,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                 <div className={`bubble ${item.author === 'you' ? 'user' : 'agent reply'}${item.phase === 'acknowledgement' ? ' ack' : ''}`}>
                   {/* What you typed stays exactly as typed; agent replies are Markdown. */}
                   {item.author === 'you' ? item.text : <ReplyMarkdown text={item.text} />}
+                  {item.images?.length ? <ConversationImages threadId={threadId} images={item.images} /> : null}
                   {item.attachments || item.workflows ? (
                     <div className={`message-clips${item.text ? '' : ' only'}`} role="list" aria-label="Sent with this message">
                       {item.attachments?.map((label) => {
@@ -243,6 +247,12 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
               </details>
             )
           }
+          case 'image':
+            return (
+              <section key={item.key} className={`message image-item ${item.author === 'you' ? 'from-you' : 'from-agent'}`}>
+                <ConversationImages threadId={threadId} images={[item]} />
+              </section>
+            )
           case 'note':
             return (
               <div key={item.key} className={`note meta-line${item.tone === 'error' ? ' note-error' : ''}`}>

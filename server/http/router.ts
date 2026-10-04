@@ -19,6 +19,7 @@ import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
+import { createImageStore, IMAGE_FILE } from '../threads/images.ts'
 import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
@@ -88,6 +89,7 @@ export interface ApiDeps {
 
 export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[]) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
+  const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
   const expandedFor = (text: string, projectPath: string): { agentText: string; workflows?: WorkflowSnapshot[] } => {
@@ -430,6 +432,18 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
             streaming: manager.partialText(threadId),
           },
         })
+      } else if (method === 'GET' && action === 'images' && parts.length === 5) {
+        // Only names the store itself writes; served as exactly that image type and nothing else.
+        const image = IMAGE_FILE.test(parts[4]!) ? images.read(threadId, parts[4]!) : undefined
+        if (!image) throw new HttpError(404, 'No such image')
+        res.writeHead(200, {
+          'content-type': image.mediaType,
+          'cache-control': 'private, max-age=31536000, immutable',
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'",
+          'cross-origin-resource-policy': 'same-origin',
+        })
+        res.end(image.bytes)
       } else if (method === 'POST' && action === 'messages') {
         const { text } = parseBody(messageBody, await readJson(req))
         const expanded = expandedFor(text, store.get(threadId)!.projectPath)

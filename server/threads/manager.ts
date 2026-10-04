@@ -1,5 +1,7 @@
 import { createHostActions } from './host-actions.ts'
 import { randomUUID } from 'node:crypto'
+import { readFileSync, statSync } from 'node:fs'
+import { basename } from 'node:path'
 import { launchAntigravity } from '../agents/antigravity/launch.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
@@ -12,6 +14,7 @@ import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEven
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
+import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
 
 export interface LaunchRequest {
@@ -120,6 +123,8 @@ export interface ManagerOptions {
   readonly launchers?: Partial<Record<AgentId, Launcher>>
   readonly mcp?: McpProvider
   readonly instructions?: InstructionsProvider
+  /** Where conversation images are kept; defaults to the store's own state folder. */
+  readonly images?: ImageStore
 }
 
 interface Live {
@@ -187,6 +192,21 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   // Deleted conversations: a closing session's last events must not recreate their files.
   const deleted = new Set<string>()
   const hostActions = createHostActions((id, event) => record(id, event))
+  const images = options.images ?? createImageStore(store.root)
+
+  /** An image the agent showed, saved; undefined (and logged) when it is not one Cockpit keeps. */
+  const keepImage = (threadId: string, event: Extract<NormalizedEvent, { kind: 'image_data' }>): NormalizedEvent | undefined => {
+    try {
+      const { source } = event
+      if ('path' in source && statSync(source.path).size > MAX_ATTACHED_IMAGE_BYTES) throw new Error('over 5 MB')
+      const saved = images.save(threadId, 'data' in source ? Buffer.from(source.data, 'base64') : readFileSync(source.path))
+      const name = event.name ?? ('path' in source ? basename(source.path) : undefined)
+      return { kind: 'image', file: saved.file, mediaType: saved.mediaType, from: 'agent', ...(name ? { name } : {}) }
+    } catch (error) {
+      console.warn('[cockpit] an image from the agent was not kept:', error instanceof Error ? error.message : error)
+      return undefined
+    }
+  }
 
   const closeEntry = (entry: Live): Promise<void> => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
@@ -211,6 +231,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
+    if (incoming.kind === 'image_data') {
+      const image = keepImage(threadId, incoming)
+      if (image) record(threadId, image)
+      return
+    }
     // Taken signals matter only for messages that waited; the rest would just fill the log.
     if (incoming.kind === 'user_taken') {
       const waiting = live.get(threadId)?.waiting
@@ -454,6 +479,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       generations.delete(threadId)
       if (entry) await closeEntry(entry)
       store.remove(threadId)
+      images.remove(threadId)
       const update: ThreadUpdate = { threadId, event: { kind: 'thread_deleted' }, status: 'idle' }
       for (const listener of listeners) listener(update)
     },

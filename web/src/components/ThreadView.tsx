@@ -165,6 +165,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
       <div className="events" ref={scroller}>
         {finding ? <FindBar root={scroller} contentKey={`${meta.id}:${events.length}`} onClose={() => setFinding(false)} /> : null}
         <TranscriptView
+          threadId={meta.id}
           items={conversationItems}
           openApprovals={open}
           running={running}

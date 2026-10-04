@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { IMAGE_KINDS, type ImageExt } from '../files/image-kind.ts'
 
 // A project's picture, kept by the app in <root>/project-images (never in the project folder).
 // The page sends a small square it has already scaled down; the server still accepts only PNG, JPEG,
@@ -8,13 +9,8 @@ import { join } from 'node:path'
 // SVG is refused: it can carry script.
 
 export const MAX_IMAGE_BYTES = 512 * 1024
-const TYPES = {
-  png: { mime: 'image/png', magic: (b: Buffer) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
-  jpg: { mime: 'image/jpeg', magic: (b: Buffer) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  gif: { mime: 'image/gif', magic: (b: Buffer) => b.subarray(0, 4).toString('latin1') === 'GIF8' },
-  webp: { mime: 'image/webp', magic: (b: Buffer) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP' },
-} as const
-type Ext = keyof typeof TYPES
+const TYPES = IMAGE_KINDS
+type Ext = ImageExt
 const EXT_BY_MIME: Record<string, Ext> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }
 
 export class ImageError extends Error {}
