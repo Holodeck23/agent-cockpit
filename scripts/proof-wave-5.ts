@@ -93,7 +93,9 @@ try {
   check('A11 the header counts the turn up', await until('timer', async () => /^Working · 0:0[1-9]$/.test((await headStatus(page).textContent())?.trim() ?? ''), 4_000))
   check('A11 so does the list pill', /Working · 0:0\d/.test(await page.locator('.conversation-card .pill-working, .pill-working').first().textContent() ?? ''))
   await send(page, 'keep me')
+  await until('first bubble', async () => (await page.locator('.bubble').filter({ hasText: /^keep me$/ }).count()) === 1)
   await send(page, 'take me back')
+  check('J1 a second message sent right after the first is not lost', await until('second bubble', async () => (await page.locator('.bubble').filter({ hasText: /^take me back$/ }).count()) === 1))
   const waiting = page.locator('.message.waiting')
   check('J1 messages sent mid-turn show as waiting', await until('waiting', async () => (await waiting.count()) === 2))
   await shot(page, 'j1-waiting')
@@ -103,7 +105,7 @@ try {
     (await messageBox(page).inputValue()) === 'take me back' && (await waiting.count()) === 1))
   await messageBox(page).fill('')
   check('J1 the waiting message runs after the turn, and the removed one never does', await until('drained', async () =>
-    (await page.locator('.bubble').filter({ hasText: /^Got: keep me$/ }).count()) === 1 && (await waiting.count()) === 0, 15_000)
+    (await page.locator('.bubble').filter({ hasText: /^Got: keep me$/ }).count()) === 1 && (await waiting.count()) === 0, 20_000)
     && (await page.locator('.bubble').filter({ hasText: 'Got: take me back' }).count()) === 0)
   check('J1 the conversation is done once the queue is empty', await until('done', async () => (await headStatus(page).textContent())?.includes('Working') === false))
 
@@ -115,6 +117,14 @@ try {
   check('J1 Stop and send now runs the waiting message at once', await until('now', async () =>
     (await page.locator('.bubble').filter({ hasText: /^Got: now please$/ }).count()) === 1, 3_000)
     && (await page.getByText('Work done.').count()) === 1)
+
+  // Found on the way: text typed while a message is still sending used to be wiped when that send returned.
+  await page.route('**/api/threads/*/messages', async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue() }, { times: 1 })
+  await send(page, 'slow send')
+  await messageBox(page).fill('typed meanwhile')
+  check('text typed while a message is sending stays in the box', await until('sent', async () => (await page.locator('.bubble').filter({ hasText: /^slow send$/ }).count()) === 1)
+    && await until('kept', async () => (await messageBox(page).inputValue()) === 'typed meanwhile', 3_000))
+  await messageBox(page).fill('')
 
   // J10: a failed turn is a card in plain words, with the agent's own message and Retry.
   await send(page, 'flaky')

@@ -50,6 +50,11 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
+/** The draft once `sent` has gone: empty, unless you typed something else meanwhile. */
+export function draftAfterSend(current: string, sent: string): string {
+  return current.trim() === sent ? '' : current
+}
+
 export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, threadId, draftKey, placeholder, disabled, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
@@ -108,7 +113,8 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     setSubmitError(undefined)
     try {
       await onSubmit(trimmed)
-      update('')
+      // Whatever you typed while it was sending stays; only the sent text leaves the box.
+      update(draftAfterSend(box.current?.value ?? '', trimmed))
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {

@@ -7,7 +7,7 @@
 #   "long"      starts a helper that works until you press Stop;
 #   "compact"   compacts for 2 s, then replies;
 #   "flaky"     fails with a usage-limit result the first time, then replies "Recovered.";
-#   "work"      works for 6 s; messages sent meanwhile wait in a queue (they carry a uuid), can be
+#   "work"      works for 12 s; messages sent meanwhile wait in a queue (they carry a uuid), can be
 #               taken back with cancel_async_message, and run after the turn or after a Stop;
 #   anything else replies "ok".
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 5 fixture)"; exit 0; }
@@ -107,8 +107,8 @@ while IFS= read -r line; do
       helper_pid=$!
       ;;
     *'"text":"work'*)
-      printf '{"type":"assistant","message":{"id":"w5-w%s","role":"assistant","content":[{"type":"tool_use","id":"tw%s","name":"Bash","input":{"command":"sleep 6","description":"Working for a while"}}]},"parent_tool_use_id":null}\n' "$turn" "$turn"
-      ( sleep 6; printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tw%s","content":"done"}]},"parent_tool_use_id":null}\n' "$turn"; say "w$turn" "Work done."; done_turn; drain ) &
+      printf '{"type":"assistant","message":{"id":"w5-w%s","role":"assistant","content":[{"type":"tool_use","id":"tw%s","name":"Bash","input":{"command":"sleep 12","description":"Working for a while"}}]},"parent_tool_use_id":null}\n' "$turn" "$turn"
+      ( sleep 12; printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tw%s","content":"done"}]},"parent_tool_use_id":null}\n' "$turn"; say "w$turn" "Work done."; done_turn; drain ) &
       work_pid=$!
       ;;
     *'"text":"flaky'*)
