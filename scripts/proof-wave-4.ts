@@ -22,6 +22,7 @@ writeFileSync(join(project, 'src', 'b.ts'), 'export const b = 2\n')
 writeFileSync(join(project, 'src', 'c.ts'), 'export const c = 3\n')
 writeFileSync(join(project, 'src', 'components', 'x.ts'), 'export const x = 0\n')
 writeFileSync(join(project, 'README.md'), '# App\n')
+writeFileSync(join(project, 'src', 'long.ts'), Array.from({ length: 200 }, (_, i) => `export const value${i} = "text ${i}" // line ${i + 1}`).join('\n') + '\n')
 writeFileSync(join(other, 'notes.txt'), 'other\n')
 
 const store = createThreadStore(join(root, 'state'))
@@ -173,6 +174,38 @@ try {
   await explorer.getByRole('textbox', { name: 'New name for README.md' }).press('Enter')
   check('F6 a renamed pinned file keeps its pin under the new name', await until('renamed pin', async () => (await pinsNav.getByRole('button').allInnerTexts()).join('|') === 'GUIDE.md|launch-plan.md'),
     (await pinsNav.getByRole('button').allInnerTexts().catch(() => [])).join('|'))
+
+  // F11: syntax colours in the code editor, under a textarea that still does the typing.
+  await explorer.locator('.file-row').filter({ hasText: /^src/ }).first().click()
+  await explorer.locator('.file-row', { hasText: /^long\.ts$/ }).click()
+  const layer = page.locator('.file-highlight')
+  const area = page.getByRole('textbox', { name: 'File contents' })
+  check('F11 a TypeScript file is coloured', await until('colours', async () => (await layer.locator('.hljs-keyword').first().innerText()) === 'export'
+    && (await layer.locator('.hljs-string').count()) > 0 && (await layer.locator('.hljs-comment').count()) > 0))
+  const metrics = await page.evaluate(() => {
+    const a = getComputedStyle(document.querySelector('.file-code .file-text')!)
+    const h = getComputedStyle(document.querySelector('.file-highlight')!)
+    const keys = ['fontFamily', 'fontSize', 'lineHeight', 'paddingLeft', 'paddingTop', 'borderLeftWidth', 'borderTopWidth', 'tabSize', 'letterSpacing'] as const
+    return { diff: keys.filter((k) => a[k] !== h[k]).map((k) => `${k}: ${a[k]} vs ${h[k]}`).join('; '), textColor: a.color }
+  })
+  check('F11 the coloured layer matches the textarea\'s font, line height and padding', metrics.diff === '', metrics.diff)
+  check('F11 only the coloured layer shows the text', metrics.textColor === 'rgba(0, 0, 0, 0)', metrics.textColor)
+  await area.evaluate((el: HTMLTextAreaElement) => { el.scrollTop = 900; el.dispatchEvent(new Event('scroll')) })
+  check('F11 the colours scroll with the text', await until('scroll', async () => Math.abs((await layer.evaluate((el) => el.scrollTop)) - (await area.evaluate((el) => el.scrollTop))) < 1))
+  await area.click()
+  await page.keyboard.press('Meta+ArrowUp')
+  await page.keyboard.type('const typed = 42\n')
+  check('F11 typing re-colours the new text', await until('typed', async () => (await layer.innerText()).startsWith('const typed = 42')
+    && (await layer.locator('.hljs-number', { hasText: '42' }).count()) === 1))
+  check('F11 the layer holds exactly the editor text', await until('same text', async () => (await layer.evaluate((el) => el.textContent)) === `${await area.inputValue()}\n`))
+  await shot(page, 'f11-colours-light')
+  await setTheme(page, 'Dark')
+  await shot(page, 'f11-colours-dark')
+  await setTheme(page, 'Light')
+  // Leave long.ts unchanged and closed.
+  await page.getByRole('button', { name: 'Close long.ts' }).click()
+  await page.getByRole('button', { name: 'Discard changes' }).click()
+  await nav('Home').click()
 
   await setTheme(page, 'Dark')
   await shot(page, 'files-dark')

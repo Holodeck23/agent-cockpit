@@ -109,3 +109,28 @@
 .file-row:has(.doc-match) { flex-wrap: wrap; row-gap: 2px; }
 .doc-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .doc-archived-tag { flex: none; padding: 0 6px; border-radius: 4px; background: var(--field); color: var(--secondary); font-size: 11.5px; }
+
+/* Syntax colours (F11): a coloured layer under a transparent textarea. Same font, padding and scroll. */
+.file-code { position: relative; display: flex; flex: 1; min-width: 0; }
+/* Scoped above `.file-preview pre`, whose padding, border and background would shift the layer off the text. */
+.file-code .file-highlight {
+  position: absolute; inset: 0; margin: 0; padding: 20px 20px 20px 14px; border: 0; border-radius: 0; background: none; overflow: hidden; pointer-events: none;
+  font: 13px/1.7 var(--mono); white-space: pre; tab-size: 2; color: var(--body);
+}
+.file-code.highlighted .file-text { position: relative; color: transparent; caret-color: var(--strong); background: none; }
+.file-code.highlighted .file-text[readonly] { color: transparent; }
+.file-highlight .hljs-keyword, .file-highlight .hljs-selector-tag, .file-highlight .hljs-built_in, .file-highlight .hljs-section { color: var(--hl-keyword); }
+.file-highlight .hljs-string, .file-highlight .hljs-regexp, .file-highlight .hljs-addition, .file-highlight .hljs-link { color: var(--hl-string); }
+.file-highlight .hljs-comment, .file-highlight .hljs-quote, .file-highlight .hljs-deletion { color: var(--hl-comment); font-style: italic; }
+.file-highlight .hljs-number, .file-highlight .hljs-literal, .file-highlight .hljs-symbol, .file-highlight .hljs-bullet { color: var(--hl-number); }
+.file-highlight .hljs-title, .file-highlight .hljs-title.function_, .file-highlight .hljs-name, .file-highlight .hljs-selector-id, .file-highlight .hljs-selector-class { color: var(--hl-title); }
+.file-highlight .hljs-attr, .file-highlight .hljs-attribute, .file-highlight .hljs-property, .file-highlight .hljs-variable, .file-highlight .hljs-params, .file-highlight .hljs-template-variable { color: var(--hl-attr); }
+.file-highlight .hljs-type, .file-highlight .hljs-title.class_, .file-highlight .hljs-meta, .file-highlight .hljs-tag { color: var(--hl-type); }
+.file-highlight .hljs-strong { font-weight: 700; }
+.file-highlight .hljs-emphasis { font-style: italic; }
+:root {
+  --hl-keyword: light-dark(#a3367a, #f08ac4); --hl-string: light-dark(#2f7a3d, #8fd18f); --hl-comment: light-dark(#8a8a85, #8b8b86);
+  --hl-number: light-dark(#b45a12, #f2a766); --hl-title: light-dark(#2357c6, #82aaff); --hl-attr: light-dark(#7d4fc2, #c3a6ff); --hl-type: light-dark(#0f7a86, #6fd3dc);
+}
+/* The gutter follows the text's scroll; it never shows a scrollbar of its own. */
+.file-source .file-gutter { overflow: hidden; }

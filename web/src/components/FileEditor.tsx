@@ -1,5 +1,6 @@
-import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { lazy, Suspense, useDeferredValue, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { fileName, isDirty, lineCount, lineRange, spaceOf, wordCount, type OpenFile } from '../file-text.ts'
+import { languageFor } from '../syntax-language.ts'
 import { usePopover } from '../usePopover.ts'
 import { ChevronDownIcon, FileIcon, SidebarIcon } from './icons.tsx'
 
@@ -32,6 +33,8 @@ const nameOf = fileName
 const isMarkdown = (path: string): boolean => /\.(md|markdown)$/i.test(path)
 // The rich editor is loaded only when a Markdown file is shown as a document.
 const DocumentView = lazy(() => import('./DocumentView.tsx'))
+// Syntax colours load the highlighter on demand too.
+const HighlightRuns = lazy(() => import('./HighlightRuns.tsx'))
 const VIEW_KEY = 'cockpit:markdown-view'
 type MarkdownView = 'document' | 'source'
 function loadView(): MarkdownView {
@@ -139,7 +142,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
               </Suspense>
             </div>
           ) : (
-            <SourceText key={file.path} text={file.draft} readOnly={!file.eol} jump={jumping} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
+            <SourceText key={file.path} path={file.path} text={file.draft} readOnly={!file.eol} jump={jumping} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
           )}
           <footer className="file-status" aria-label="File status">
             <span className={dirty ? 'file-status-dirty' : ''}>{file.conflict ? 'Changed on disk' : dirty ? 'Unsaved changes' : 'Saved'}</span>
@@ -159,11 +162,15 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
 }
 
 /** Source view: the text with line numbers beside it. Lines don't wrap, so the numbers stay level. */
-function SourceText({ text, readOnly, jump, onChange, onKeyDown }: {
-  text: string; readOnly: boolean; jump?: Jump; onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
+function SourceText({ path, text, readOnly, jump, onChange, onKeyDown }: {
+  path: string; text: string; readOnly: boolean; jump?: Jump; onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 }) {
   const gutter = useRef<HTMLPreElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
+  const colours = useRef<HTMLPreElement>(null)
+  const language = languageFor(path)
+  // Colouring trails typing slightly on large files; the textarea itself never waits.
+  const shown = useDeferredValue(text)
   // Select the referenced lines and bring them a third of the way down the view.
   useEffect(() => {
     const el = area.current
@@ -179,9 +186,21 @@ function SourceText({ text, readOnly, jump, onChange, onKeyDown }: {
   return (
     <div className="file-source">
       <pre className="file-gutter" ref={gutter} aria-hidden>{numbers}</pre>
-      <textarea ref={area} className="file-text" aria-label="File contents" value={text} readOnly={readOnly} spellCheck={false} wrap="off" {...PLAIN_TEXT}
-        onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
-        onScroll={(e) => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop }} />
+      <div className={`file-code${language ? ' highlighted' : ''}`}>
+        {/* The textarea's text is transparent over this layer, so selection, undo and typing stay native. */}
+        {language ? (
+          <pre className="file-highlight" ref={colours} aria-hidden data-language={language}>
+            <Suspense fallback={shown}><HighlightRuns text={shown} language={language} /></Suspense>{'\n'}
+          </pre>
+        ) : null}
+        <textarea ref={area} className="file-text" aria-label="File contents" value={text} readOnly={readOnly} spellCheck={false} wrap="off" {...PLAIN_TEXT}
+          onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
+          onScroll={(e) => {
+            const { scrollTop, scrollLeft } = e.currentTarget
+            if (gutter.current) gutter.current.scrollTop = scrollTop
+            if (colours.current) { colours.current.scrollTop = scrollTop; colours.current.scrollLeft = scrollLeft }
+          }} />
+      </div>
     </div>
   )
 }
