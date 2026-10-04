@@ -29,6 +29,20 @@ const FRIDAY = [5]
 const lines = (...text: string[]): string => text.join('\n')
 
 export const GALLERY: readonly GalleryWorkflow[] = [
+  // Featured first: shaping a change before it is built.
+  {
+    name: 'design-workshop', title: 'Design workshop', category: 'Run and debug', featured: true,
+    summary: 'Three directions for a screen, side by side in the preview; keep one, refine it, apply it.', permissionMode: 'manual', schedule: null,
+    prompt: lines(
+      'Run a short design workshop for the change I describe in this message. If I did not say which screen or what should change, ask me and stop there.',
+      '1. Read the screens and components involved, then restate the goal in one sentence.',
+      '2. Propose three distinct directions (layout, hierarchy, density, tone). Give each a name, a few lines on what it changes, and the trade-off it makes.',
+      '3. Build each direction as a small, reversible change that touches only the files it needs. Start the project\'s dev server with start_process and show each option with open_preview, so I can compare them.',
+      '4. Stop and ask me which one to keep, and what to change about it. Do not choose for me.',
+      '5. Refine the one I pick with my notes. Check it at phone width and in dark mode, and fix what breaks.',
+      '6. Apply it cleanly: remove the options I did not pick, run the project\'s own checks, and list every file you changed.'),
+  },
+
   // Understand
   {
     name: 'project-orientation', title: 'Project orientation', category: 'Understand', featured: true,
