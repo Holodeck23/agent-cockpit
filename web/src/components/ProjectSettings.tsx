@@ -1,3 +1,4 @@
+import type { SettingsPatch } from '../useProjects.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../api.ts'
 import { native } from '../native.ts'
@@ -14,7 +15,7 @@ const TINTS: ReadonlyArray<{ id: Project['color']; label: string }> = [
 
 interface ProjectSettingsProps {
   project: Project
-  onSave: (patch: { name: string; color: Project['color']; instructions: string }) => Promise<unknown>
+  onSave: (patch: SettingsPatch) => Promise<Project>
   onImage: (image: string | null) => Promise<unknown>
   /** Resolves to how many schedules were paused. */
   onRemove: () => Promise<number>
@@ -27,13 +28,14 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [name, setName] = useState(project.name)
   const [color, setColor] = useState(project.color)
   const [text, setText] = useState(project.instructions ?? '')
+  const [agentWorkflows, setAgentWorkflows] = useState(project.agentWorkflows === true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [saved, setSaved] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const nameBox = useRef<HTMLInputElement>(null)
   const filePicker = useRef<HTMLInputElement>(null)
-  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '')
+  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '') || agentWorkflows !== (project.agentWorkflows === true)
 
   useEffect(() => nameBox.current?.focus(), [])
   useEffect(() => {
@@ -49,7 +51,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     setError(undefined)
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
-  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text }), () => setSaved(true))
+  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows }), () => setSaved(true))
   const pick = (file: File | undefined): void => {
     if (file) run(async () => onImage(await avatarDataUrl(file)))
     if (filePicker.current) filePicker.current.value = ''
@@ -100,6 +102,14 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             Added to every agent session in this folder, alongside the repository&apos;s own instruction files, which Cockpit
             never edits. They apply when an agent next starts, and never change permissions.
           </p>
+          <label className="field-check">
+            <input type="checkbox" checked={agentWorkflows} onChange={(e) => { setAgentWorkflows(e.target.checked); setSaved(false) }} />
+            <span>
+              <strong>Let agents manage workflows</strong>
+              Agents may save, update and schedule this project&apos;s workflows without asking each time. Off, they can only add new
+              workflows with the schedule off, after you approve. Applies when an agent next starts.
+            </span>
+          </label>
           <div className="field">
             <span>Folder</span>
             <div className="project-folder">

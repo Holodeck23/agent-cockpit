@@ -27,6 +27,8 @@ const projectSchema = z.object({
   image: z.string().regex(/^[a-f0-9]{16}-\d+\.(png|jpg|gif|webp)$/).optional(),
   /** Removed from Cockpit: off the tabs and the menu, folder and conversations untouched. Opening it again brings it back. */
   hidden: z.boolean().optional(),
+  /** Agents may save, update and schedule this project's workflows without an approval card (decision P1; off by default). */
+  agentWorkflows: z.boolean().optional(),
   /** Project files pinned to the navigation, as paths relative to the folder, in pin order. */
   pinnedFiles: z.array(z.string().min(1).max(1000)).max(MAX_PINNED_FILES).optional(),
 })
@@ -38,6 +40,7 @@ export const projectPatchSchema = z.object({
   pinned: z.boolean().optional(),
   /** Empty clears them. */
   instructions: z.string().max(MAX_INSTRUCTIONS_CHARS).optional(),
+  agentWorkflows: z.boolean().optional(),
 })
 export type ProjectPatch = z.output<typeof projectPatchSchema>
 

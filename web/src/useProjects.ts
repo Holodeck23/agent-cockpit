@@ -5,6 +5,9 @@ import { tabOrder } from './project-tabs.ts'
 
 const ACTIVE_KEY = 'cockpit:active-project'
 
+/** What Project settings saves together. */
+export interface SettingsPatch { name: string; color: Project['color']; instructions: string; agentWorkflows: boolean }
+
 export interface ProjectCounts {
   readonly working: number
   readonly needsYou: number
@@ -27,7 +30,7 @@ export interface Projects {
   /** Saves a project's instructions; rejects with the server's message so the editor can show it. */
   saveInstructions(project: Project, instructions: string): Promise<Project>
   /** Saves name, tint and instructions together; rejects with the server's message. */
-  saveSettings(project: Project, patch: { name: string; color: Project['color']; instructions: string }): Promise<Project>
+  saveSettings(project: Project, patch: SettingsPatch): Promise<Project>
   /** Sets (a data: URL) or clears (null) the project's picture. */
   setImage(project: Project, image: string | null): Promise<Project>
   /** Takes the project off the tabs and the menu; the folder is never touched. Resolves to the schedules paused. */
@@ -111,7 +114,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     return saved
   }
 
-  const saveSettings = async (project: Project, patch: { name: string; color: Project['color']; instructions: string }): Promise<Project> => {
+  const saveSettings = async (project: Project, patch: SettingsPatch): Promise<Project> => {
     const saved = await api.openProject(project.path, patch)
     await refresh()
     return saved
