@@ -136,7 +136,8 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                     {onSendNow ? <button type="button" className="button-soft" onClick={onSendNow}>Stop and send now</button> : null}
                   </div>
                 ) : null}
-                {item.text.trim() ? <CopyButton text={item.text} /> : null}
+                {/* A waiting message's own buttons sit where Copy would; Remove gives the text back anyway. */}
+                {item.text.trim() && !(item.queuedId && running) ? <CopyButton text={item.text} /> : null}
               </section>
             )
           case 'step': {

@@ -95,6 +95,7 @@ try {
   const waiting = page.locator('.message.waiting')
   check('J1 messages sent mid-turn show as waiting', await until('waiting', async () => (await waiting.count()) === 2))
   await shot(page, 'j1-waiting')
+  check('J1 a waiting message has no Copy button over its own buttons', (await waiting.locator('.copy-message').count()) === 0)
   await waiting.filter({ hasText: 'take me back' }).getByRole('button', { name: 'Remove' }).click()
   check('J1 Remove takes the message back into the draft', await until('draft', async () =>
     (await messageBox(page).inputValue()) === 'take me back' && (await waiting.count()) === 1))
