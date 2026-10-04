@@ -147,6 +147,8 @@ interface Live {
   readonly waiting: Set<string>
   /** A helper finished between turns: the agent reports back on its own, so its next output starts a turn. */
   followUp: boolean
+  /** The turn's result came while messages still waited: it is "working" only for them. */
+  afterResult: boolean
   stopRequested: boolean
   /** Text streamed so far for the message in progress, so a late viewer sees all of it. */
   partial: string
@@ -251,6 +253,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const waiting = live.get(threadId)?.waiting
       if (!incoming.id || !waiting?.delete(incoming.id)) return
       const entry = live.get(threadId)!
+      entry.afterResult = false
       // A message queued past the end of a turn (or a Stop) starts the next one when taken.
       if (!entry.turnRunning) {
         entry.turnRunning = true
@@ -291,6 +294,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       entry.questions.clear()
       // Messages still waiting run next, without you sending again.
       entry.turnRunning = entry.waiting.size > 0
+      entry.afterResult = entry.turnRunning
       entry.stopRequested = false
       // Closing the process would kill helpers still at work, or drop waiting messages.
       if (entry.helpers.size === 0 && !entry.turnRunning) armIdleClose(entry)
@@ -372,7 +376,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -396,6 +400,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
     const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
     if (queuedId) entry.waiting.add(queuedId)
+    else entry.afterResult = false
     entry.turnRunning = true
     if (meta.completed) {
       store.update(threadId, { completed: false })
@@ -454,6 +459,14 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!entry?.waiting.has(queuedId) || sent?.kind !== 'user_text' || !entry.session.cancelQueued) throw new Error('The agent has already taken this message')
       if (!(await entry.session.cancelQueued(queuedId))) throw new Error('The agent has already taken this message')
       entry.waiting.delete(queuedId)
+      // The turn already ended and only this message kept it working: it is done now. Before
+      // recording, so the update carries the new status.
+      if (entry.afterResult && entry.waiting.size === 0) {
+        entry.afterResult = false
+        entry.turnRunning = false
+        entry.stopRequested = false
+        if (entry.helpers.size === 0) armIdleClose(entry)
+      }
       record(threadId, { kind: 'user_unqueued', id: queuedId })
       return sent.text
     },

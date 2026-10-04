@@ -8,6 +8,7 @@
 #   "compact"   compacts for 2 s, then replies;
 #   "suggest"   replies, then (only when launched with --prompt-suggestions) suggests a next prompt (J2);
 #   "flaky"     fails with a usage-limit result the first time, then replies "Recovered.";
+#   "worklag"   as "work" for 3 s, but takes waiting messages only 4 s after its result;
 #   "work"      works for 12 s; messages sent meanwhile wait in a queue (they carry a uuid), can be
 #               taken back with cancel_async_message, and run after the turn or after a Stop;
 #   anything else replies "ok".
@@ -108,6 +109,12 @@ while IFS= read -r line; do
       done_turn
       ( sleep 60; printf '{"type":"system","subtype":"task_notification","task_id":"task-h2","tool_use_id":"h2","status":"completed","summary":""}\n' ) &
       helper_pid=$!
+      ;;
+    *'"text":"worklag'*)
+      # As "work", but the queue is taken 4 s after the turn's result (proof:wave-6.5 R3).
+      printf '{"type":"assistant","message":{"id":"w5-w%s","role":"assistant","content":[{"type":"tool_use","id":"tw%s","name":"Bash","input":{"command":"sleep 3","description":"Working briefly"}}]},"parent_tool_use_id":null}\n' "$turn" "$turn"
+      ( sleep 3; say "w$turn" "Work done."; done_turn; sleep 4; drain ) &
+      work_pid=$!
       ;;
     *'"text":"work'*)
       printf '{"type":"assistant","message":{"id":"w5-w%s","role":"assistant","content":[{"type":"tool_use","id":"tw%s","name":"Bash","input":{"command":"sleep 12","description":"Working for a while"}}]},"parent_tool_use_id":null}\n' "$turn" "$turn"

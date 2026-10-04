@@ -151,6 +151,44 @@ describe('thread manager', () => {
     await expect(manager.unqueue(meta.id, queuedId!)).rejects.toThrow(/already taken/)
   })
 
+  it('taking back the last waiting message after the turn ended leaves the conversation done (R3)', async () => {
+    const { manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    const queuedId = agent.sent[1]!.queuedId!
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('working')
+    const statuses: string[] = []
+    manager.subscribe((update) => { if (update.event.kind === 'user_unqueued') statuses.push(update.status) })
+    await expect(manager.unqueue(meta.id, queuedId)).resolves.toBe('second')
+    expect(manager.status(meta.id)).toBe('done')
+    expect(statuses).toEqual(['done'])
+    expect(manager.canControl(meta.id)).toBe(false)
+    expect(() => manager.switchAgent(meta.id, { ...settings, agent: 'codex' })).not.toThrow()
+  })
+
+  it('taking back one of two waiting messages after the turn keeps it working for the other (R3)', async () => {
+    const { manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    manager.send(meta.id, 'third')
+    agent.emit({ kind: 'result', ok: true })
+    await manager.unqueue(meta.id, agent.sent[1]!.queuedId!)
+    expect(manager.status(meta.id)).toBe('working')
+  })
+
+  it('taking back a waiting message mid-turn keeps the turn working (R3)', async () => {
+    const { manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    await manager.unqueue(meta.id, agent.sent[1]!.queuedId!)
+    expect(manager.status(meta.id)).toBe('working')
+    expect(manager.canControl(meta.id)).toBe(true)
+  })
+
   it('runs a waiting message after the turn, and says when the agent already took it (J1)', async () => {
     const { store, manager, agent, settings } = setup()
     agent.cancel = false

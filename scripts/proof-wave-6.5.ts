@@ -103,6 +103,30 @@ try {
   check('R2 it saves the text just typed', JSON.stringify(saved) === JSON.stringify(['Watch the nightly build']), JSON.stringify(saved))
   check('R2 no "already exists" error', (await page.getByText('already exists').count()) === 0)
   await shot(page, 'r2-saved')
+
+  // R3: taking back the only waiting message after the agent's result ends the turn; the
+  // conversation is not left "Working" with the switch refused.
+  await page.getByRole('tablist', { name: 'Sections' }).getByRole('tab', { name: /^Conversations/ }).click()
+  await startConversation(page, 'worklag')
+  await until('working', () => working(page))
+  await send(page, 'R3 waits in the queue')
+  const r3Waiting = page.locator('.message.waiting').filter({ hasText: 'R3 waits in the queue' })
+  check('R3 the message waits', await until('r3 waiting', async () => (await r3Waiting.count()) === 1))
+  check('R3 the agent finishes its turn while it still waits', await until('result', async () =>
+    (await page.locator('.bubble').filter({ hasText: /^Work done\.$/ }).count()) === 1 && (await r3Waiting.count()) === 1, 8_000))
+  await r3Waiting.getByRole('button', { name: 'Remove' }).click()
+  check('R3 Remove takes it back', await until('r3 taken back', async () => (await r3Waiting.count()) === 0))
+  await messageBox(page).fill('')
+  check('R3 the conversation stops working at once', await until('not working', async () => !(await working(page)), 2_000),
+    (await headStatus(page).textContent()) ?? '')
+  await page.waitForTimeout(5_000)
+  check('R3 and the message never runs', (await page.locator('.bubble').filter({ hasText: 'Got: R3' }).count()) === 0)
+  await page.getByRole('button', { name: 'Agent settings' }).click()
+  const r3Picker = page.getByRole('dialog', { name: 'Agent settings' })
+  await r3Picker.getByRole('radio', { name: 'Codex', exact: true }).click()
+  await r3Picker.getByRole('button', { name: 'Switch' }).click()
+  check('R3 switching agents is allowed', await until('switched', async () => (await page.getByText('Handed over from Claude Code to Codex').count()) >= 1))
+  await shot(page, 'r3-taken-back')
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {
