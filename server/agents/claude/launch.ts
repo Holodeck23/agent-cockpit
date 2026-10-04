@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
@@ -25,6 +28,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   let session: AgentSession | undefined
   let ended = false
   let pending: string | undefined
+  let replays = false
   const finish = (error?: unknown, stopped = false) => {
     if (ended) return
     ended = true
@@ -39,19 +43,29 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
     probeClaude(deps.executable ?? 'claude', input.cwd, { ...process.env, ...deps.env }, controller.signal))
     .then((capabilities) => {
       if (ended || !capabilities) return
-      const args = buildClaudeArgs(input, capabilities)
-      validateClaudeArgs(args, capabilities)
-      session = spawnClaude(input, onEvent, deps, args)
+      const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
+      try {
+        const args = buildClaudeArgs(prompt ? { ...input, appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : input, capabilities)
+        validateClaudeArgs(args, capabilities)
+        replays = capabilities.replayUserMessages
+        session = spawnClaude(input, onEvent, deps, args, () => prompt?.remove())
+      } catch (error) {
+        prompt?.remove()
+        throw error
+      }
       if (pending !== undefined) { session.send(pending); pending = undefined }
     }).catch((error: unknown) => finish(error))
   return {
     agent: 'claude',
-    send(text) {
-      if (session) session.send(text)
+    send(text, queuedId) {
+      if (session) session.send(text, queuedId)
       else if (!ended && pending === undefined) pending = text
       else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
+    respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
+    queues: () => Boolean(session && replays),
+    cancelQueued: (queuedId) => session?.cancelQueued?.(queuedId) ?? Promise.resolve(false),
     interrupt() {
       if (session) session.interrupt()
       else { finish(undefined, true); controller.abort() }
@@ -66,7 +80,19 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   }
 }
 
-function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[]): AgentSession {
+/**
+ * The appended prompt (guidance, project instructions, a switch handoff) goes in a file only
+ * this user can read: argv is visible to every account on the Mac, and a whole handoff (J5)
+ * would crowd argv's 1 MB limit. Claude reads it at startup; it is removed when the process ends.
+ */
+function writePromptFile(text: string): { readonly file: string; remove(): void } {
+  const dir = mkdtempSync(join(tmpdir(), 'cockpit-prompt-'))
+  const file = join(dir, 'prompt.md')
+  writeFileSync(file, text, { mode: 0o600 })
+  return { file, remove: () => rmSync(dir, { recursive: true, force: true }) }
+}
+
+function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[], cleanup: () => void): AgentSession {
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -83,7 +109,24 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     child.stdin.write(`${JSON.stringify(message)}\n`)
   }
 
+  // Our own control requests that wait for Claude's answer (cancel_async_message).
+  const replies = new Map<string, (response: unknown) => void>()
+  const ask = (request: Record<string, unknown>): Promise<unknown> => new Promise((resolve) => {
+    if (exited || !child.stdin.writable) { resolve(undefined); return }
+    const id = randomUUID()
+    replies.set(id, resolve)
+    write({ type: 'control_request', request_id: id, request })
+    setTimeout(() => { if (replies.delete(id)) resolve(undefined) }, 5000)
+  })
+
   createInterface({ input: child.stdout }).on('line', (line) => {
+    if (replies.size > 0 && line.includes('"control_response"')) {
+      try {
+        const message = JSON.parse(line) as { response?: { request_id?: string; response?: unknown } }
+        const id = message.response?.request_id
+        if (id && replies.has(id)) { replies.get(id)!(message.response?.response); replies.delete(id); return }
+      } catch { /* parsed below as usual */ }
+    }
     for (const event of parseClaudeLine(line)) onEvent(event)
   })
   createInterface({ input: child.stderr }).on('line', (line) => {
@@ -95,6 +138,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true
+      cleanup()
       onEvent({ kind: 'result', ok: false })
       onEvent({ kind: 'exit', code: null })
     }
@@ -102,6 +146,9 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   child.on('exit', (code) => {
     if (exited) return
     exited = true
+    cleanup()
+    for (const resolve of replies.values()) resolve(undefined)
+    replies.clear()
     if (code !== 0 && code !== null && stderrTail.length > 0) {
       onEvent({ kind: 'error', message: stderrTail.join('\n') })
     }
@@ -110,8 +157,12 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
 
   return {
     agent: 'claude',
-    send(text: string) {
-      write({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } })
+    send(text: string, queuedId?: string) {
+      write({ type: 'user', ...(queuedId ? { uuid: queuedId } : {}), message: { role: 'user', content: [{ type: 'text', text }] } })
+    },
+    async cancelQueued(queuedId: string) {
+      const response = await ask({ subtype: 'cancel_async_message', message_uuid: queuedId })
+      return typeof response === 'object' && response !== null && (response as { cancelled?: unknown }).cancelled === true
     },
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {
       // updatedInput must echo the original input: an empty object would replace it.
@@ -125,6 +176,14 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
             }
       write({ type: 'control_response', response: { subtype: 'success', request_id: approval.requestId, response } })
       onEvent({ kind: 'approval_resolved', requestId: approval.requestId, behavior })
+    },
+    respondQuestion(question: PendingApproval, answers: Readonly<Record<string, string>> | undefined) {
+      // AskUserQuestion reads the answers from its own input, keyed by question text.
+      const response = answers
+        ? { behavior: 'allow', updatedInput: { ...(question.input as object), answers } }
+        : { behavior: 'deny', message: 'The user closed the questions without answering. Carry on without the answers, or ask in your reply.' }
+      write({ type: 'control_response', response: { subtype: 'success', request_id: question.requestId, response } })
+      onEvent({ kind: 'question_answered', requestId: question.requestId, answers: answers ?? {}, ...(answers ? {} : { dismissed: true }) })
     },
     interrupt() {
       write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })

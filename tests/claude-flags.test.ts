@@ -38,3 +38,34 @@ describe('buildClaudeArgs', () => {
     expect(() => buildClaudeArgs({ ...base, allowedTools: ['Bash(rm -rf /)'] })).toThrow()
   })
 })
+
+describe('the appended system prompt (J5)', () => {
+  it('passes a prompt file instead of the text, never both', () => {
+    const args = buildClaudeArgs({ ...base, appendSystemPromptFile: '/tmp/cockpit-prompt-x/prompt.md' })
+    expect(args[args.indexOf('--append-system-prompt-file') + 1]).toBe('/tmp/cockpit-prompt-x/prompt.md')
+    expect(args).not.toContain('--append-system-prompt')
+    expect(() => buildClaudeArgs({ ...base, appendSystemPrompt: 'a', appendSystemPromptFile: '/tmp/p.md' })).toThrow()
+  })
+  it('takes a whole switch handoff', () => {
+    expect(() => buildClaudeArgs({ ...base, appendSystemPrompt: 'x'.repeat(450_000) })).not.toThrow()
+  })
+})
+
+describe('follow-up suggestions (J2)', () => {
+  it('asks for them only where the CLI offers it', () => {
+    const on = buildClaudeArgs(base, { permissionPrompts: true, promptSuggestions: true })
+    expect(on[on.indexOf('--prompt-suggestions') + 1]).toBe('true')
+    expect(buildClaudeArgs(base, { permissionPrompts: true })).not.toContain('--prompt-suggestions')
+  })
+})
+
+describe('effort levels per agent (C9)', async () => {
+  const { effortsFor, effortForClaude } = await import('../server/agents/claude/flags.ts')
+  it('offers Ultra for Codex only, and gives agents without it their highest level', () => {
+    expect(effortsFor('codex').at(-1)).toBe('ultra')
+    expect(effortsFor('claude')).not.toContain('ultra')
+    expect(effortForClaude('ultra')).toBe('max')
+    expect(effortForClaude('high')).toBe('high')
+    expect(() => buildClaudeArgs({ ...base, effort: 'ultra' as never })).toThrow()
+  })
+})

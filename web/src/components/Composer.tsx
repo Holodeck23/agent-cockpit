@@ -14,7 +14,7 @@ interface ComposerProps {
   onDraftLoaded?: () => void
   /** Replaces the draft and focuses the box, e.g. from a starter suggestion. A new object each time. */
   /** Fills the message box; with `reference`, adds that token to what is already typed instead. */
-  prefill?: { readonly text: string; readonly reference?: boolean }
+  prefill?: { readonly text: string; readonly reference?: boolean; readonly restore?: boolean }
   projectPath?: string
   /** Set in a conversation (not on New conversation). */
   threadId?: string
@@ -50,6 +50,11 @@ function saveDraft(key: string, text: string): void {
   }
 }
 
+/** The draft once `sent` has gone: empty, unless you typed something else meanwhile. */
+export function draftAfterSend(current: string, sent: string): string {
+  return current.trim() === sent ? '' : current
+}
+
 export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, threadId, draftKey, placeholder, disabled, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
@@ -70,7 +75,9 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
 
   useEffect(() => {
     if (!prefill) return
-    const next = prefill.reference ? addReference(box.current?.value ?? '', prefill.text) : prefill.text
+    const current = box.current?.value ?? ''
+    // A restored message goes above whatever you have typed since, never over it.
+    const next = prefill.reference ? addReference(current, prefill.text) : prefill.restore && current.trim() ? `${prefill.text}\n${current}` : prefill.text
     setText(next)
     saveDraft(draftKey, next)
     const el = box.current
@@ -106,7 +113,8 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     setSubmitError(undefined)
     try {
       await onSubmit(trimmed)
-      update('')
+      // Whatever you typed while it was sending stays; only the sent text leaves the box.
+      update(draftAfterSend(box.current?.value ?? '', trimmed))
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {

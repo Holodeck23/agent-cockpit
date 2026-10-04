@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
-import { openApprovals } from '../../../server/threads/status.ts'
+import { compactingNow, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
-import { buildTranscript } from '../transcript.ts'
+import { buildTranscript, followUpSuggestions } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
@@ -16,6 +16,8 @@ import { ProcessChip } from './ProcessChip.tsx'
 import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
+import { statusText, useNow } from './StatusPill.tsx'
+import { latestTurn } from '../../../server/threads/status.ts'
 
 interface ThreadViewProps {
   initialDraft?: string
@@ -39,7 +41,13 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
   const shown = !running && awaitingOf(events) ? 'needs_input' : status
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
+  const helpers = useMemo(() => (running ? runningHelpers(events).length : 0), [events, running])
+  const compacting = useMemo(() => running && compactingNow(events), [events, running])
+  const turn = useMemo(() => latestTurn(events), [events])
+  const now = useNow(shown === 'working')
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
+  // J2: a click puts the text in the box to edit; sending uses whatever the picker says then.
+  const followUps = useMemo(() => followUpSuggestions(events), [events])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
   const prefs = useActivityPrefs()
   const showActivity = !phone && prefs.open
@@ -53,7 +61,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
 
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
   const [finding, setFinding] = useState(false)
-  useEffect(() => setFinding(false), [meta.id])
+  // A message taken back from the agent's queue returns to the draft (J1).
+  const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true }>()
+  useEffect(() => { setFinding(false); setRestore(undefined) }, [meta.id])
   useEffect(() => {
     if (phone) return
     const onKey = (event: globalThis.KeyboardEvent): void => {
@@ -98,10 +108,11 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           <div className="thread-status">
             <span className={`status-text status-${shown}`}>
               {shown === 'working' ? <Bars live /> : null}
-              {STATUS_LABEL[shown]}
+              {compacting ? 'Compacting' : statusText(shown, turn, now)}
             </span>
+            {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
             {running ? (
-              <button type="button" className="head-action" aria-label="Stop" title="Stop the current turn" onClick={() => guard(api.interrupt(meta.id))}>
+              <button type="button" className="head-action" aria-label="Stop" title={helpers > 0 ? 'Stop the current turn and its helpers' : 'Stop the current turn'} onClick={() => guard(api.interrupt(meta.id))}>
                 <StopIcon />
                 Stop
               </button>
@@ -112,7 +123,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
                 className="head-action"
                 aria-label={meta.completed ? 'Reopen' : 'Mark complete'}
                 aria-pressed={meta.completed}
-                title={meta.completed ? 'Reopen this conversation' : 'Mark this conversation complete'}
+                // J11: nothing to complete while the agent is still at it.
+                disabled={running && !meta.completed}
+                title={meta.completed ? 'Reopen this conversation' : running ? 'Available when the turn ends' : 'Mark this conversation complete'}
                 onClick={() => guard(api.setCompleted(meta.id, !meta.completed))}
               >
                 <CheckIcon />
@@ -158,6 +171,10 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streaming={streaming}
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
+          onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
+          onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text }) => setRestore({ text, restore: true })))}
+          onSendNow={() => guard(api.interrupt(meta.id))}
+          onRetry={(text) => guard(api.send(meta.id, text))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (
@@ -174,6 +191,16 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           </button>
         ) : null}
       </div>
+      {!running && !meta.completed && followUps.length > 0 ? (
+        <div className="follow-ups" role="group" aria-label="Suggested follow-ups">
+          <div className="follow-ups-row">
+            {followUps.map((text) => (
+              <button key={text} type="button" className="follow-up" title="Put this in the message box to edit, then send"
+                onClick={() => setRestore({ text })}>{text}</button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <Composer
         initialDraft={initialDraft}
         onDraftLoaded={onDraftLoaded}
@@ -181,6 +208,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         projectPath={phone ? undefined : meta.projectPath}
         threadId={meta.id}
         draftKey={meta.id}
+        prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         onSubmit={(text) => api.send(meta.id, text).then(() => undefined)}

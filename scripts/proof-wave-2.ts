@@ -162,7 +162,7 @@ try {
   // D8: a network failure in a conversation links to the guide's network section.
   await page.locator('.card').filter({ hasText: 'Offline turn' }).click()
   await page.getByRole('heading', { level: 1, name: 'Offline turn' }).waitFor()
-  const link = page.locator('.note-error').getByRole('link', { name: 'Network troubleshooting' })
+  const link = page.locator('.failure').getByRole('link', { name: 'Network troubleshooting' })
   check('D8 a connection error links to network troubleshooting', (await link.getAttribute('href')) === HELP.network)
 
   // E1: the project's tint on the send button, the Complete control and badges.

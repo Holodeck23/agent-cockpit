@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
+import { ALL_EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
 import type { NormalizedEvent } from '../agents/types.ts'
 
 export const threadSettingsSchema = z.object({
@@ -10,7 +10,7 @@ export const threadSettingsSchema = z.object({
     .max(100)
     .regex(/^[A-Za-z0-9._\-[\]/:]+$/)
     .optional(),
-  effort: z.enum(EFFORTS).optional(),
+  effort: z.enum(ALL_EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   useHooks: z.boolean().default(false),
 })
@@ -57,4 +57,8 @@ export interface ThreadSummary {
   readonly lastActivityAt: string
   /** The last turn ended with a question or a blocker you haven't answered (U12). */
   readonly awaiting?: 'question' | 'blocker'
+  /** The latest turn's span, for the status timer (A11). */
+  readonly turn?: { readonly startedAt: string; readonly endedAt?: string }
+  /** The first question the agent is asking right now with choices (J6), while it waits on you. */
+  readonly asking?: string
 }

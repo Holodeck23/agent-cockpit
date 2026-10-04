@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { NormalizedEvent } from '../types.ts'
+import type { AgentQuestion, NormalizedEvent } from '../types.ts'
 
 // Translates one line of `claude --output-format stream-json` into zero or more
 // NormalizedEvents. Unknown message types are ignored, not errors: the CLI adds
@@ -26,25 +26,43 @@ function stringifyContent(content: unknown): string {
   return content === undefined ? '' : JSON.stringify(content)
 }
 
+/** The tool call that started the sub-agent this message came from, if it did. */
+const parentOf = (raw: Record<string, unknown>): string | undefined =>
+  typeof raw.parent_tool_use_id === 'string' ? raw.parent_tool_use_id : undefined
+
 function parseAssistant(raw: Record<string, unknown>): NormalizedEvent[] {
   const message = z.looseObject({ id: z.string(), content: z.array(z.unknown()) }).safeParse(raw.message)
   if (!message.success) return []
+  const parent = parentOf(raw)
   const events: NormalizedEvent[] = []
   for (const block of message.data.content) {
     const text = textBlock.safeParse(block)
     if (text.success && text.data.text.length > 0) {
-      events.push({ kind: 'assistant_text', messageId: message.data.id, text: text.data.text })
+      events.push(parent
+        ? { kind: 'subagent', id: parent, phase: 'progress', text: text.data.text }
+        : { kind: 'assistant_text', messageId: message.data.id, text: text.data.text })
       continue
     }
     const tool = toolUseBlock.safeParse(block)
-    if (tool.success) events.push({ kind: 'tool_use', id: tool.data.id, name: tool.data.name, input: tool.data.input })
+    if (!tool.success) continue
+    events.push(parent
+      ? { kind: 'subagent', id: parent, phase: 'progress', tool: { name: tool.data.name, input: tool.data.input } }
+      : { kind: 'tool_use', id: tool.data.id, name: tool.data.name, input: tool.data.input })
   }
   return events
 }
 
 function parseUser(raw: Record<string, unknown>): NormalizedEvent[] {
   const message = z.looseObject({ content: z.unknown() }).safeParse(raw.message)
-  if (!message.success || !Array.isArray(message.data.content)) return []
+  if (!message.success) return []
+  // --replay-user-messages echoes a message you sent at the moment Claude takes it.
+  if (raw.isReplay === true) {
+    const text = stringifyContent(message.data.content)
+    if (text.length === 0 || text.startsWith('<local-command-')) return []
+    return [{ kind: 'user_taken', text, ...(typeof raw.uuid === 'string' ? { id: raw.uuid } : {}) }]
+  }
+  // A sub-agent's tool results stay inside it; its progress already names the tool.
+  if (!Array.isArray(message.data.content) || parentOf(raw)) return []
   return message.data.content.flatMap((block): NormalizedEvent[] => {
     const result = toolResultBlock.safeParse(block)
     if (!result.success) return []
@@ -59,12 +77,84 @@ function parseUser(raw: Record<string, unknown>): NormalizedEvent[] {
   })
 }
 
+const questionSchema = z.object({
+  questions: z.array(z.looseObject({
+    question: z.string(),
+    header: z.string().optional(),
+    multiSelect: z.boolean().optional(),
+    options: z.array(z.looseObject({ label: z.string(), description: z.string().optional() })).optional(),
+  })).min(1),
+})
+
+/** AskUserQuestion's input as questions; undefined when it is not the shape we know (then it stays an approval). */
+export function claudeQuestions(input: unknown): AgentQuestion[] | undefined {
+  const parsed = questionSchema.safeParse(input)
+  if (!parsed.success) return undefined
+  return parsed.data.questions.map((q) => ({
+    id: q.question,
+    question: q.question,
+    header: q.header ?? '',
+    options: (q.options ?? []).map((o) => ({ label: o.label, ...(o.description ? { description: o.description } : {}) })),
+    multiSelect: q.multiSelect ?? false,
+  }))
+}
+
+function parseSystem(raw: Record<string, unknown>): NormalizedEvent[] {
+  switch (raw.subtype) {
+    case 'init':
+      if (typeof raw.session_id !== 'string') return []
+      return [
+        {
+          kind: 'session',
+          sessionId: raw.session_id,
+          model: typeof raw.model === 'string' ? raw.model : undefined,
+          cwd: typeof raw.cwd === 'string' ? raw.cwd : undefined,
+        },
+      ]
+    case 'status':
+      if (raw.status === 'compacting') return [{ kind: 'compaction', phase: 'started' }]
+      // Success is reported again, with sizes, by the compact_boundary that follows.
+      if (typeof raw.compact_result === 'string' && raw.compact_result !== 'success') return [{ kind: 'compaction', phase: 'finished', ok: false }]
+      return []
+    case 'compact_boundary': {
+      const meta = z.looseObject({ trigger: z.string().optional(), pre_tokens: z.number().optional(), post_tokens: z.number().optional() })
+        .safeParse(raw.compact_metadata)
+      const m = meta.success ? meta.data : {}
+      return [{
+        kind: 'compaction', phase: 'finished', ok: true,
+        ...(m.trigger ? { trigger: m.trigger } : {}),
+        ...(m.pre_tokens !== undefined ? { preTokens: m.pre_tokens } : {}),
+        ...(m.post_tokens !== undefined ? { postTokens: m.post_tokens } : {}),
+      }]
+    }
+    case 'task_started':
+    case 'task_progress':
+    case 'task_notification': {
+      if (typeof raw.tool_use_id !== 'string') return []
+      // Background shells are tasks too; only agents are helpers. Later events for a task that
+      // never started as one are ignored downstream.
+      if (raw.subtype === 'task_started' && typeof raw.task_type === 'string' && !raw.task_type.includes('agent')) return []
+      const phase = raw.subtype === 'task_started' ? 'started' : raw.subtype === 'task_progress' ? 'progress' : 'finished'
+      return [{
+        kind: 'subagent', id: raw.tool_use_id, phase,
+        ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
+        ...(typeof raw.status === 'string' ? { status: raw.status } : {}),
+        ...(typeof raw.last_tool_name === 'string' ? { lastTool: raw.last_tool_name } : {}),
+      }]
+    }
+    default:
+      return []
+  }
+}
+
 function parseStreamEvent(raw: Record<string, unknown>): NormalizedEvent[] {
   const parsed = z
     .object({ event: z.looseObject({ type: z.string(), delta: z.looseObject({ type: z.string() }).optional() }) })
     .safeParse(raw)
   if (!parsed.success) return []
   const { event } = parsed.data
+  // Only the main agent streams into the reply being written.
+  if (typeof raw.parent_tool_use_id === 'string') return []
   if (event.type !== 'content_block_delta' || event.delta?.type !== 'text_delta') return []
   const text = event.delta.text
   return typeof text === 'string' && text.length > 0 ? [{ kind: 'text_delta', text }] : []
@@ -85,6 +175,8 @@ function parseControlRequest(raw: Record<string, unknown>): NormalizedEvent[] {
     .safeParse(raw)
   if (!parsed.success || parsed.data.request.subtype !== 'can_use_tool') return []
   const { request_id, request } = parsed.data
+  const questions = request.tool_name === 'AskUserQuestion' ? claudeQuestions(request.input) : undefined
+  if (questions) return [{ kind: 'question', requestId: request_id, questions }]
   return [
     {
       kind: 'approval_request',
@@ -111,17 +203,10 @@ export function parseClaudeLine(line: string): NormalizedEvent[] {
   const raw = parsed.data
 
   switch (raw.type) {
-    case 'system': {
-      if (raw.subtype !== 'init' || typeof raw.session_id !== 'string') return []
-      return [
-        {
-          kind: 'session',
-          sessionId: raw.session_id,
-          model: typeof raw.model === 'string' ? raw.model : undefined,
-          cwd: typeof raw.cwd === 'string' ? raw.cwd : undefined,
-        },
-      ]
-    }
+    case 'system':
+      return parseSystem(raw)
+    case 'prompt_suggestion':
+      return typeof raw.suggestion === 'string' && raw.suggestion.trim().length > 0 ? [{ kind: 'suggestion', text: raw.suggestion.trim() }] : []
     case 'stream_event':
       return parseStreamEvent(raw)
     case 'assistant':

@@ -5,10 +5,11 @@ import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
+import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
-import { deriveStatus, messageCountOf, previewOf } from './status.ts'
+import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
@@ -43,7 +44,7 @@ export function projectInstructionsBlock(text: string): string {
 
 /** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
 /** Events that inform without being activity: they never reorder the list or mark it unread. */
-const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed'])
+const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion'])
 
 export const instructionsFor = (req: LaunchRequest): string | undefined =>
   [
@@ -59,7 +60,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       {
         cwd: req.cwd,
         model: req.settings.model,
-        effort: req.settings.effort,
+        effort: effortForClaude(req.settings.effort),
         permissionMode: req.settings.permissionMode,
         useHooks: req.settings.useHooks,
         sessionId: req.sessionId,
@@ -88,7 +89,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
     launchAntigravity({
       cwd: req.cwd,
       model: req.settings.model,
-      effort: req.settings.effort,
+      effort: effortForClaude(req.settings.effort),
       permissionMode: req.settings.permissionMode,
       resume: req.resume,
       instructions: instructionsFor(req),
@@ -123,8 +124,15 @@ export interface ManagerOptions {
 
 interface Live {
   readonly pending: Map<string, PendingApproval>
+  readonly questions: Map<string, { readonly request: PendingApproval; readonly ids: ReadonlySet<string> }>
   readonly session: AgentSession
   turnRunning: boolean
+  /** Helpers (sub-agents) still running; they keep the session open and the conversation working (J7). */
+  readonly helpers: Set<string>
+  /** Messages you sent mid-turn that wait in the agent's queue, until it takes them (J1). */
+  readonly waiting: Set<string>
+  /** A helper finished between turns: the agent reports back on its own, so its next output starts a turn. */
+  followUp: boolean
   stopRequested: boolean
   /** Text streamed so far for the message in progress, so a late viewer sees all of it. */
   partial: string
@@ -142,6 +150,10 @@ export interface ThreadManager {
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
   send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
+  /** Takes back a message still waiting in the agent's queue (J1); resolves to its text for your draft. */
+  unqueue(threadId: string, queuedId: string): Promise<string>
+  /** Answers the agent's open questions (J6), or with undefined closes them unanswered. */
+  answerQuestion(threadId: string, requestId: string, answers: Readonly<Record<string, string>> | undefined): void
   interrupt(threadId: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
   /** Clears the question or blocker the last turn ended with, without replying. */
@@ -185,8 +197,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return closingSession
   }
 
-  const statusOf = (threadId: string): ThreadStatus =>
-    deriveStatus(store.events(threadId), live.get(threadId)?.turnRunning ?? false)
+  const busy = (entry: Live | undefined): boolean => Boolean(entry && (entry.turnRunning || entry.helpers.size > 0))
+  const statusOf = (threadId: string): ThreadStatus => deriveStatus(store.events(threadId), busy(live.get(threadId)))
+  const armIdleClose = (entry: Live): void => {
+    if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
+  }
 
   const broadcast = (threadId: string, event: NormalizedEvent): void => {
     const update: ThreadUpdate = { threadId, event, status: statusOf(threadId) }
@@ -195,6 +211,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
+    // Taken signals matter only for messages that waited; the rest would just fill the log.
+    if (incoming.kind === 'user_taken') {
+      const waiting = live.get(threadId)?.waiting
+      if (!incoming.id || !waiting?.delete(incoming.id)) return
+      const entry = live.get(threadId)!
+      // A message queued past the end of a turn (or a Stop) starts the next one when taken.
+      if (!entry.turnRunning) {
+        entry.turnRunning = true
+        if (entry.idleTimer) clearTimeout(entry.idleTimer)
+      }
+    }
     if (incoming.kind === 'result' || incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.cancel(threadId)
     const entry = live.get(threadId)
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
@@ -206,6 +233,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (event.kind !== 'text_delta') store.append(threadId, event)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
     if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
+    if (entry && event.kind === 'subagent') {
+      if (event.phase === 'started') entry.helpers.add(event.id)
+      if (event.phase === 'finished' && entry.helpers.delete(event.id) && !entry.turnRunning) {
+        // A helper you stopped does not get reported on.
+        entry.followUp = !entry.stopRequested
+        if (entry.helpers.size === 0) { entry.stopRequested = false; armIdleClose(entry) }
+      }
+    }
+    if (entry?.followUp && !entry.turnRunning && (event.kind === 'text_delta' || event.kind === 'assistant_text' || event.kind === 'tool_use')) {
+      entry.followUp = false
+      entry.turnRunning = true
+      if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    }
     // Only provider evidence makes a session resumable; constructing a process does not.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
@@ -213,9 +253,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     }
     if (entry && event.kind === 'result') {
       entry.pending.clear()
-      entry.turnRunning = false
+      entry.questions.clear()
+      // Messages still waiting run next, without you sending again.
+      entry.turnRunning = entry.waiting.size > 0
       entry.stopRequested = false
-      entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
+      // Closing the process would kill helpers still at work, or drop waiting messages.
+      if (entry.helpers.size === 0 && !entry.turnRunning) armIdleClose(entry)
     }
     if (event.kind === 'exit') {
       if (entry?.idleTimer) clearTimeout(entry.idleTimer)
@@ -231,6 +274,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const generation = Symbol()
     generations.set(meta.id, generation)
     const pending = new Map<string, PendingApproval>()
+    const questions: Live['questions'] = new Map()
     const requestIds = new Map<string, string>()
     record(meta.id, { kind: 'session_boundary' })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
@@ -252,6 +296,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         requestIds.set(event.requestId, publicId)
         pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
         record(meta.id, { ...event, requestId: publicId })
+      } else if (event.kind === 'question') {
+        const publicId = randomUUID()
+        requestIds.set(event.requestId, publicId)
+        // Claude echoes its tool input back with the answers; this is that input, field for field.
+        const input = { questions: event.questions.map(({ question, header, options, multiSelect }) => ({ question, header, options, multiSelect })) }
+        questions.set(publicId, { request: { requestId: event.requestId, input, suggestions: [] }, ids: new Set(event.questions.map((q) => q.id)) })
+        record(meta.id, { ...event, requestId: publicId })
+      } else if (event.kind === 'question_answered') {
+        const publicId = requestIds.get(event.requestId)
+        if (!publicId) return
+        questions.delete(publicId)
+        requestIds.delete(event.requestId)
+        record(meta.id, { ...event, requestId: publicId })
       } else if (event.kind === 'approval_resolved') {
         const publicId = requestIds.get(event.requestId)
         if (!publicId) return
@@ -261,6 +318,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       } else {
         if (event.kind === 'result' || event.kind === 'exit') {
           pending.clear()
+          questions.clear()
           requestIds.clear()
         }
         record(meta.id, event)
@@ -278,7 +336,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, session, turnRunning: false, stopRequested: false, partial: '' }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -296,13 +354,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const meta = requireMeta(threadId)
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
+    const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
+    if (queuedId) entry.waiting.add(queuedId)
     entry.turnRunning = true
     if (meta.completed) {
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}) })
-    entry.session.send(agentText)
+    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}) })
+    entry.session.send(agentText, queuedId)
   }
 
   return {
@@ -339,6 +400,25 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!request || !entry.turnRunning) throw new Error('Unknown or expired approval request')
       entry.pending.delete(requestId)
       entry.session.respondApproval(request, behavior)
+    },
+    async unqueue(threadId, queuedId) {
+      const entry = live.get(threadId)
+      const sent = store.events(threadId).find((e) => e.event.kind === 'user_text' && e.event.queuedId === queuedId)?.event
+      if (!entry?.waiting.has(queuedId) || sent?.kind !== 'user_text' || !entry.session.cancelQueued) throw new Error('The agent has already taken this message')
+      if (!(await entry.session.cancelQueued(queuedId))) throw new Error('The agent has already taken this message')
+      entry.waiting.delete(queuedId)
+      record(threadId, { kind: 'user_unqueued', id: queuedId })
+      return sent.text
+    },
+    answerQuestion(threadId, requestId, answers) {
+      const entry = live.get(threadId)
+      if (!entry?.session.alive()) throw new Error('These questions belong to a session that has ended')
+      const open = entry.questions.get(requestId)
+      if (!open || !entry.turnRunning || !entry.session.respondQuestion) throw new Error('Unknown or expired questions')
+      // Only answers to the questions asked, so a stale or forged key never reaches the agent.
+      const kept = answers ? Object.fromEntries(Object.entries(answers).filter(([id, value]) => open.ids.has(id) && value.trim().length > 0)) : undefined
+      entry.questions.delete(requestId)
+      entry.session.respondQuestion(open.request, kept && Object.keys(kept).length > 0 ? kept : undefined)
     },
     interrupt(threadId) {
       hostActions.cancel(threadId)
@@ -380,7 +460,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     switchAgent(threadId, settings) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
-      if (entry?.turnRunning) throw new Error('Stop the current turn before switching agents')
+      if (busy(entry)) throw new Error('Stop the current turn before switching agents')
       generations.delete(threadId)
       live.delete(threadId)
       if (entry) void closeEntry(entry)
@@ -394,7 +474,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const meta = requireMeta(threadId)
       if (settings.agent !== meta.settings.agent) throw new Error('Switch agents to change the agent')
       const entry = live.get(threadId)
-      if (entry?.turnRunning) throw new Error('Stop the current turn before changing settings')
+      if (busy(entry)) throw new Error('Stop the current turn before changing settings')
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
       generations.delete(threadId)
       live.delete(threadId)
@@ -406,7 +486,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     resumeRecovered(threadId, agent, text, agentText) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
-      if (entry?.turnRunning) throw new Error('Stop the current turn before resuming recent work')
+      if (busy(entry)) throw new Error('Stop the current turn before resuming recent work')
       const settings: ThreadSettings = { agent, permissionMode: 'manual', useHooks: false }
       if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
       else {
@@ -424,11 +504,13 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         const events = store.events(meta.id)
         return {
           meta,
-          status: deriveStatus(events, live.get(meta.id)?.turnRunning ?? false),
+          status: deriveStatus(events, busy(live.get(meta.id))),
           preview: previewOf(events),
           messageCount: messageCountOf(events),
           lastActivityAt: events.findLast((e) => !QUIET.has(e.event.kind))?.ts ?? meta.updatedAt,
           ...(awaitingOf(events) ? { awaiting: awaitingOf(events) } : {}),
+          ...(busy(live.get(meta.id)) && openQuestion(events) ? { asking: openQuestion(events) } : {}),
+          ...(latestTurn(events) ? { turn: latestTurn(events) } : {}),
         }
       })
       return all.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))

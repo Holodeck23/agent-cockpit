@@ -12,20 +12,30 @@ interface FakeAgent {
   readonly requests: LaunchRequest[]
   emit: EventSink
   readonly approvals: Array<{ requestId: string; behavior: string; input: unknown }>
+  readonly answers: Array<{ requestId: string; input: unknown; answers: Readonly<Record<string, string>> | undefined }>
+  readonly sent: Array<{ text: string; queuedId?: string }>
+  /** What the fake's cancelQueued answers; queueing is on when set. */
+  cancel?: boolean
 }
 
 function fakeLauncher(): { launcher: Launcher; agent: FakeAgent } {
-  const agent: FakeAgent = { requests: [], emit: () => undefined, approvals: [] }
+  const agent: FakeAgent = { requests: [], emit: () => undefined, approvals: [], answers: [], sent: [] }
   const launcher: Launcher = (request, onEvent) => {
     agent.requests.push(request)
     agent.emit = onEvent
     let alive = true
     const session: AgentSession = {
       agent: 'claude',
-      send: () => {},
+      send: (text, queuedId) => { agent.sent.push({ text, ...(queuedId ? { queuedId } : {}) }) },
+      queues: () => agent.cancel !== undefined,
+      cancelQueued: () => Promise.resolve(agent.cancel ?? false),
       respondApproval: ({ requestId, input }, behavior) => {
         agent.approvals.push({ requestId, behavior, input })
         onEvent({ kind: 'approval_resolved', requestId, behavior })
+      },
+      respondQuestion: ({ requestId, input }, answers) => {
+        agent.answers.push({ requestId, input, answers })
+        onEvent({ kind: 'question_answered', requestId, answers: answers ?? {}, ...(answers ? {} : { dismissed: true }) })
       },
       interrupt: () => undefined,
       close: () => {
@@ -73,6 +83,97 @@ describe('thread manager', () => {
     expect(manager.status(meta.id)).toBe('working')
     agent.emit({ kind: 'result', ok: true })
     expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('holds the turn on an agent question until you answer it, and passes only the asked questions on (J6)', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'pick a colour' })
+    const questions = [{ id: 'Which colour?', question: 'Which colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }]
+    agent.emit({ kind: 'question', requestId: 'q1', questions })
+    expect(manager.status(meta.id)).toBe('needs_input')
+    const [publicId] = openApprovals(store.events(meta.id))
+    expect(publicId).not.toBe('q1')
+    manager.answerQuestion(meta.id, publicId!, { 'Which colour?': 'Blue', 'Something else?': 'injected' })
+    expect(agent.answers).toEqual([{ requestId: 'q1', answers: { 'Which colour?': 'Blue' },
+      input: { questions: [{ question: 'Which colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }] } }])
+    expect(manager.status(meta.id)).toBe('working')
+    expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'question_answered', requestId: publicId, answers: { 'Which colour?': 'Blue' } })
+    expect(() => manager.answerQuestion(meta.id, publicId!, { 'Which colour?': 'Red' })).toThrow(/expired/)
+  })
+
+  it('closes agent questions unanswered when you dismiss them or leave every answer empty', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'ask me' })
+    agent.emit({ kind: 'question', requestId: 'q1', questions: [{ id: 'a', question: 'a', header: '', multiSelect: false, options: [] }] })
+    manager.answerQuestion(meta.id, openApprovals(store.events(meta.id))[0]!, { a: '  ' })
+    expect(agent.answers[0]?.answers).toBeUndefined()
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'question_answered', dismissed: true })
+  })
+
+  it('stays working while a helper runs after the turn, and counts its report as a turn of its own (J7)', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'delegate' })
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'started', description: 'Count lines' })
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('working')
+    expect(() => manager.changeSettings(meta.id, settings)).toThrow(/Stop the current turn/)
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'finished', status: 'completed' })
+    expect(manager.status(meta.id)).toBe('done')
+    // Claude reports back on its own: that output is a turn until its result.
+    agent.emit({ kind: 'assistant_text', messageId: 'm2', text: 'It has 4 lines.' })
+    expect(manager.status(meta.id)).toBe('working')
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('does not start a report turn for helpers you stopped', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'delegate' })
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'started' })
+    agent.emit({ kind: 'result', ok: true })
+    manager.interrupt(meta.id)
+    agent.emit({ kind: 'subagent', id: 't1', phase: 'finished', status: 'stopped' })
+    agent.emit({ kind: 'assistant_text', messageId: 'late', text: 'stray' })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('queues a message sent mid-turn, and takes it back to your draft before the agent takes it (J1)', async () => {
+    const { store, manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    expect(agent.sent[0]).toEqual({ text: 'first' })
+    manager.send(meta.id, 'second')
+    const queuedId = agent.sent[1]?.queuedId
+    expect(queuedId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'user_text', text: 'second', queuedId })
+    await expect(manager.unqueue(meta.id, queuedId!)).resolves.toBe('second')
+    expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'user_unqueued', id: queuedId })
+    await expect(manager.unqueue(meta.id, queuedId!)).rejects.toThrow(/already taken/)
+  })
+
+  it('runs a waiting message after the turn, and says when the agent already took it (J1)', async () => {
+    const { store, manager, agent, settings } = setup()
+    agent.cancel = false
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    const queuedId = agent.sent[1]!.queuedId!
+    agent.emit({ kind: 'user_taken', text: 'first' })
+    expect(store.events(meta.id).some((e) => e.event.kind === 'user_taken')).toBe(false)
+    agent.emit({ kind: 'result', ok: true })
+    // Still waiting: the agent runs it next.
+    expect(manager.status(meta.id)).toBe('working')
+    await expect(manager.unqueue(meta.id, queuedId)).rejects.toThrow(/already taken/)
+    agent.emit({ kind: 'user_taken', text: 'second', id: queuedId })
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'user_taken', id: queuedId })
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('done')
+  })
+
+  it('sends straight away when the agent cannot queue', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    expect(agent.sent[1]).toEqual({ text: 'second' })
   })
 
   it('keeps the message being streamed for viewers who open the thread mid-turn', () => {
@@ -321,6 +422,19 @@ describe('session lifecycle regressions', () => {
     expect(kinds(here.id)).not.toContain('branch_changed')
     expect(kinds(elsewhere.id)).not.toContain('branch_changed')
     expect(manager.summaries().find((s) => s.meta.id === other.id)!.lastActivityAt).toBe(before)
+    await manager.shutdown()
+  })
+
+  it('keeps a follow-up suggestion without counting it as activity (J2)', async () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'fix the bug' })
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'Fixed.' })
+    agent.emit({ kind: 'result', ok: true })
+    const before = manager.summaries()[0]!.lastActivityAt
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    agent.emit({ kind: 'suggestion', text: 'Run the tests' })
+    expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'suggestion', text: 'Run the tests' })
+    expect(manager.summaries()[0]!.lastActivityAt).toBe(before)
     await manager.shutdown()
   })
 

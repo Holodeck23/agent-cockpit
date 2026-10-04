@@ -13,7 +13,7 @@ const inputSchema = z.object({
   effort: z.enum(EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   resume: z.uuid().optional(),
-  instructions: z.string().max(100_000).optional(),
+  instructions: z.string().max(500_000).optional(),
 })
 
 export type AntigravityLaunchInput = z.input<typeof inputSchema>

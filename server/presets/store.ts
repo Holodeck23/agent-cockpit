@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
+import { ALL_EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
 
 // <root>/presets.json: named agent settings (agent, model, effort, permissions), one click to
 // apply in the agent picker. Shared by every window and the phone; edited on the Mac.
@@ -13,7 +13,7 @@ export const presetSchema = z.object({
   name: z.string().trim().min(1).max(40),
   agent: z.enum(AGENTS),
   model: z.string().trim().max(200),
-  effort: z.union([z.literal(''), z.enum(EFFORTS)]),
+  effort: z.union([z.literal(''), z.enum(ALL_EFFORTS)]),
   permissionMode: z.enum(PERMISSION_MODES),
 })
 export type Preset = z.output<typeof presetSchema>

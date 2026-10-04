@@ -18,6 +18,16 @@ export interface WorkflowSnapshot {
   readonly prompt: string
 }
 
+/** One question an agent asks with fixed choices (Claude AskUserQuestion, Codex request_user_input). */
+export interface AgentQuestion {
+  /** The answer key: Claude keys answers by the question text, Codex by an id. */
+  readonly id: string
+  readonly question: string
+  readonly header: string
+  readonly options: readonly { readonly label: string; readonly description?: string }[]
+  readonly multiSelect: boolean
+}
+
 export type NormalizedEvent =
   | { kind: 'session_boundary' }
   | { kind: 'delegation_started'; requestKey: string }
@@ -31,11 +41,31 @@ export type NormalizedEvent =
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
-  | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[] }
+  /** `queuedId` is set when you sent it while the agent was working and the agent queues it (J1). */
+  | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[]; queuedId?: string }
+  /** The agent took a message you sent; `id` names a queued one (J1). */
+  | { kind: 'user_taken'; text: string; id?: string }
+  /** You took a queued message back before the agent took it (J1); it went back to your draft. */
+  | { kind: 'user_unqueued'; id: string }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }
   | { kind: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+  /** The agent is summarising earlier context to make room (started), or has finished doing so. */
+  | { kind: 'compaction'; phase: 'started' | 'finished'; ok?: boolean; trigger?: string; preTokens?: number; postTokens?: number }
+  /**
+   * A helper agent, keyed by the tool call that started it. Its own words and tool calls arrive as
+   * progress (`text`, `tool`), never as the main agent's messages, so nothing reads them as the reply.
+   */
+  | {
+      kind: 'subagent'; id: string; phase: 'started' | 'progress' | 'finished'
+      description?: string; status?: string; lastTool?: string; text?: string; tool?: { name: string; input: unknown }
+    }
+  | { kind: 'question'; requestId: string; questions: readonly AgentQuestion[] }
+  /** Answers keyed by question id; `dismissed` when you closed the questions without answering. */
+  | { kind: 'question_answered'; requestId: string; answers: Readonly<Record<string, string>>; dismissed?: boolean }
+  /** A predicted next message the agent offers as a one-click follow-up. */
+  | { kind: 'suggestion'; text: string }
   | {
       kind: 'approval_request'
       requestId: string
@@ -56,8 +86,14 @@ export interface AgentSession {
   readonly agent: AgentId
   /** Send a user message. Resolves once written to the agent's stdin. */
   /** Delivers a turn to the agent. The thread manager records the user's own message. */
-  send(text: string): void
+  send(text: string, queuedId?: string): void
+  /** True when a message sent mid-turn waits in the agent's own queue and can be taken back (J1). */
+  queues?(): boolean
+  /** Takes back a queued message; false once the agent has taken it. */
+  cancelQueued?(queuedId: string): Promise<boolean>
   respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
+  /** Answers (or, with undefined, dismisses) a `question` event; absent where the agent cannot ask. */
+  respondQuestion?(question: PendingApproval, answers: Readonly<Record<string, string>> | undefined): void
   interrupt(): void
   /** Stdin EOF, escalating to SIGTERM/SIGKILL if the agent hangs on; resolves once it has exited. */
   close(): Promise<void>

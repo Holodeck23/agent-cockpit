@@ -40,6 +40,8 @@ const createThreadBody = z.object({
 })
 const messageBody = z.object({ text: z.string().min(1).max(200_000) })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
+/** No answers closes the questions unanswered. */
+const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
 const completedBody = z.object({ completed: z.boolean() })
 const checkReferencesBody = z.object({ projectPath: z.string().min(1).max(1000), text: z.string().max(200_000) })
 const writeFileBody = z.object({
@@ -435,6 +437,11 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
+        sendJson(res, 200, { data: { status: manager.status(threadId) } })
+      } else if (method === 'POST' && action === 'queued' && parts[4] && parts[5] === 'remove') {
+        sendJson(res, 200, { data: { text: await manager.unqueue(threadId, parts[4]) } })
+      } else if (method === 'POST' && action === 'questions' && parts[4]) {
+        manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'interrupt') {
         manager.interrupt(threadId)

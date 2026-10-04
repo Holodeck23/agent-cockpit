@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 import type { StoredEvent } from '../server/threads/types.ts'
-import { buildTranscript, describeTool, elapsed, friendlyToolName, toolDetail } from '../web/src/transcript.ts'
+import { buildTranscript, describeTool, elapsed, followUpSuggestions, friendlyToolName, toolDetail } from '../web/src/transcript.ts'
 
 const at = (second: number, event: NormalizedEvent): StoredEvent => ({
   ts: new Date(Date.UTC(2026, 8, 28, 10, 0, second)).toISOString(),
@@ -86,7 +86,32 @@ describe('buildTranscript', () => {
       'claude',
     )
     expect(items[0]).toMatchObject({ error: 'exit 1' })
-    expect(items[1]).toMatchObject({ text: 'Turn failed', tone: 'error' })
+    expect(items[1]).toMatchObject({ type: 'failure', title: 'The turn failed' })
+  })
+})
+
+describe('failed turns as error cards (J10)', () => {
+  it('words the error plainly, keeps the agent message as details, and offers your last message to retry', () => {
+    const codex = '{\n  "type": "error",\n  "error": {\n    "type": "invalid_request_error",\n    "message": "Unsupported value: \'max\' is not supported with the \'gpt-5.5\' model."\n  },\n  "status": 400\n}'
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'Fix the build' }),
+      at(1, { kind: 'error', message: codex }),
+      at(2, { kind: 'result', ok: false, durationMs: 2000 }),
+    ], 'codex')
+    expect(items.slice(1)).toEqual([expect.objectContaining({ type: 'failure', title: 'The agent refused this request',
+      detail: "Unsupported value: 'max' is not supported with the 'gpt-5.5' model.", raw: codex, retryText: 'Fix the build' })])
+  })
+  it('names a usage limit, and leaves a stop as a plain note', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'go' }),
+      at(1, { kind: 'error', message: "Claude AI usage limit reached|1791100800" }),
+      at(2, { kind: 'result', ok: false }),
+      at(3, { kind: 'user_text', text: 'again' }),
+      at(4, { kind: 'result', ok: false, stopped: true }),
+    ], 'claude')
+    expect(items[1]).toMatchObject({ type: 'failure', title: 'You have reached a usage limit' })
+    expect((items[1] as { detail: string }).detail).toMatch(/^Claude AI usage limit reached\. Resets .+\.$/)
+    expect(items.at(-1)).toMatchObject({ type: 'note', text: 'Stopped' })
   })
 })
 
@@ -145,5 +170,107 @@ describe('settings changes', () => {
       { type: 'note', text: 'Now opus, high effort, Edit files without asking. Applies from your next message.' },
       { type: 'note', text: 'Now the default model, default effort, Ask before acting. Applies from your next message.' },
     ])
+  })
+})
+
+describe('helpers in the transcript (J7)', () => {
+  it("turns Claude's delegating step into a helper with its steps, report and end", () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'Count the lines' }),
+      at(1, { kind: 'tool_use', id: 'a1', name: 'Agent', input: { description: 'Count lines in notes.txt' } }),
+      at(2, { kind: 'subagent', id: 'a1', phase: 'started', description: 'Count lines in notes.txt' }),
+      at(2, { kind: 'tool_result', toolUseId: 'a1', content: 'Async agent launched', isError: false }),
+      at(3, { kind: 'subagent', id: 'a1', phase: 'progress', tool: { name: 'Read', input: { file_path: '/p/notes.txt' } } }),
+      at(4, { kind: 'subagent', id: 'a1', phase: 'progress', lastTool: 'Read' }),
+      at(5, { kind: 'subagent', id: 'a1', phase: 'progress', text: '4' }),
+      at(7, { kind: 'subagent', id: 'a1', phase: 'finished', status: 'completed' }),
+    ], 'claude')
+    expect(items.filter((i) => i.type === 'step')).toEqual([])
+    expect(items[1]).toMatchObject({ type: 'helper', description: 'Count lines in notes.txt', state: 'done', steps: ['Reading notes.txt'], answer: '4', startedAt: at(1, { kind: 'thread_deleted' }).ts })
+  })
+
+  it('shows a Codex helper with no step of its own, and a helper cut off by its session ending as stopped', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'subagent', id: 'c1', phase: 'started', description: 'Count the lines' }),
+      at(1, { kind: 'subagent', id: 'c2', phase: 'started' }),
+      at(2, { kind: 'subagent', id: 'c1', phase: 'finished', status: 'failed' }),
+      at(3, { kind: 'exit', code: 0 }),
+    ], 'codex')
+    expect(items.map((i) => i.type === 'helper' && [i.description, i.state])).toEqual([['Count the lines', 'failed'], ['A helper', 'stopped']])
+  })
+})
+
+describe('compaction in the transcript (J3)', () => {
+  it('shows a running line that ends with the sizes, or as failed when the turn fails first', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'compaction', phase: 'started' }),
+      at(22, { kind: 'compaction', phase: 'finished', ok: true, trigger: 'manual', preTokens: 34052, postTokens: 2775 }),
+      at(23, { kind: 'result', ok: true }),
+      at(30, { kind: 'compaction', phase: 'started' }),
+      at(31, { kind: 'result', ok: false }),
+    ], 'claude')
+    const compactions = items.filter((i) => i.type === 'compaction')
+    expect(compactions).toMatchObject([{ state: 'done', preTokens: 34052, postTokens: 2775, endedAt: at(22, { kind: 'thread_deleted' }).ts }, { state: 'failed' }])
+  })
+})
+
+describe('agent questions in the transcript (J6)', () => {
+  const questions = [
+    { id: 'Which colour?', question: 'Which colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] },
+    { id: 'Which sizes?', question: 'Which sizes?', header: 'Sizes', multiSelect: true, options: [{ label: 'Small' }, { label: 'Large' }] },
+  ]
+  it('shows the questions as one card that keeps the answers you gave', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'question', requestId: 'q1', questions }),
+      at(5, { kind: 'question_answered', requestId: 'q1', answers: { 'Which colour?': 'Blue', 'Which sizes?': 'Small, Large' } }),
+    ], 'claude')
+    expect(items).toEqual([expect.objectContaining({ type: 'question', requestId: 'q1', agent: 'claude', questions,
+      answers: { 'Which colour?': 'Blue', 'Which sizes?': 'Small, Large' } })])
+  })
+  it('marks questions you closed without answering', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'question', requestId: 'q1', questions }),
+      at(5, { kind: 'question_answered', requestId: 'q1', answers: {}, dismissed: true }),
+    ], 'codex')
+    expect(items[0]).toMatchObject({ type: 'question', dismissed: true })
+  })
+})
+
+describe('messages waiting in the agent queue (J1)', () => {
+  it('marks a queued message as waiting until taken, and leaves out one you took back', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'work' }),
+      at(1, { kind: 'user_text', text: 'keep me', queuedId: 'u1' }),
+      at(2, { kind: 'user_text', text: 'take me back', queuedId: 'u2' }),
+      at(3, { kind: 'user_unqueued', id: 'u2' }),
+    ], 'claude')
+    expect(items.map((i) => i.type === 'message' && [i.text, i.queuedId])).toEqual([['work', undefined], ['keep me', 'u1']])
+    const taken = buildTranscript([
+      at(1, { kind: 'user_text', text: 'keep me', queuedId: 'u1' }),
+      at(5, { kind: 'user_taken', text: 'keep me', id: 'u1' }),
+    ], 'claude')
+    expect(taken[0]).not.toHaveProperty('queuedId')
+  })
+})
+
+describe('follow-up suggestions (J2)', () => {
+  const turn: StoredEvent[] = [
+    at(1, { kind: 'user_text', text: 'fix the bug' }),
+    at(2, { kind: 'assistant_text', messageId: 'm1', text: 'Fixed.' }),
+    at(3, { kind: 'result', ok: true }),
+  ]
+  it('offers what the agent suggested after its last turn, once, in order', () => {
+    expect(followUpSuggestions([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' }),
+      at(5, { kind: 'suggestion', text: 'Commit it' }), at(6, { kind: 'suggestion', text: 'Run the tests' })])).toEqual(['Run the tests', 'Commit it'])
+  })
+  it('drops them once you send again', () => {
+    expect(followUpSuggestions([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' }), at(5, { kind: 'user_text', text: 'thanks' })])).toEqual([])
+  })
+  it('offers at most three', () => {
+    const many = ['a', 'b', 'c', 'd'].map((text, i) => at(4 + i, { kind: 'suggestion', text }))
+    expect(followUpSuggestions([...turn, ...many])).toEqual(['b', 'c', 'd'])
+  })
+  it('shows nothing in the transcript itself', () => {
+    expect(buildTranscript([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' })], 'claude').some((item) => 'text' in item && item.text === 'Run the tests')).toBe(false)
   })
 })

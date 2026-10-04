@@ -18,6 +18,7 @@ describe('notificationText', () => {
 
   it('a decision says what kind: an approval, a question or a blocker', () => {
     expect(notificationText({ ...thread, status: 'needs_input' }, 'decision').body).toBe('Waiting for your approval')
+    expect(notificationText({ ...thread, status: 'needs_input', asking: 'Which colour?' }, 'decision').body).toBe('Question: Which colour?')
     expect(notificationText({ ...thread, awaiting: 'question', preview: 'Question: Staging or production?' }, 'decision').body).toBe('Question: Staging or production?')
     expect(notificationText({ ...thread, awaiting: 'blocker', preview: 'Blocked: no network' }, 'decision').body).toBe('Blocked: no network')
     // The list preview drops the prefix; the notification puts it back.

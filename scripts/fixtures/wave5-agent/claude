@@ -1,0 +1,141 @@
+#!/bin/sh
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
+# Stand-in `claude` for proof:wave-5 (no provider usage), speaking the shapes recorded from
+# Claude 2.1.289 (tests/fixtures/claude-turn-question-subagent-compact.jsonl). By message:
+#   "ask"       asks two questions (AskUserQuestion) and replies with your answers;
+#   "delegate"  starts a helper that reads a file and reports back on its own 3 s later;
+#   "long"      starts a helper that works until you press Stop;
+#   "compact"   compacts for 2 s, then replies;
+#   "suggest"   replies, then (only when launched with --prompt-suggestions) suggests a next prompt (J2);
+#   "flaky"     fails with a usage-limit result the first time, then replies "Recovered.";
+#   "work"      works for 12 s; messages sent meanwhile wait in a queue (they carry a uuid), can be
+#               taken back with cancel_async_message, and run after the turn or after a Stop;
+#   anything else replies "ok".
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 5 fixture)"; exit 0; }
+session=""
+previous=""
+suggests=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  [ "$arg" = "--prompt-suggestions" ] && suggests=yes
+  previous="$arg"
+done
+say() { printf '{"type":"assistant","message":{"id":"w5-%s","role":"assistant","content":[{"type":"text","text":"%s"}]},"parent_tool_use_id":null}\n' "$1" "$2"; }
+done_turn() { printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'; }
+helper_start() {
+  printf '{"type":"assistant","message":{"id":"w5-a%s","role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Agent","input":{"description":"%s","prompt":"x"}}]},"parent_tool_use_id":null}\n' "$1" "$1" "$2"
+  printf '{"type":"system","subtype":"task_started","task_id":"task-%s","tool_use_id":"%s","description":"%s","task_type":"local_agent"}\n' "$1" "$1" "$2"
+  printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"%s","type":"tool_result","content":[{"type":"text","text":"Async agent launched"}]}]},"parent_tool_use_id":null}\n' "$1"
+}
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave5-fixture"}\n' "$session"
+turn=0
+helper_pid=""
+work_pid=""
+queue=$(mktemp)
+# Runs every message still in the queue, oldest first: taken (replayed with its uuid), answered.
+drain() {
+  while [ -s "$queue" ]; do
+    first=$(head -n 1 "$queue"); tail -n +2 "$queue" > "$queue.next"; mv "$queue.next" "$queue"
+    uuid=${first%%	*}; text=${first#*	}
+    printf '{"type":"user","isReplay":true,"uuid":"%s","message":{"role":"user","content":[{"type":"text","text":"%s"}]}}\n' "$uuid" "$text"
+    say "q-$uuid" "Got: $text"
+    done_turn
+  done
+}
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"cancel_async_message"'*)
+      id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
+      uuid=$(printf '%s' "$line" | sed -n 's/.*"message_uuid":"\([^"]*\)".*/\1/p')
+      if grep -q "^$uuid	" "$queue"; then
+        grep -v "^$uuid	" "$queue" > "$queue.next"; mv "$queue.next" "$queue"
+        printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"cancelled":true}}}\n' "$id"
+      else
+        printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"cancelled":false}}}\n' "$id"
+      fi
+      continue ;;
+    *'"subtype":"interrupt"'*)
+      if [ -n "$work_pid" ] && kill "$work_pid" 2>/dev/null; then
+        work_pid=""
+        printf '{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":5}\n'
+        drain
+      fi
+      if [ -n "$helper_pid" ]; then
+        kill "$helper_pid" 2>/dev/null
+        helper_pid=""
+        printf '{"type":"system","subtype":"task_notification","task_id":"task-h2","tool_use_id":"h2","status":"stopped","summary":""}\n'
+      fi
+      continue ;;
+    *'"type":"control_response"'*)
+      answers=$(printf '%s' "$line" | sed -n 's/.*"answers":{\([^}]*\)}.*/\1/p' | sed 's/"/\\"/g')
+      case "$line" in *'"behavior":"deny"'*) say "q2" "You closed the questions; carrying on without them." ;; *) say "q2" "Noted: $answers" ;; esac
+      done_turn
+      continue ;;
+    *'"type":"user"'*) ;;
+    *) continue ;;
+  esac
+  # A message sent while "work" runs waits in the queue.
+  if [ -n "$work_pid" ] && kill -0 "$work_pid" 2>/dev/null; then
+    uuid=$(printf '%s' "$line" | sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p')
+    text=$(printf '%s' "$line" | sed -n 's/.*"text":"\([^"]*\)".*/\1/p')
+    printf '%s\t%s\n' "$uuid" "$text" >> "$queue"
+    continue
+  fi
+  turn=$((turn + 1))
+  case "$line" in
+    *'"text":"ask'*)
+      printf '{"type":"control_request","request_id":"ask-%s","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"question":"Which colour?","header":"Colour","multiSelect":false,"options":[{"label":"Red","description":"Warm and bold"},{"label":"Blue","description":"Cool and calm"}]},{"question":"Which sizes?","header":"Sizes","multiSelect":true,"options":[{"label":"Small"},{"label":"Large"}]}]},"tool_use_id":"tq%s","requires_user_interaction":true}}\n' "$turn" "$turn"
+      ;;
+    *'"text":"delegate'*)
+      helper_start h1 "Count lines in notes.txt"
+      say "$turn" "A helper is counting."
+      done_turn
+      (
+        sleep 1
+        printf '{"type":"assistant","message":{"id":"w5-c1","role":"assistant","content":[{"type":"tool_use","id":"tc1","name":"Read","input":{"file_path":"/p/notes.txt"}}]},"parent_tool_use_id":"h1"}\n'
+        printf '{"type":"system","subtype":"task_progress","task_id":"task-h1","tool_use_id":"h1","description":"Reading notes.txt","last_tool_name":"Read"}\n'
+        sleep 2
+        printf '{"type":"assistant","message":{"id":"w5-c2","role":"assistant","content":[{"type":"text","text":"notes.txt has 4 lines."}]},"parent_tool_use_id":"h1"}\n'
+        printf '{"type":"system","subtype":"task_notification","task_id":"task-h1","tool_use_id":"h1","status":"completed","summary":"4"}\n'
+        sleep 1
+        say "r1" "The helper says notes.txt has 4 lines."
+        done_turn
+      ) &
+      ;;
+    *'"text":"long'*)
+      helper_start h2 "Watch the build"
+      say "$turn" "A helper is watching the build."
+      done_turn
+      ( sleep 60; printf '{"type":"system","subtype":"task_notification","task_id":"task-h2","tool_use_id":"h2","status":"completed","summary":""}\n' ) &
+      helper_pid=$!
+      ;;
+    *'"text":"work'*)
+      printf '{"type":"assistant","message":{"id":"w5-w%s","role":"assistant","content":[{"type":"tool_use","id":"tw%s","name":"Bash","input":{"command":"sleep 12","description":"Working for a while"}}]},"parent_tool_use_id":null}\n' "$turn" "$turn"
+      ( sleep 12; printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tw%s","content":"done"}]},"parent_tool_use_id":null}\n' "$turn"; say "w$turn" "Work done."; done_turn; drain ) &
+      work_pid=$!
+      ;;
+    *'"text":"flaky'*)
+      if [ -e "$queue.failed" ]; then say "$turn" "Recovered."; done_turn
+      else
+        touch "$queue.failed"
+        printf '{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1791100800","duration_ms":5}\n'
+      fi
+      ;;
+    *'"text":"compact'*)
+      printf '{"type":"system","subtype":"status","status":"compacting"}\n'
+      sleep 2
+      printf '{"type":"system","subtype":"status","status":null,"compact_result":"success"}\n'
+      printf '{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual","pre_tokens":34052,"post_tokens":2775}}\n'
+      say "$turn" "Room made."
+      done_turn
+      ;;
+    *'"text":"suggest'*)
+      say "$turn" "The parser is ported."
+      done_turn
+      # Claude sends its prediction after the turn's result (2.1.289 binary: type prompt_suggestion).
+      [ -n "$suggests" ] && printf '{"type":"prompt_suggestion","suggestion":"Run the parser tests","uuid":"w5-s%s","session_id":"%s"}\n' "$turn" "$session"
+      ;;
+    *) say "$turn" "ok"; done_turn ;;
+  esac
+done
+wait

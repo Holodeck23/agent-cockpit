@@ -1,16 +1,73 @@
 import type { StoredEvent, ThreadStatus } from './types.ts'
 import { parseConclusion, turnRoles } from './turns.ts'
 
-/** Approval requests that have not been answered yet, oldest first. */
+/** Approval requests and agent questions that have not been answered yet, oldest first. */
 export function openApprovals(events: readonly StoredEvent[]): string[] {
   const pending = new Set<string>()
   for (const { event } of events) {
     if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch' || event.kind === 'result') {
       pending.clear()
-    } else if (event.kind === 'approval_request') pending.add(event.requestId)
-    else if (event.kind === 'approval_resolved') pending.delete(event.requestId)
+    } else if (event.kind === 'approval_request' || event.kind === 'question') pending.add(event.requestId)
+    else if (event.kind === 'approval_resolved' || event.kind === 'question_answered') pending.delete(event.requestId)
   }
   return [...pending]
+}
+
+/** The first open agent question (J6), oldest first; undefined when none waits. */
+export function openQuestion(events: readonly StoredEvent[]): string | undefined {
+  const open = new Set(openApprovals(events))
+  for (const { event } of events) if (event.kind === 'question' && open.has(event.requestId)) return event.questions[0]?.question
+  return undefined
+}
+
+const TURN_ACTIVITY = new Set(['text_delta', 'assistant_text', 'tool_use', 'subagent', 'compaction', 'question'])
+
+/**
+ * When the latest turn started and, once it has, ended (A11): from your message, or from the
+ * agent's own output when it reports back unasked (a helper finished between turns).
+ */
+export function latestTurn(events: readonly StoredEvent[]): { startedAt: string; endedAt?: string } | undefined {
+  let startedAt: string | undefined
+  let endedAt: string | undefined
+  for (const { ts, event } of events) {
+    if (event.kind === 'user_text' && (!startedAt || endedAt)) { startedAt = ts; endedAt = undefined }
+    else if (TURN_ACTIVITY.has(event.kind) && startedAt && endedAt && !(event.kind === 'subagent' && event.phase !== 'progress')) { startedAt = ts; endedAt = undefined }
+    else if (event.kind === 'result' && startedAt && !endedAt) endedAt = ts
+  }
+  return startedAt ? { startedAt, ...(endedAt ? { endedAt } : {}) } : undefined
+}
+
+/** Messages you sent mid-turn that the agent has not taken yet (J1), by queued id. */
+export function waitingMessages(events: readonly StoredEvent[]): string[] {
+  const waiting = new Set<string>()
+  for (const { event } of events) {
+    if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch') waiting.clear()
+    else if (event.kind === 'user_text' && event.queuedId) waiting.add(event.queuedId)
+    else if (event.kind === 'user_taken' && event.id) waiting.delete(event.id)
+    else if (event.kind === 'user_unqueued') waiting.delete(event.id)
+  }
+  return [...waiting]
+}
+
+/** The agent is summarising earlier context right now (J3): the last compaction started and has not finished. */
+export function compactingNow(events: readonly StoredEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const { event } = events[i]!
+    if (event.kind === 'compaction') return event.phase === 'started'
+    if (event.kind === 'result' || event.kind === 'exit' || event.kind === 'session_boundary') return false
+  }
+  return false
+}
+
+/** Helpers (sub-agents) started in the current agent session that have not finished. */
+export function runningHelpers(events: readonly StoredEvent[]): string[] {
+  const running = new Set<string>()
+  for (const { event } of events) {
+    if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch') running.clear()
+    else if (event.kind === 'subagent' && event.phase === 'started') running.add(event.id)
+    else if (event.kind === 'subagent' && event.phase === 'finished') running.delete(event.id)
+  }
+  return [...running]
 }
 
 /**

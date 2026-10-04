@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { EFFORTS, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
+import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
 import { api, type AgentStatus, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
@@ -106,7 +106,7 @@ function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disable
       </button>
       {open ? (
         <div className="menu effort-menu" role="menu" aria-label="Effort">
-          {['', ...EFFORTS].map((effort) => (
+          {['', ...effortsFor(value.agent)].map((effort) => (
             <button key={effort || 'default'} type="button" role="menuitemradio" aria-checked={value.effort === effort} className="menu-item"
               onClick={() => { onPick(effort); setOpen(false); focusComposer(ref.current) }}>
               {effort ? capitalize(effort) : 'Default'}
@@ -252,7 +252,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
                 Effort
                 <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
                   <option value="">Default</option>
-                  {EFFORTS.map((effort) => (
+                  {effortsFor(current.agent).map((effort) => (
                     <option key={effort} value={effort}>
                       {capitalize(effort)}
                     </option>

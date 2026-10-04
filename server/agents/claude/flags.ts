@@ -5,6 +5,19 @@ import { z } from 'zod'
 
 export const PERMISSION_MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'] as const
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+/**
+ * Every level any agent takes. Ultra is Codex's alone (C9): codex 0.147 advertises it for
+ * gpt-5.6-sol and gpt-5.6-terra; Claude 2.1.289 stops at max.
+ */
+export const ALL_EFFORTS = [...EFFORTS, 'ultra'] as const
+export type Effort = (typeof ALL_EFFORTS)[number]
+
+export function effortsFor(agent: string): readonly Effort[] {
+  return agent === 'codex' ? ALL_EFFORTS : EFFORTS
+}
+
+/** An agent that has no such level gets its highest one. */
+export const effortForClaude = (effort: Effort | undefined): (typeof EFFORTS)[number] | undefined => (effort === 'ultra' ? 'max' : effort)
 
 const mcpConfigSchema = z.object({ mcpServers: z.record(z.string(), z.unknown()) })
 
@@ -21,8 +34,10 @@ export const claudeLaunchSchema = z
     sessionId: z.uuid().optional(),
     resume: z.uuid().optional(),
     useHooks: z.boolean().default(false),
-    // Guidance + project instructions + a switch handoff (up to 24k) must fit; same bound as Codex.
-    appendSystemPrompt: z.string().max(100_000).optional(),
+    // Guidance + project instructions + a whole switch handoff (J5, 400k) must fit; same bound as Codex.
+    appendSystemPrompt: z.string().max(500_000).optional(),
+    /** The same prompt, written to a private file by the launcher: kept out of argv, which any local user can read. */
+    appendSystemPromptFile: z.string().min(1).max(4096).optional(),
     mcpConfig: mcpConfigSchema.default({ mcpServers: {} }),
     /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
     allowedTools: z
@@ -31,11 +46,15 @@ export const claudeLaunchSchema = z
       .default([]),
   })
   .refine((o) => !(o.sessionId && o.resume), { message: 'sessionId and resume are mutually exclusive' })
+  .refine((o) => !(o.appendSystemPrompt && o.appendSystemPromptFile), { message: 'pass the appended prompt as text or as a file, not both' })
 
 export type ClaudeLaunchInput = z.input<typeof claudeLaunchSchema>
 export type ClaudeLaunchOptions = z.output<typeof claudeLaunchSchema>
 
-export function buildClaudeArgs(input: ClaudeLaunchInput, capabilities: { readonly permissionPrompts: boolean } = { permissionPrompts: true }): string[] {
+export function buildClaudeArgs(
+  input: ClaudeLaunchInput,
+  capabilities: { readonly permissionPrompts: boolean; readonly replayUserMessages?: boolean; readonly promptSuggestions?: boolean } = { permissionPrompts: true },
+): string[] {
   const o = claudeLaunchSchema.parse(input)
   const settings = o.useHooks ? {} : { disableAllHooks: true }
   return [
@@ -44,6 +63,8 @@ export function buildClaudeArgs(input: ClaudeLaunchInput, capabilities: { readon
     '--input-format', 'stream-json',
     '--output-format', 'stream-json',
     '--include-partial-messages',
+    ...(capabilities.replayUserMessages ? ['--replay-user-messages'] : []),
+    ...(capabilities.promptSuggestions ? ['--prompt-suggestions', 'true'] : []),
     '--permission-mode', o.permissionMode,
     ...(capabilities.permissionPrompts ? ['--permission-prompts', 'host'] : []),
     '--permission-prompt-tool', 'stdio',
@@ -58,5 +79,6 @@ export function buildClaudeArgs(input: ClaudeLaunchInput, capabilities: { readon
     ...(o.resume ? ['--resume', o.resume] : []),
     ...(o.allowedTools.length ? ['--allowedTools', o.allowedTools.join(',')] : []),
     ...(o.appendSystemPrompt ? ['--append-system-prompt', o.appendSystemPrompt] : []),
+    ...(o.appendSystemPromptFile ? ['--append-system-prompt-file', o.appendSystemPromptFile] : []),
   ]
 }

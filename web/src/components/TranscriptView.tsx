@@ -8,6 +8,7 @@ import { Bars, FileIcon, WorkflowIcon } from './icons.tsx'
 import { TroubleshootingLink } from './TroubleshootingLink.tsx'
 import { ReplyContext, ReplyMarkdown } from '../markdown/reply.tsx'
 import { Peek } from './Peek.tsx'
+import { QuestionCard } from './QuestionCard.tsx'
 import { api } from '../api.ts'
 import { linesOf, peekText } from '../file-text.ts'
 import { labelTarget } from '../../../server/files/references.ts'
@@ -20,9 +21,21 @@ interface TranscriptViewProps {
   streaming: string
   streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
+  onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void
+  /** Takes a waiting message back to the draft (J1). */
+  onUnqueue?: (queuedId: string) => void
+  /** Stops the current turn so waiting messages run now (J1). */
+  onSendNow?: () => void
+  /** Sends a failed turn's message again (J10). */
+  onRetry?: (text: string) => void
   /** Present while the last turn's question or blocker still waits on you. */
   onDismiss?: () => void
 }
+
+/** 34052 → "34k"; small counts stay exact. */
+const tokens = (n: number): string => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+const HELPER_LABEL = { running: 'Helper working', done: 'Helper finished', failed: 'Helper failed', stopped: 'Helper stopped' } as const
 
 const time = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
@@ -47,13 +60,16 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onDismiss }: TranscriptViewProps) {
+export function TranscriptView({ items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
   const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
+  // Retry belongs to the latest failure only, and only once nothing runs.
+  const lastFailure = shown.findLastIndex((i) => i.type === 'failure' && Boolean(i.retryText))
+  const retryIndex = !running && lastFailure > shown.findLastIndex((i) => i.type === 'message' && i.author === 'you') ? lastFailure : -1
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
-  const now = useTick(liveStep)
+  const now = useTick(liveStep || shown.some((i) => i.type === 'compaction' && i.state === 'running'))
   const last = shown.at(-1)
   const streamingShowsAuthor = !(last?.type === 'message' && last.author === streamingAuthor)
 
@@ -75,7 +91,7 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
               )
             }
             return (
-              <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}`}>
+              <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}${item.queuedId ? ' waiting' : ''}`}>
                 {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
                 {item.conclusion ? (
                   <div className="conclusion-head">
@@ -118,7 +134,15 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                     </div>
                   ) : null}
                 </div>
-                {item.text.trim() ? <CopyButton text={item.text} /> : null}
+                {item.queuedId && running ? (
+                  <div className="waiting-row" role="status">
+                    <span>Waiting: the agent takes it at its next step</span>
+                    {onUnqueue ? <button type="button" className="button-soft" onClick={() => onUnqueue(item.queuedId!)}>Remove</button> : null}
+                    {onSendNow ? <button type="button" className="button-soft" onClick={onSendNow}>Stop and send now</button> : null}
+                  </div>
+                ) : null}
+                {/* A waiting message's own buttons sit where Copy would; Remove gives the text back anyway. */}
+                {item.text.trim() && !(item.queuedId && running) ? <CopyButton text={item.text} /> : null}
               </section>
             )
           case 'step': {
@@ -174,6 +198,49 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
                   <div className="approval-expired">No longer waiting: that turn has ended.</div>
                 )}
               </div>
+            )
+          }
+          case 'question':
+            return <QuestionCard key={item.key} item={item} open={openApprovals.has(item.requestId)} onAnswer={(answers) => onAnswer(item.requestId, answers)} />
+          case 'failure':
+            return (
+              <div key={item.key} className="failure" role="alert">
+                <div className="failure-title">{item.title}</div>
+                {item.detail ? <div className="failure-detail">{item.detail}</div> : null}
+                <div className="failure-actions">
+                  {index === retryIndex && onRetry ? <button type="button" className="button-soft" onClick={() => onRetry(item.retryText!)}>Retry</button> : null}
+                  {item.raw && item.raw !== item.detail ? (
+                    <details className="failure-raw"><summary>Details</summary><pre>{item.raw}</pre></details>
+                  ) : null}
+                  <TroubleshootingLink text={item.raw} />
+                </div>
+              </div>
+            )
+          case 'compaction': {
+            const live = item.state === 'running'
+            const end = item.endedAt ? Date.parse(item.endedAt) : live ? now : undefined
+            const sizes = item.preTokens !== undefined && item.postTokens !== undefined ? ` · ${tokens(item.preTokens)} → ${tokens(item.postTokens)} tokens` : ''
+            return (
+              <div key={item.key} className={`step compaction${live ? ' live' : ''}${item.state === 'failed' ? ' compaction-failed' : ''}`}>
+                <Bars live={live} />
+                <span className="step-label">{live ? 'Making room: summarising the conversation so far' : item.state === 'failed' ? 'Could not summarise the conversation' : `Summarised the conversation to make room${sizes}`}</span>
+                {end !== undefined ? <span className="step-time">· {elapsed(item.startedAt, end)}</span> : null}
+              </div>
+            )
+          }
+          case 'helper': {
+            const live = item.state === 'running'
+            const end = item.endedAt ? Date.parse(item.endedAt) : undefined
+            return (
+              <details key={item.key} className={`helper helper-${item.state}`}>
+                <summary>
+                  <Bars live={live} />
+                  <span className="helper-label">{item.description}</span>
+                  <span className="helper-meta">· {HELPER_LABEL[item.state]}{item.steps.length ? ` · ${item.steps.length} step${item.steps.length === 1 ? '' : 's'}` : ''}{end !== undefined ? ` · ${elapsed(item.startedAt, end)}` : ''}</span>
+                </summary>
+                {item.steps.length ? <ol className="helper-steps">{item.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : null}
+                {item.answer ? <div className="helper-answer reply"><ReplyMarkdown text={item.answer} /></div> : live ? null : <div className="helper-empty">No report.</div>}
+              </details>
             )
           }
           case 'note':
