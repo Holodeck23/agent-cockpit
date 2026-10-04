@@ -17,6 +17,17 @@ export interface Cockpit {
   reportError(message: string | undefined): void
 }
 
+/** The list pill's turn span, kept live the way server/threads/status.ts latestTurn reads it (A11). */
+function nextTurn(turn: ThreadSummary['turn'], update: ThreadUpdate): ThreadSummary['turn'] {
+  const now = new Date().toISOString()
+  const kind = update.event.kind
+  if (kind === 'user_text') return turn && !turn.endedAt ? turn : { startedAt: now }
+  if (kind === 'result') return turn && !turn.endedAt ? { ...turn, endedAt: now } : turn
+  // The agent reporting back unasked starts a turn of its own.
+  if (turn?.endedAt && update.status === 'working' && (kind === 'text_delta' || kind === 'assistant_text' || kind === 'tool_use')) return { startedAt: now }
+  return turn
+}
+
 export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): ThreadSummary[] {
   return threads.map((t) => {
     if (t.meta.id !== update.threadId) return t
@@ -29,6 +40,7 @@ export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate)
     const settles = update.event.kind === 'user_text' || update.event.kind === 'awaiting_dismissed' || (update.event.kind === 'completion_changed' && update.event.completed)
     return {
       ...t,
+      turn: nextTurn(t.turn, update),
       status: update.status,
       // Your reply answers a question; a finished turn's own kind is re-read from the server (see onUpdate).
       awaiting: settles ? undefined : t.awaiting,

@@ -66,7 +66,8 @@ export function TranscriptView({ items, openApprovals, running, streaming, strea
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
   const lastStepIndex = shown.findLastIndex((i) => i.type === 'step')
   // Retry belongs to the latest failure only, and only once nothing runs.
-  const retryIndex = running ? -1 : shown.findLastIndex((i) => i.type === 'failure' && Boolean(i.retryText))
+  const lastFailure = shown.findLastIndex((i) => i.type === 'failure' && Boolean(i.retryText))
+  const retryIndex = !running && lastFailure > shown.findLastIndex((i) => i.type === 'message' && i.author === 'you') ? lastFailure : -1
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
   const now = useTick(liveStep || shown.some((i) => i.type === 'compaction' && i.state === 'running'))
   const last = shown.at(-1)
