@@ -53,6 +53,9 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 /** The project's branch state plus the conversations that would block a switch. */
 export type GitView = GitState & { readonly busy: readonly string[]; readonly pushedTo?: string }
 
+
+/** An image sent with a message: base64 bytes and the name it had. */
+export interface MessageImage { readonly data: string; readonly name?: string }
 export const api = {
   recentWork: (projectPath: string) => request<RecoveryView>(`/api/recovery?${new URLSearchParams({ projectPath })}`),
   resumeWork: (body: z.infer<typeof resumeRecoveryBody>) => request<ThreadMeta>('/api/recovery', { method: 'POST', body }),
@@ -118,9 +121,10 @@ export const api = {
   openProject: (path: string, patch: ProjectPatch = {}) =>
     request<Project>('/api/projects', { method: 'POST', body: { path, ...patch } }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
-  createThread: (body: { projectPath: string; text: string; title?: string; settings: Partial<ThreadSettings> }) =>
+  createThread: (body: { projectPath: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),
-  send: (id: string, text: string) => request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text } }),
+  send: (id: string, text: string, images?: readonly MessageImage[]) =>
+    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}) } }),
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
   /** Takes a waiting message back; resolves to its text for the draft (J1). */

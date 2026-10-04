@@ -50,3 +50,8 @@
 
 /* The inline list that opens when @ is typed in the message box (components/MentionMenu.tsx). */
 .mention-panel { left: 12px; }
+/* Images waiting to go with the message (I1). */
+.image-chips { padding-bottom: 0; }
+.image-chip { padding-left: 3px; }
+.image-chip img { width: 22px; height: 22px; flex: none; border-radius: 999px; object-fit: cover; }
+.composer-card.dropping { border-color: var(--link); box-shadow: 0 0 0 3px var(--focus-ring); }

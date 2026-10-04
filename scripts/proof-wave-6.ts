@@ -9,7 +9,7 @@ import { createImageStore } from '../server/threads/images.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { apiPost, openProject, setTheme } from './lib/ui.ts'
+import { apiPost, messageBox, openProject, setTheme } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave6-proof-'))
@@ -20,6 +20,7 @@ const store = createThreadStore(join(root, 'state'))
 const images = createImageStore(store.root)
 mkdirSync(PROOF_DIR, { recursive: true })
 const ICON = readFileSync(join(ROOT, 'build/icon-1024.png'))
+const BACKGROUND = readFileSync(join(ROOT, 'build/background.png'))
 
 // Foundation: a conversation that already holds an image the agent showed, stored the way the
 // manager stores one (bytes in the state folder, a small event in the log).
@@ -43,6 +44,7 @@ async function until(label: string, test: () => Promise<boolean>, ms = 10_000): 
 /** True once every image in `scope` has loaded real pixels. */
 const loaded = (page: Page, selector: string) => page.locator(selector).evaluateAll((imgs) =>
   imgs.length > 0 && imgs.every((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0))
+const btoaNode = (text: string): string => Buffer.from(text).toString('base64')
 const status = (page: Page, path: string) => page.evaluate(async (p) => (await fetch(p)).status, path)
 
 try {
@@ -90,6 +92,39 @@ try {
   const refused = await page.evaluate(async (p) => (await fetch('/api/threads', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ projectPath: p, text: 'svg', images: [{ data: btoa('<svg xmlns="http://www.w3.org/2000/svg"/>') }] }) })).status, project)
   check('I2 an SVG (or anything not PNG/JPEG/GIF/WebP) is refused', refused === 400)
+
+  // I1: drop and paste into the composer. Images become chips that go with the message; a
+  // file the page has no path for (as in a browser) is left out with a note. (Finder paths for
+  // files and folders come from Electron's webUtils and are covered by tests/composer-drop.test.ts:
+  // a synthetic drop has no path to give.)
+  const fileEvent = (kind: 'drop' | 'paste', selector: string, files: Array<{ name: string; type: string; data: string }>) => page.evaluate(([k, sel, list]) => {
+    const transfer = new DataTransfer()
+    for (const f of list) transfer.items.add(new File([Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0))], f.name, { type: f.type }))
+    const target = document.querySelector(sel)!
+    if (k === 'drop') {
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+    } else target.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }))
+  }, [kind, selector, files] as const)
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  await fileEvent('drop', '.composer-card', [{ name: 'icon-1024.png', type: 'image/png', data: ICON.toString('base64') }])
+  const chips = page.locator('.image-chip')
+  check('I1 a dropped image becomes a chip in the composer', await until('drop chip', async () => (await chips.count()) === 1 && (await chips.first().textContent())?.includes('icon-1024.png') === true))
+  await fileEvent('paste', 'textarea[aria-label="Message"]', [{ name: 'background.png', type: 'image/png', data: BACKGROUND.toString('base64') }])
+  check('I1 a pasted image becomes a chip too', await until('paste chip', async () => (await chips.count()) === 2))
+  await fileEvent('drop', '.composer-card', [{ name: 'spec.pdf', type: 'application/pdf', data: btoaNode('%PDF-1.4') }])
+  check('I1 a file with no path is left out, and the composer says why', await until('note', async () =>
+    (await page.getByRole('status').filter({ hasText: 'spec.pdf: only images can be added here' }).count()) === 1))
+  await messageBox(page).fill('I1 which one did you get?')
+  await shot(page, 'i1-chips')
+  await chips.filter({ hasText: 'background.png' }).getByRole('button', { name: 'Remove background.png' }).click()
+  check('I1 a chip can be removed before sending', (await chips.count()) === 1)
+  await messageBox(page).press('Enter')
+  check('I1 the image goes with the message to the agent', await until('i1 reply', async () =>
+    (await reply(`Got 1 image: image/png, ${bytes} bytes, real PNG. Text after the images.`).count()) === 1))
+  check('I1 the sent image shows under the message and the chips are gone', await until('sent', async () =>
+    (await page.locator('.bubble.user .conversation-image').count()) === 1 && (await chips.count()) === 0))
+  await shot(page, 'i1-sent')
 
   await setTheme(page, 'Dark')
   await shot(page, 'thread-dark')

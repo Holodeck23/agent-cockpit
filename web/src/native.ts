@@ -12,6 +12,8 @@ export interface CockpitBridge {
   openFolder(path: string): void
   copyInto(request: { projectPath: string; space: 'project' | 'documents'; folder: string; files: readonly File[] }): Promise<
     { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }>
+  /** Where a dropped or pasted file is on disk; '' when it has none (a pasted screenshot). */
+  pathForFile(file: File): string
   fileAction(request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined>
   setActivity(activity: { working: number; needs: number }): void
   openPreview(url: string): void
@@ -29,4 +31,5 @@ export interface CockpitBridge {
   onFullScreen(listener: (fullScreen: boolean) => void): () => void
 }
 
-export const native: CockpitBridge | undefined = (window as { cockpit?: CockpitBridge }).cockpit
+// No window at all where the page's modules load under Node (tests that render to a string).
+export const native: CockpitBridge | undefined = typeof window === 'undefined' ? undefined : (window as { cockpit?: CockpitBridge }).cockpit
