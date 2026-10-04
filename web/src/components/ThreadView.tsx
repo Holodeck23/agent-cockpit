@@ -16,6 +16,8 @@ import { ProcessChip } from './ProcessChip.tsx'
 import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
+import { statusText, useNow } from './StatusPill.tsx'
+import { latestTurn } from '../../../server/threads/status.ts'
 
 interface ThreadViewProps {
   initialDraft?: string
@@ -41,6 +43,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const helpers = useMemo(() => (running ? runningHelpers(events).length : 0), [events, running])
   const compacting = useMemo(() => running && compactingNow(events), [events, running])
+  const turn = useMemo(() => latestTurn(events), [events])
+  const now = useNow(shown === 'working')
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
   const prefs = useActivityPrefs()
@@ -102,7 +106,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           <div className="thread-status">
             <span className={`status-text status-${shown}`}>
               {shown === 'working' ? <Bars live /> : null}
-              {compacting ? 'Compacting' : STATUS_LABEL[shown]}
+              {compacting ? 'Compacting' : statusText(shown, turn, now)}
             </span>
             {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
             {running ? (

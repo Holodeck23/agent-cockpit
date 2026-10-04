@@ -91,3 +91,21 @@ describe('compactingNow and runningHelpers', async () => {
     expect(runningHelpers([e({ kind: 'subagent', id: 'a', phase: 'started' }), e({ kind: 'exit', code: 0 })])).toEqual([])
   })
 })
+
+describe('latestTurn and the status timer (A11)', async () => {
+  const { latestTurn } = await import('../server/threads/status.ts')
+  const { statusText } = await import('../web/src/components/StatusPill.tsx')
+  const at = (second: number, event: NormalizedEvent): StoredEvent => ({ ts: new Date(Date.UTC(2026, 9, 4, 10, 0, second)).toISOString(), event })
+  it('starts at your message and ends at the result', () => {
+    const turn = latestTurn([at(0, { kind: 'user_text', text: 'a' }), at(3, { kind: 'assistant_text', messageId: 'm', text: 'x' }), at(12, { kind: 'result', ok: false })])
+    expect(turn).toEqual({ startedAt: at(0, { kind: 'thread_deleted' }).ts, endedAt: at(12, { kind: 'thread_deleted' }).ts })
+    expect(statusText('error', turn, Date.now())).toBe('Error · 0:12')
+  })
+  it('counts up while working, and starts again when the agent reports back unasked', () => {
+    const turn = latestTurn([at(0, { kind: 'user_text', text: 'a' }), at(2, { kind: 'result', ok: true }),
+      at(20, { kind: 'subagent', id: 'h', phase: 'finished' }), at(21, { kind: 'assistant_text', messageId: 'm', text: 'report' })])
+    expect(turn).toEqual({ startedAt: at(21, { kind: 'thread_deleted' }).ts })
+    expect(statusText('working', turn, Date.parse(at(28, { kind: 'thread_deleted' }).ts))).toBe('Working · 0:07')
+    expect(statusText('done', turn, 0)).toBe('Ready')
+  })
+})

@@ -41,7 +41,7 @@ export function ConversationCard({ thread, selected, unread, onSelect, project, 
         <span className="card-meta">
           {rowMeta({ project, agent: agentLabel(thread.meta.settings.agent), date: dayLabel(thread.lastActivityAt) }, shows)}
         </span>
-        <StatusPill status={shownStatus(thread)} />
+        <StatusPill status={shownStatus(thread)} turn={thread.turn} />
       </span>
     </button>
   )

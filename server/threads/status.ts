@@ -20,6 +20,23 @@ export function openQuestion(events: readonly StoredEvent[]): string | undefined
   return undefined
 }
 
+const TURN_ACTIVITY = new Set(['text_delta', 'assistant_text', 'tool_use', 'subagent', 'compaction', 'question'])
+
+/**
+ * When the latest turn started and, once it has, ended (A11): from your message, or from the
+ * agent's own output when it reports back unasked (a helper finished between turns).
+ */
+export function latestTurn(events: readonly StoredEvent[]): { startedAt: string; endedAt?: string } | undefined {
+  let startedAt: string | undefined
+  let endedAt: string | undefined
+  for (const { ts, event } of events) {
+    if (event.kind === 'user_text' && (!startedAt || endedAt)) { startedAt = ts; endedAt = undefined }
+    else if (TURN_ACTIVITY.has(event.kind) && startedAt && endedAt && !(event.kind === 'subagent' && event.phase !== 'progress')) { startedAt = ts; endedAt = undefined }
+    else if (event.kind === 'result' && startedAt && !endedAt) endedAt = ts
+  }
+  return startedAt ? { startedAt, ...(endedAt ? { endedAt } : {}) } : undefined
+}
+
 /** Messages you sent mid-turn that the agent has not taken yet (J1), by queued id. */
 export function waitingMessages(events: readonly StoredEvent[]): string[] {
   const waiting = new Set<string>()

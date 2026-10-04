@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { headStatus, messageBox, openProject, setTheme, startConversation } from './lib/ui.ts'
+import { chooseAgent, headStatus, messageBox, openProject, setTheme, startConversation } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave5-proof-'))
@@ -90,6 +90,8 @@ try {
   // J1: a message sent mid-turn waits visibly; Remove puts it back in the draft; the rest run after the turn.
   await send(page, 'work')
   await until('working', async () => (await headStatus(page).textContent())?.includes('Working') === true)
+  check('A11 the header counts the turn up', await until('timer', async () => /^Working · 0:0[1-9]$/.test((await headStatus(page).textContent())?.trim() ?? ''), 4_000))
+  check('A11 so does the list pill', /Working · 0:0\d/.test(await page.locator('.conversation-card .pill-working, .pill-working').first().textContent() ?? ''))
   await send(page, 'keep me')
   await send(page, 'take me back')
   const waiting = page.locator('.message.waiting')
@@ -130,6 +132,16 @@ try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(980, 640))
   await page.waitForTimeout(400)
   await shot(page, 'thread-narrow')
+  // C9: Codex offers an effort above Max; Claude does not.
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  await chooseAgent(page, { agent: 'codex' })
+  await page.getByRole('button', { name: /^Effort:/ }).click()
+  check('C9 Codex offers Ultra after Max', (await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio').allTextContents()).slice(-2).join('|') === 'Max|Ultra')
+  await page.keyboard.press('Escape')
+  await chooseAgent(page, { agent: 'claude' })
+  await page.getByRole('button', { name: /^Effort:/ }).click()
+  check('C9 Claude stops at Max', (await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio').allTextContents()).at(-1) === 'Max')
+  await page.keyboard.press('Escape')
 } finally {
   await app.close()
 }
