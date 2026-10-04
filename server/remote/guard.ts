@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http'
+import { isPhoneRoute } from './routes.ts'
 
 // The phone listener is only reachable through `tailscale serve`, which proxies
 // https://<mac>.<tailnet>.ts.net to 127.0.0.1:<port>. Serve passes the original
@@ -10,8 +11,10 @@ import type { IncomingMessage } from 'node:http'
 //   - a Tailscale login on the allowlist
 //   - Origin, when present, equal to https://<tailnet name> (defeats CSRF)
 //   - application/json on writes (forces a preflight nobody answers)
-// A local process can forge these headers by calling the port directly, but it
-// can already call the desktop API, so that is no new access.
+// A local process can forge these headers by calling the port directly. That still
+// does not reach the API: every API call also needs a paired phone's device token
+// (service.ts), which is kept only as a hash on the Mac, and pairing a new phone needs
+// a click in the Cockpit window (the desktop API is locked to it, guard.ts in http/).
 
 export interface RemotePolicy {
   /** This Mac's tailnet name, e.g. mac.tailnet.ts.net (no trailing dot). */
@@ -58,20 +61,9 @@ export function checkRemote(req: IncomingMessage, policy: RemotePolicy): RemoteC
   return { ok: true, login }
 }
 
-/** API routes the phone may use: read conversations, reply, answer approvals, stop. */
-const REMOTE_ROUTES: readonly [string, RegExp][] = [
-  ['GET', /^\/api\/stream$/],
-  ['GET', /^\/api\/threads$/],
-  ['GET', /^\/api\/threads\/[^/]+\/events$/],
-  ['POST', /^\/api\/threads\/[^/]+\/messages$/],
-  ['POST', /^\/api\/threads\/[^/]+\/approvals\/[^/]+$/],
-  ['POST', /^\/api\/threads\/[^/]+\/interrupt$/],
-  ['GET', /^\/api\/projects$/],
-  ['GET', /^\/api\/processes$/],
-]
-
+/** API routes the phone may use (routes.ts holds the list, allowed or not). */
 export function isRemoteRoute(method: string, pathname: string): boolean {
-  return REMOTE_ROUTES.some(([m, pattern]) => m === method && pattern.test(pathname))
+  return isPhoneRoute(method, pathname)
 }
 
 export function cookieValue(req: IncomingMessage, name: string): string | undefined {

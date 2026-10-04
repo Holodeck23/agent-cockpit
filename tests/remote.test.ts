@@ -224,3 +224,53 @@ describe('phone access over HTTP', () => {
     } finally { await server.close() }
   })
 })
+
+describe('phone access to what a conversation asks of you (R5)', () => {
+  it('lets a paired phone answer question cards, take back a waiting message and see its images', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cockpit-remote-state-'))
+    const web = mkdtempSync(join(tmpdir(), 'cockpit-remote-web-'))
+    writeFileSync(join(web, 'index.html'), '<!doctype html><title>Cockpit</title>')
+    let emit: Parameters<Launcher>[1] = () => undefined
+    const answered: unknown[] = []
+    const launcher: Launcher = (_req, onEvent) => {
+      emit = onEvent
+      return { agent: 'claude', alive: () => true, send() {}, respondApproval() {}, interrupt() {},
+        queues: () => true, cancelQueued: async () => true,
+        respondQuestion: ({ requestId }, answers) => { answered.push(answers); onEvent({ kind: 'question_answered', requestId, answers: answers ?? {} }) },
+        close: async () => { onEvent({ kind: 'exit', code: 0 }) } }
+    }
+    const ts = fakeTailscale()
+    const server = await startServer({ port: 0, stateRoot: root, webDist: web, launchers: { claude: launcher, codex: launcher }, remote: { tailscale: ts.tailscale, port: 0 } })
+    const local = (path: string, body?: unknown) => call(server.port, path, body === undefined ? {} : { method: 'POST', body })
+    try {
+      await local('/api/remote', { enabled: true })
+      const port = server.remote.port()!
+      const phone = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) =>
+        call(port, path, { ...init, headers: viaTailscale(init.headers) })
+      const pair = JSON.parse((await phone('/api/remote/pair', { method: 'POST', body: { name: 'Pixel' } })).body).data
+      await local(`/api/remote/pairings/${pair.id}`, { approve: true })
+      const cookie = (await phone(`/api/remote/pair/${pair.id}`)).cookie!.split(';')[0]!
+      const paired = (path: string, init: { method?: string; body?: unknown } = {}) => phone(path, { ...init, headers: { cookie } })
+
+      // 1×1 PNG.
+      const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg=='
+      const created = JSON.parse((await local('/api/threads', { projectPath: root, text: 'go', images: [{ data: png, name: 'dot.png' }] })).body).data
+      emit({ kind: 'question', requestId: 'rq1', questions: [{ id: 'Which?', question: 'Which?', header: 'Pick', options: [{ label: 'A' }, { label: 'B' }], multiSelect: false }] })
+      await local(`/api/threads/${created.id}/messages`, { text: 'later' })
+      const events = JSON.parse((await paired(`/api/threads/${created.id}/events`)).body).data.events as { event: Record<string, string> }[]
+      const question = events.find((e) => e.event.kind === 'question')!.event.requestId!
+      const queued = events.find((e) => e.event.kind === 'user_text' && e.event.queuedId)!.event.queuedId!
+      const image = events.find((e) => e.event.kind === 'image')!.event.file!
+
+      const picture = await paired(`/api/threads/${created.id}/images/${image}`)
+      expect(picture.status).toBe(200)
+      expect((await paired(`/api/threads/${created.id}/questions/${question}`, { method: 'POST', body: { answers: { 'Which?': 'B' } } })).status).toBe(200)
+      expect(answered).toEqual([{ 'Which?': 'B' }])
+      const back = await paired(`/api/threads/${created.id}/queued/${queued}/remove`, { method: 'POST', body: {} })
+      expect(back.status).toBe(200)
+      expect(JSON.parse(back.body).data.text).toBe('later')
+      // Still desktop-only from the phone.
+      expect((await paired(`/api/threads/${created.id}/completed`, { method: 'POST', body: { completed: true } })).status).toBe(403)
+    } finally { await server.close() }
+  })
+})
