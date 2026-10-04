@@ -134,3 +134,26 @@
 }
 /* The gutter follows the text's scroll; it never shows a scrollbar of its own. */
 .file-source .file-gutter { overflow: hidden; }
+
+/* Find and replace in the editor (F9). Matches are painted with the Highlight API on the text layer
+   (Source) or the document (Document); neither editor's DOM changes. */
+.editor-find {
+  display: grid; gap: 6px; align-self: flex-end; width: min(520px, 100%); padding: 6px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.35);
+}
+.editor-find-row { display: flex; align-items: center; gap: 4px; }
+.editor-find input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 13px; }
+.editor-find input:disabled { background: var(--field); }
+.editor-find button { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: none; color: var(--secondary); font: inherit; font-size: 13px; flex: none; }
+.editor-find button:hover:not(:disabled) { background: var(--field); color: var(--strong); }
+.editor-find button:disabled { opacity: 0.4; }
+.editor-find button svg { width: 15px; height: 15px; }
+.editor-find .editor-find-text { border: 1px solid var(--border); padding: 0 10px; color: var(--body); }
+.editor-find-case { font-weight: 600; }
+.editor-find-case.on { background: var(--project-soft, var(--field)); color: var(--strong); box-shadow: inset 0 0 0 1px var(--halo); }
+.editor-find-spacer { width: 28px; flex: none; }
+.editor-find .find-count { min-width: 72px; }
+.file-find-button { width: 34px; height: 34px; }
+.doc-view .editor-find { margin-left: auto; margin-bottom: 8px; }
+::highlight(cockpit-editor-find) { background-color: color-mix(in srgb, #f5c542 45%, transparent); }
+::highlight(cockpit-editor-find-current) { background-color: #f5a623; color: #1a1a1a; }

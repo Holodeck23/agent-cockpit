@@ -1,8 +1,10 @@
 import { lazy, Suspense, useDeferredValue, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { fileName, isDirty, lineCount, lineRange, spaceOf, wordCount, type OpenFile } from '../file-text.ts'
 import { languageFor } from '../syntax-language.ts'
+import { findIn, replaceAllIn } from '../editor-find.ts'
 import { usePopover } from '../usePopover.ts'
-import { ChevronDownIcon, FileIcon, SidebarIcon } from './icons.tsx'
+import { clearPaint, EditorFindBar, paintRanges, textRanges, type FindAdapter } from './EditorFindBar.tsx'
+import { ChevronDownIcon, FileIcon, SearchIcon, SidebarIcon } from './icons.tsx'
 
 interface FileEditorProps {
   files: readonly OpenFile[]
@@ -43,6 +45,8 @@ function loadView(): MarkdownView {
 
 export function FileEditor({ files, active, error, onSelect, onClose, onCloseMany, onChange, onSave, onReload, onOverwrite, onSaveCopy, onAttach, jump, explorer }: FileEditorProps) {
   const [confirming, setConfirming] = useState<string>()
+  // ⌘F finds, ⌥⌘F also opens Replace; in either view of the open file.
+  const [find, setFind] = useState<FindMode>()
   const [view, setView] = useState<MarkdownView>(loadView)
   // Files the Document view declined, with its reason; they stay in Source.
   const [declined, setDeclined] = useState<Readonly<Record<string, string>>>({})
@@ -66,6 +70,11 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
     if (isDirty(target)) { onSelect(target.path); setConfirming(target.path) } else onClose(target.path)
   }
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+    if ((event.metaKey || event.ctrlKey) && (event.key.toLowerCase() === 'f' || event.code === 'KeyF') && file) {
+      event.preventDefault()
+      setFind(event.altKey ? 'replace' : 'find')
+      return
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
       event.preventDefault()
       if (file && dirty && file.eol && !file.conflict) onSave(file.path)
@@ -73,7 +82,11 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
   }
 
   return (
-    <main className="file-preview file-editor">
+    <main className="file-preview file-editor" onKeyDown={(event) => {
+      // ⌘F anywhere in the editor area; the Source textarea handles its own keys first.
+      if (event.defaultPrevented) return
+      if ((event.metaKey || event.ctrlKey) && (event.key.toLowerCase() === 'f' || event.code === 'KeyF') && file) { event.preventDefault(); setFind(event.altKey ? 'replace' : 'find') }
+    }}>
       <div className="file-tabs">
         <button type="button" className="file-tabs-button file-explorer-toggle" aria-pressed={!explorer.hidden}
           aria-label={explorer.hidden ? 'Show files' : 'Hide files'} title={explorer.hidden ? 'Show files' : 'Hide files'} onClick={explorer.toggle}><SidebarIcon /></button>
@@ -106,6 +119,8 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
                   <button type="button" aria-pressed={view === 'source' || Boolean(declined[file.path])} onClick={() => chooseView('source')}>Source</button>
                 </div>
               ) : null}
+              <button type="button" className="icon-button file-find-button" aria-label="Find and replace" title="Find and replace (⌘F, ⌥⌘F)" aria-pressed={Boolean(find)}
+                onClick={() => setFind(find ? undefined : 'replace')}><SearchIcon /></button>
               {dirty ? <button type="button" className="button-soft" onClick={() => onReload(file.path)}>Revert</button> : null}
               <button type="button" className="button-soft" disabled={!dirty || !file.eol || file.conflict} onClick={() => onSave(file.path)}>Save</button>
               {inDocuments ? null : <button type="button" className="button-primary" onClick={() => onAttach(file.path)}>Add to conversation</button>}
@@ -135,14 +150,14 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
           {isMarkdown(file.path) && view === 'document' && !declined[file.path] ? (
             <div className="doc-host">
               <Suspense fallback={<p role="status">Loading document view…</p>}>
-                <DocumentView key={file.path} draft={file.draft} readOnly={!file.eol}
+                <DocumentView key={file.path} draft={file.draft} readOnly={!file.eol} find={find} onCloseFind={() => setFind(undefined)}
                   onChange={(draft) => onChange(file.path, draft)}
                   onSave={(draft) => { if (file.eol && !file.conflict) onSave(file.path, draft) }}
                   onUnavailable={(reason) => setDeclined((all) => ({ ...all, [file.path]: reason }))} />
               </Suspense>
             </div>
           ) : (
-            <SourceText key={file.path} path={file.path} text={file.draft} readOnly={!file.eol} jump={jumping} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
+            <SourceText key={file.path} path={file.path} find={find} onCloseFind={() => setFind(undefined)} text={file.draft} readOnly={!file.eol} jump={jumping} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
           )}
           <footer className="file-status" aria-label="File status">
             <span className={dirty ? 'file-status-dirty' : ''}>{file.conflict ? 'Changed on disk' : dirty ? 'Unsaved changes' : 'Saved'}</span>
@@ -161,16 +176,66 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
   )
 }
 
+export type FindMode = 'find' | 'replace'
+
 /** Source view: the text with line numbers beside it. Lines don't wrap, so the numbers stay level. */
-function SourceText({ path, text, readOnly, jump, onChange, onKeyDown }: {
-  path: string; text: string; readOnly: boolean; jump?: Jump; onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
+function SourceText({ path, text, readOnly, jump, find, onCloseFind, onChange, onKeyDown }: {
+  path: string; text: string; readOnly: boolean; jump?: Jump; find?: FindMode; onCloseFind: () => void
+  onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 }) {
   const gutter = useRef<HTMLPreElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
   const colours = useRef<HTMLPreElement>(null)
   const language = languageFor(path)
-  // Colouring trails typing slightly on large files; the textarea itself never waits.
-  const shown = useDeferredValue(text)
+  // Colouring trails typing slightly on large files; the textarea itself never waits. While
+  // finding, the layer must match the text exactly, because matches are painted on it.
+  const deferred = useDeferredValue(text)
+  const shown = find ? text : deferred
+  const matches = useRef<Array<[number, number]>>([])
+  const adapter: FindAdapter = {
+    search: (query, matchCase) => { matches.current = findIn(area.current?.value ?? text, query, matchCase); return matches.current.length },
+    paint: (current) => { if (colours.current) paintRanges(textRanges(colours.current, matches.current), current) },
+    reveal: (index) => {
+      const el = area.current
+      const range = colours.current ? textRanges(colours.current, matches.current.slice(index, index + 1))[0] : undefined
+      if (!el || !range || !colours.current) return
+      const box = range.getBoundingClientRect()
+      const frame = colours.current.getBoundingClientRect()
+      const top = el.scrollTop + (box.top - frame.top)
+      const left = el.scrollLeft + (box.left - frame.left)
+      if (top < el.scrollTop + 20 || top > el.scrollTop + el.clientHeight - 40) el.scrollTop = Math.max(0, top - el.clientHeight / 3)
+      if (left < el.scrollLeft || left > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, left - el.clientWidth / 2)
+      syncScroll(el)
+    },
+    replace: (index, replacement) => {
+      const el = area.current
+      const at = matches.current[index]
+      if (!el || !at) return
+      const keep = document.activeElement as HTMLElement | null
+      el.focus()
+      el.setSelectionRange(at[0], at[1])
+      // Through the textarea's own editing, so ⌘Z undoes it.
+      document.execCommand('insertText', false, replacement)
+      keep?.focus()
+    },
+    replaceAll: (replacement) => {
+      const el = area.current
+      if (!el || matches.current.length === 0) return 0
+      const replaced = matches.current.length
+      const keep = document.activeElement as HTMLElement | null
+      el.focus()
+      el.select()
+      document.execCommand('insertText', false, replaceAllIn(el.value, matches.current, replacement))
+      keep?.focus()
+      return replaced
+    },
+    clear: clearPaint,
+  }
+  const syncScroll = (el: HTMLTextAreaElement): void => {
+    const { scrollTop, scrollLeft } = el
+    if (gutter.current) gutter.current.scrollTop = scrollTop
+    if (colours.current) { colours.current.scrollTop = scrollTop; colours.current.scrollLeft = scrollLeft }
+  }
   // Select the referenced lines and bring them a third of the way down the view.
   useEffect(() => {
     const el = area.current
@@ -184,24 +249,22 @@ function SourceText({ path, text, readOnly, jump, onChange, onKeyDown }: {
   }, [jump?.nonce])
   const numbers = Array.from({ length: lineCount(text) }, (_, i) => i + 1).join('\n')
   return (
+    <>
+    {find ? <EditorFindBar adapter={adapter} contentKey={text} withReplace={find === 'replace'} readOnly={readOnly} onClose={() => { onCloseFind(); area.current?.focus() }} /> : null}
     <div className="file-source">
       <pre className="file-gutter" ref={gutter} aria-hidden>{numbers}</pre>
-      <div className={`file-code${language ? ' highlighted' : ''}`}>
-        {/* The textarea's text is transparent over this layer, so selection, undo and typing stay native. */}
-        {language ? (
-          <pre className="file-highlight" ref={colours} aria-hidden data-language={language}>
-            <Suspense fallback={shown}><HighlightRuns text={shown} language={language} /></Suspense>{'\n'}
-          </pre>
-        ) : null}
+      <div className="file-code highlighted">
+        {/* The textarea's text is transparent over this layer, so selection, undo and typing stay native,
+            while colours and find matches are painted here. */}
+        <pre className="file-highlight" ref={colours} aria-hidden data-language={language}>
+          {language ? <Suspense fallback={shown}><HighlightRuns text={shown} language={language} /></Suspense> : shown}{'\n'}
+        </pre>
         <textarea ref={area} className="file-text" aria-label="File contents" value={text} readOnly={readOnly} spellCheck={false} wrap="off" {...PLAIN_TEXT}
           onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
-          onScroll={(e) => {
-            const { scrollTop, scrollLeft } = e.currentTarget
-            if (gutter.current) gutter.current.scrollTop = scrollTop
-            if (colours.current) { colours.current.scrollTop = scrollTop; colours.current.scrollLeft = scrollLeft }
-          }} />
+          onScroll={(e) => syncScroll(e.currentTarget)} />
       </div>
     </div>
+    </>
   )
 }
 

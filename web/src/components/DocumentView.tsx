@@ -7,6 +7,10 @@ import { gfm } from '@milkdown/kit/preset/gfm'
 import { baselineOf, markdownOf, splitFrontMatter, type Baseline } from '../markdown/document.ts'
 import { taskToggle } from '../markdown/task-toggle.ts'
 import { DocumentToolbar } from './DocumentToolbar.tsx'
+import { TextSelection } from '@milkdown/kit/prose/state'
+import type { EditorView } from '@milkdown/kit/prose/view'
+import { findIn } from '../editor-find.ts'
+import { clearPaint, EditorFindBar, paintRanges, type FindAdapter } from './EditorFindBar.tsx'
 import '../styles/document.css'
 
 // The rich Document view of a Markdown file. It edits the same draft as the Source view:
@@ -21,9 +25,41 @@ interface DocumentViewProps {
   onSave: (draft: string) => void
   /** The file cannot be shown here without risking its Markdown; the caller shows Source. */
   onUnavailable: (reason: string) => void
+  /** The find bar is open (⌘F), with Replace (⌥⌘F). */
+  find?: 'find' | 'replace'
+  onCloseFind?: () => void
 }
 
-export default function DocumentView({ draft, readOnly, onChange, onSave, onUnavailable }: DocumentViewProps) {
+interface DocMatch { readonly from: number; readonly to: number }
+
+/** Matches inside each paragraph or heading of the document, as editor positions. Never across blocks. */
+function docMatches(view: EditorView, query: string, matchCase: boolean): DocMatch[] {
+  const found: DocMatch[] = []
+  view.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    // A leaf inside a block (a hard break, an image) stands in as one character, so offsets stay positions.
+    let text = ''
+    node.forEach((child) => { text += child.isText ? child.text ?? '' : '\uFFFC'.repeat(child.nodeSize) })
+    for (const [start, end] of findIn(text, query, matchCase)) found.push({ from: pos + 1 + start, to: pos + 1 + end })
+    return false
+  })
+  return found
+}
+
+function domRange(view: EditorView, match: DocMatch): Range | undefined {
+  try {
+    const start = view.domAtPos(match.from)
+    const end = view.domAtPos(match.to)
+    const range = document.createRange()
+    range.setStart(start.node, start.offset)
+    range.setEnd(end.node, end.offset)
+    return range
+  } catch {
+    return undefined
+  }
+}
+
+export default function DocumentView({ draft, readOnly, onChange, onSave, onUnavailable, find, onCloseFind }: DocumentViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const [editor, setEditor] = useState<Editor>()
   const [problem, setProblem] = useState<string>()
@@ -87,8 +123,41 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
   // a rebuild after a reload must not write the old text back over the new one.
   useEffect(() => () => { current.current?.write() }, [])
 
+  const matches = useRef<DocMatch[]>([])
+  const viewOf = (): EditorView | undefined => current.current?.editor.action((ctx) => ctx.get(editorViewCtx))
+  const adapter: FindAdapter = {
+    search: (query, matchCase) => { const view = viewOf(); matches.current = view ? docMatches(view, query, matchCase) : []; return matches.current.length },
+    paint: (index) => {
+      const view = viewOf()
+      if (view) paintRanges(matches.current.map((m) => domRange(view, m)).filter((r): r is Range => r !== undefined), index)
+    },
+    reveal: (index) => {
+      const view = viewOf()
+      const at = matches.current[index]
+      if (!view || !at) return
+      // Moves the editor's selection to the match and scrolls to it; the find box keeps the keyboard.
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at.from, at.to)).scrollIntoView())
+    },
+    replace: (index, replacement) => {
+      const view = viewOf()
+      const at = matches.current[index]
+      if (view && at) view.dispatch(view.state.tr.insertText(replacement, at.from, at.to))
+    },
+    replaceAll: (replacement) => {
+      const view = viewOf()
+      if (!view || matches.current.length === 0) return 0
+      // One transaction, last match first so earlier positions stay valid: one ⌘Z undoes it.
+      const tr = view.state.tr
+      for (const at of [...matches.current].reverse()) tr.insertText(replacement, at.from, at.to)
+      view.dispatch(tr)
+      return matches.current.length
+    },
+    clear: clearPaint,
+  }
+
   return (
     <div className="doc-view">
+      {find && editor ? <EditorFindBar adapter={adapter} contentKey={draft} withReplace={find === 'replace'} readOnly={readOnly} onClose={() => { onCloseFind?.(); viewOf()?.focus() }} /> : null}
       {editor && !readOnly ? <DocumentToolbar editor={editor} /> : null}
       {baseline.current?.frontMatter ? <p className="file-help">Front matter is kept as it is. Edit it in Source.</p> : null}
       {problem ? <div className="workflow-notice" role="alert">{problem}</div> : null}
