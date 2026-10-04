@@ -5,6 +5,19 @@ import { z } from 'zod'
 
 export const PERMISSION_MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'] as const
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+/**
+ * Every level any agent takes. Ultra is Codex's alone (C9): codex 0.147 advertises it for
+ * gpt-5.6-sol and gpt-5.6-terra; Claude 2.1.289 stops at max.
+ */
+export const ALL_EFFORTS = [...EFFORTS, 'ultra'] as const
+export type Effort = (typeof ALL_EFFORTS)[number]
+
+export function effortsFor(agent: string): readonly Effort[] {
+  return agent === 'codex' ? ALL_EFFORTS : EFFORTS
+}
+
+/** An agent that has no such level gets its highest one. */
+export const effortForClaude = (effort: Effort | undefined): (typeof EFFORTS)[number] | undefined => (effort === 'ultra' ? 'max' : effort)
 
 const mcpConfigSchema = z.object({ mcpServers: z.record(z.string(), z.unknown()) })
 

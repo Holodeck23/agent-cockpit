@@ -38,3 +38,14 @@ describe('buildClaudeArgs', () => {
     expect(() => buildClaudeArgs({ ...base, allowedTools: ['Bash(rm -rf /)'] })).toThrow()
   })
 })
+
+describe('effort levels per agent (C9)', async () => {
+  const { effortsFor, effortForClaude } = await import('../server/agents/claude/flags.ts')
+  it('offers Ultra for Codex only, and gives agents without it their highest level', () => {
+    expect(effortsFor('codex').at(-1)).toBe('ultra')
+    expect(effortsFor('claude')).not.toContain('ultra')
+    expect(effortForClaude('ultra')).toBe('max')
+    expect(effortForClaude('high')).toBe('high')
+    expect(() => buildClaudeArgs({ ...base, effort: 'ultra' as never })).toThrow()
+  })
+})

@@ -5,6 +5,7 @@ import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
+import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
@@ -59,7 +60,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       {
         cwd: req.cwd,
         model: req.settings.model,
-        effort: req.settings.effort,
+        effort: effortForClaude(req.settings.effort),
         permissionMode: req.settings.permissionMode,
         useHooks: req.settings.useHooks,
         sessionId: req.sessionId,
@@ -88,7 +89,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
     launchAntigravity({
       cwd: req.cwd,
       model: req.settings.model,
-      effort: req.settings.effort,
+      effort: effortForClaude(req.settings.effort),
       permissionMode: req.settings.permissionMode,
       resume: req.resume,
       instructions: instructionsFor(req),

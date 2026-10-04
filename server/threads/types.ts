@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
+import { ALL_EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
 import type { NormalizedEvent } from '../agents/types.ts'
 
 export const threadSettingsSchema = z.object({
@@ -10,7 +10,7 @@ export const threadSettingsSchema = z.object({
     .max(100)
     .regex(/^[A-Za-z0-9._\-[\]/:]+$/)
     .optional(),
-  effort: z.enum(EFFORTS).optional(),
+  effort: z.enum(ALL_EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   useHooks: z.boolean().default(false),
 })

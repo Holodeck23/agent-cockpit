@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
-import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
+import { ALL_EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
 import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
@@ -14,7 +14,7 @@ export const codexLaunchSchema = z.object({
     .max(100)
     .regex(/^[A-Za-z0-9._\-[\]]+$/)
     .optional(),
-  effort: z.enum(EFFORTS).optional(),
+  effort: z.enum(ALL_EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   /** Codex thread id to resume; absent means start a new thread. */
   resume: z.string().min(1).max(200).optional(),
