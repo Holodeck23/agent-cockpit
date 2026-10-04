@@ -38,7 +38,7 @@ export type TranscriptItem =
     }
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
   /** An image the agent showed (G4), or one of yours with no message to sit under. */
-  | ({ type: 'image'; key: string; author: 'you' | AgentId } & ImageRef)
+  | ({ type: 'image'; key: string; author: 'you' | AgentId; showAuthor: boolean } & ImageRef)
   /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
   | { type: 'failure'; key: string; title: string; detail: string; raw: string; retryText?: string }
   /** The agent's questions with choices (J6); `answers` once you answered, `dismissed` once you closed them. */
@@ -221,6 +221,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const helpers = new Map<string, number>()
   let compacting: number | undefined
   let lastUserText: string | undefined
+  /** Images sent with a message you took back went with it. */
+  let skipYourImages = false
   /** A failure card already stands for the current turn, so its failed result adds nothing. */
   let failedThisTurn = false
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
@@ -244,13 +246,15 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   events.forEach(({ ts, event }, index) => {
     const key = `${ts}-${index}`
     const last = items.at(-1)
+    if (event.kind === 'image' && event.from === 'you' && skipYourImages) return
+    skipYourImages = false
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
-        if (event.kind === 'user_text' && event.queuedId && takenBack.has(event.queuedId)) return
+        if (event.kind === 'user_text' && event.queuedId && takenBack.has(event.queuedId)) { skipYourImages = true; return }
         if (event.kind === 'user_text') { lastUserText = event.text; failedThisTurn = false }
         const author = event.kind === 'user_text' ? 'you' : agent
-        const showAuthor = !(last?.type === 'message' && last.author === author)
+        const showAuthor = !((last?.type === 'message' || last?.type === 'image') && last.author === author)
         if (event.kind === 'user_text') {
           // Attached files show as names; their contents went to the agent, not the transcript.
           const described = describeAttachments(event.text)
@@ -275,7 +279,10 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const ref: ImageRef = { file: event.file, ...(event.name ? { name: event.name } : {}) }
         if (event.from === 'you' && last?.type === 'message' && last.author === 'you') {
           replace(items.length - 1, { ...last, images: [...(last.images ?? []), ref] })
-        } else items.push({ type: 'image', key, author: event.from === 'you' ? 'you' : agent, ...ref })
+        } else {
+          const author = event.from === 'you' ? 'you' : agent
+          items.push({ type: 'image', key, author, showAuthor: !((last?.type === 'message' || last?.type === 'image') && last.author === author), ...ref })
+        }
         return
       }
       case 'tool_use':

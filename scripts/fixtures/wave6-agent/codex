@@ -1,0 +1,40 @@
+#!/usr/bin/perl
+# Stand-in `codex app-server` for proof:wave-6 (no provider usage). I2: each localImage item in
+# turn/start is opened from its path the way Codex 0.147's client does, and the turn is answered
+# with what was there: "Got 1 local image: 43930 bytes, real PNG." ("ok" without images).
+use strict; use warnings;
+use JSON::PP;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "codex-cli 0.0.0 (Cockpit wave 6 fixture)\n"; exit 0 }
+my $json = JSON::PP->new->canonical;
+my $thread = 'w6-codex-thread'; my $turn = 0;
+sub reply { print $json->encode($_[0]), "\n" }
+sub look {
+  my ($path) = @_;
+  open(my $fh, '<:raw', $path) or return "unreadable $path";
+  local $/; my $bytes = <$fh>;
+  return sprintf('%d bytes, %s', length($bytes), substr($bytes, 0, 8) eq "\x89PNG\r\n\x1a\n" ? 'real PNG' : 'not a PNG');
+}
+while (my $line = <STDIN>) {
+  my $message = eval { $json->decode($line) } or next;
+  my ($method, $id) = ($message->{method}, $message->{id});
+  next unless defined $method && defined $id;
+  if ($method eq 'initialize') { reply({ id => $id, result => { userAgent => 'fixture' } }) }
+  elsif ($method eq 'thread/start' || $method eq 'thread/resume') {
+    reply({ id => $id, result => { thread => { id => $thread } } });
+    reply({ method => 'thread/started', params => { thread => { id => $thread } } });
+  }
+  elsif ($method eq 'turn/start') {
+    $turn++;
+    my @input = @{ $message->{params}{input} // [] };
+    my @local = grep { $_->{type} eq 'localImage' } @input;
+    my $text = @local
+      ? sprintf('Got %d local image%s: %s.', scalar @local, @local == 1 ? '' : 's', join('; ', map { look($_->{path}) } @local))
+      : 'ok';
+    reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
+    reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+    reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => $text } } });
+    reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'completed' } } });
+  }
+  else { reply({ id => $id, result => {} }) }
+}

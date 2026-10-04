@@ -250,6 +250,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
           case 'image':
             return (
               <section key={item.key} className={`message image-item ${item.author === 'you' ? 'from-you' : 'from-agent'}`}>
+                {item.showAuthor ? <Author author={item.author} /> : null}
                 <ConversationImages threadId={threadId} images={[item]} />
               </section>
             )

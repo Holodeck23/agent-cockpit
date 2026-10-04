@@ -1,0 +1,38 @@
+#!/usr/bin/perl
+# Stand-in `claude` for proof:wave-6 (no provider usage), speaking the image shapes recorded from
+# Claude 2.1.289 in the wave 6 spike. Every message is answered with what
+# arrived: "Got 1 image: image/png, 43930 bytes, real PNG." for each base64 image block before the
+# text (I2), or "ok" when there were none.
+use strict; use warnings;
+use JSON::PP; use MIME::Base64; use File::Basename;
+$| = 1;
+my $here = dirname($0);
+if (@ARGV && $ARGV[0] eq '--help') { open(my $h, '<', "$here/../claude-help.txt") or die; print while <$h>; exit 0 }
+if (@ARGV && $ARGV[0] eq '--version') { print "0.0.0 (Cockpit wave 6 fixture)\n"; exit 0 }
+my $session = '';
+for (my $i = 0; $i < @ARGV; $i++) { $session = $ARGV[$i + 1] if $ARGV[$i] eq '--session-id' || $ARGV[$i] eq '--resume' }
+my $json = JSON::PP->new->canonical;
+sub out { print $json->encode($_[0]), "\n" }
+my $n = 0;
+sub say_text { out({ type => 'assistant', message => { id => 'w6-' . ++$n, role => 'assistant', content => [{ type => 'text', text => $_[0] }] }, parent_tool_use_id => undef }) }
+sub done_turn { out({ type => 'result', subtype => 'success', is_error => JSON::PP::false, result => 'ok', total_cost_usd => 0, duration_ms => 5 }) }
+out({ type => 'system', subtype => 'init', session_id => $session, model => 'wave6-fixture' });
+while (my $line = <STDIN>) {
+  my $message = eval { $json->decode($line) } or next;
+  next unless ($message->{type} // '') eq 'user';
+  my @content = @{ $message->{message}{content} // [] };
+  my @images = grep { $_->{type} eq 'image' } @content;
+  my ($first_text) = grep { $_->{type} eq 'text' } @content;
+  my $text_last = @content && $content[-1]{type} eq 'text' ? 1 : 0;
+  if (@images) {
+    my @seen = map {
+      my $bytes = decode_base64($_->{source}{data} // '');
+      my $png = substr($bytes, 0, 8) eq "\x89PNG\r\n\x1a\n" ? 'real PNG' : 'not a PNG';
+      sprintf('%s, %d bytes, %s', $_->{source}{media_type}, length($bytes), $png)
+    } @images;
+    say_text(sprintf('Got %d image%s: %s.%s', scalar @images, @images == 1 ? '' : 's', join('; ', @seen), $text_last ? ' Text after the images.' : ' Text NOT last.'));
+  } else {
+    say_text('ok');
+  }
+  done_turn();
+}

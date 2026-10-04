@@ -65,3 +65,12 @@ describe('parseAntigravityLine', () => {
     expect(parseAntigravityLine(line({ event: 'future' }))).toEqual([])
   })
 })
+
+describe('Antigravity and conversation images (I2)', () => {
+  it('adds the conversation image folder to the workspace, since manual mode reads only the workspace', async () => {
+    const { buildAntigravityArgs } = await import('../server/agents/antigravity/launch.ts')
+    const args = buildAntigravityArgs({ cwd: '/p', imagesDir: '/state/attachments/t1' })
+    expect(args.slice(-2)).toEqual(['--add-dir', '/state/attachments/t1'])
+    expect(buildAntigravityArgs({ cwd: '/p' })).not.toContain('--add-dir')
+  })
+})

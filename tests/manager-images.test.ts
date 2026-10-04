@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink, OutgoingImage } from '../server/agents/types.ts'
 import { createThreadManager, type Launcher } from '../server/threads/manager.ts'
+import { ImageAttachError } from '../server/threads/images.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 
@@ -69,5 +70,38 @@ describe('images the agent shows', () => {
     agent.emit({ kind: 'image_data', source: { data: PNG.toString('base64') } })
     await manager.remove(meta.id)
     expect(existsSync(join(root, 'attachments', meta.id))).toBe(false)
+  })
+})
+
+describe('images you send (I2)', () => {
+  it('stores them, records them after your message, and hands the agent bytes and path', () => {
+    const { root, store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'what is this?', images: [{ bytes: PNG, name: 'shot.png' }] })
+    const events = kinds(store, meta.id)
+    expect(events.map((e) => e.kind)).toEqual(['session_boundary', 'user_text', 'image'])
+    expect(events[2]).toMatchObject({ from: 'you', name: 'shot.png', mediaType: 'image/png' })
+    const [sent] = agent.sent
+    expect(sent?.text).toBe('what is this?')
+    expect(sent?.images).toEqual([{ path: join(root, 'attachments', meta.id, (events[2] as { file: string }).file), mediaType: 'image/png', data: PNG.toString('base64') }])
+  })
+
+  it('refuses a message whose image is not one, sending nothing and leaving no conversation behind', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    expect(() => manager.send(meta.id, 'look', undefined, undefined, undefined, [{ bytes: Buffer.from('<svg/>') }])).toThrow(ImageAttachError)
+    expect(kinds(store, meta.id).map((e) => e.kind)).toEqual(['session_boundary', 'user_text'])
+    expect(agent.sent).toHaveLength(1)
+    const before = store.list().length
+    expect(() => manager.create({ projectPath: '/tmp', settings, text: 'look', images: [{ bytes: Buffer.from('nope') }] })).toThrow(ImageAttachError)
+    expect(store.list()).toHaveLength(before)
+  })
+
+  it('tells Antigravity where the conversation keeps its images', () => {
+    const { root, store, settings } = setup()
+    const requests: Array<{ imagesDir?: string }> = []
+    const launcher: Launcher = (request) => { requests.push(request); return { agent: 'antigravity', send: () => undefined, respondApproval: () => undefined, interrupt: () => undefined, close: () => Promise.resolve(), alive: () => true } }
+    const manager = createThreadManager(store, { launchers: { antigravity: launcher } })
+    const meta = manager.create({ projectPath: '/tmp', settings: { ...settings, agent: 'antigravity' }, text: 'hi' })
+    expect(requests[0]?.imagesDir).toBe(join(root, 'attachments', meta.id))
   })
 })

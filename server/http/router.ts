@@ -19,7 +19,8 @@ import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
-import { createImageStore, IMAGE_FILE } from '../threads/images.ts'
+import { createImageStore, IMAGE_FILE, ImageAttachError, MAX_ATTACHED_IMAGE_BYTES } from '../threads/images.ts'
+import type { IncomingImage } from '../threads/manager.ts'
 import { isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
@@ -33,13 +34,24 @@ import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
 import type { AgentStatus } from '../agents/status.ts'
 
+/** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
+export const MAX_MESSAGE_IMAGES = 8
+const messageImages = z.array(z.object({
+  data: z.string().min(1).max(Math.ceil(MAX_ATTACHED_IMAGE_BYTES / 3) * 4 + 4).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  name: z.string().max(200).optional(),
+})).max(MAX_MESSAGE_IMAGES).optional()
+/** Room for a full set of images on the two routes that take them; every other route keeps 1 MB. */
+const IMAGE_BODY_BYTES = MAX_MESSAGE_IMAGES * (Math.ceil(MAX_ATTACHED_IMAGE_BYTES / 3) * 4 + 1024) + 1_000_000
+const decodeImages = (images: z.infer<typeof messageImages>): IncomingImage[] =>
+  (images ?? []).map((image) => ({ bytes: Buffer.from(image.data, 'base64'), ...(image.name ? { name: image.name } : {}) }))
 const createThreadBody = z.object({
   projectPath: z.string().min(1).max(1000),
   title: z.string().max(200).optional(),
   text: z.string().min(1).max(200_000),
   settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
+  images: messageImages,
 })
-const messageBody = z.object({ text: z.string().min(1).max(200_000) })
+const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
@@ -410,9 +422,9 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         return true
       }
       if (parts.length === 2 && method === 'POST') {
-        const body = parseBody(createThreadBody, await readJson(req))
+        const body = parseBody(createThreadBody, await readJson(req, IMAGE_BODY_BYTES))
         assertDirectory(body.projectPath)
-        const meta = manager.create({ ...body, ...expandedFor(body.text, body.projectPath) })
+        const meta = manager.create({ ...body, ...expandedFor(body.text, body.projectPath), images: decodeImages(body.images) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -445,9 +457,9 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         })
         res.end(image.bytes)
       } else if (method === 'POST' && action === 'messages') {
-        const { text } = parseBody(messageBody, await readJson(req))
+        const { text, images: attached } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
         const expanded = expandedFor(text, store.get(threadId)!.projectPath)
-        manager.send(threadId, text, expanded.agentText, expanded.workflows)
+        manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached))
         sendJson(res, 202, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
@@ -480,7 +492,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError ? 409 : error instanceof MessageReferenceError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

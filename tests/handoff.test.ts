@@ -47,3 +47,14 @@ describe('switch handoff (J5)', () => {
     expect(codexLaunchSchema.safeParse({ cwd: '/p', developerInstructions: seed }).success).toBe(true)
   })
 })
+
+describe('images in a handoff (wave 6)', () => {
+  it('names each image by its stored file so the new agent can open it', async () => {
+    const { buildHandoff: build } = await import('../server/threads/handoff.ts')
+    const text = build([
+      { ts: 't', event: { kind: 'user_text', text: 'what is this?' } },
+      { ts: 't', event: { kind: 'image', file: 'abc.png', mediaType: 'image/png', from: 'you' } },
+    ], '/p', '/state/attachments/t1')
+    expect(text).toContain('(user attached an image: /state/attachments/t1/abc.png)')
+  })
+})

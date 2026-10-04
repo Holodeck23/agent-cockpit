@@ -10,7 +10,7 @@ import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
-import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
+import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
@@ -28,8 +28,16 @@ export interface LaunchRequest {
   readonly cockpit?: CockpitMcpLaunch
   /** The project's own instructions, as set in Cockpit. */
   readonly projectInstructions?: string
+  /** Where this conversation's images are kept, for agents that read them as files. */
+  readonly imagesDir?: string
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
+
+/** An image you attach to a message: its bytes as sent, and the name it had, if any. */
+export interface IncomingImage {
+  readonly bytes: Buffer
+  readonly name?: string
+}
 
 export interface ThreadUpdate {
   readonly threadId: string
@@ -96,6 +104,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       permissionMode: req.settings.permissionMode,
       resume: req.resume,
       instructions: instructionsFor(req),
+      ...(req.imagesDir ? { imagesDir: req.imagesDir } : {}),
     }, onEvent),
   opencode: (req, onEvent) =>
     launchOpencode(
@@ -152,8 +161,9 @@ export interface ThreadManager {
    */
   requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal): Promise<void>
   canControl(threadId: string): boolean
-  create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled' }): ThreadMeta
-  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void
+  create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
+  /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
+  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, images?: readonly IncomingImage[]): void
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   /** Takes back a message still waiting in the agent's queue (J1); resolves to its text for your draft. */
   unqueue(threadId: string, queuedId: string): Promise<string>
@@ -357,6 +367,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
         ...(mcp ? { cockpit: mcp.launch } : {}),
+        imagesDir: images.dir(meta.id),
       },
       deliver,
     )
@@ -373,10 +384,13 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }): void => {
+  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = []): void => {
     hostActions.cancel(threadId)
     if (deleted.has(threadId)) throw new Error('This conversation was deleted')
     const meta = requireMeta(threadId)
+    // Every image is checked and stored first, so a bad one sends nothing.
+    const stored = attached.map((image) => ({ ...images.save(threadId, image.bytes), image }))
+    const outgoing: OutgoingImage[] = stored.map(({ path, mediaType, image }) => ({ path, mediaType, data: image.bytes.toString('base64') }))
     const entry = ensureSession(meta)
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
@@ -388,7 +402,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
     record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}) })
-    entry.session.send(agentText, queuedId)
+    for (const { file, mediaType, image } of stored) record(threadId, { kind: 'image', file, mediaType, from: 'you', ...(image.name ? { name: image.name } : {}) })
+    entry.session.send(agentText, queuedId, outgoing.length ? outgoing : undefined)
   }
 
   return {
@@ -397,7 +412,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!live.get(threadId)?.turnRunning || live.get(threadId)?.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
       return hostActions.request(threadId, toolName, input, signal)
     },
-    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth }) {
+    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth, images: attached }) {
       const now = new Date().toISOString()
       const meta = store.create({
         id: randomUUID(),
@@ -413,7 +428,14 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         updatedAt: now,
       })
       const source = createdByThreadId ? store.get(createdByThreadId) : undefined
-      send(meta.id, text, agentText, workflows, source ? { id: source.id, title: source.title } : undefined)
+      try {
+        send(meta.id, text, agentText, workflows, source ? { id: source.id, title: source.title } : undefined, attached)
+      } catch (error) {
+        // A refused image leaves no empty conversation behind.
+        store.remove(meta.id)
+        images.remove(meta.id)
+        throw error
+      }
       return meta
     },
     send,
@@ -490,7 +512,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       generations.delete(threadId)
       live.delete(threadId)
       if (entry) void closeEntry(entry)
-      const handoff = buildHandoff(store.events(threadId), meta.projectPath)
+      const handoff = buildHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
       broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })

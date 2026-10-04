@@ -291,6 +291,27 @@ describe('images in the transcript (wave 6)', () => {
       at(1, { kind: 'user_text', text: 'chart it' }),
       at(2, { kind: 'image', file, mediaType: 'image/png', from: 'agent', name: 'chart.png' }),
     ], 'codex')
-    expect(items[1]).toMatchObject({ type: 'image', author: 'codex', file, name: 'chart.png' })
+    expect(items[1]).toMatchObject({ type: 'image', author: 'codex', file, name: 'chart.png', showAuthor: true })
+  })
+  it('names the agent once: its reply after its image does not repeat the author', () => {
+    const items = buildTranscript([
+      at(1, { kind: 'user_text', text: 'chart it' }),
+      at(2, { kind: 'image', file, mediaType: 'image/png', from: 'agent' }),
+      at(3, { kind: 'assistant_text', messageId: 'm', text: 'There.' }),
+    ], 'codex')
+    expect(items[2]).toMatchObject({ type: 'message', showAuthor: false })
+  })
+})
+
+describe('images of a message you took back (wave 6)', () => {
+  it('leave with it instead of landing on the message before', () => {
+    const items = buildTranscript([
+      at(1, { kind: 'user_text', text: 'first' }),
+      at(2, { kind: 'user_text', text: 'second', queuedId: 'q' }),
+      at(2, { kind: 'image', file: `${'c'.repeat(64)}.png`, mediaType: 'image/png', from: 'you' }),
+      at(3, { kind: 'user_unqueued', id: 'q' }),
+    ], 'claude')
+    expect(items).toHaveLength(1)
+    expect(items[0]).not.toHaveProperty('images')
   })
 })

@@ -321,4 +321,4 @@
 .image-viewer { max-width: 94vw; max-height: 94vh; padding: 0; border: 0; background: transparent; cursor: zoom-out; }
 .image-viewer::backdrop { background: rgb(0 0 0 / 0.72); }
 .image-viewer img { display: block; max-width: 94vw; max-height: 86vh; object-fit: contain; border-radius: 8px; }
-.image-viewer p { margin: 8px 0 0; color: #fff; font-size: 12.5px; text-align: center; }
+.image-viewer p { width: fit-content; max-width: 100%; margin: 8px auto 0; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.66); color: #fff; font-size: 12.5px; overflow-wrap: anywhere; }

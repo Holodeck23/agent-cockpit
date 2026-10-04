@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { ALL_EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
-import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
+import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
+import { codexInput } from '../image-input.ts'
 import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
 
@@ -104,7 +105,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   const stream = createCodexStreamState()
   // Helper threads' running turns, so Stop stops the helpers too (J7).
   const childTurns = new Map<string, string>()
-  const queued: string[] = []
+  const queued: Array<{ readonly text: string; readonly images?: readonly OutgoingImage[] }> = []
   // Approval request id (as a string) -> JSON-RPC id to reply to.
   const approvalIds = new Map<string, number | string>()
   // Which pending approvals are MCP elicitations: they take a different reply shape.
@@ -146,12 +147,12 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     },
   })
 
-  const startTurn = (text: string): void => {
+  const startTurn = (text: string, images?: readonly OutgoingImage[]): void => {
     if (!threadId) {
-      queued.push(text)
+      queued.push({ text, ...(images ? { images } : {}) })
       return
     }
-    const input = [{ type: 'text', text, text_elements: [] }]
+    const input = codexInput(text, images)
     const fail = (error: unknown): void => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) }
     const start = (): Promise<unknown> => rpc.request('turn/start', { threadId, input, ...(opts.effort ? { effort: opts.effort } : {}) })
     // Mid-turn, steer the running turn (J1 spike: folded cleanly; a second turn/start left a
@@ -181,7 +182,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       threadId = response.thread.id
       stream.mainThreadId = threadId
       onEvent({ kind: 'session', sessionId: threadId })
-      for (const text of queued.splice(0)) startTurn(text)
+      for (const turn of queued.splice(0)) startTurn(turn.text, turn.images)
     } catch (error: unknown) {
       if (exited) return
       onEvent({ kind: 'error', message: `Codex failed to start: ${error instanceof Error ? error.message : String(error)}` })
@@ -207,8 +208,8 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
 
   return {
     agent: 'codex',
-    send(text) {
-      startTurn(text)
+    send(text, _queuedId, images) {
+      startTurn(text, images)
     },
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {
       const rpcId = approvalIds.get(approval.requestId)

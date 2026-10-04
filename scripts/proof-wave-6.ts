@@ -9,7 +9,7 @@ import { createImageStore } from '../server/threads/images.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { openProject, setTheme } from './lib/ui.ts'
+import { apiPost, openProject, setTheme } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave6-proof-'))
@@ -64,6 +64,32 @@ try {
   const base = `/api/threads/${seeded.id}/images/`
   check('foundation: the image is served by its own name', await status(page, `${base}${icon.file}`) === 200)
   check('foundation: any other name is not served', (await Promise.all([icon.file.replace('.png', '.svg'), 'icon.png', `..%2F..%2Fmeta.json`].map((f) => status(page, `${base}${f}`)))).every((s) => s === 404))
+
+  // I2: an image sent with a message reaches each agent the way it takes images, and shows under
+  // your message. The stand-ins report what arrived (scripts/fixtures/wave6-agent).
+  const sendImage = async (agent: 'claude' | 'codex' | 'antigravity', text: string): Promise<string> => {
+    const created = await apiPost(page, '/api/threads', { projectPath: project, text, settings: { agent }, images: [{ data: ICON.toString('base64'), name: 'icon-1024.png' }] }) as { data: { id: string } }
+    await page.evaluate((id) => { location.search = `?thread=${id}` }, created.data.id)
+    return created.data.id
+  }
+  const reply = (text: string) => page.locator('.bubble.agent').filter({ hasText: text })
+  const bytes = ICON.length
+  await sendImage('claude', 'I2 Claude: what is this?')
+  check('I2 Claude gets the image as a base64 block before the text', await until('claude reply', async () =>
+    (await reply(`Got 1 image: image/png, ${bytes} bytes, real PNG. Text after the images.`).count()) === 1))
+  check('I2 your image shows under your message', await until('your thumbnail', async () =>
+    (await page.locator('.bubble.user .conversation-image').count()) === 1 && await loaded(page, '.bubble.user .conversation-image img')))
+  await shot(page, 'i2-claude')
+  await sendImage('codex', 'I2 Codex: what is this?')
+  check('I2 Codex opens the stored file from a localImage item', await until('codex reply', async () =>
+    (await reply(`Got 1 local image: ${bytes} bytes, real PNG.`).count()) === 1))
+  await sendImage('antigravity', 'I2 Antigravity: what is this?')
+  check('I2 Antigravity opens the stored file inside its added folder', await until('agy reply', async () =>
+    (await reply(`Opened 1 image in the workspace: ${bytes} bytes, real PNG.`).count()) === 1))
+  await shot(page, 'i2-antigravity')
+  const refused = await page.evaluate(async (p) => (await fetch('/api/threads', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectPath: p, text: 'svg', images: [{ data: btoa('<svg xmlns="http://www.w3.org/2000/svg"/>') }] }) })).status, project)
+  check('I2 an SVG (or anything not PNG/JPEG/GIF/WebP) is refused', refused === 400)
 
   await setTheme(page, 'Dark')
   await shot(page, 'thread-dark')

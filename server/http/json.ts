@@ -14,13 +14,14 @@ export class HttpError extends Error {
   }
 }
 
-export async function readJson(req: IncomingMessage): Promise<unknown> {
+/** `maxBytes` is raised only by routes that carry images. */
+export async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<unknown> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {
     const buffer = chunk as Buffer
     size += buffer.length
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'Request body too large')
+    if (size > maxBytes) throw new HttpError(413, 'Request body too large')
     chunks.push(buffer)
   }
   if (chunks.length === 0) return {}

@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
-import type { AgentId, AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
+import type { AgentId, AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
+import { acpPrompt } from '../image-input.ts'
 import { createRpcClient } from '../codex/rpc.ts'
 import { acpTool, acpTurnEnd, parseAcpUpdate } from './parse.ts'
 
@@ -41,7 +42,9 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
   let firstPrompt = !input.resume
   let message = ''
   let messageCount = 0
-  const queued: string[] = []
+  const queued: Array<{ readonly text: string; readonly images?: readonly OutgoingImage[] }> = []
+  // Set from initialize: whether the agent takes image blocks in a prompt.
+  let takesImages = false
   const approvals = new Map<string, { rpcId: number | string; options: PermissionOption[] }>()
 
   const flushMessage = (): void => {
@@ -83,11 +86,11 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
     onProtocolError: fail,
   }, { label: input.label, jsonrpc: true })
 
-  const prompt = (text: string): void => {
-    if (!sessionId) { queued.push(text); return }
+  const prompt = (text: string, images?: readonly OutgoingImage[]): void => {
+    if (!sessionId) { queued.push({ text, ...(images ? { images } : {}) }); return }
     const body = firstPrompt && input.instructions ? `<cockpit-instructions>\n${input.instructions}\n</cockpit-instructions>\n\n${text}` : text
     firstPrompt = false
-    rpc.request<{ stopReason?: string }>('session/prompt', { sessionId, prompt: [{ type: 'text', text: body }] })
+    rpc.request<{ stopReason?: string }>('session/prompt', { sessionId, prompt: acpPrompt(body, images, takesImages) })
       .then((result) => { flushMessage(); onEvent(acpTurnEnd(result?.stopReason)) })
       .catch((error: unknown) => { if (exited) return; flushMessage(); fail(error); onEvent({ kind: 'result', ok: false }) })
   }
@@ -95,9 +98,10 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
   const mcpServers = (input.mcpServers ?? []).map((s) => ({ name: s.name, command: s.command, args: [...s.args], env: Object.entries(s.env).map(([name, value]) => ({ name, value })) }))
   void (async () => {
     try {
-      const init = await rpc.request<{ agentCapabilities?: { loadSession?: boolean } }>('initialize', {
+      const init = await rpc.request<{ agentCapabilities?: { loadSession?: boolean; promptCapabilities?: { image?: boolean } } }>('initialize', {
         protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
       })
+      takesImages = init?.agentCapabilities?.promptCapabilities?.image === true
       if (input.resume && init?.agentCapabilities?.loadSession) {
         loading = true
         await rpc.request('session/load', { sessionId: input.resume, cwd: input.cwd, mcpServers })
@@ -110,7 +114,7 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
         firstPrompt = true
       }
       onEvent({ kind: 'session', sessionId })
-      for (const text of queued.splice(0)) prompt(text)
+      for (const turn of queued.splice(0)) prompt(turn.text, turn.images)
     } catch (error) {
       if (exited) return
       loading = false
@@ -137,7 +141,7 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
 
   return {
     agent: input.agent,
-    send: prompt,
+    send: (text, _queuedId, images) => prompt(text, images),
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {
       const pending = approvals.get(approval.requestId)
       if (!pending) return

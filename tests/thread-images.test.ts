@@ -95,3 +95,31 @@ describe('GET /api/threads/:id/images/:file', () => {
     }
   })
 })
+
+describe('POST images with a message (I2)', () => {
+  it('takes them on create and send, and refuses one that is not an image', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'cockpit-images-post-'))
+    roots.push(stateRoot)
+    const sent: Array<{ text: string; images?: unknown }> = []
+    const launcher = (_request: unknown, _onEvent: EventSink): AgentSession =>
+      ({ agent: 'claude', send: (text, _q, images) => { sent.push({ text, images }) }, respondApproval: () => undefined, interrupt: () => undefined, close: () => Promise.resolve(), alive: () => true })
+    const server = await startServer({ port: 0, stateRoot, webDist: stateRoot, launchers: { claude: launcher } })
+    const post = (path: string, body: unknown) => fetch(`${server.url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    try {
+      const created = await post('/api/threads', { projectPath: stateRoot, text: 'what is this?', images: [{ data: PNG.toString('base64'), name: 'a.png' }] })
+      expect(created.status).toBe(201)
+      const { data: meta } = await created.json() as { data: { id: string } }
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(server.store.events(meta.id).filter((e) => e.event.kind === 'image')).toHaveLength(1)
+      // A screenshot-sized message (several MB) fits; the 1 MB cap stays everywhere else.
+      const big = Buffer.concat([PNG, Buffer.alloc(3 * 1024 * 1024)]).toString('base64')
+      expect((await post(`/api/threads/${meta.id}/messages`, { text: 'and this', images: [{ data: big }] })).status).toBe(202)
+      expect((await post(`/api/threads/${meta.id}/messages`, { text: 'svg', images: [{ data: Buffer.from('<svg/>').toString('base64') }] })).status).toBe(400)
+      expect((await post(`/api/threads/${meta.id}/messages`, { text: 'many', images: Array.from({ length: 9 }, () => ({ data: PNG.toString('base64') })) })).status).toBe(400)
+      expect((await post(`/api/threads/${meta.id}/completed`, { completed: true, pad: 'x'.repeat(1_100_000) })).status).toBe(413)
+      expect(sent.map((s) => s.text)).toEqual(['what is this?', 'and this'])
+    } finally {
+      await server.close()
+    }
+  })
+})

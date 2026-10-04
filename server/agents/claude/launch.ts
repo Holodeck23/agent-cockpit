@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
-import type { AgentSession, ApprovalBehavior, EventSink, PendingApproval } from '../types.ts'
+import type { AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
+import { claudeUserMessage } from '../image-input.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
 import { probeClaude, validateClaudeArgs } from './capabilities.ts'
@@ -27,7 +28,7 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
   const controller = new AbortController()
   let session: AgentSession | undefined
   let ended = false
-  let pending: string | undefined
+  let pending: { readonly text: string; readonly images?: readonly OutgoingImage[] } | undefined
   let replays = false
   const finish = (error?: unknown, stopped = false) => {
     if (ended) return
@@ -53,13 +54,13 @@ export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps:
         prompt?.remove()
         throw error
       }
-      if (pending !== undefined) { session.send(pending); pending = undefined }
+      if (pending !== undefined) { session.send(pending.text, undefined, pending.images); pending = undefined }
     }).catch((error: unknown) => finish(error))
   return {
     agent: 'claude',
-    send(text, queuedId) {
-      if (session) session.send(text, queuedId)
-      else if (!ended && pending === undefined) pending = text
+    send(text, queuedId, images) {
+      if (session) session.send(text, queuedId, images)
+      else if (!ended && pending === undefined) pending = { text, ...(images ? { images } : {}) }
       else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
@@ -157,8 +158,8 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
 
   return {
     agent: 'claude',
-    send(text: string, queuedId?: string) {
-      write({ type: 'user', ...(queuedId ? { uuid: queuedId } : {}), message: { role: 'user', content: [{ type: 'text', text }] } })
+    send(text: string, queuedId?: string, images?: readonly OutgoingImage[]) {
+      write(claudeUserMessage(text, images, queuedId))
     },
     async cancelQueued(queuedId: string) {
       const response = await ask({ subtype: 'cancel_async_message', message_uuid: queuedId })

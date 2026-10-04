@@ -1,0 +1,34 @@
+#!/usr/bin/perl
+# Stand-in `agy` for proof:wave-6 (no provider usage). Antigravity 1.2.16 in manual mode reads only
+# its workspace (cwd plus each --add-dir), so this stand-in opens an image path named in the text
+# only when it is inside one of them, as the real CLI does, and says what it found:
+# "Opened 1 image in the workspace: 43930 bytes, real PNG." or "Refused <path>: outside the workspace".
+use strict; use warnings;
+use JSON::PP; use Cwd qw(getcwd);
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "1.2.16 (Cockpit wave 6 fixture)\n"; exit 0 }
+my @workspace = (getcwd());
+for (my $i = 0; $i < @ARGV; $i++) { push @workspace, $ARGV[$i + 1] if $ARGV[$i] eq '--add-dir' }
+my $session = '066a398f-db14-4c5f-abbb-1bf03f8120a7';
+my $json = JSON::PP->new->canonical;
+sub out { print $json->encode($_[0]), "\n" }
+out({ event => 'init', conversation_id => $session, init => { model => 'default', tools => ['view_file'], permission_mode => 'request-review' } });
+my $turn = 0;
+while (my $line = <STDIN>) {
+  my $message = eval { $json->decode($line) } or next;
+  next unless ($message->{event} // '') eq 'user';
+  $turn++;
+  my $content = $message->{message}{content} // '';
+  my @paths = $content =~ m{^- (/\S+\.(?:png|jpg|gif|webp))$}mg;
+  my @seen = map {
+    my $path = $_;
+    my $inside = grep { index($path, "$_/") == 0 } @workspace;
+    if (!$inside) { "Refused $path: outside the workspace" }
+    elsif (open(my $fh, '<:raw', $path)) { local $/; my $b = <$fh>; sprintf('%d bytes, %s', length($b), substr($b, 0, 8) eq "\x89PNG\r\n\x1a\n" ? 'real PNG' : 'not a PNG') }
+    else { "Could not open $path" }
+  } @paths;
+  my $reply = @paths ? sprintf('Opened %d image%s in the workspace: %s.', scalar @paths, @paths == 1 ? '' : 's', join('; ', @seen)) : 'ok';
+  out({ event => 'step_update', step_update => { conversation_id => $session, step_index => 0, state => 'DONE', step_type => 'user_input' } });
+  out({ event => 'step_update', step_update => { conversation_id => $session, step_index => 1, state => 'DONE', step_type => 'agent_response', text_delta => $reply } });
+  out({ event => 'result', result => { conversation_id => $session, status => 'SUCCESS', response => $reply, duration_seconds => 0.02, num_turns => $turn } });
+}
