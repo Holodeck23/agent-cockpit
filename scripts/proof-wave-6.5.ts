@@ -140,6 +140,7 @@ try {
   await page.locator('.thread-actions').getByRole('button', { name: 'More', exact: true }).click()
   const completeItem = page.getByRole('menuitem', { name: 'Mark as complete' })
   check('R4 the ⋯ menu offers no Mark as complete during a turn', await completeItem.isDisabled())
+  check('R4 and it looks unavailable', await completeItem.evaluate((el) => getComputedStyle(el).color !== getComputedStyle(el.nextElementSibling!).color))
   await shot(page, 'r4-menu-working')
   await page.keyboard.press('Escape')
   const refused = await page.evaluate(async (id) => (await fetch(`/api/threads/${id}/completed`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: true }) })).status, r4Thread)
@@ -148,7 +149,10 @@ try {
   await page.locator('.thread-actions').getByRole('button', { name: 'More', exact: true }).click()
   check('R4 after the turn it is offered', await until('enabled', () => completeItem.isEnabled()))
   await completeItem.click()
-  check('R4 and completes the conversation', await until('completed', async () => (await page.getByRole('button', { name: 'Reopen' }).count()) === 1))
+  check('R4 and completes the conversation', await until('completed', async () => page.evaluate(async (id) => {
+    const list = (await (await fetch('/api/threads')).json()) as { data: { meta: { id: string; completed: boolean } }[] }
+    return list.data.find((s) => s.meta.id === id)?.meta.completed === true
+  }, r4Thread)))
 
   // R6: moving the documents to a folder that refuses the copies changes nothing, and says which.
   const moved = await page.evaluate(async ([dir, folder]) => {
