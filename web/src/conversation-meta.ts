@@ -94,3 +94,15 @@ export const STATUS_LABEL: Record<ThreadStatus, string> = {
   done: 'Ready',
   error: 'Error',
 }
+
+/** What an empty conversation list says, per filter (A10). `back` offers "View all conversations"; `done` shows a check. */
+export function emptyListState(filter: ListFilter, { total, query }: { total: number; query: string }): { title: string; detail: string; back: boolean; done: boolean } {
+  if (total === 0) return { title: 'No conversations yet', detail: 'Start something with your agent.', back: false, done: false }
+  if (query.trim()) return { title: 'No matches', detail: `No conversation here mentions “${query.trim()}”.`, back: false, done: false }
+  switch (filter) {
+    case 'unread': return { title: 'All read', detail: 'No unread conversations.', back: true, done: true }
+    case 'needs': return { title: 'Nothing needs you', detail: 'Questions and approvals waiting for you show up here.', back: true, done: true }
+    case 'working': return { title: 'Nothing working', detail: 'Conversations with an agent at work show up here.', back: true, done: false }
+    default: return { title: 'Nothing here', detail: 'Completed conversations are hidden; tick Show completed to see them.', back: false, done: false }
+  }
+}

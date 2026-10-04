@@ -107,3 +107,15 @@ describe('status labels', () => {
     expect(STATUS_LABEL.done).toBe('Ready')
   })
 })
+
+describe('an empty conversation list says why (A10)', () => {
+  it('has its own words per filter, and offers a way back to everything', async () => {
+    const { emptyListState } = await import('../web/src/conversation-meta.ts')
+    expect(emptyListState('all', { total: 0, query: '' })).toEqual({ title: 'No conversations yet', detail: 'Start something with your agent.', back: false, done: false })
+    expect(emptyListState('unread', { total: 3, query: '' })).toEqual({ title: 'All read', detail: 'No unread conversations.', back: true, done: true })
+    expect(emptyListState('needs', { total: 3, query: '' })).toMatchObject({ title: 'Nothing needs you', back: true, done: true })
+    expect(emptyListState('working', { total: 3, query: '' })).toMatchObject({ title: 'Nothing working', back: true, done: false })
+    expect(emptyListState('working', { total: 3, query: 'zebra' })).toEqual({ title: 'No matches', detail: 'No conversation here mentions “zebra”.', back: false, done: false })
+    expect(emptyListState('all', { total: 3, query: '' })).toMatchObject({ title: 'Nothing here', back: false })
+  })
+})
