@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 import type { StoredEvent } from '../server/threads/types.ts'
-import { buildTranscript, describeTool, elapsed, friendlyToolName, toolDetail } from '../web/src/transcript.ts'
+import { buildTranscript, describeTool, elapsed, followUpSuggestions, friendlyToolName, toolDetail } from '../web/src/transcript.ts'
 
 const at = (second: number, event: NormalizedEvent): StoredEvent => ({
   ts: new Date(Date.UTC(2026, 8, 28, 10, 0, second)).toISOString(),
@@ -250,5 +250,27 @@ describe('messages waiting in the agent queue (J1)', () => {
       at(5, { kind: 'user_taken', text: 'keep me', id: 'u1' }),
     ], 'claude')
     expect(taken[0]).not.toHaveProperty('queuedId')
+  })
+})
+
+describe('follow-up suggestions (J2)', () => {
+  const turn: StoredEvent[] = [
+    at(1, { kind: 'user_text', text: 'fix the bug' }),
+    at(2, { kind: 'assistant_text', messageId: 'm1', text: 'Fixed.' }),
+    at(3, { kind: 'result', ok: true }),
+  ]
+  it('offers what the agent suggested after its last turn, once, in order', () => {
+    expect(followUpSuggestions([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' }),
+      at(5, { kind: 'suggestion', text: 'Commit it' }), at(6, { kind: 'suggestion', text: 'Run the tests' })])).toEqual(['Run the tests', 'Commit it'])
+  })
+  it('drops them once you send again', () => {
+    expect(followUpSuggestions([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' }), at(5, { kind: 'user_text', text: 'thanks' })])).toEqual([])
+  })
+  it('offers at most three', () => {
+    const many = ['a', 'b', 'c', 'd'].map((text, i) => at(4 + i, { kind: 'suggestion', text }))
+    expect(followUpSuggestions([...turn, ...many])).toEqual(['b', 'c', 'd'])
+  })
+  it('shows nothing in the transcript itself', () => {
+    expect(buildTranscript([...turn, at(4, { kind: 'suggestion', text: 'Run the tests' })], 'claude').some((item) => 'text' in item && item.text === 'Run the tests')).toBe(false)
   })
 })

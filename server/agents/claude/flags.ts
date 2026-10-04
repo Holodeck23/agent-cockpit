@@ -53,7 +53,7 @@ export type ClaudeLaunchOptions = z.output<typeof claudeLaunchSchema>
 
 export function buildClaudeArgs(
   input: ClaudeLaunchInput,
-  capabilities: { readonly permissionPrompts: boolean; readonly replayUserMessages?: boolean } = { permissionPrompts: true },
+  capabilities: { readonly permissionPrompts: boolean; readonly replayUserMessages?: boolean; readonly promptSuggestions?: boolean } = { permissionPrompts: true },
 ): string[] {
   const o = claudeLaunchSchema.parse(input)
   const settings = o.useHooks ? {} : { disableAllHooks: true }
@@ -64,6 +64,7 @@ export function buildClaudeArgs(
     '--output-format', 'stream-json',
     '--include-partial-messages',
     ...(capabilities.replayUserMessages ? ['--replay-user-messages'] : []),
+    ...(capabilities.promptSuggestions ? ['--prompt-suggestions', 'true'] : []),
     '--permission-mode', o.permissionMode,
     ...(capabilities.permissionPrompts ? ['--permission-prompts', 'host'] : []),
     '--permission-prompt-tool', 'stdio',

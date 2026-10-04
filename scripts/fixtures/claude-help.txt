@@ -4,6 +4,7 @@ Usage: claude [options]
   --input-format <format> (choices: "text", "stream-json")
   --output-format <format> (choices: "text", "json", "stream-json")
   --include-partial-messages
+  --prompt-suggestions [value]          Enable prompt suggestions. (choices: "true", "false", "1", "0", "yes", "no", "on", "off")
   --replay-user-messages
   --permission-mode <mode> (choices: "manual", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions")
   --permission-prompts <target> (choices: "host", "none")

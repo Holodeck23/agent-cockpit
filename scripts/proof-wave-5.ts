@@ -150,6 +150,21 @@ try {
     (await compaction.last().textContent())?.includes('Summarised the conversation to make room · 34k → 2.8k tokens') === true))
   check('J3 and the header goes back to the turn state', await until('done', async () => (await headStatus(page).textContent())?.includes('Compacting') === false))
 
+  // J2: the agent's suggested next prompt shows as a chip once the turn ends; a click puts it in
+  // the box to edit, and sending retires it. The stand-in suggests only when Cockpit asked for it.
+  await send(page, 'suggest')
+  const chip = page.locator('.follow-up')
+  check('J2 the suggestion shows as a chip after the turn', await until('chip', async () => (await chip.textContent()) === 'Run the parser tests'))
+  await shot(page, 'j2-suggestion')
+  await chip.click()
+  check('J2 a click puts it in the message box to edit', await messageBox(page).inputValue() === 'Run the parser tests'
+    && await messageBox(page).evaluate((el) => el === document.activeElement))
+  await messageBox(page).press('End')
+  await messageBox(page).pressSequentially(' again')
+  await messageBox(page).press('Enter')
+  check('J2 the edited text is what gets sent', await until('edited', async () => (await page.locator('.bubble').filter({ hasText: /^Run the parser tests again$/ }).count()) === 1))
+  check('J2 sending retires the chip', await until('retired', async () => (await chip.count()) === 0))
+
   // J5: switching agents hands over the whole conversation. The opening request alone is past
   // the old 24k cap, which used to cut it; the Codex stand-in reports what it was given.
   await startConversation(page, `J5-OPENING port the parser. ${'Context line for the handoff. '.repeat(1_000)}`)

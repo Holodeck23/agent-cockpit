@@ -190,6 +190,16 @@ export function elapsed(fromIso: string, toMs: number): string {
 const RESULT_NOTE = (ok: boolean, stopped: boolean | undefined, durationMs: number | undefined): string =>
   `${ok ? 'Turn finished' : stopped ? 'Stopped' : 'Turn failed'}${durationMs ? ` · ${(durationMs / 1000).toFixed(1)}s` : ''}`
 
+/**
+ * What the agent suggested you might ask next (J2), newest three, from after your last message.
+ * Sending anything retires them. Claude emits one per turn when its server enables it.
+ */
+export function followUpSuggestions(events: readonly StoredEvent[]): string[] {
+  const since = events.findLastIndex((e) => e.event.kind === 'user_text') + 1
+  const texts = events.slice(since).flatMap(({ event }) => (event.kind === 'suggestion' ? [event.text] : []))
+  return [...new Set(texts)].slice(-3)
+}
+
 export function buildTranscript(events: readonly StoredEvent[], currentAgent: AgentId): TranscriptItem[] {
   const firstSwitch = events.find((e) => e.event.kind === 'agent_switch')?.event
   let agent: AgentId = firstSwitch?.kind === 'agent_switch' ? firstSwitch.from : currentAgent

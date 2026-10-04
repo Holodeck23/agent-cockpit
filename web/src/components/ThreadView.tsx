@@ -5,7 +5,7 @@ import { compactingNow, openApprovals, runningHelpers } from '../../../server/th
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
 import { STATUS_LABEL } from '../conversation-meta.ts'
-import { buildTranscript } from '../transcript.ts'
+import { buildTranscript, followUpSuggestions } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
@@ -46,6 +46,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const turn = useMemo(() => latestTurn(events), [events])
   const now = useNow(shown === 'working')
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
+  // J2: a click puts the text in the box to edit; sending uses whatever the picker says then.
+  const followUps = useMemo(() => followUpSuggestions(events), [events])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
   const prefs = useActivityPrefs()
   const showActivity = !phone && prefs.open
@@ -60,7 +62,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
   const [finding, setFinding] = useState(false)
   // A message taken back from the agent's queue returns to the draft (J1).
-  const [restore, setRestore] = useState<{ readonly text: string; readonly restore: true }>()
+  const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true }>()
   useEffect(() => { setFinding(false); setRestore(undefined) }, [meta.id])
   useEffect(() => {
     if (phone) return
@@ -187,6 +189,16 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           </button>
         ) : null}
       </div>
+      {!running && !meta.completed && followUps.length > 0 ? (
+        <div className="follow-ups" role="group" aria-label="Suggested follow-ups">
+          <div className="follow-ups-row">
+            {followUps.map((text) => (
+              <button key={text} type="button" className="follow-up" title="Put this in the message box to edit, then send"
+                onClick={() => setRestore({ text })}>{text}</button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <Composer
         initialDraft={initialDraft}
         onDraftLoaded={onDraftLoaded}

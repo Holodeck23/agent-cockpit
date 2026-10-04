@@ -44,7 +44,7 @@ export function projectInstructionsBlock(text: string): string {
 
 /** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
 /** Events that inform without being activity: they never reorder the list or mark it unread. */
-const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed'])
+const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion'])
 
 export const instructionsFor = (req: LaunchRequest): string | undefined =>
   [

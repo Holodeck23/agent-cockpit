@@ -6,6 +6,7 @@
 #   "delegate"  starts a helper that reads a file and reports back on its own 3 s later;
 #   "long"      starts a helper that works until you press Stop;
 #   "compact"   compacts for 2 s, then replies;
+#   "suggest"   replies, then (only when launched with --prompt-suggestions) suggests a next prompt (J2);
 #   "flaky"     fails with a usage-limit result the first time, then replies "Recovered.";
 #   "work"      works for 12 s; messages sent meanwhile wait in a queue (they carry a uuid), can be
 #               taken back with cancel_async_message, and run after the turn or after a Stop;
@@ -13,8 +14,10 @@
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 5 fixture)"; exit 0; }
 session=""
 previous=""
+suggests=""
 for arg in "$@"; do
   case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  [ "$arg" = "--prompt-suggestions" ] && suggests=yes
   previous="$arg"
 done
 say() { printf '{"type":"assistant","message":{"id":"w5-%s","role":"assistant","content":[{"type":"text","text":"%s"}]},"parent_tool_use_id":null}\n' "$1" "$2"; }
@@ -125,6 +128,12 @@ while IFS= read -r line; do
       printf '{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual","pre_tokens":34052,"post_tokens":2775}}\n'
       say "$turn" "Room made."
       done_turn
+      ;;
+    *'"text":"suggest'*)
+      say "$turn" "The parser is ported."
+      done_turn
+      # Claude sends its prediction after the turn's result (2.1.289 binary: type prompt_suggestion).
+      [ -n "$suggests" ] && printf '{"type":"prompt_suggestion","suggestion":"Run the parser tests","uuid":"w5-s%s","session_id":"%s"}\n' "$turn" "$session"
       ;;
     *) say "$turn" "ok"; done_turn ;;
   esac

@@ -148,6 +148,13 @@
 .note-error { color: var(--danger); }
 
 /* ---------- composer ---------- */
+.follow-ups { padding: 6px 28px 0; }
+.follow-ups-row { display: flex; flex-wrap: wrap; gap: 8px; max-width: 880px; margin: 0 auto; }
+.follow-up {
+  max-width: 100%; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  color: var(--body); font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.follow-up:hover { border-color: color-mix(in srgb, var(--link) 45%, var(--border)); box-shadow: 0 0 0 3px var(--focus-ring); }
 .composer { padding: 6px 28px 20px; }
 .composer-card {
   position: relative; max-width: 880px; margin: 0 auto; border: 1px solid var(--border); border-radius: var(--r-lg);

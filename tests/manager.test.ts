@@ -425,6 +425,19 @@ describe('session lifecycle regressions', () => {
     await manager.shutdown()
   })
 
+  it('keeps a follow-up suggestion without counting it as activity (J2)', async () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'fix the bug' })
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'Fixed.' })
+    agent.emit({ kind: 'result', ok: true })
+    const before = manager.summaries()[0]!.lastActivityAt
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    agent.emit({ kind: 'suggestion', text: 'Run the tests' })
+    expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'suggestion', text: 'Run the tests' })
+    expect(manager.summaries()[0]!.lastActivityAt).toBe(before)
+    await manager.shutdown()
+  })
+
   it('changing settings for the same agent keeps its session and notes the change; another agent is refused', async () => {
     const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })

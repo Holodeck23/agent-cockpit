@@ -5,6 +5,8 @@ export interface ClaudeCapabilities {
   readonly permissionPrompts: boolean
   /** --replay-user-messages: Claude says when it takes each message, so mid-turn messages can wait visibly (J1). */
   readonly replayUserMessages: boolean
+  /** --prompt-suggestions: a predicted next prompt after each turn (J2). Server-gated: an account may get none. */
+  readonly promptSuggestions: boolean
   /** --append-system-prompt-file (J5). 2.1.289 never declares it; it names it only in --bare's prose. */
   readonly appendSystemPromptFile: boolean
   readonly options: ReadonlyMap<string, string>
@@ -26,6 +28,7 @@ export function parseClaudeHelp(help: string): ClaudeCapabilities {
   return {
     permissionPrompts: options.has('--permission-prompts'),
     replayUserMessages: options.has('--replay-user-messages'),
+    promptSuggestions: options.has('--prompt-suggestions'),
     appendSystemPromptFile: options.has('--append-system-prompt-file') || help.includes('--append-system-prompt[-file]'),
     options,
   }

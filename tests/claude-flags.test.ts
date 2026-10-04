@@ -51,6 +51,14 @@ describe('the appended system prompt (J5)', () => {
   })
 })
 
+describe('follow-up suggestions (J2)', () => {
+  it('asks for them only where the CLI offers it', () => {
+    const on = buildClaudeArgs(base, { permissionPrompts: true, promptSuggestions: true })
+    expect(on[on.indexOf('--prompt-suggestions') + 1]).toBe('true')
+    expect(buildClaudeArgs(base, { permissionPrompts: true })).not.toContain('--prompt-suggestions')
+  })
+})
+
 describe('effort levels per agent (C9)', async () => {
   const { effortsFor, effortForClaude } = await import('../server/agents/claude/flags.ts')
   it('offers Ultra for Codex only, and gives agents without it their highest level', () => {

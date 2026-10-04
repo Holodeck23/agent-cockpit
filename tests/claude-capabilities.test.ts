@@ -59,6 +59,11 @@ describe('Claude compatibility', () => {
     expect(() => validateClaudeArgs(args, parseClaudeHelp(help.replace('"max"', '"medium"')))).toThrow(/--effort max/)
     expect(() => validateClaudeArgs(args, parseClaudeHelp(help.replace('"manual"', '"default"')))).toThrow(/--permission-mode manual/)
   })
+  it('reads prompt suggestions from the declared option (J2)', () => {
+    expect(parseClaudeHelp(help).promptSuggestions).toBe(true)
+    expect(parseClaudeHelp(help.replace(/^  --prompt-suggestions.*\n/m, '')).promptSuggestions).toBe(false)
+    validateClaudeArgs(buildClaudeArgs({ cwd: '/p' }, parseClaudeHelp(help)), parseClaudeHelp(help))
+  })
   it('accepts the prompt file only where the CLI names it (J5)', () => {
     const args = buildClaudeArgs({ cwd: '/p', appendSystemPromptFile: '/tmp/p.md' })
     expect(parseClaudeHelp(fileHelp).appendSystemPromptFile).toBe(true)
