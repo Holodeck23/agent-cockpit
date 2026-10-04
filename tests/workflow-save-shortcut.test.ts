@@ -6,6 +6,10 @@ import { WorkflowEditor } from '../web/src/components/Workflows.tsx'
 import type { WorkflowInput } from '../web/src/api.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+// jsdom does no layout; ProseMirror measures the selection to scroll it into view.
+const noRect = (): DOMRect => ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) })
+Range.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList
+Range.prototype.getBoundingClientRect = noRect
 const wait = (ms: number) => act(async () => { await new Promise((r) => setTimeout(r, ms)) })
 async function until(test: () => boolean, ms = 5000): Promise<void> {
   const end = Date.now() + ms
