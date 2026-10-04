@@ -2,8 +2,10 @@
 # Stand-in `codex app-server` for proof:wave-6 (no provider usage). I2: each localImage item in
 # turn/start is opened from its path the way Codex 0.147's client does, and the turn is answered
 # with what was there: "Got 1 local image: 43930 bytes, real PNG." ("ok" without images).
+# G4: "show" looks at Cockpit's icon (an imageView item naming the file); "draw" makes an image
+# (an imageGeneration item whose result is base64, with no saved file).
 use strict; use warnings;
-use JSON::PP;
+use JSON::PP; use MIME::Base64; use File::Basename; use Cwd qw(abs_path);
 $| = 1;
 if (@ARGV && $ARGV[0] eq '--version') { print "codex-cli 0.0.0 (Cockpit wave 6 fixture)\n"; exit 0 }
 my $json = JSON::PP->new->canonical;
@@ -28,11 +30,20 @@ while (my $line = <STDIN>) {
     $turn++;
     my @input = @{ $message->{params}{input} // [] };
     my @local = grep { $_->{type} eq 'localImage' } @input;
-    my $text = @local
+    my ($said) = map { $_->{text} } grep { $_->{type} eq 'text' } @input;
+    my $icon = abs_path(dirname($0) . '/../../../build/icon-1024.png');
+    my @shown;
+    if (($said // '') eq 'show') { @shown = ({ type => 'imageView', id => "view-$turn", path => $icon }) }
+    if (($said // '') eq 'draw') {
+      open(my $fh, '<:raw', $icon) or die; local $/; my $bytes = <$fh>;
+      @shown = ({ type => 'imageGeneration', id => "gen-$turn", status => 'completed', revisedPrompt => 'The Cockpit icon', result => encode_base64($bytes, '') });
+    }
+    my $text = @shown ? ($said eq 'show' ? 'I looked at the icon.' : 'I drew the icon.') : @local
       ? sprintf('Got %d local image%s: %s.', scalar @local, @local == 1 ? '' : 's', join('; ', map { look($_->{path}) } @local))
       : 'ok';
     reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
     reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+    reply({ method => 'item/completed', params => { threadId => $thread, item => $_ } }) for @shown;
     reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => $text } } });
     reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'completed' } } });
   }

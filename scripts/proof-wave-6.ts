@@ -126,17 +126,42 @@ try {
     (await page.locator('.bubble.user .conversation-image').count()) === 1 && (await chips.count()) === 0))
   await shot(page, 'i1-sent')
 
+  // G4: images the agent produces show in the conversation, stored as files, never in the log.
+  const agentImages = page.locator('.image-item.from-agent .conversation-image')
+  const openNew = async (agent: 'claude' | 'codex', text: string, title?: string): Promise<string> => {
+    const created = await apiPost(page, '/api/threads', { projectPath: project, text, settings: { agent }, ...(title ? { title } : {}) }) as { data: { id: string } }
+    await page.evaluate((id) => { location.search = `?thread=${id}` }, created.data.id)
+    return created.data.id
+  }
+  const claudeShow = await openNew('claude', 'show')
+  check('G4 an image in a Claude tool result shows in the conversation', await until('claude image', async () =>
+    (await agentImages.count()) === 1 && await loaded(page, '.image-item.from-agent img') && (await reply('Here it is.').count()) === 1))
+  await shot(page, 'g4-claude')
+  const LONG = 'G4 Codex shows and draws the Cockpit icon, with a title long enough to prove the narrow window still fits'
+  const codexShow = await openNew('codex', 'show', LONG)
+  check('G4 an image Codex looked at (imageView) shows', await until('codex view', async () =>
+    (await agentImages.count()) === 1 && (await agentImages.first().getAttribute('title')) === 'icon-1024.png'))
+  await messageBox(page).fill('draw')
+  await messageBox(page).press('Enter')
+  check('G4 an image Codex made (imageGeneration) shows, named by its prompt', await until('codex draw', async () =>
+    (await agentImages.count()) === 2 && (await agentImages.nth(1).getAttribute('title')) === 'The Cockpit icon' && await loaded(page, '.image-item.from-agent img')))
+  await shot(page, 'g4-codex')
+  const logs = [claudeShow, codexShow].map((id) => readFileSync(join(store.root, 'threads', id, 'events.jsonl'), 'utf8'))
+  check('G4 the event log holds the image as a file name, never its bytes', logs.every((log) => log.includes('"kind":"image"') && !log.includes('iVBORw0KGgo')))
+
   await setTheme(page, 'Dark')
   await shot(page, 'thread-dark')
   await setTheme(page, 'Light')
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(980, 640))
   await page.waitForTimeout(400)
   await shot(page, 'thread-narrow')
+  // On the longest title (wave 5's overflow showed only there).
   const fits = await page.evaluate(() => {
     const pane = document.querySelector('.thread')!
-    return pane.scrollWidth <= pane.clientWidth
+    const menu = [...pane.querySelectorAll('.thread-head button')].at(-1)!.getBoundingClientRect()
+    return pane.scrollWidth <= pane.clientWidth && menu.right <= window.innerWidth
   })
-  check('narrow: the conversation with images fits the window', fits)
+  check('narrow: a long title and its images fit the window', fits)
 } finally {
   await app.close()
 }

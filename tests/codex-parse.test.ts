@@ -120,3 +120,18 @@ describe('parseCodexNotification on a real sub-agent and compaction session (cod
       .toEqual([{ kind: 'subagent', id: 'c1', phase: 'finished', status: 'failed' }])
   })
 })
+
+describe('images Codex shows (G4)', () => {
+  it('imageView names the file the agent looked at', () => {
+    expect(parseCodexNotification('item/completed', { item: { type: 'imageView', id: 'i1', path: '/p/shot.png' } }))
+      .toEqual([{ kind: 'image_data', source: { path: '/p/shot.png' } }])
+  })
+  it('imageGeneration gives its saved file, or else its base64 result; a failed one gives nothing', () => {
+    expect(parseCodexNotification('item/completed', { item: { type: 'imageGeneration', id: 'g1', status: 'completed', revisedPrompt: null, result: 'iVBORw0KGgo=', savedPath: '/home/.codex/generated/g1.png' } }))
+      .toEqual([{ kind: 'image_data', source: { path: '/home/.codex/generated/g1.png' } }])
+    expect(parseCodexNotification('item/completed', { item: { type: 'imageGeneration', id: 'g2', status: 'completed', revisedPrompt: 'a cat', result: 'iVBORw0KGgo=' } }))
+      .toEqual([{ kind: 'image_data', source: { data: 'iVBORw0KGgo=' }, name: 'a cat' }])
+    expect(parseCodexNotification('item/completed', { item: { type: 'imageGeneration', id: 'g3', status: 'failed', revisedPrompt: null, result: '' } })).toEqual([])
+    expect(parseCodexNotification('item/started', { item: { type: 'imageView', id: 'i2', path: '/p/x.png' } })).toEqual([])
+  })
+})
