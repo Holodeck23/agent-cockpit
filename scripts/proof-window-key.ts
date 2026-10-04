@@ -135,8 +135,9 @@ try {
   const devFrame = page.frames().find((f) => f.url() === devUrl)
   const settled = devFrame ? await until('probe image settled', () => devFrame.evaluate(() => (document.getElementById('probe') as HTMLImageElement).complete)) : false
   const pixels = settled && devFrame ? await devFrame.evaluate(() => (document.getElementById('probe') as HTMLImageElement).naturalWidth) : -1
-  check(control ? 'CONTROL (build without the key): a preview page shows a conversation image' : 'a preview page cannot show a conversation image',
-    control ? pixels > 0 : pixels === 0, `naturalWidth ${pixels}`)
+  // Not part of the hole: the image route's same-origin resource policy already stopped this
+  // before the key, so it holds on both builds (a guard, not a control).
+  check('a preview page cannot show a conversation image', pixels === 0, `naturalWidth ${pixels}`)
   check(label('an API read by a preview page'), blocked(statuses.get('iframe-nocors')), `status ${statuses.get('iframe-nocors')}`)
   await shot(page, 'preview-other-port')
   await openPreview(`http://127.0.0.1:${cockpitPort}/?probe=iframe-self`)
