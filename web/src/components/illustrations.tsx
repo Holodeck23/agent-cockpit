@@ -1,16 +1,15 @@
-// Our own spot illustrations: flat shapes in the token palette, no outlines.
+// Our own spot illustrations: a flight path from a start dot through a waypoint to a flag,
+// flat shapes in the token palette.
 
-/** Two stacked conversation cards with the mark's bars on the front one. */
+/** The conversation list's header mark: a short flight path ending at a flag. */
 export function ConversationsArt({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 56" aria-hidden>
-      <rect x="18" y="4" width="40" height="30" rx="8" fill="var(--p-pink)" opacity="0.28" transform="rotate(8 38 19)" />
-      <rect x="6" y="16" width="42" height="30" rx="8" fill="var(--panel)" stroke="var(--border)" strokeWidth="1.5" />
-      <path d="M16 46v7l7-7" fill="var(--panel)" stroke="var(--border)" strokeWidth="1.5" strokeLinejoin="round" />
-      <rect x="15" y="31" width="4" height="8" rx="2" fill="var(--blue)" />
-      <rect x="22" y="25" width="4" height="14" rx="2" fill="var(--orange)" />
-      <rect x="29" y="28" width="4" height="11" rx="2" fill="var(--p-pink)" />
-      <path d="M52 6v6M49 9h6" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10 46C22 46 21 28 33 28S46 14 52 14" fill="none" stroke="var(--muted)" strokeWidth="2" strokeDasharray="1 4.5" strokeLinecap="round" />
+      <circle cx="10" cy="46" r="4.5" fill="var(--blue)" />
+      <circle cx="33" cy="28" r="3" fill="var(--panel)" stroke="var(--orange)" strokeWidth="2" />
+      <path d="M52 22V6" stroke="var(--strong)" strokeWidth="2" strokeLinecap="round" />
+      <path d="M53 6h9l-2.5 3.5L62 13h-9z" fill="var(--p-pink)" />
     </svg>
   )
 }
@@ -19,14 +18,11 @@ export function ConversationsArt({ className }: { className?: string }) {
 export function StartArt({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 160 120" aria-hidden>
-      <rect x="62" y="10" width="78" height="56" rx="14" fill="var(--p-pink)" opacity="0.3" transform="rotate(7 101 38)" />
-      <rect x="20" y="34" width="92" height="62" rx="14" fill="var(--panel)" stroke="var(--border)" strokeWidth="2" />
-      <path d="M40 96v16l14-16" fill="var(--panel)" stroke="var(--border)" strokeWidth="2" strokeLinejoin="round" />
-      <rect x="38" y="64" width="9" height="18" rx="4.5" fill="var(--blue)" />
-      <rect x="54" y="50" width="9" height="32" rx="4.5" fill="var(--orange)" />
-      <rect x="70" y="58" width="9" height="24" rx="4.5" fill="var(--p-pink)" />
-      <path d="M26 14v12M20 20h12" stroke="var(--blue)" strokeWidth="3.5" strokeLinecap="round" />
-      <circle cx="146" cy="84" r="4" fill="var(--orange)" opacity="0.7" />
+      <path d="M28 96C52 96 50 58 80 58S112 26 132 26" fill="none" stroke="var(--muted)" strokeWidth="3" strokeDasharray="2 8" strokeLinecap="round" />
+      <circle cx="28" cy="96" r="7" fill="var(--blue)" />
+      <circle cx="80" cy="58" r="5" fill="var(--panel)" stroke="var(--orange)" strokeWidth="3" />
+      <path d="M132 40V12" stroke="var(--strong)" strokeWidth="3" strokeLinecap="round" />
+      <path d="M133 12h18l-5 6 5 6h-18z" fill="var(--p-pink)" />
     </svg>
   )
 }

@@ -68,14 +68,14 @@ const pseudo = (page: Page, which: '::before' | '::after') => card(page).evaluat
 }, which)
 const textareaAnimations = (page: Page) => messageBox(page).evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName))
 
-/** Placeholder frames for one full sweep period: some must show the red band, some must not. */
+/** Placeholder frames for one full 9 s cycle: some must show the red band, some must not. */
 async function sweepFrames(page: Page, label: string): Promise<{ red: number; plain: number }> {
   const ta = await box(page, '.composer textarea')
   const width = await messageBox(page).evaluate((el) => parseFloat(getComputedStyle(el, '::placeholder').width) || 200)
   let red = 0
   let plain = 0
   let best: { strong: number; png: Buffer } = { strong: 0, png: Buffer.alloc(0) }
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 36; i++) {
     const png = await page.screenshot({ clip: { x: ta.x, y: ta.y, width: Math.min(ta.width, width + 40), height: Math.min(ta.height, 44) } })
     const { strong } = await redness(page, png)
     if (strong > 4) red++
@@ -118,6 +118,12 @@ async function startWork(page: Page): Promise<void> {
   await messageBox(page).press('Enter')
   await page.locator('.thread-head h1').waitFor()
 }
+/** Cockpit's own start and list art (the flight path), not the stacked, tilted cards it replaced. */
+const ownArt = (page: Page) => page.evaluate(() => [...document.querySelectorAll('svg.start-art, svg.list-art')].map((svg) => ({
+  cls: svg.getAttribute('class'),
+  tilted: Boolean(svg.querySelector('[transform*="rotate"]')),
+  route: Boolean(svg.querySelector('path[stroke-dasharray]')),
+})))
 const isWorkingCard = (page: Page) => card(page).evaluate((el) => el.classList.contains('working'))
 
 const page = await app.firstWindow()
@@ -138,6 +144,8 @@ try {
   check('POL-01 idle: a red pass crosses the placeholder, with plain frames between passes', darkIdle.red >= 1 && darkIdle.plain >= 1, `red ${darkIdle.red}, plain ${darkIdle.plain}`)
   const darkContrast = await placeholderContrast(page)
   check('POL-01 dark: the placeholder stays WCAG AA along the whole sweep', darkContrast >= 4.5, darkContrast.toFixed(2))
+  const art = await ownArt(page)
+  check('start and list art are the flight path, not the replaced cards', art.length === 2 && art.every((a) => !a.tilted && a.route), JSON.stringify(art))
   await shot(page, 'dark-idle')
 
   await startWork(page)

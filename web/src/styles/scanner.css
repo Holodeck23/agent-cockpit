@@ -1,5 +1,5 @@
 /* D12 scanner signature: a red light sweeping back and forth, the way KITT's does.
-   Idle: one slow pass across the composer's placeholder every few seconds.
+   Idle: a slow pass across the composer's placeholder, a fainter one a few seconds later, then a rest.
    A turn running (.composer-card.working): a dotted LED line with a bright core travels the
    composer's bottom edge, and stops when the turn ends.
    Light theme: a thin solid line, no glow. Reduce motion: the plain placeholder, and a still line
@@ -7,6 +7,7 @@
    Colours: --scanner-* in tokens.css. */
 
 @property --scanner-sweep { syntax: '<percentage>'; inherits: true; initial-value: 100%; }
+@property --scanner-band { syntax: '<color>'; inherits: true; initial-value: transparent; }
 
 /* ---------- working: the edge line ---------- */
 /* The LED line sits over the bottom border, inset by the corner radius so it never runs off the
@@ -28,15 +29,15 @@
 @media (prefers-reduced-motion: no-preference) {
   /* ---------- idle: the placeholder sweep ---------- */
   /* The band lives in a background three times the text's width; 100% → 0% carries it left to
-     right, alternate brings it back, and the held stretch at each end is the pause between passes.
+     right. It jumps back while out of sight, so every pass runs the same way.
      fit-content keeps the placeholder box as wide as its words, so the pass crosses the text. */
   .composer-card:not(.working) textarea:placeholder-shown:not(:disabled) {
-    animation: scanner-placeholder 4.5s ease-in-out infinite alternate;
+    animation: scanner-placeholder 9s ease-in-out infinite;
   }
   .composer-card:not(.working) textarea:not(:disabled)::placeholder {
     width: fit-content;
     color: transparent;
-    background: linear-gradient(90deg, var(--muted) 0 42%, var(--scanner-ink) 50%, var(--muted) 58% 100%) var(--scanner-sweep) 0 / 300% 100% no-repeat;
+    background: linear-gradient(90deg, var(--muted) 0 42%, var(--scanner-band) 50%, var(--muted) 58% 100%) var(--scanner-sweep) 0 / 300% 100% no-repeat;
     -webkit-background-clip: text;
     background-clip: text;
   }
@@ -62,9 +63,12 @@
   }
 }
 
+/* A full pass, a pause, a fainter pass (the band mixed halfway back to the placeholder grey), a rest. */
 @keyframes scanner-placeholder {
-  0%, 30% { --scanner-sweep: 100%; }
-  70%, 100% { --scanner-sweep: 0%; }
+  0%, 8% { --scanner-sweep: 100%; --scanner-band: var(--scanner-ink); }
+  30% { --scanner-sweep: 0%; --scanner-band: var(--scanner-ink); }
+  30.1%, 55% { --scanner-sweep: 100%; --scanner-band: color-mix(in srgb, var(--scanner-ink) 45%, var(--muted)); }
+  77%, 100% { --scanner-sweep: 0%; --scanner-band: color-mix(in srgb, var(--scanner-ink) 45%, var(--muted)); }
 }
 @keyframes scanner-edge {
   from { background-position: 0% 0, 0 0; }
