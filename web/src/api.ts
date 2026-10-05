@@ -3,6 +3,8 @@ import type { Preset } from '../../server/presets/store.ts'
 import type { z } from 'zod'
 export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
+import type { BaseFile, Changes, FileDiff, NoRepository } from '../../server/git/changes.ts'
+import type { RunChanges } from '../../server/runs/run-changes.ts'
 import type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 import type { MemoryEntry } from '../../server/memory/store.ts'
 import type { SessionSummary } from '../../server/import/sessions.ts'
@@ -80,6 +82,13 @@ export const api = {
   /** A commit named in a reply: its full hash and web page, or a 404 when it isn't a commit here. */
   gitCommit: (projectPath: string, hash: string) => request<{ hash: string; url?: string }>(`/api/git/commit?${new URLSearchParams({ projectPath, hash })}`),
   pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
+  /** J4: the workspace's uncommitted changes against HEAD (or an empty base), and one file's bounded diff. */
+  gitChanges: (projectPath: string) => request<Changes | NoRepository>(`/api/git/changes?${new URLSearchParams({ projectPath })}`),
+  gitDiff: (projectPath: string, path: string) => request<FileDiff>(`/api/git/diff?${new URLSearchParams({ projectPath, path })}`),
+  /** The base revision's copy of a changed path: the read-only view of a left-side line. */
+  gitBase: (projectPath: string, path: string) => request<BaseFile>(`/api/git/base?${new URLSearchParams({ projectPath, path })}`),
+  /** One run's before/after observations, compared (W7-05). */
+  gitRun: (threadId: string, runId: string) => request<RunChanges>(`/api/git/run?${new URLSearchParams({ threadId, runId })}`),
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   /** A "documents:" path reads from the project's documents; the result keeps the same naming. */
   readFile: async (projectPath: string, tabPath: string) => {
@@ -194,6 +203,8 @@ export function subscribe({ onUpdate, onProcess, onOpen, onRemote }: StreamHandl
 export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
+export type { BaseFile, ChangedFile, Changes, DiffLine, FileDiff, NoRepository } from '../../server/git/changes.ts'
+export type { RunChanges } from '../../server/runs/run-changes.ts'
 export type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 export type { MemoryEntry } from '../../server/memory/store.ts'
 /** A session the CLI ran in this project, as the import window lists it. */

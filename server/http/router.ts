@@ -27,6 +27,7 @@ import type { IncomingImage } from '../threads/manager.ts'
 import { hasWindowKey, isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
+import type { RunObservationStore } from '../runs/observations.ts'
 import type { PresetStore } from '../presets/store.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
@@ -115,6 +116,8 @@ export interface ApiDeps {
   readonly presets?: PresetStore
   /** Where the CLIs keep their sessions (~), for Import conversations; tests point it elsewhere. */
   readonly importHome?: string
+  /** Each run's before/after workspace observations (W7-05). */
+  readonly runs?: RunObservationStore
 }
 
 /**
@@ -135,7 +138,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -386,7 +389,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         return true
       }
       if (parts[1] === 'git') {
-        await handleGitRoute(req, res, url, parts, { projects, manager }, viaPhone)
+        await handleGitRoute(req, res, url, parts, { projects, manager, ...(runs ? { runs } : {}) }, viaPhone)
         return true
       }
       if (parts[1] === 'processes') {

@@ -33,6 +33,8 @@ interface TranscriptViewProps {
   onRetry?: (text: string, images: readonly { file: string; name?: string }[]) => void
   /** Present while the last turn's question or blocker still waits on you. */
   onDismiss?: () => void
+  /** Opens Changes for a finished run (desktop only). */
+  onOpenChanges?: (runId: string) => void
 }
 
 /** 34052 → "34k"; small counts stay exact. */
@@ -63,7 +65,7 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
-export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss }: TranscriptViewProps) {
+export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss, onOpenChanges }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
@@ -259,6 +261,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
               <div key={item.key} className={`note meta-line${item.tone === 'error' ? ' note-error' : ''}`}>
                 {item.text}
                 {item.tone === 'error' ? <TroubleshootingLink text={item.text} /> : null}
+                {item.runId && onOpenChanges ? <button type="button" className="note-action" onClick={() => onOpenChanges(item.runId!)}>Changes</button> : null}
               </div>
             )
           default:

@@ -37,12 +37,14 @@ export function redact(text: string): string {
   return text.replace(/(\w+:\/\/)[^/\s@]+@/g, '$1***@')
 }
 
-export function run(cwd: string, args: readonly string[], timeout = READ_TIMEOUT_MS): Promise<{ stdout: string; stderr: string }> {
+/** `encoding: 'buffer'` returns stdout as a Buffer (typed as string; the caller casts it back). */
+export function run(cwd: string, args: readonly string[], timeout = READ_TIMEOUT_MS, maxBuffer = 2_000_000, encoding: 'utf8' | 'buffer' = 'utf8'): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', ['-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer: 2_000_000 }, (error, stdout, stderr) => {
-      if (!error) { resolve({ stdout, stderr }); return }
+    execFile('git', ['-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer, encoding: encoding as BufferEncoding }, (error, stdout, stderr) => {
+      if (!error) { resolve({ stdout: stdout as string, stderr: String(stderr) }); return }
       const killed = (error as { killed?: boolean }).killed
-      const detail = killed ? `git ${args[0]} took longer than ${Math.round(timeout / 1000)} s and was stopped` : stderr.trim() || error.message
+      if ((error as { code?: string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') { reject(new GitError(`git ${args[0]} printed more than ${Math.round(maxBuffer / 1_000_000)} MB and was stopped`)); return }
+      const detail = killed ? `git ${args[0]} took longer than ${Math.round(timeout / 1000)} s and was stopped` : String(stderr).trim() || error.message
       reject(new GitError(redact(detail).slice(0, 800)))
     })
   })

@@ -224,6 +224,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               instructionsRevision={detailProject?.instructions ? detailProject.instructionsRevision : undefined}
               phone={phone}
               onBack={() => cockpit.select(undefined)}
+              onOpenFile={openFileFromReply}
             />
           ) : (
             <main className="thread" role="status">Loading conversation…</main>

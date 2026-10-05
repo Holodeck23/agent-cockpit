@@ -37,7 +37,8 @@ export type TranscriptItem =
       canAllowForSession: boolean
       resolution?: ApprovalBehavior
     }
-  | { type: 'note'; key: string; text: string; tone: 'plain' | 'error' }
+  /** `runId`: the note ends that run, whose changes can be opened from it. */
+  | { type: 'note'; key: string; text: string; tone: 'plain' | 'error'; runId?: string }
   /** An image the agent showed (G4), or one of yours with no message to sit under. */
   | ({ type: 'image'; key: string; author: 'you' | AgentId; showAuthor: boolean } & ImageRef)
   /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
@@ -387,7 +388,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           const words = failureWords(event.text)
           items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
         } else if (!failed) {
-          items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: 'plain' })
+          items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: 'plain', ...(event.runId ? { runId: event.runId } : {}) })
         }
         failedThisTurn = false
         return

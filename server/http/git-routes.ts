@@ -6,7 +6,9 @@ import type { ThreadManager } from '../threads/manager.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { findCommit } from '../git/commits.ts'
 import { isBusy } from '../threads/status.ts'
-import { fileDiff, listChanges } from '../git/changes.ts'
+import { baseFile, fileDiff, listChanges } from '../git/changes.ts'
+import type { RunObservationStore } from '../runs/observations.ts'
+import { runChanges } from '../runs/run-changes.ts'
 
 // /api/git: the composer's branch pill. Reads work everywhere; changes are Mac-only,
 // and switching or creating waits until no conversation in the project is mid-turn.
@@ -17,6 +19,7 @@ const branchBody = projectBody.extend({ branch: z.string().min(1).max(250), thre
 export interface GitDeps {
   readonly projects: ProjectStore
   readonly manager: ThreadManager
+  readonly runs?: RunObservationStore
 }
 
 /** Conversations in this project that are starting, running a turn or waiting on an approval. */
@@ -50,7 +53,7 @@ export async function handleGitRoute(req: IncomingMessage, res: ServerResponse, 
       sendJson(res, 200, { data: commit })
       return
     }
-    // J4: the project's uncommitted changes, and one changed file's diff. Reads, so the phone may too.
+    // J4: the workspace's uncommitted changes, and one changed file's diff. Reads, so the phone may too.
     if (method === 'GET' && action === 'changes') {
       const projectPath = url.searchParams.get('projectPath') ?? ''
       requireOpen(projectPath)
@@ -61,6 +64,26 @@ export async function handleGitRoute(req: IncomingMessage, res: ServerResponse, 
       const projectPath = url.searchParams.get('projectPath') ?? ''
       requireOpen(projectPath)
       sendJson(res, 200, { data: await fileDiff(projectPath, url.searchParams.get('path') ?? '') })
+      return
+    }
+    // One run's before/after observations, compared. The conversation's folder must be open.
+    if (method === 'GET' && action === 'run') {
+      const threadId = url.searchParams.get('threadId') ?? ''
+      const runId = url.searchParams.get('runId') ?? ''
+      const thread = deps.manager.summaries().find((s) => s.meta.id === threadId)
+      if (!thread) throw new HttpError(404, 'Unknown conversation')
+      requireOpen(thread.meta.projectPath)
+      if (!/^[A-Za-z0-9-]{1,80}$/.test(runId)) throw new HttpError(400, 'Not a run ID')
+      const record = deps.runs?.get(runId)
+      if (record && record.threadId !== threadId) throw new HttpError(404, 'That run is not in this conversation')
+      sendJson(res, 200, { data: runChanges(runId, record, isBusy(thread.status)) })
+      return
+    }
+    // The base revision's copy of a changed path: the read-only historical view of a left-side line.
+    if (method === 'GET' && action === 'base') {
+      const projectPath = url.searchParams.get('projectPath') ?? ''
+      requireOpen(projectPath)
+      sendJson(res, 200, { data: await baseFile(projectPath, url.searchParams.get('path') ?? '') })
       return
     }
     if (method !== 'POST') throw new HttpError(404, 'Not found')

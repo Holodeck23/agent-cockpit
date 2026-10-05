@@ -40,6 +40,8 @@ export const ROUTES: readonly RouteClass[] = [
   // The Changes viewer (J4) opens files in Files, which is on the Mac only.
   { method: 'GET', route: 'git/changes', phone: false },
   { method: 'GET', route: 'git/diff', phone: false },
+  { method: 'GET', route: 'git/base', phone: false },
+  { method: 'GET', route: 'git/run', phone: false },
 ]
 
 const patternOf = (route: string): RegExp =>
