@@ -9,6 +9,7 @@ import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts
 import { copyInto } from '../server/files/copy-in.ts'
 import { launchReason, visibleName } from '../server/files/visible-name.ts'
 import { resolveAppPath } from './shell-path.ts'
+import { oneAtATime, withinTime } from './one-at-a-time.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
 import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
@@ -127,13 +128,10 @@ function showPreview(url: string): void {
  * preview itself—not a screenshot of Cockpit chrome. The window is short-lived and has no Node API.
  */
 // Captures share one in-memory session that is cleared after each, so they run one at a time:
-// a capture finishing must not clear the storage of another still loading.
-let captureQueue: Promise<unknown> = Promise.resolve()
-function capturePreview(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
-  const run = captureQueue.then(() => captureOne(url), () => captureOne(url))
-  captureQueue = run.catch(() => undefined)
-  return run
-}
+// a capture finishing must not clear the storage of another still loading. Each load has a time
+// limit, so one page that never finishes cannot stall every capture after it.
+const CAPTURE_LOAD_MS = 15_000
+const capturePreview = oneAtATime(captureOne)
 
 async function captureOne(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
   const target = assertLocalUrl(url)
@@ -157,7 +155,8 @@ async function captureOne(url: string): Promise<{ data: string; mimeType: 'image
   preview.webContents.on('will-navigate', stayLocal)
   preview.webContents.on('will-frame-navigate', (details) => { if (!details.isMainFrame) stayLocal(details, details.url) })
   try {
-    await preview.loadURL(target)
+    await withinTime(preview.loadURL(target), CAPTURE_LOAD_MS, `The preview did not finish loading within ${CAPTURE_LOAD_MS / 1000} s`,
+      () => { if (!preview.isDestroyed()) preview.webContents.stop() })
     await new Promise((resolve) => setTimeout(resolve, 250))
     // capturePage returns physical pixels on Retina displays. Normalise the tool payload so
     // agents get a predictable, detailed image without a needlessly large base64 response.
