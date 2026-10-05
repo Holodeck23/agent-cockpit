@@ -199,8 +199,9 @@ export function createBrowserAgentHost(service: BrowserService): BrowserHost {
 
   return {
     info,
-    ensure(key, projectPath) {
-      service.ensure(key, projectPath)
+    async ensure(key, projectPath) {
+      const full = await service.ensure(key, projectPath)
+      if (full) throw new Error(full)
       return info(key) ?? gone(key)
     },
     async goto(key, url) {

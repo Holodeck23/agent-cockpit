@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { addressToUrl, originLabel } from '../../../server/browser/address.ts'
 import { MOBILE_WIDTH, paneWidth, type PaneLayout } from '../browser-layout.ts'
-import { native, type BrowserPageState } from '../native.ts'
+import { native, type BrowserCapacity, type BrowserPageState } from '../native.ts'
 import { useOverlayOver } from '../useOverlayOver.ts'
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, ExpandIcon, ExternalIcon, PhoneIcon, ReloadIcon, RestoreIcon, StopIcon } from './icons.tsx'
 
@@ -23,6 +23,10 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
   const browser = native?.browser
   const [state, setState] = useState<BrowserPageState>()
   const [refused, setRefused] = useState<string>()
+  // Every loaded page is in use (W9-10): which ones, so the person can close one.
+  const [capacity, setCapacity] = useState<BrowserCapacity>()
+  const [reloadNoted, setReloadNoted] = useState(false)
+  useEffect(() => { setReloadNoted(false); setCapacity(undefined) }, [pageKey])
   const [draft, setDraft] = useState<string>()
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth)
   const [dragWidth, setDragWidth] = useState<number>()
@@ -35,8 +39,10 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
   const open = useCallback((url: string) => {
     if (!browser) return
     setRefused(undefined)
+    setCapacity(undefined)
     void browser.open(pageKey, projectPath, url).then((result) => {
-      if ('error' in result && !('key' in result)) setRefused(result.error)
+      if ('capacity' in result) { setRefused(result.error); setCapacity(result.capacity) }
+      else if ('error' in result && !('key' in result)) setRefused(result.error)
       else setState(result as BrowserPageState)
     })
   }, [browser, pageKey, projectPath])
@@ -157,6 +163,14 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
           <button type="button" aria-label="Close browser" title="Close" onClick={onClose}><CloseIcon /></button>
         </div>
       </header>
+      <div className="browser-note" role="status">
+        {state?.reloaded && !reloadNoted ? (
+          <>
+            <span>Reloaded: Cockpit unloaded this page while it was idle. Anything typed on it was not kept.</span>
+            <button type="button" className="button-soft" onClick={() => setReloadNoted(true)}>OK</button>
+          </>
+        ) : null}
+      </div>
       <div className={`browser-stage${layout.mode === 'mobile' ? ' mobile' : ''}`}>
         <div ref={viewport} className="browser-viewport" data-page={pageKey} />
         {showsError ? (
@@ -166,6 +180,18 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
             {state?.error ? <code>{state.error.url}</code> : null}
             {state?.error ? <button type="button" className="button-soft" onClick={() => open(state.error!.url)}>Retry</button> : null}
             {refused && state ? <button type="button" className="button-soft" onClick={() => setRefused(undefined)}>Back to the page</button> : null}
+            {capacity ? (
+              <ul className="browser-capacity" aria-label="Loaded pages">
+                {capacity.map((page) => (
+                  <li key={page.key}>
+                    <span>{page.title || page.url || 'Untitled page'}</span>
+                    <button type="button" className="button-soft" onClick={() => { browser?.close(page.key); open(layoutRef.current.url) }}>
+                      {page.unsaved ? 'Discard typing and close' : 'Close page'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
         {covered && !showsError ? <div className="browser-covered" aria-hidden>Page hidden while a menu is open</div> : null}

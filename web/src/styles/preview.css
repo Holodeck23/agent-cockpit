@@ -39,7 +39,14 @@
 }
 
 /* ---------- in-app browser (BrowserPane.tsx); the page itself is drawn by the host over .browser-viewport ---------- */
-.browser-pane { grid-template-rows: 46px minmax(0, 1fr); max-width: none; container-type: inline-size; }
+.browser-pane { grid-template-rows: 46px auto minmax(0, 1fr); max-width: none; container-type: inline-size; }
+/* Outside the page's box: the host draws the page over .browser-viewport, never over this note. */
+.browser-note { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--secondary); }
+.browser-note:not(:empty) { padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--field); }
+.browser-note span { flex: 1; min-width: 0; }
+.browser-capacity { display: grid; gap: 6px; width: min(100%, 420px); margin: 4px 0 0; padding: 0; list-style: none; text-align: start; }
+.browser-capacity li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.browser-capacity span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--strong); }
 .browser-toolbar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px; border-bottom: 1px solid var(--border); }
 .browser-nav, .browser-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .browser-nav button, .browser-actions button {

@@ -22,6 +22,7 @@ import type { PreviewOpen } from '../server/preview/types.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
 import { registerBrowserIpc } from './browser-ipc.ts'
 import { createBrowserAgentHost } from './browser-agent-host.ts'
+import { RESIDENCY } from './browser-policy.ts'
 import type { BrowserHost } from '../server/browser/agent.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
@@ -104,16 +105,27 @@ async function boot(): Promise<void> {
     window: () => mainWindow,
     cockpitPorts: () => (running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : []),
     publish: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('cockpit:browser-state', state) },
+    inUse: (key) => running?.browserInUse(key) ?? false,
+    limits: browserLimits(),
   })
   browserHost = createBrowserAgentHost(browser)
   // A page that goes away takes its agent grants with it (W9-09).
   const leases = running.browserLeases
   browser.onDestroyed((key) => leases.revokePage(key))
+  // A deleted conversation's page goes with it.
+  const pages = browser
+  running.manager.subscribe((update) => { if (update.event.kind === 'thread_deleted') pages.close(`thread:${update.threadId}`) })
   registerBrowserIpc(new URL(running.url).origin, browser, isProject, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
   mainWindow = createWindow(running.url)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
   })
+}
+
+/** W9-10 limits; a proof build may shorten the idle time so the packaged proof can watch an unload. */
+function browserLimits(): { maxIdle: number; idleMs: number; maxTotal: number } {
+  const idle = Number(process.env.COCKPIT_PROOF_BROWSER_IDLE_MS)
+  return { ...RESIDENCY, ...(!IS_RELEASE_BUILD && Number.isFinite(idle) && idle >= 1000 ? { idleMs: idle } : {}) }
 }
 
 // In memory only (no "persist:"), and cleared after every capture.

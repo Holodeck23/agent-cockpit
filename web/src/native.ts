@@ -1,9 +1,10 @@
 import type { NewProject } from '../../electron/new-project.ts'
 import type { ReleaseNotes } from '../../electron/updates.ts'
 import type { PreviewOpen } from '../../server/preview/types.ts'
-import type { NavAction, PageState } from '../../electron/browser-service.ts'
+import type { CapacityRefusal, NavAction, PageState } from '../../electron/browser-service.ts'
 
 export type BrowserPageState = PageState
+export type BrowserCapacity = CapacityRefusal['capacity']
 
 // Present only inside the desktop app (electron/preload.ts); undefined in a browser.
 export interface CockpitBridge {
@@ -34,7 +35,7 @@ export interface CockpitBridge {
   onFullScreen(listener: (fullScreen: boolean) => void): () => void
   /** The in-app browser (wave 9); absent in older desktop builds and in a plain browser. */
   readonly browser?: {
-    open(key: string, projectPath: string, url: string): Promise<PageState | { error: string }>
+    open(key: string, projectPath: string, url: string): Promise<PageState | { error: string } | CapacityRefusal>
     place(key: string, rect: { x: number; y: number; width: number; height: number } | null): void
     navigate(key: string, action: NavAction): void
     state(key: string): Promise<PageState | undefined>

@@ -89,3 +89,37 @@ export const KEY_EVENTS: Readonly<Record<string, { readonly keyCode: string; rea
   ArrowUp: { keyCode: 'Up' }, ArrowDown: { keyCode: 'Down' }, ArrowLeft: { keyCode: 'Left' }, ArrowRight: { keyCode: 'Right' },
   Home: { keyCode: 'Home' }, End: { keyCode: 'End' }, PageUp: { keyCode: 'PageUp' }, PageDown: { keyCode: 'PageDown' },
 }
+
+// ---------- residency (W9-10) ----------
+
+export const RESIDENCY = { maxIdle: 4, idleMs: 5 * 60_000, maxTotal: 8 } as const
+
+export interface ResidentPage {
+  readonly key: string
+  /** Last time it was shown or operated. */
+  readonly lastUsed: number
+  /** Shown, last shown, running an agent call or grant, downloading, or holding unsaved input. */
+  readonly pinned: boolean
+}
+
+/**
+ * Pages to unload now: every idle page unused for `idleMs`, then the least recently used idle
+ * pages beyond `maxIdle`. A pinned page is never chosen.
+ */
+export function evictions(pages: readonly ResidentPage[], now: number, limits: { maxIdle: number; idleMs: number } = RESIDENCY): string[] {
+  const idle = pages.filter((p) => !p.pinned).sort((a, b) => a.lastUsed - b.lastUsed)
+  const expired = idle.filter((p) => now - p.lastUsed >= limits.idleMs)
+  const kept = idle.filter((p) => now - p.lastUsed < limits.idleMs)
+  const over = kept.slice(0, Math.max(0, kept.length - limits.maxIdle))
+  return [...expired, ...over].map((p) => p.key)
+}
+
+/**
+ * Before a new page loads: the idle page to unload to stay within `maxTotal`, nothing when there
+ * is room, or `full` when every page is pinned (the caller explains and names them).
+ */
+export function roomForPage(pages: readonly ResidentPage[], maxTotal: number = RESIDENCY.maxTotal): { evict?: string } | { full: true } {
+  if (pages.length < maxTotal) return {}
+  const oldest = pages.filter((p) => !p.pinned).sort((a, b) => a.lastUsed - b.lastUsed)[0]
+  return oldest ? { evict: oldest.key } : { full: true }
+}

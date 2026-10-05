@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import type { NewProject } from './new-project.ts'
 import type { ReleaseNotes } from './updates.ts'
 import type { PreviewOpen } from '../server/preview/types.ts'
-import type { NavAction, PageState } from './browser-service.ts'
+import type { CapacityRefusal, NavAction, PageState } from './browser-service.ts'
 
 type CopyOutcome = { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }
 
@@ -40,8 +40,8 @@ const cockpit = {
   },
   /** The in-app browser (wave 9): one page per conversation, drawn by the host over `rect`. */
   browser: {
-    open: (key: string, projectPath: string, url: string): Promise<PageState | { error: string }> =>
-      ipcRenderer.invoke('cockpit:browser-open', { key, projectPath, url }) as Promise<PageState | { error: string }>,
+    open: (key: string, projectPath: string, url: string): Promise<PageState | { error: string } | CapacityRefusal> =>
+      ipcRenderer.invoke('cockpit:browser-open', { key, projectPath, url }) as Promise<PageState | { error: string } | CapacityRefusal>,
     /** Where the page goes, in window CSS pixels; null hides it (a menu or dialog needs the space). */
     place: (key: string, rect: { x: number; y: number; width: number; height: number } | null): void => ipcRenderer.send('cockpit:browser-place', { key, rect }),
     navigate: (key: string, action: NavAction): void => ipcRenderer.send('cockpit:browser-nav', { key, action }),

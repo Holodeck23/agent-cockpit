@@ -59,8 +59,11 @@ export interface Capture { readonly data: string; readonly mimeType: 'image/png'
 /** The pages, as the desktop app's main process holds them. */
 export interface BrowserHost {
   info(key: string): AgentPageInfo | undefined
-  /** Creates the conversation's page (blank, hidden, in the workspace's partition) when it has none. */
-  ensure(key: string, projectPath: string): AgentPageInfo
+  /**
+   * Creates the conversation's page (hidden, in the workspace's partition) when it has none: blank,
+   * or reloaded at its last address if Cockpit unloaded it. Rejects when every loaded page is in use.
+   */
+  ensure(key: string, projectPath: string): Promise<AgentPageInfo>
   /** Loads `url`; resolves when it has loaded, failed, or a bounded wait has passed. */
   goto(key: string, url: string): Promise<AgentPageInfo>
   /** Where Back or Forward would go, if anywhere. */
@@ -131,7 +134,22 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     return kind === 'remote' && origin !== undefined && deps.leases.has({ threadId: grant.threadId, runId, pageKey: pageKeyOf(grant.threadId), origin })
   }
 
+  /** Calls in flight per page, including any waiting on the person: such a page is never unloaded. */
+  const active = new Map<string, number>()
+
   async function handle(grant: McpGrant, op: string, body: unknown, signal: AbortSignal): Promise<unknown> {
+    const key = pageKeyOf(grant.threadId)
+    active.set(key, (active.get(key) ?? 0) + 1)
+    try {
+      return await operate(grant, op, body, signal)
+    } finally {
+      const left = (active.get(key) ?? 1) - 1
+      if (left > 0) active.set(key, left)
+      else active.delete(key)
+    }
+  }
+
+  async function operate(grant: McpGrant, op: string, body: unknown, signal: AbortSignal): Promise<unknown> {
     if (!(op in browserInputs)) throw new HttpError(404, 'Not found')
     const operation = op as BrowserOperation
     const host = deps.host()
@@ -146,7 +164,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     const ports = deps.cockpitPorts()
 
     if (operation === 'read' || operation === 'screenshot') {
-      const page = host.ensure(key, grant.projectPath)
+      const page = await ensure(host, key, grant.projectPath)
       if (!seeable(grant, runId, page.url)) await permit(grant, runId, operation, page.origin, { url: page.url }, signal)
       const result = operation === 'read' ? await host.read(key) : await host.capture(key)
       // The page moved to another site while it was being read: that site needs its own grant.
@@ -158,7 +176,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     }
 
     if (operation === 'navigate') {
-      host.ensure(key, grant.projectPath)
+      await ensure(host, key, grant.projectPath)
       const { url, action } = input as { url?: string; action?: 'back' | 'forward' | 'reload' }
       const target = url ?? (action === 'reload' ? host.info(key)?.url : host.historyUrl(key, action as 'back' | 'forward'))
       if (!target) throw new HttpError(409, `There is no page to go ${action} to.`)
@@ -177,9 +195,23 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     return host.act(key, act, { revision: input.revision as number, origin: page.origin })
   }
 
-  return { handle }
+  return {
+    handle,
+    /** Busy with a call, or granted to a run that is still going (W9-10 keeps such a page loaded). */
+    inUse(pageKey: string): boolean {
+      return (active.get(pageKey) ?? 0) > 0 || deps.leases.list().some((l) => l.pageKey === pageKey && deps.currentRun(l.threadId) === l.runId)
+    },
+  }
 }
 export type BrowserAgent = ReturnType<typeof createBrowserAgent>
+
+async function ensure(host: BrowserHost, key: string, projectPath: string): Promise<AgentPageInfo> {
+  try {
+    return await host.ensure(key, projectPath)
+  } catch (error) {
+    throw new HttpError(409, error instanceof Error ? error.message : String(error))
+  }
+}
 
 function toInput(op: BrowserOperation, input: Record<string, unknown>): AgentInput {
   if (!INPUT_OPERATIONS.includes(op)) throw new HttpError(404, 'Not found')

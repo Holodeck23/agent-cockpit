@@ -88,6 +88,8 @@ export interface RunningServer {
   readonly checks: CheckRunner
   /** Agents' browser grants; the desktop shell revokes a page's grants when the page goes away. */
   readonly browserLeases: BrowserLeases
+  /** Whether an agent is using a browser page now (a call, or a grant of a live run). */
+  browserInUse(pageKey: string): boolean
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -282,5 +284,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, browserLeases, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
 }
