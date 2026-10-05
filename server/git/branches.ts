@@ -31,6 +31,14 @@ const READ_TIMEOUT_MS = 15_000
 const PUSH_TIMEOUT_MS = 90_000
 // Never wait on a terminal prompt; keep reads from taking locks an agent's git might need.
 const GIT_ENV = { GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' }
+/**
+ * A repository's own .git/config is not trusted: Cockpit runs git in a folder as soon as it is
+ * opened (the branch pill, recent work), with no agent and no approval. `core.fsmonitor` names a
+ * program that `git status` runs, so a repository that arrives with its .git folder (a zip, a
+ * shared drive, a folder an agent wrote) could run anything. Command-line config wins over the
+ * repository's. Hooks run only for switch and push, which you start yourself.
+ */
+const GIT_HARDENING = ['-c', 'core.fsmonitor=']
 
 /** Credentials can appear in remote URLs inside git's messages. */
 export function redact(text: string): string {
@@ -39,7 +47,7 @@ export function redact(text: string): string {
 
 export function run(cwd: string, args: readonly string[], timeout = READ_TIMEOUT_MS): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', ['-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer: 2_000_000 }, (error, stdout, stderr) => {
+    execFile('git', [...GIT_HARDENING, '-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer: 2_000_000 }, (error, stdout, stderr) => {
       if (!error) { resolve({ stdout, stderr }); return }
       const killed = (error as { killed?: boolean }).killed
       const detail = killed ? `git ${args[0]} took longer than ${Math.round(timeout / 1000)} s and was stopped` : stderr.trim() || error.message
