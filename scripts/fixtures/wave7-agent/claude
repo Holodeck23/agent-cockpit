@@ -22,20 +22,28 @@ while IFS= read -r line; do
     -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
     -d "{\"command\":\"$command\",\"name\":\"dev server\"}")
   status=$(printf '%s\n' "$response" | tail -n 1)
-  body=$(printf '%s\n' "$response" | sed '$d')
-  url=$(printf '%s\n' "$body" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
   route="process"
   case "$line" in
     *login-preview*) route="login" ;;
     *docs-preview*) route="docs" ;;
     *docs-updated-preview*) route="docs-updated" ;;
   esac
+  url=""
+  attempt=0
+  while [ "$attempt" -lt 50 ] && [ -z "$url" ]; do
+    processes=$(curl -s "$COCKPIT_MCP_URL/api/mcp/processes" -H "authorization: Bearer $COCKPIT_MCP_TOKEN")
+    url=$(printf '%s\n' "$processes" | sed -n 's/.*"name":"dev server".*"url":"\([^"]*\)".*/\1/p')
+    [ -n "$url" ] || sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  preview_status="not-run"
   if [ -n "$url" ]; then
-    curl -s -o /dev/null -X POST "$COCKPIT_MCP_URL/api/mcp/preview" \
+    preview_response=$(curl -s -w '\n%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/preview" \
       -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
-      -d "{\"url\":\"${url}${route}\"}"
+      -d "{\"url\":\"${url}${route}\"}")
+    preview_status=$(printf '%s\n' "$preview_response" | tail -n 1)
   fi
-  text="Asked for the dev server ($route, HTTP $status)."
+  text="Asked for the dev server ($route, HTTP $status, preview $preview_status)."
   printf '{"type":"assistant","message":{"id":"w7-fixture-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$text"
   printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$text"
 done
