@@ -26,11 +26,13 @@ while IFS= read -r line; do
   done
   opened=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/preview" \
     -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$url\"}")
-  shot=$(curl -s -X POST "$COCKPIT_MCP_URL/api/mcp/preview/screenshot" \
+  shot_response=$(curl -s -w '\n%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/preview/screenshot" \
     -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$url\"}")
-  meta=$(printf '%s' "$shot" | sed -n 's/.*"mimeType":"\([^"]*\)".*"width":\([0-9]*\).*"height":\([0-9]*\).*/\1 \2x\3/p')
-  case "$shot" in *'"mimeType":"image/png"'*'"width":1280'*'"height":800'*) inspected=yes ;; *) inspected=no ;; esac
-  text="Opened the embedded preview (HTTP $opened) and inspected its PNG: $inspected ($meta). Process $id."
+  shot_status=$(printf '%s\n' "$shot_response" | tail -n 1)
+  shot=$(printf '%s\n' "$shot_response" | sed '$d')
+  meta=$(printf '%s' "$shot" | node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => { try { const d = JSON.parse(s).data; process.stdout.write(`${d.mimeType} ${d.width}x${d.height}`) } catch {} })')
+  case "$meta" in 'image/png 1280x800') inspected=yes ;; *) inspected=no ;; esac
+  text="Opened the embedded preview (HTTP $opened) and inspected its PNG: $inspected ($meta; HTTP $shot_status). Process $id."
   printf '{"type":"assistant","message":{"id":"preview-fixture","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$text"
   printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$text"
 done

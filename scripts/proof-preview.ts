@@ -65,6 +65,7 @@ try {
     (await (await fetch('/api/processes')).json()).data as Array<{ id: string; status: string; pid: number; url?: string }>)
   const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true } catch { return false } }
   const first = (await processInfo()).find((p) => p.status === 'running')!
+  await page.getByRole('button', { name: /^Processes/ }).click()
   await page.getByRole('button', { name: 'Restart', exact: true }).click()
   const waitForReplacement = async (oldId: string) => {
     const deadline = Date.now() + 30_000
@@ -77,10 +78,12 @@ try {
   }
   const second = await waitForReplacement(first.id)
   check('restart replaces the server and ends the old process', !alive(first.pid) && alive(second.pid))
-  await page.locator('.process-url').filter({ hasText: second.url! }).click()
+  await page.locator('.process-url').click()
   await page.frameLocator('.preview-pane iframe').getByText('Preview is live.').waitFor()
   check('the restarted app renders in the embedded preview', true)
+  await page.getByRole('button', { name: /^Processes/ }).click()
   await page.getByRole('button', { name: 'Stop', exact: true }).click()
+  await page.getByRole('button', { name: /^Show finished/ }).click()
   await page.getByRole('button', { name: 'Start again', exact: true }).waitFor()
   const reachable = await fetch(second.url!, { signal: AbortSignal.timeout(2000) }).then(() => true, () => false)
   check('stop closes the server and its port', !alive(second.pid) && !reachable)
