@@ -5,6 +5,7 @@ import type { ProjectStore } from '../projects/store.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { findCommit } from '../git/commits.ts'
+import { isBusy } from '../threads/status.ts'
 
 // /api/git: the composer's branch pill. Reads work everywhere; changes are Mac-only,
 // and switching or creating waits until no conversation in the project is mid-turn.
@@ -17,10 +18,10 @@ export interface GitDeps {
   readonly manager: ThreadManager
 }
 
-/** Conversations in this project that are running a turn or waiting on an approval. */
+/** Conversations in this project that are starting, running a turn or waiting on an approval. */
 export function busyConversations(manager: ThreadManager, projectPath: string): string[] {
   return manager.summaries()
-    .filter((s) => s.meta.projectPath === projectPath && (s.status === 'working' || s.status === 'needs_input'))
+    .filter((s) => s.meta.projectPath === projectPath && isBusy(s.status))
     .map((s) => s.meta.title)
 }
 

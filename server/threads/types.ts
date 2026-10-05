@@ -40,7 +40,7 @@ export interface ThreadMeta {
   readonly updatedAt: string
 }
 
-export type ThreadStatus = 'idle' | 'working' | 'needs_input' | 'done' | 'error'
+export type ThreadStatus = 'idle' | 'starting' | 'working' | 'needs_input' | 'done' | 'error'
 
 export interface StoredEvent {
   readonly ts: string

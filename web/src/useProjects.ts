@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Project, type ThreadSummary } from './api.ts'
-import { needsYou } from './conversation-meta.ts'
+import { isWorking, needsYou } from './conversation-meta.ts'
 import { tabOrder } from './project-tabs.ts'
 
 const ACTIVE_KEY = 'cockpit:active-project'
@@ -82,7 +82,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     for (const t of threads) {
       const current = byPath.get(t.meta.projectPath) ?? { working: 0, needsYou: 0 }
       byPath.set(t.meta.projectPath, {
-        working: current.working + (t.status === 'working' ? 1 : 0),
+        working: current.working + (isWorking(t.status) ? 1 : 0),
         needsYou: current.needsYou + (needsYou(t) ? 1 : 0),
       })
     }

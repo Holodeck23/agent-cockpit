@@ -5,6 +5,7 @@ import { threadSettingsSchema } from '../threads/types.ts'
 import { requireConversation, conversationId, type ConversationDeps } from './conversations.ts'
 import { createControlStore } from './control-store.ts'
 import type { McpGrant } from './sessions.ts'
+import { isBusy } from '../threads/status.ts'
 
 const key = z.string().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/)
 const text = z.string().trim().min(1).max(20_000)
@@ -19,7 +20,7 @@ const TOTAL_LIMIT = 6
 export function createConversationControl(deps: ConversationDeps, agents: () => Promise<AgentStatus[]>) {
   const journal = createControlStore(deps.store.root)
   const inFlight = new Map<string, Promise<ControlResult>>()
-  const busy = (id: string) => ['working', 'needs_input'].includes(deps.manager.status(id))
+  const busy = (id: string) => isBusy(deps.manager.status(id))
   const source = (grant: McpGrant, authorized: () => boolean) => {
     if (!authorized()) throw new HttpError(401, 'Missing or expired cockpit session token')
     const caller = requireConversation(deps, grant, grant.threadId)

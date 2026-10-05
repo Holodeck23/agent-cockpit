@@ -2,6 +2,7 @@
 // by default and kept per device. The tones are synthesised here (Web Audio), no sound files.
 import { useEffect, useRef, useState } from 'react'
 import type { ThreadSummary } from './api.ts'
+import { isWorking } from './conversation-meta.ts'
 
 export type SoundKind = 'reply' | 'decision'
 export interface SoundSettings {
@@ -24,7 +25,7 @@ export function parseSounds(raw: string | null): SoundSettings {
 type Row = Pick<ThreadSummary, 'status' | 'lastActivityAt' | 'awaiting'> & { meta: Pick<ThreadSummary['meta'], 'id'> }
 export type Seen = ReadonlyMap<string, Pick<Row, 'status' | 'lastActivityAt'>>
 // A question or blocker at the end of a turn waits on you just like an approval (U12).
-const effective = (t: Row): Row['status'] => (t.awaiting && t.status !== 'working' ? 'needs_input' : t.status)
+const effective = (t: Row): Row['status'] => (t.awaiting && !isWorking(t.status) ? 'needs_input' : t.status)
 const ENDED = new Set<Row['status']>(['done', 'idle'])
 
 export interface AttentionChange {
@@ -49,7 +50,7 @@ export function attentionChanges(previous: Seen | undefined, threads: readonly R
     const before = previous.get(t.meta.id)
     const status = effective(t)
     if (status === 'needs_input' && (before?.status !== 'needs_input' || before.lastActivityAt !== t.lastActivityAt)) changes.push({ id: t.meta.id, kind: 'decision' })
-    else if (before && ENDED.has(status) && (before.status === 'working' || before.status === 'needs_input')) changes.push({ id: t.meta.id, kind: 'reply' })
+    else if (before && ENDED.has(status) && (isWorking(before.status) || before.status === 'needs_input')) changes.push({ id: t.meta.id, kind: 'reply' })
   }
   return changes
 }

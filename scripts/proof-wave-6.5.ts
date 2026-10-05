@@ -1,4 +1,4 @@
-// Packaged gate for wave 6.5, the repair checkpoint (R1–R8). Stand-in agents speak the shapes
+// Packaged gate for wave 6.5, the repair checkpoint (R1–R8, and Starting from Day 10). Stand-in agents speak the shapes
 // recorded from Claude 2.1.289 and Codex 0.147 (scripts/fixtures/wave65-agent), no provider usage.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-6.5
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -202,6 +202,30 @@ try {
   check('R8 Retry delivers the image again', await until('retried', async () => (await page.locator('.bubble').filter({ hasText: 'Retried with 1 image(s).' }).count()) === 1),
     (await page.locator('.bubble').last().textContent().catch(() => '')) ?? '')
   await shot(page, 'r8-retried')
+
+  // Starting (Day 10): a conversation shows Starting while the agent's process has not reported
+  // in, then Working, then Ready. A launch that fails before reporting in ends in Error, and Stop
+  // during startup ends the turn; neither leaves Starting on screen.
+  const fixtureStart = join(project, '.fixture-start')
+  const headText = async (): Promise<string> => (await headStatus(page).textContent().catch(() => '')) ?? ''
+  writeFileSync(fixtureStart, 'slow')
+  await startConversation(page, 'worklag S1 starting')
+  check('Starting shows while the agent has not reported in, with a timer', await until('starting', async () => /^Starting · \d+:\d\d$/.test(await headText()), 3_000), await headText())
+  check('Starting shows in the conversation list too', await until('list pill', async () => (await page.locator('.pill.pill-starting').filter({ hasText: /^Starting/ }).count()) === 1, 3_000))
+  await shot(page, 'starting')
+  check('Starting hands over to Working once the agent reports in', await until('working after starting', async () => (await headText()).startsWith('Working'), 8_000), await headText())
+  await shot(page, 'starting-then-working')
+  check('…and Working to Ready when the turn ends', await until('ready', async () => (await headText()) === 'Ready', 10_000), await headText())
+  writeFileSync(fixtureStart, 'fail')
+  await startConversation(page, 'S2 a launch that fails')
+  check('A launch that fails before reporting in ends in Error, not a stuck Starting', await until('error', async () => (await headText()).startsWith('Error'), 10_000), await headText())
+  await shot(page, 'starting-failed')
+  writeFileSync(fixtureStart, 'slow')
+  await startConversation(page, 'work S3 stop while starting')
+  await until('starting', async () => (await headText()).startsWith('Starting'), 3_000)
+  await page.getByRole('button', { name: 'Stop', exact: true }).click()
+  check('Stop during startup ends the turn (no Starting, no Working, no Error)', await until('stopped', async () => !/^(Starting|Working|Error)/.test(await headText()), 15_000), await headText())
+  writeFileSync(fixtureStart, '')
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {

@@ -10,6 +10,7 @@
 .thread-status { display: flex; align-items: center; gap: 12px; margin: 5px 0 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .status-text { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; white-space: nowrap; }
 .status-working { color: var(--link); }
+.status-starting { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .status-needs_input { color: var(--needs-ink); }
 .status-done { color: var(--success); }
 .status-error { color: var(--danger); }

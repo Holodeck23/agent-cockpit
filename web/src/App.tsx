@@ -27,7 +27,7 @@ import { playSound, soundForChanges, useAttention, useSoundSettings } from './so
 import { notificationText, useNotifySettings } from './mac-notifications.ts'
 import { Mark, SlidersIcon } from './components/icons.tsx'
 import { native } from './native.ts'
-import { needsYou } from './conversation-meta.ts'
+import { isWorking, needsYou } from './conversation-meta.ts'
 import type { PageMode } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { PhoneNotify } from './components/PhoneNotify.tsx'
@@ -68,7 +68,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     }
   })
   // The Dock icon: moving bars while any agent works, a badge with how many need you (every project).
-  const working = cockpit.threads.filter((t) => t.status === 'working').length
+  const working = cockpit.threads.filter((t) => isWorking(t.status)).length
   const needs = cockpit.threads.filter(needsYou).length
   useEffect(() => { if (local) native?.setActivity({ working, needs }) }, [local, working, needs])
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
@@ -174,7 +174,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       <SubNav
         section={section}
         onSection={setSection}
-        working={visible.filter((t) => t.status === 'working').length}
+        working={visible.filter((t) => isWorking(t.status)).length}
         appearance={<AppearanceMenu theme={theme.mode} onTheme={theme.set} appearance={appearance} onChange={updateAppearance} />}
         conversationsOnly={phone}
         runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}

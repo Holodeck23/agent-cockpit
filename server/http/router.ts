@@ -33,6 +33,7 @@ import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
 import type { AgentStatus } from '../agents/status.ts'
+import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
 export const MAX_MESSAGE_IMAGES = 8
@@ -404,7 +405,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'remove' && method === 'POST') {
         const { path } = parseBody(z.object({ path: z.string().min(1).max(1000) }), await readJson(req))
         if (!projects.list().some((p) => p.path === path)) throw new HttpError(404, 'Unknown project')
-        const busy = manager.summaries().filter((t) => t.meta.projectPath === path && (t.status === 'working' || t.status === 'needs_input')).length
+        const busy = manager.summaries().filter((t) => t.meta.projectPath === path && isBusy(t.status)).length
         if (busy > 0) throw new HttpError(409, `${busy === 1 ? 'A conversation' : `${busy} conversations`} in this project ${busy === 1 ? 'is' : 'are'} still working or waiting for you. Stop or answer ${busy === 1 ? 'it' : 'them'} first.`)
         const scheduled = workflows.store.list(path).filter((w) => w.enabled)
         for (const w of scheduled) workflows.store.update(w.id, { enabled: false, nextRunAt: null })

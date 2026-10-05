@@ -4,6 +4,7 @@ import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { nextCalendarRun } from './calendar.ts'
 import { expandWorkflows, resolveWorkflows, type Workflow, type WorkflowStore } from './store.ts'
+import { isBusy as busyStatus } from '../threads/status.ts'
 
 /** When a schedule fires next after `after`; undefined when the workflow has no schedule. */
 export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calendar'>, after: number): number | undefined {
@@ -19,8 +20,7 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     if (!workflow) throw new Error('Unknown workflow')
     return workflow
   }
-  const isBusy = (id: string): boolean => manager.summaries().some((t) => t.meta.workflowId === id &&
-    (t.status === 'working' || t.status === 'needs_input'))
+  const isBusy = (id: string): boolean => manager.summaries().some((t) => t.meta.workflowId === id && busyStatus(t.status))
   const run = (id: string, trigger: 'manual' | 'scheduled' = 'manual') => {
     if (stopped) throw new Error('Cockpit is shutting down')
     const workflow = requireWorkflow(id)

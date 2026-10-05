@@ -72,6 +72,10 @@
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .pill .icon { width: 13px; height: 13px; stroke-width: 2.4; }
 .pill-working { background: var(--tint-apricot); color: var(--working-ink); }
+.pill-starting { color: var(--muted); box-shadow: inset 0 0 0 1px var(--input-border); }
+.starting-dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: starting-spin 0.9s linear infinite; }
+@keyframes starting-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .starting-dot { animation: none; } }
 .pill-needs_input { background: var(--needs-bg); color: var(--needs-ink); box-shadow: inset 0 0 0 1px var(--needs-border); }
 .pill-done { color: var(--success); padding-inline: 2px; }
 .pill-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
