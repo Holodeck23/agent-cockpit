@@ -75,11 +75,19 @@ describe('pairing store', () => {
     expect(store.deviceFor(token, OWNER)?.name).toBe('Pixel')
     expect(store.deviceFor(token, 'guest@example.com')).toBeUndefined()
     expect(JSON.stringify(store.read())).not.toContain(token!)
+    // Asking again replaces the request and never hands its id (the redemption secret) back (L2).
+    const first = store.requestPairing('Pixel 9a', OWNER)
     const again = store.requestPairing('Pixel 9a', OWNER)
-    expect(store.requestPairing('Pixel 9a', OWNER)).toEqual(again)
+    expect(again.id).not.toBe(first.id)
+    expect(store.redeem(first.id, OWNER)).toBeUndefined()
     for (let i = 0; i < 10; i += 1) store.requestPairing('Pixel 9a', OWNER)
     expect(store.pendingPairings()).toHaveLength(1)
-    store.decide(again.id, false)
+    const latest = store.pendingPairings()[0]!
+    store.decide(latest.id, false)
+    // Many requests from one login drop its oldest instead of locking pairing out (L12).
+    for (let i = 0; i < 8; i += 1) store.requestPairing(`Spam ${i}`, 'guest@example.com')
+    expect(store.pendingPairings().filter((r) => r.login === 'guest@example.com')).toHaveLength(5)
+    expect(() => store.requestPairing('Owner phone', OWNER)).not.toThrow()
     const late = store.requestPairing('Other', OWNER)
     clock += 6 * 60_000
     expect(() => store.decide(late.id, true)).toThrow(/expired/)
@@ -130,6 +138,36 @@ const viaTailscale = (extra: Record<string, string> = {}) =>
   ({ host: HOST, 'x-forwarded-proto': 'https', 'tailscale-user-login': OWNER, ...extra })
 
 describe('phone access over HTTP', () => {
+  it('ends a revoked phone\'s open live stream (M6)', async () => {
+    const { server, local, root } = await setup()
+    try {
+      await local('/api/remote', { enabled: true })
+      const port = server.remote.port()!
+      const pairing = JSON.parse((await call(port, '/api/remote/pair', { method: 'POST', body: { name: 'Lost phone' }, headers: viaTailscale() })).body).data
+      await local(`/api/remote/pairings/${pairing.id}`, { approve: true })
+      const cookie = (await call(port, `/api/remote/pair/${pairing.id}`, { headers: viaTailscale() })).cookie!.split(';')[0]!
+      let ended = false
+      const lines: string[] = []
+      const stream = request({ host: '127.0.0.1', port, path: '/api/stream', headers: viaTailscale({ cookie, accept: 'text/event-stream' }) }, (res) => {
+        res.setEncoding('utf8')
+        res.on('data', (chunk: string) => lines.push(chunk))
+        res.on('close', () => { ended = true })
+      })
+      stream.on('error', () => { ended = true })
+      stream.end()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      const device = JSON.parse((await local('/api/remote')).body).data.devices[0]
+      await local(`/api/remote/devices/${device.id}/revoke`, {})
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(ended).toBe(true)
+      const before = lines.length
+      await local('/api/threads', { projectPath: root, text: 'after revoke' })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(lines.length).toBe(before)
+      stream.destroy()
+    } finally { await server.close() }
+  })
+
   it('pairs a phone, serves only the phone routes, and refuses every other path', async () => {
     const { server, ts, local } = await setup()
     try {

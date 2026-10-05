@@ -29,7 +29,7 @@ function call(port: number, path: string, init: { method?: string; headers?: Rec
 const data = (reply: Reply) => JSON.parse(reply.body).data
 
 const subscription = (n: number): PushSubscription =>
-  ({ endpoint: `https://push.example/send/${n}`, keys: { p256dh: `p256dh-${n}`, auth: `auth-${n}` } })
+  ({ endpoint: `https://web.push.apple.com/send/${n}`, keys: { p256dh: `p256dh-${n}`, auth: `auth-${n}` } })
 
 async function setup(pushStatus = 201) {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-push-'))
@@ -80,7 +80,7 @@ describe('needs-you notifications', () => {
       const created = await local('/api/threads', { projectPath: project, text: 'Run the tests' })
       const threadId = data(created).id
       await new Promise((resolve) => setTimeout(resolve, 50))
-      expect(sent.map((s) => s.endpoint).sort()).toEqual(['https://push.example/send/1', 'https://push.example/send/2'])
+      expect(sent.map((s) => s.endpoint).sort()).toEqual(['https://web.push.apple.com/send/1', 'https://web.push.apple.com/send/2'])
       expect(JSON.parse(sent[0]!.payload)).toEqual({ title: 'Needs you', body: 'bakery-website: Run the tests', threadId })
 
       // Unsubscribing and removing a phone both stop its notifications.
@@ -111,13 +111,18 @@ describe('needs-you notifications', () => {
     } finally { await server.close() }
   })
 
-  it('refuses subscriptions from unpaired phones and non-HTTPS endpoints', async () => {
+  it('refuses subscriptions from unpaired phones, and endpoints that are not a browser push service', async () => {
     const { server, pair, phone } = await setup()
     try {
       expect((await phone('cockpit_device=nope', '/api/remote/push/subscribe', { subscription: subscription(1) })).status).toBe(401)
       const cookie = await pair()
-      const insecure = { endpoint: 'http://push.example/x', keys: { p256dh: 'a', auth: 'b' } }
+      const insecure = { endpoint: 'http://web.push.apple.com/x', keys: { p256dh: 'a', auth: 'b' } }
       expect((await phone(cookie, '/api/remote/push/subscribe', { subscription: insecure })).status).toBe(400)
+      // Anywhere but a browser push service would make the Mac post to a place the phone chose (M7).
+      for (const endpoint of ['https://127.0.0.1:8443/x', 'https://192.168.1.1/x', 'https://push.example/x', 'https://fcm.googleapis.com.evil.example/x', 'https://fcm.googleapis.com:8443/x', 'https://u:p@fcm.googleapis.com/x']) {
+        expect((await phone(cookie, '/api/remote/push/subscribe', { subscription: { endpoint, keys: { p256dh: 'a', auth: 'b' } } })).status).toBe(400)
+      }
+      expect((await phone(cookie, '/api/remote/push/subscribe', { subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'a', auth: 'b' } } })).status).toBe(200)
     } finally { await server.close() }
   })
 })
