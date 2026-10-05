@@ -79,7 +79,8 @@ function markdownFor(event: NormalizedEvent, ts: string): string | undefined {
   return undefined
 }
 
-export function createThreadStore(root: string = defaultRoot()): ThreadStore {
+/** `cacheBudget`: log bytes kept parsed in memory across conversations (tests set it small). */
+export function createThreadStore(root: string = defaultRoot(), cacheBudget = 64_000_000): ThreadStore {
   const threadsDir = join(root, 'threads')
   ensurePrivateDir(root)
   ensurePrivateDir(threadsDir)
@@ -112,11 +113,30 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
    * appended since are parsed. `consumed` stops at the last newline, so half a line is read again
    * once it is complete. A log that shrank or was replaced is read whole again.
    */
+  // Least recently read first. The conversation list reads every conversation, so without a bound
+  // every log ever opened would stay parsed in the main process; past the budget the oldest are
+  // dropped and read whole again when next needed.
   const parsed = new Map<string, { ino: number; consumed: number; events: StoredEvent[] }>()
+  let cachedBytes = 0
+  const remember = (id: string, entry: { ino: number; consumed: number; events: StoredEvent[] }): void => {
+    const previous = parsed.get(id)
+    if (previous) { cachedBytes -= previous.consumed; parsed.delete(id) }
+    parsed.set(id, entry)
+    cachedBytes += entry.consumed
+    for (const [oldest, old] of parsed) {
+      if (cachedBytes <= cacheBudget || oldest === id) break
+      parsed.delete(oldest)
+      cachedBytes -= old.consumed
+    }
+  }
+  const forget = (id: string): void => {
+    const previous = parsed.get(id)
+    if (previous) { cachedBytes -= previous.consumed; parsed.delete(id) }
+  }
   const readEvents = (id: string): StoredEvent[] => {
     const file = join(dirOf(id), 'events.jsonl')
     let stat: { ino: number; size: number }
-    try { stat = statSync(file) } catch { parsed.delete(id); return [] }
+    try { stat = statSync(file) } catch { forget(id); return [] }
     let entry = parsed.get(id)
     if (!entry || entry.ino !== stat.ino || stat.size < entry.consumed) entry = { ino: stat.ino, consumed: 0, events: [] }
     if (stat.size > entry.consumed) {
@@ -136,7 +156,7 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
         }
       } finally { closeSync(fd) }
     }
-    parsed.set(id, entry)
+    remember(id, entry)
     return entry.events
   }
 
@@ -184,7 +204,7 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
       return join(dirOf(id), 'messages.md')
     },
     remove(id) {
-      parsed.delete(id)
+      forget(id)
       rmSync(dirOf(id), { recursive: true, force: true })
     },
   }

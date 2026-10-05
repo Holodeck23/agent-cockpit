@@ -39,6 +39,20 @@ describe('reading a conversation log incrementally', () => {
     expect(texts(store, m.id)).toEqual(['fresh'])
   })
 
+  it('keeps a bounded number of logs parsed, and reads an evicted one whole again', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cockpit-incremental-'))
+    // A budget smaller than two logs: reading one pushes the other out.
+    const store = createThreadStore(root, 300)
+    const a = store.create(meta()), b = store.create(meta())
+    for (const m of [a, b]) for (let i = 0; i < 3; i++) store.append(m.id, { kind: 'user_text', text: `${m.id.slice(0, 4)}-${i}` })
+    for (let round = 0; round < 3; round++) {
+      expect(texts(store, a.id)).toHaveLength(3)
+      expect(texts(store, b.id)).toHaveLength(3)
+    }
+    store.append(a.id, { kind: 'user_text', text: 'later' })
+    expect(texts(store, a.id).at(-1)).toBe('later')
+  })
+
   it('hands out a copy, so a caller holding events never sees them change', () => {
     const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-incremental-')))
     const m = store.create(meta())
