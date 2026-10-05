@@ -18,7 +18,8 @@ import { HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
 import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
-import type { PreviewOpen } from '../server/preview/types.ts'
+import type { PreviewCapture, PreviewOpen } from '../server/preview/types.ts'
+import { originClass } from '../server/browser/agent-policy.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
 import { registerBrowserIpc } from './browser-ipc.ts'
 import { createBrowserAgentHost } from './browser-agent-host.ts'
@@ -87,6 +88,7 @@ async function boot(): Promise<void> {
     },
     openUrl: showPreview,
     capturePreview,
+    inspectPreview,
     windowKey,
     // Created just below, once the server's ports are known; agents call it only later.
     browserHost: () => browserHost,
@@ -103,7 +105,7 @@ async function boot(): Promise<void> {
   // The in-app browser (wave 9): pages live in this process, the window's page drives them.
   browser = createBrowserService({
     window: () => mainWindow,
-    cockpitPorts: () => (running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : []),
+    cockpitPorts,
     publish: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('cockpit:browser-state', state) },
     inUse: (key) => running?.browserInUse(key) ?? false,
     limits: browserLimits(),
@@ -132,8 +134,8 @@ function browserLimits(): { maxIdle: number; idleMs: number; maxTotal: number } 
 const CAPTURE_PARTITION = 'cockpit-capture'
 
 /** A local preview target that is not Cockpit itself (its own page in a frame would share the keyed window's origin). */
-const assertLocalUrl = (url: string): string =>
-  assertLocalTarget(url, running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : [])
+const cockpitPorts = (): number[] => (running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : [])
+const assertLocalUrl = (url: string): string => assertLocalTarget(url, cockpitPorts())
 
 /** Sends an event to the page, reopening the window first if it was closed. */
 function sendToPage(channel: string, ...args: unknown[]): void {
@@ -151,9 +153,42 @@ function sendToPage(channel: string, ...args: unknown[]): void {
   mainWindow.show()
 }
 
-/** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
-function showPreview(preview: PreviewOpen): void {
-  sendToPage('cockpit:preview-open', { ...preview, url: assertLocalUrl(preview.url) })
+/**
+ * open_preview: a conversation's preview opens in that conversation's own page (W9-11), loaded
+ * here so it exists even while the person looks at another conversation; the window then shows
+ * it beside the chat. The page remains the source of truth for pane layout.
+ */
+async function showPreview(preview: PreviewOpen): Promise<void> {
+  const url = assertLocalUrl(preview.url)
+  if (preview.threadId && browser && browserHost) {
+    const key = `thread:${preview.threadId}`
+    const page = await browserHost.ensure(key, preview.projectPath)
+    if (page.url !== url) {
+      const refused = browser.load(key, url)
+      if (refused) throw new Error(refused)
+    }
+    sendToPage('cockpit:preview-open', { ...preview, url, loaded: true })
+    return
+  }
+  sendToPage('cockpit:preview-open', { ...preview, url })
+}
+
+/**
+ * inspect_preview: an image of the conversation's own page (W9-11), not of a fresh copy. A page
+ * already on that local app is captured as it is; otherwise it is opened there first. A preview
+ * that ends up on a remote site is not captured: that needs browser_screenshot and its approval.
+ */
+async function inspectPreview(preview: PreviewOpen): Promise<PreviewCapture> {
+  const url = assertLocalUrl(preview.url)
+  if (!preview.threadId || !browserHost) return capturePreview(url)
+  const key = `thread:${preview.threadId}`
+  const page = await browserHost.ensure(key, preview.projectPath)
+  if (page.origin !== new URL(url).origin) await browserHost.goto(key, url)
+  const shot = await browserHost.capture(key)
+  if (originClass(shot.page.url, cockpitPorts()) !== 'local') {
+    throw new Error(`The preview is now on ${shot.page.origin}, not your local app. Use browser_screenshot for other sites; it asks you first.`)
+  }
+  return { data: shot.data, mimeType: shot.mimeType, width: shot.width, height: shot.height, page: { pageId: shot.page.pageId, revision: shot.page.revision, url: shot.page.url } }
 }
 
 /**

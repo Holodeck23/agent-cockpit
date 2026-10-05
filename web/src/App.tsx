@@ -112,7 +112,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [openNonce, setOpenNonce] = useState(0)
   useEffect(() => { if (inAppBrowser) saveLayouts(layouts) }, [inAppBrowser, layouts])
   const showPage = useCallback((preview: PreviewOpen) => {
-    if (inAppBrowser) { setLayouts((current) => openPage(current, previewKey(preview), preview.url)); setOpenNonce((n) => n + 1) }
+    if (inAppBrowser) {
+      setLayouts((current) => openPage(current, previewKey(preview), preview.url))
+      // The host already loaded an agent's preview in that page; asking again would load it twice.
+      if (!preview.loaded) setOpenNonce((n) => n + 1)
+    }
     else setPreviews((current) => rememberPreview(current, preview))
   }, [inAppBrowser])
   // Help → Release Notes, or the "Updated to" view after an update (lead set).

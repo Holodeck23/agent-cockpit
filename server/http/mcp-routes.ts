@@ -12,7 +12,7 @@ import type { HostActionOptions } from '../threads/host-actions.ts'
 import { readCursor } from './process-routes.ts'
 import { oneLine } from '../files/visible-name.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
-import type { PreviewOpen } from '../preview/types.ts'
+import type { PreviewCapture, PreviewOpen } from '../preview/types.ts'
 import type { BrowserAgent } from '../browser/agent.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
@@ -54,6 +54,8 @@ export interface McpRouteDeps {
   readonly processOwner?: (threadId: string) => ProcessOwner
   readonly openUrl: (preview: PreviewOpen) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
+  /** The desktop app: inspect_preview captures the calling conversation's own page at that local address (W9-11). */
+  readonly inspectPreview?: (preview: PreviewOpen) => Promise<PreviewCapture>
   readonly memory?: MemoryStore
   /** Whether the project lets agents update and schedule workflows (Project settings). */
   readonly agentWorkflows?: (projectPath: string) => boolean
@@ -175,8 +177,13 @@ export async function handleMcpRoute(
     } finally { res.removeListener('close', disconnected) }
   }
   if (parts[2] === 'preview' && parts[3] === 'screenshot' && method === 'POST') {
-    if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
+    if (deps.inspectPreview) {
+      const shot = await deps.inspectPreview({ url: target, threadId: grant.threadId, projectPath: grant.projectPath })
+        .catch((error: unknown) => { throw new HttpError(409, error instanceof Error ? error.message : String(error)) })
+      return sendJson(res, 200, { data: { inspected: shot.page?.url ?? target, ...shot } })
+    }
+    if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')
     return sendJson(res, 200, { data: { inspected: target, ...(await capturePreview(target)) } })
   }
   if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {

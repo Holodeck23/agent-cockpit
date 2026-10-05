@@ -38,7 +38,7 @@ afterEach(async () => {
   runner = undefined
 })
 
-async function harness(options: { agentWorkflows?: boolean; deny?: boolean } = {}): Promise<Harness> {
+async function harness(options: { agentWorkflows?: boolean; deny?: boolean; ownPage?: PreviewOpen[] } = {}): Promise<Harness> {
   const sessions = createMcpSessions()
   const processes = createProcessRunner({ graceMs: 500 })
   runner = processes
@@ -57,7 +57,11 @@ async function harness(options: { agentWorkflows?: boolean; deny?: boolean } = {
         if (options.deny) throw new Error('Cockpit action denied by the user')
       },
       enableWorkflow: (id) => workflows.update(id, { enabled: true, nextRunAt: new Date(Date.now() + 60_000).toISOString() }),
-      capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } } }).catch(
+      capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } },
+      ...(options.ownPage ? { inspectPreview: async (preview: PreviewOpen) => {
+        options.ownPage!.push(preview)
+        return { data: 'b3du', mimeType: 'image/png' as const, width: 520, height: 700, page: { pageId: `thread:${preview.threadId}`, revision: 9, url: `${preview.url}settings` } }
+      } } : {}) }).catch(
       (error: unknown) => sendJson(res, error instanceof HttpError ? error.status : 500, { error: (error as Error).message }),
     )
   })
@@ -170,6 +174,23 @@ describe('cockpit MCP tools', () => {
 
     const stopped = textOf(await client.callTool({ name: 'stop_process', arguments: { id: proc?.id } }))
     expect(stopped).toContain('exited')
+  })
+
+  it('inspects the calling conversation’s own page, never a remote site (W9-11)', async () => {
+    const own: PreviewOpen[] = []
+    const h = await harness({ ownPage: own })
+    const dir = devProject()
+    const client = await h.connect(h.sessions.issue({ threadId: 't7', projectPath: dir }))
+    const shot = await client.callTool({ name: 'inspect_preview', arguments: { url: 'http://localhost:5199/' } })
+    expect(shot.content).toEqual([
+      { type: 'text', text: 'Screenshot of http://localhost:5199/settings (520×700).' },
+      { type: 'image', data: 'b3du', mimeType: 'image/png' },
+    ])
+    expect(own).toEqual([{ url: 'http://localhost:5199/', threadId: 't7', projectPath: dir }])
+    expect(h.inspected).toEqual([])
+    const remote = await client.callTool({ name: 'inspect_preview', arguments: { url: 'https://example.com/' } })
+    expect(remote.isError).toBe(true)
+    expect(own).toHaveLength(1)
   })
 
   it('refuses to preview a non-local page', async () => {

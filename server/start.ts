@@ -26,7 +26,7 @@ import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
-import type { PreviewOpen } from './preview/types.ts'
+import type { PreviewCapture, PreviewOpen } from './preview/types.ts'
 
 export interface StartOptions {
   /** 0 picks a free port. */
@@ -51,6 +51,8 @@ export interface StartOptions {
   readonly openUrl?: (preview: PreviewOpen) => Promise<void> | void
   /** Captures a local preview for an agent to inspect. Available in the desktop shell. */
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
+  /** inspect_preview on the conversation's own page (desktop app, W9-11); capturePreview stays for result evidence. */
+  readonly inspectPreview?: (preview: PreviewOpen) => Promise<PreviewCapture>
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
   /** How agent CLIs are checked for the picker; a fake in tests. */
@@ -253,7 +255,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
         const runId = manager.currentRunId(threadId)
         return { kind: 'conversation', threadId, title: meta?.title ?? 'Deleted conversation', ...(runId ? { runId } : {}) }
-      }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
+      }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), ...(options.inspectPreview ? { inspectPreview: options.inspectPreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
       approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
       cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])], ...(browser ? { browser } : {}) } },
