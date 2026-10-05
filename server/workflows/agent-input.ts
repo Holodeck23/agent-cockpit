@@ -25,6 +25,19 @@ export class AgentWorkflowRefused extends Error {
 
 const SETTING = 'Project settings → Let agents manage workflows'
 
+/** Refuses what the project's setting does not allow; returns the workflow an update would change. Safe to call before asking the user. */
+export function checkAgentWorkflow(store: WorkflowStore, projectPath: string, raw: AgentWorkflowInput, allowed: boolean): Workflow | undefined {
+  const input = agentWorkflowSchema.parse(raw)
+  const existing = store.list(projectPath).find((w) => w.name === input.name)
+  if (!allowed && existing) {
+    throw new AgentWorkflowRefused(`A workflow named ${input.name} already exists. Choose another name, or ask the user to edit it in Workflows or to allow this in ${SETTING}.`, 409)
+  }
+  if (!allowed && input.schedule) {
+    throw new AgentWorkflowRefused(`Agents cannot schedule workflows in this project. Save it without a schedule for the user to turn on in Workflows, or ask them to allow it in ${SETTING}.`, 403)
+  }
+  return existing
+}
+
 export function saveAgentWorkflow(store: WorkflowStore, projectPath: string, raw: AgentWorkflowInput, options: {
   allowed: boolean
   /** Turns the schedule on (the runner works out the next run). */
@@ -32,13 +45,8 @@ export function saveAgentWorkflow(store: WorkflowStore, projectPath: string, raw
   timeZone: string
 }): Workflow & { updated: boolean } {
   const input = agentWorkflowSchema.parse(raw)
-  const existing = store.list(projectPath).find((w) => w.name === input.name)
-  if (!options.allowed && existing) {
-    throw new AgentWorkflowRefused(`A workflow named ${input.name} already exists. Choose another name, or ask the user to edit it in Workflows or to allow this in ${SETTING}.`, 409)
-  }
-  if (!options.allowed && input.schedule) {
-    throw new AgentWorkflowRefused(`Agents cannot schedule workflows in this project. Save it without a schedule for the user to turn on in Workflows, or ask them to allow it in ${SETTING}.`, 403)
-  }
+  const existing = checkAgentWorkflow(store, projectPath, input, options.allowed)
+
   const schedule = input.schedule === undefined ? {}
     : 'everyMinutes' in input.schedule ? { intervalMinutes: input.schedule.everyMinutes, calendar: null }
       : { intervalMinutes: null, calendar: { days: input.schedule.days, time: input.schedule.time, timeZone: options.timeZone } }

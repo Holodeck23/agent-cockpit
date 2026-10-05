@@ -92,7 +92,7 @@ describe('host-approved conversation control', () => {
     const first = h.act(start('first')); await h.approve(); const child = await first
     h.finish(child.id)
     const send = h.act({ action: 'send', input: { id: child.id, text: 'review', request_key: 'settings' } }).catch((e: Error) => e.message)
-    await expect(h.act(start('concurrent'))).rejects.toThrow(/pending conversation action/)
+    await expect(h.act(start('concurrent'))).rejects.toThrow(/pending Cockpit action/)
     h.store.update(child.id, { settings: threadSettingsSchema.parse({ agent: 'codex', permissionMode: 'auto' }) })
     await h.approve()
     expect(await send).toMatch(/settings changed/)

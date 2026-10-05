@@ -1,4 +1,4 @@
-import { createHostActions } from './host-actions.ts'
+import { createHostActions, type HostActionOptions } from './host-actions.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
@@ -164,7 +164,8 @@ export interface ThreadManager {
    * agent receives when references were expanded. They differ only for attachments
    * and workflow references. `workflows` records the referenced instructions as they were used.
    */
-  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal): Promise<void>
+  /** A Cockpit-side action an agent asked for (conversation control, processes, memory, workflows), approved by the user here. */
+  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options?: HostActionOptions): Promise<void>
   canControl(threadId: string): boolean
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
@@ -268,6 +269,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       }
     }
     if (incoming.kind === 'result' || incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.cancel(threadId)
+    if (incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.forget(threadId)
     const entry = live.get(threadId)
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
     if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false })
@@ -424,9 +426,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   return {
     canControl: (id) => Boolean(live.get(id)?.turnRunning && !live.get(id)?.stopRequested),
-    requestHostAction(threadId, toolName, input, signal) {
+    requestHostAction(threadId, toolName, input, signal, options) {
       if (!live.get(threadId)?.turnRunning || live.get(threadId)?.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
-      return hostActions.request(threadId, toolName, input, signal)
+      return hostActions.request(threadId, toolName, input, signal, options)
     },
     create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth, images: attached }) {
       const now = new Date().toISOString()

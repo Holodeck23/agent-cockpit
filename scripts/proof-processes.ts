@@ -61,6 +61,11 @@ try {
   await button.click()
 
   await startConversation(page, 'Start the dev server please')
+  // Cockpit asks before an agent starts a process, whichever way the agent calls it.
+  const approval = page.locator('.approval.open')
+  await approval.waitFor({ timeout: 30_000 })
+  check('Cockpit asks before the agent starts a process', /start_process|Start a process/i.test(await approval.textContent() ?? ''))
+  await approval.getByRole('button', { name: 'Allow', exact: true }).click()
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor({ timeout: 30_000 })
   const first = await until(page, 'the dev server URL', async () => (await mine(page)).find((p) => p.url && p.status === 'running'))
   check('the agent started it through the cockpit MCP', first.name === 'dev server' && alive(first.pid), first.url)
