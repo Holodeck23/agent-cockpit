@@ -28,10 +28,13 @@ import { hasWindowKey, isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
 import type { RunObservationStore } from '../runs/observations.ts'
+import type { CheckRunner } from '../results/checks.ts'
+import type { ResultService } from '../results/service.ts'
 import type { PresetStore } from '../presets/store.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
+import { handleResultRoute } from './result-routes.ts'
 import { resolveWorkflows } from '../workflows/store.ts'
 import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
@@ -120,6 +123,9 @@ export interface ApiDeps {
   readonly importHome?: string
   /** Each run's before/after workspace observations (W7-05). */
   readonly runs?: RunObservationStore
+  /** Durable run results and finite host checks (desktop mutations, scoped reads). */
+  readonly results?: ResultService
+  readonly checks?: CheckRunner
   readonly observingRun?: (runId: string) => boolean
 }
 
@@ -141,7 +147,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -395,6 +401,13 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         await handleGitRoute(req, res, url, parts, { projects, manager, ...(runs ? { runs } : {}), ...(observingRun ? { observing: observingRun } : {}) }, viaPhone)
         return true
       }
+      if ((parts[1] === 'runs' || parts[1] === 'checks') && results && checks) {
+        await handleResultRoute(req, res, url, parts, {
+          manager, store, results, checks,
+          isOpen: (projectPath) => projects.list({ includeHidden: true }).some((project) => project.path === projectPath),
+        }, viaPhone)
+        return true
+      }
       if (parts[1] === 'processes') {
         await handleProcessRoute(req, res, url, parts, processes)
         return true
@@ -520,6 +533,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'interrupt') {
+        await checks?.cancelForThread(threadId)
         manager.interrupt(threadId)
         sendJson(res, 202, { data: {} })
       } else if (method === 'DELETE' && !action) {
@@ -531,6 +545,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
           throw new HttpError(409, `This conversation owns running processes (${owned.map((p) => p.name).join(', ')}). Choose Stop owned processes or Keep as project processes.`)
         }
         if (owned.length && choice) await processes.release(threadId, choice)
+        await checks?.cancelForThread(threadId)
         await manager.remove(threadId)
         sendJson(res, 200, { data: { deleted: threadId } })
       } else if (method === 'POST' && action === 'completed') {

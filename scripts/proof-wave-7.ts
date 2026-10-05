@@ -5,6 +5,8 @@
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-7
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
@@ -217,6 +219,62 @@ try {
   await page.locator('.thread-head').getByRole('button', { name: 'Changes', exact: true }).click()
   check('W7-04 an unborn repository compares with an empty base, no invented HEAD', await until('empty base', () => changes.getByText(/Against an empty base: this repository has no commits yet/).isVisible())
     && await changes.getByText(/Against HEAD/).count() === 0)
+  await page.getByRole('tab', { name: /^Conversations/ }).click()
+  const closeChanges = page.getByRole('button', { name: 'Close', exact: true })
+  if (await closeChanges.isVisible()) await closeChanges.click()
+
+  // W7-08..10: the packaged result card keeps provider/user/host evidence separate, runs one
+  // exact finite command, exposes freshness, captures without claiming correctness, and cancels
+  // only its owned process group even when the command traps TERM and exits zero.
+  const card = page.locator('.result-card').last()
+  check('W7-08 the result summary separates provider Ready from user Complete', await until('result card', () => card.isVisible())
+    && (await card.locator('summary').textContent())?.includes('Agent turn ready') === true
+    && (await card.locator('summary').textContent())?.includes('Conversation open') === true)
+  await card.locator('summary').click()
+  check('W7-08 no check is not shown as green', await card.getByText(/No host checks were run/).isVisible())
+  check('W7-08 agent prose is visibly not a host check', await card.getByRole('heading', { name: 'Agent report' }).isVisible()
+    && await card.getByText('The agent’s words are not a host check.').isVisible())
+
+  await card.getByLabel('Exact command').fill("printf '3 tests ran\\n'")
+  await card.getByLabel('Required output (optional)').fill('0 failed')
+  await card.getByLabel('Freshness inputs (comma-separated)').fill('first.txt')
+  await card.getByRole('button', { name: 'Run exactly this check' }).click()
+  check('W7-08 zero exit fails the visible narrow criterion', await until('narrow failure', () => card.getByText('Failed', { exact: true }).isVisible())
+    && await card.getByText(/output did not include “0 failed”/).isVisible())
+
+  await card.getByLabel('Exact command').fill('cat first.txt')
+  await card.getByLabel('Required output (optional)').fill('')
+  await card.getByRole('button', { name: 'Run exactly this check' }).click()
+  check('W7-09 a real host pass is recorded', await until('host pass', () => card.getByText('Passed', { exact: true }).isVisible()))
+  writeFileSync(join(unborn, 'first.txt'), 'changed after check\n')
+  await page.reload()
+  await page.getByRole('navigation', { name: 'Conversations' }).getByText('hello', { exact: true }).first().click()
+  const reloadedCard = page.locator('.result-card').last()
+  await reloadedCard.waitFor()
+  await reloadedCard.locator('summary').click()
+  check('W7-09 editing a declared input makes the pass stale after reload', await until('stale check', () => reloadedCard.getByText('stale', { exact: true }).first().isVisible()))
+
+  const previewServer = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<h1>Wave 7 preview</h1>') })
+  await new Promise<void>((resolve) => previewServer.listen(0, '127.0.0.1', resolve))
+  const previewUrl = `http://127.0.0.1:${(previewServer.address() as AddressInfo).port}/`
+  try {
+    await reloadedCard.getByLabel('Local preview URL').fill(previewUrl)
+    await reloadedCard.getByRole('button', { name: 'Capture preview' }).click()
+    check('W7-09 capture is visible but not a visual pass', await until('capture', () => reloadedCard.getByText('Captured, not yet judged').isVisible()))
+    await reloadedCard.getByRole('button', { name: 'Looks wrong' }).click()
+    check('W7-09 human visual judgement stays separate', await until('assessment', () => reloadedCard.getByText('Marked as looking wrong by you').isVisible()))
+
+    await reloadedCard.getByLabel('Exact command').fill("trap 'exit 0' TERM; sleep 30 & wait")
+    await reloadedCard.getByRole('button', { name: 'Run exactly this check' }).click()
+    const cancel = reloadedCard.getByRole('button', { name: 'Cancel', exact: true })
+    await cancel.waitFor()
+    await cancel.click()
+    check('W7-10 cancellation wins over the command’s late zero exit', await until('cancelled', () => reloadedCard.getByText('Cancelled', { exact: true }).isVisible()))
+    check('W7-10 the unrelated preview server remains alive', await fetch(previewUrl).then((response) => response.text()).then((text) => text.includes('Wave 7 preview'), () => false))
+    await shot(page, 'result-card')
+  } finally {
+    await new Promise<void>((resolve) => previewServer.close(() => resolve()))
+  }
   await setTheme(page, 'Light')
 
   await openProject(page, project, 'Wave 7')

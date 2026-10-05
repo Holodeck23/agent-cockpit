@@ -39,6 +39,8 @@ export type TranscriptItem =
     }
   /** `runId`: the note ends that run, whose changes can be opened from it. */
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error'; runId?: string }
+  /** Durable host-observed evidence for one provider turn (pilot 10.1). */
+  | { type: 'result'; key: string; runId: string; outcome: 'ok' | 'error' | 'stopped' | 'interrupted' }
   /** An image the agent showed (G4), or one of yours with no message to sit under. */
   | ({ type: 'image'; key: string; author: 'you' | AgentId; showAuthor: boolean } & ImageRef)
   /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
@@ -390,6 +392,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         } else if (!failed) {
           items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: 'plain', ...(event.runId ? { runId: event.runId } : {}) })
         }
+        if (event.runId) items.push({ type: 'result', key: `${key}-evidence`, runId: event.runId,
+          outcome: event.interrupted ? 'interrupted' : event.ok ? 'ok' : event.stopped ? 'stopped' : 'error' })
         failedThisTurn = false
         return
       }

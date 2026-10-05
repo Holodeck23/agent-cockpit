@@ -5,6 +5,7 @@ export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
 import type { BaseFile, Changes, FileDiff, NoRepository } from '../../server/git/changes.ts'
 import type { RunChanges } from '../../server/runs/run-changes.ts'
+import type { Assessment, CheckDefinition, CheckRecord, EvidenceRecord, ResultRecord } from '../../server/results/types.ts'
 import type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 import type { MemoryEntry } from '../../server/memory/store.ts'
 import type { SessionSummary } from '../../server/import/sessions.ts'
@@ -66,6 +67,7 @@ const operationId = (): { operationId?: string } => {
   const id = globalThis.crypto?.randomUUID?.()
   return id ? { operationId: id } : {}
 }
+const requiredOperationId = (): string => globalThis.crypto?.randomUUID?.() ?? `check-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 export const api = {
   recentWork: (projectPath: string) => request<RecoveryView>(`/api/recovery?${new URLSearchParams({ projectPath })}`),
@@ -89,6 +91,17 @@ export const api = {
   gitBase: (projectPath: string, path: string) => request<BaseFile>(`/api/git/base?${new URLSearchParams({ projectPath, path })}`),
   /** One run's before/after observations, compared (W7-05). */
   gitRun: (threadId: string, runId: string) => request<RunChanges>(`/api/git/run?${new URLSearchParams({ threadId, runId })}`),
+  /** Host-observed result evidence for one finished provider turn (pilot 10.1). */
+  result: (threadId: string, runId: string) => request<ResultRecord>(`/api/runs/${encodeURIComponent(runId)}/result?${new URLSearchParams({ threadId })}`),
+  runCheck: (threadId: string, runId: string, definition: CheckDefinition) =>
+    request<CheckRecord>(`/api/runs/${encodeURIComponent(runId)}/checks`, { method: 'POST', body: { threadId, operationId: requiredOperationId(), definition } }),
+  cancelCheck: (checkId: string) => request<CheckRecord>(`/api/checks/${encodeURIComponent(checkId)}/cancel`, { method: 'POST', body: {} }),
+  captureResultPreview: (threadId: string, runId: string, url: string) =>
+    request<EvidenceRecord>(`/api/runs/${encodeURIComponent(runId)}/preview`, { method: 'POST', body: { threadId, url } }),
+  assessResultPreview: (threadId: string, runId: string, evidenceId: string, verdict: Assessment['verdict'], note?: string) =>
+    request<Assessment>(`/api/runs/${encodeURIComponent(runId)}/assessments`, { method: 'POST', body: { threadId, evidenceId, verdict, note } }),
+  resultEvidence: (threadId: string, runId: string, evidenceId: string) =>
+    `/api/runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}?${new URLSearchParams({ threadId })}`,
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   /** A "documents:" path reads from the project's documents; the result keeps the same naming. */
   readFile: async (projectPath: string, tabPath: string) => {
@@ -208,6 +221,7 @@ export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
 export type { BaseFile, ChangedFile, Changes, DiffLine, FileDiff, NoRepository } from '../../server/git/changes.ts'
 export type { RunChanges } from '../../server/runs/run-changes.ts'
+export type { Assessment, CheckDefinition, CheckRecord, EvidenceRecord, ResultRecord } from '../../server/results/types.ts'
 export type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 export type { MemoryEntry } from '../../server/memory/store.ts'
 /** A session the CLI ran in this project, as the import window lists it. */

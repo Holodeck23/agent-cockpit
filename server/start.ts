@@ -16,6 +16,9 @@ import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
 import { createRunObservationStore, observeRuns, type RunObserver } from './runs/observations.ts'
+import { createResultStore } from './results/store.ts'
+import { createCheckRunner, type CheckRunner } from './results/checks.ts'
+import { createResultService, type ResultService } from './results/service.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
 import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
@@ -75,6 +78,9 @@ export interface RunningServer {
   readonly projects: ProjectStore
   /** Records each run's before/after workspace observations; tests settle it before reading. */
   readonly runObserver: RunObserver
+  /** Durable result cards and finite host checks (pilot 10.1). */
+  readonly results: ResultService
+  readonly checks: CheckRunner
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -147,6 +153,12 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   })
   const runs = createRunObservationStore(root)
   const runObserver = observeRuns(manager, runs)
+  const resultStore = createResultStore(root)
+  const checks = createCheckRunner(resultStore)
+  const results = createResultService({
+    store: resultStore, checks, runs, observing: runObserver.observing,
+    ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}),
+  })
   const workflowStore = createWorkflowStore(root)
   // A crash left these runs open: they end as interrupted; nothing is relaunched or replayed (ID-07).
   const interrupted = manager.recoverInterrupted()
@@ -194,7 +206,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
@@ -218,7 +230,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {
@@ -229,5 +241,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, close }
 }

@@ -12,6 +12,12 @@ export const ROUTES: readonly RouteClass[] = [
   { method: 'GET', route: 'stream', phone: true },
   { method: 'GET', route: 'projects', phone: true },
   { method: 'GET', route: 'processes', phone: true },
+  { method: 'GET', route: 'runs/:id/result', phone: true },
+  { method: 'GET', route: 'runs/:id/evidence/:evidenceId', phone: true },
+  { method: 'POST', route: 'runs/:id/checks', phone: false },
+  { method: 'POST', route: 'runs/:id/preview', phone: false },
+  { method: 'POST', route: 'runs/:id/assessments', phone: false },
+  { method: 'POST', route: 'checks/:id/cancel', phone: false },
 
   // Read conversations, reply, answer the agent, stop it.
   { method: 'GET', route: 'threads', phone: true },

@@ -340,7 +340,8 @@ describe('runs interrupted by a crash (ID-07)', () => {
       at(1, { kind: 'stale_event', generation: 1, eventKind: 'result' }),
       at(2, { kind: 'result', ok: false, interrupted: true, runId: 'r1' }),
     ], 'claude')
-    expect(items.map((item) => item.type)).toEqual(['message', 'note'])
+    expect(items.map((item) => item.type)).toEqual(['message', 'note', 'result'])
     expect(items[1]).toMatchObject({ type: 'note', text: expect.stringMatching(/^Interrupted: .*Nothing was sent again/) })
+    expect(items[2]).toMatchObject({ type: 'result', runId: 'r1', outcome: 'interrupted' })
   })
 })
