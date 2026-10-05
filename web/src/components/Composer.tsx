@@ -23,6 +23,8 @@ interface ComposerProps {
   draftKey: string
   placeholder: string
   disabled?: boolean
+  /** A turn is running: the composer's edge shows the scanner (D12, styles/scanner.css). */
+  working?: boolean
   /** The agent picker, shown in the bottom row. */
   picker: ReactNode
   /** Re-reads the branch pill when it changes, e.g. the conversation's status. */
@@ -58,7 +60,7 @@ export function draftAfterSend(current: string, sent: string): string {
   return current.trim() === sent ? '' : current
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, threadId, draftKey, placeholder, disabled, picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
@@ -156,7 +158,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     <form className="composer" onSubmit={(e) => void submit(e)}>
       {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
       {attach.note ? <p className="workflow-notice" role="status">{attach.note}</p> : null}
-      <div className={`composer-card${attach.dragging ? ' dropping' : ''}`} {...attach.dropProps}>
+      <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}`} {...attach.dropProps}>
         {mentions.menu}
         {attach.images.length ? (
           <ul className="reference-chips image-chips" aria-label="Images to send">

@@ -46,6 +46,14 @@
   --diff-add-bg: light-dark(#e6f4ea, #1d3326);
   --diff-del-bg: light-dark(#fdecea, #3a2220);
 
+  /* D12 scanner (styles/scanner.css): KITT red; light is a darker solid red with no glow */
+  --scanner: light-dark(#cc0000, #ff1a1a);
+  --scanner-ink: light-dark(#c00000, #ff5c5c);
+  --scanner-track: light-dark(#cc000038, #ff1a1a3d);
+  --scanner-glow: light-dark(transparent, #ff1a1a80);
+  --scanner-led-gap: light-dark(#000, transparent);
+  --scanner-thick: light-dark(transparent, #000);
+
   /* "needs you" */
   --needs-bg: light-dark(#fff1df, #342b23);
   --needs-border: light-dark(#e8bf8e, #70543a);

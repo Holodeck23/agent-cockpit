@@ -228,6 +228,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
+        working={isWorking(status)}
         onSubmit={(text, images) => api.send(meta.id, text, images).then(() => undefined)}
         picker={phone ? (
           <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>
