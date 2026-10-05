@@ -75,7 +75,8 @@ try {
   const port = new URL(first.url!).port
   check('listed with state and port', await page.getByRole('button', { name: new RegExp(`dev server Running · :${port}`) }).isVisible())
   check('detail shows command and URL', await page.locator('.process-detail-title code').textContent() === 'node server.js'
-    && await page.getByRole('link', { name: first.url! }).isVisible())
+    // Since the preview pane (9c07d6a) the URL is a button that opens it, not a link.
+    && await page.getByRole('button', { name: first.url! }).isVisible())
   await until(page, 'ten ticks in the log', async () => /tick 10\b/.test(await log.textContent() ?? ''))
   const text = await log.textContent() ?? ''
   check('log shows the startup line and keeps growing', text.includes(`Local: http://127.0.0.1:${port}/`) && /tick 10\b/.test(text))

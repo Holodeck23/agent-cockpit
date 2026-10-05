@@ -54,6 +54,7 @@
     "proof:opencode": "tsx scripts/proof-opencode.ts",
     "proof:antigravity": "tsx scripts/proof-antigravity.ts",
     "proof:preview": "tsx scripts/proof-preview.ts",
+    "proof:open-file": "tsx scripts/proof-open-file.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts",
     "proof:conversation-read": "tsx scripts/proof-conversation-read.ts",
     "proof:agent-controls": "tsx scripts/proof-agent-controls.ts",
