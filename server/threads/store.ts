@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
@@ -104,8 +104,40 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
     reportOnce(file, 'a conversation\'s meta.json is damaged and was left out')
     return undefined
   }
-  // Threads whose log has been checked for a half-written last line since this process started.
-  const checkedEnds = new Set<string>()
+  /**
+   * Parsed events per thread, read incrementally. Status, the list's summaries and every streamed
+   * token used to re-read and re-parse the whole log: on an 8 MB conversation that was ~28 ms per
+   * token on the Electron main thread. The log only grows, so after the first read only the bytes
+   * appended since are parsed. `consumed` stops at the last newline, so half a line is read again
+   * once it is complete. A log that shrank or was replaced is read whole again.
+   */
+  const parsed = new Map<string, { ino: number; consumed: number; events: StoredEvent[] }>()
+  const readEvents = (id: string): StoredEvent[] => {
+    const file = join(dirOf(id), 'events.jsonl')
+    let stat: { ino: number; size: number }
+    try { stat = statSync(file) } catch { parsed.delete(id); return [] }
+    let entry = parsed.get(id)
+    if (!entry || entry.ino !== stat.ino || stat.size < entry.consumed) entry = { ino: stat.ino, consumed: 0, events: [] }
+    if (stat.size > entry.consumed) {
+      const fd = openSync(file, 'r')
+      try {
+        const chunk = Buffer.alloc(stat.size - entry.consumed)
+        let read = 0
+        while (read < chunk.length) {
+          const count = readSync(fd, chunk, read, chunk.length - read, entry.consumed + read)
+          if (!count) break
+          read += count
+        }
+        const end = chunk.lastIndexOf(0x0a, read - 1)
+        if (end >= 0) {
+          // A newline byte never occurs inside a UTF-8 sequence, so complete lines decode safely.
+          entry = { ...entry, consumed: entry.consumed + end + 1, events: entry.events.concat(parseEvents(file, chunk.subarray(0, end + 1).toString('utf8'))) }
+        }
+      } finally { closeSync(fd) }
+    }
+    parsed.set(id, entry)
+    return entry.events
+  }
 
   return {
     root,
@@ -135,30 +167,23 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
     append(id, event, ts) {
       const stored: StoredEvent = { ts: ts ?? new Date().toISOString(), event }
       const file = join(dirOf(id), 'events.jsonl')
-      // Appending after half a line would join the new event to it and lose both.
-      const lead = !checkedEnds.has(id) && existsSync(file) && !endsWithNewline(file) ? '\n' : ''
-      try {
-        appendFileSync(file, `${lead}${JSON.stringify(stored)}\n`)
-      } catch (error) {
-        // A write cut short (a full disk) may itself leave half a line: check again next time.
-        checkedEnds.delete(id)
-        throw error
-      }
-      checkedEnds.add(id)
+      // Appending after half a line (a crash, a write cut short by a full disk) would join the new
+      // event to it and lose both. Checked on every append: one byte, once per stored event.
+      const lead = existsSync(file) && !endsWithNewline(file) ? '\n' : ''
+      appendFileSync(file, `${lead}${JSON.stringify(stored)}\n`)
       const md = markdownFor(event, stored.ts)
       if (md) appendFileSync(join(dirOf(id), 'messages.md'), md)
       return stored
     },
     events(id) {
-      const file = join(dirOf(id), 'events.jsonl')
-      if (!existsSync(file)) return []
-      return parseEvents(file, readFileSync(file, 'utf8'))
+      // A copy: callers may hold on to it while more events arrive.
+      return readEvents(id).slice()
     },
     transcriptPath(id) {
       return join(dirOf(id), 'messages.md')
     },
     remove(id) {
-      checkedEnds.delete(id)
+      parsed.delete(id)
       rmSync(dirOf(id), { recursive: true, force: true })
     },
   }

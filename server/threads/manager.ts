@@ -240,8 +240,15 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
   }
 
+  // A streamed token changes no stored event, so its status is the last one worked out for the
+  // thread, unless the live session has since started or finished being busy.
+  const lastStatus = new Map<string, { status: ThreadStatus; busy: boolean }>()
   const broadcast = (threadId: string, event: NormalizedEvent): void => {
-    const update: ThreadUpdate = { threadId, event, status: statusOf(threadId) }
+    const isBusyNow = busy(live.get(threadId))
+    const last = lastStatus.get(threadId)
+    const status = event.kind === 'text_delta' && last && last.busy === isBusyNow ? last.status : deriveStatus(store.events(threadId), isBusyNow)
+    lastStatus.set(threadId, { status, busy: isBusyNow })
+    const update: ThreadUpdate = { threadId, event, status }
     for (const listener of listeners) listener(update)
   }
 
@@ -537,6 +544,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (entry) await closeEntry(entry)
       store.remove(threadId)
       images.remove(threadId)
+      lastStatus.delete(threadId)
       const update: ThreadUpdate = { threadId, event: { kind: 'thread_deleted' }, status: 'idle' }
       for (const listener of listeners) listener(update)
     },

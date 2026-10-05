@@ -28,6 +28,12 @@ describe('a damaged conversation on disk', () => {
     store.append(meta.id, { kind: 'user_text', text: 'first' })
     appendFileSync(join(root, 'threads', meta.id, 'events.jsonl'), '{"ts":"2026-10-05T00:00:00.000Z","event":{"kind":"assis')
     expect(store.events(meta.id).map((e) => e.event.kind)).toEqual(['user_text'])
+    // An unfinished last line may still be being written: it is left out, not yet called damaged.
+    expect(errors).not.toHaveBeenCalled()
+    // Once a new event follows it, it is a damaged line: skipped and reported once.
+    store.append(meta.id, { kind: 'user_text', text: 'second' })
+    expect(store.events(meta.id).map((e) => e.event.kind)).toEqual(['user_text', 'user_text'])
+    store.events(meta.id)
     expect(errors).toHaveBeenCalledTimes(1)
   })
 
