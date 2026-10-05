@@ -11,7 +11,7 @@ export const PROOF_DIR = process.env.COCKPIT_PROOF_DIR ?? join(ROOT, 'docs/proof
 export const LAUNCHD_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 // COCKPIT_APP points the proofs at another install, e.g. a copy from the published DMG.
 const APP = process.env.COCKPIT_APP ?? join(ROOT, 'release/mac-arm64/Cockpit.app')
-const EXECUTABLE = join(APP, 'Contents/MacOS/Cockpit')
+export const EXECUTABLE = join(APP, 'Contents/MacOS/Cockpit')
 
 /** `extraEnv` adds proof-specific settings, e.g. COCKPIT_AGENT_PATH for a stand-in agent. */
 export async function launchPackagedApp(extraEnv: Readonly<Record<string, string>> = {}): Promise<ElectronApplication> {

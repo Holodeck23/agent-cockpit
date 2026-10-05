@@ -20,7 +20,7 @@ import { connect } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, chromium, devices, type ElectronApplication, type Page } from 'playwright-core'
-import { checker, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { checker, EXECUTABLE, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { randomUUID } from 'node:crypto'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
@@ -81,7 +81,7 @@ const getJson = <T>(page: Page, path: string): Promise<T> =>
 interface RemoteStatus { enabled: boolean; running: boolean; pairings: { id: string; code: string; name: string }[]; devices: { id: string; name: string }[] }
 
 async function launch(state: string): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({ executablePath: join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit'),
+  const app = await electron.launch({ executablePath: EXECUTABLE,
     env: { HOME: process.env.HOME ?? '', USER: process.env.USER ?? '', SHELL: process.env.SHELL ?? '/bin/zsh',
       TMPDIR: process.env.TMPDIR ?? '/tmp', PATH: LAUNCHD_PATH, COCKPIT_HOME: state } })
   const page = await app.firstWindow()

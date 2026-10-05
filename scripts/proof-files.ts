@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, type Page } from 'playwright-core'
-import { ROOT, LAUNCHD_PATH, PROOF_DIR } from './lib/launch-app.ts'
+import { EXECUTABLE, ROOT, LAUNCHD_PATH, PROOF_DIR } from './lib/launch-app.ts'
 import { chooseAgent, openProject } from './lib/ui.ts'
 /** Polls from Node: page.waitForFunction does not await an async predicate (a Promise is truthy). */
 async function waitUntil<T>(page: Page, what: string, read: () => Promise<T | undefined>, timeoutMs = 180_000): Promise<T> {
@@ -30,7 +30,7 @@ const state = mkdtempSync(join(tmpdir(), 'cockpit-files-proof-'))
 const project = join(state, 'sample-project'); mkdirSync(join(project, 'src'), { recursive: true })
 writeFileSync(join(project, 'src', 'hello world.ts'), '// Greeting module\nexport const greeting = "Hello from Cockpit"\n')
 writeFileSync(join(project, 'binary.bin'), Buffer.from([1, 0, 2]))
-const app = await electron.launch({ executablePath: join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit'),
+const app = await electron.launch({ executablePath: EXECUTABLE,
   env: { ...process.env, COCKPIT_HOME: state, PATH: LAUNCHD_PATH } })
 try {
   const page = await app.firstWindow(); page.setDefaultTimeout(15_000)
@@ -72,7 +72,7 @@ try {
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; document.documentElement.style.colorScheme = 'dark' })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
   await page.screenshot({ path: join(PROOF_DIR, 'phase-5-files-dark.png') })
-  await page.getByRole('button', { name: '↑ Up', exact: true }).click()
+  await page.getByRole('button', { name: 'Up', exact: true }).click() // icon button since wave 4 (F4)
   await page.locator('.file-row').filter({ hasText: 'binary.bin' }).waitFor()
   console.log('PASS folder navigation and dark mode at minimum desktop width')
   const store = createThreadStore(state)

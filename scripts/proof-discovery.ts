@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron } from 'playwright-core'
 import { createWorkflowStore, expandWorkflows } from '../server/workflows/store.ts'
-import { checker, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { checker, EXECUTABLE, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { openProject } from './lib/ui.ts'
 
 const { check, finish } = checker()
@@ -24,7 +24,7 @@ writeFileSync(join(state, 'workflows.json'), JSON.stringify([
 ], null, 2), { mode: 0o600 })
 mkdirSync(PROOF_DIR, { recursive: true })
 
-const app = await electron.launch({ executablePath: join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit'),
+const app = await electron.launch({ executablePath: EXECUTABLE,
   env: { ...process.env, COCKPIT_HOME: state, PATH: LAUNCHD_PATH } })
 try {
   const page = await app.firstWindow()

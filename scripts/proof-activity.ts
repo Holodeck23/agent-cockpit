@@ -15,7 +15,7 @@ import type { NormalizedEvent } from '../server/agents/types.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 import { DEV_PROMPT, makeDevProject } from './lib/dev-fixture.ts'
-import { checker, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { checker, EXECUTABLE, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { chooseAgent, openProject, startConversation } from './lib/ui.ts'
 
 const live = !process.argv.includes('--no-live')
@@ -50,7 +50,7 @@ seed('Interrupted search', [
 ])
 
 const launch = (): Promise<ElectronApplication> => electron.launch({
-  executablePath: join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit'),
+  executablePath: EXECUTABLE,
   env: { ...process.env, COCKPIT_HOME: state, PATH: LAUNCHD_PATH },
 })
 

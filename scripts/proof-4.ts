@@ -125,7 +125,11 @@ const processes = await getJson<ProcessInfo[]>(page, '/api/processes')
 const dev = processes.find((p) => p.projectPath === project && p.status === 'running' && p.url)
 check('dev server is running with its URL detected', Boolean(dev), JSON.stringify(processes.map((p) => [p.name, p.status, p.url])))
 const devUrl = dev?.url ?? ''
-check('the preview opened at that URL', (await openedUrls()).includes(devUrl), (await openedUrls()).join(', '))
+// Since phase 7, open_preview shows the app in Cockpit's own preview pane (Browser ↗ still opens
+// the external browser); either counts, at the dev server's port.
+const portOf = (url: string): string => { try { return new URL(url).port } catch { return '' } }
+const paneUrl = await page.locator('.preview-pane .preview-address code').textContent({ timeout: 10_000 }).catch(() => '') ?? ''
+check('the preview opened at that URL', devUrl !== '' && [paneUrl, ...(await openedUrls())].some((url) => portOf(url) === portOf(devUrl)), `pane ${paneUrl}; external ${(await openedUrls()).join(', ')}; dev ${devUrl}`)
 const served = devUrl ? await fetch(devUrl).then((r) => r.text()).catch(() => '') : ''
 check('the site is actually served', served.includes('Sprout is growing'))
 const ppid = dev?.pid ? execFileSync('ps', ['-o', 'ppid=', '-p', String(dev.pid)], { encoding: 'utf8' }).trim() : ''

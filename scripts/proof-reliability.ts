@@ -8,7 +8,7 @@ import { _electron as electron } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 import { apiPost, headStatus } from './lib/ui.ts'
-import { ROOT, LAUNCHD_PATH } from './lib/launch-app.ts'
+import { EXECUTABLE, ROOT, LAUNCHD_PATH } from './lib/launch-app.ts'
 
 const stateRoot = mkdtempSync(join(tmpdir(), 'cockpit-reliability-'))
 const store = createThreadStore(stateRoot)
@@ -22,7 +22,7 @@ for (const [index, id] of ids.entries()) {
   store.append(id, { kind: 'result', ok: true })
 }
 const app = await electron.launch({
-  executablePath: join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit'),
+  executablePath: EXECUTABLE,
   env: { ...process.env, COCKPIT_HOME: stateRoot, PATH: LAUNCHD_PATH },
 })
 try {
@@ -133,29 +133,37 @@ try {
     // Only system utilities and a local stand-in are reachable; never a real provider.
     await app.evaluate((_electron, path) => { process.env.PATH = path },
       mode === 'missing' ? '/usr/bin:/bin' : `${join(ROOT, 'scripts/fixtures/memory-agent')}:/usr/bin:/bin`)
-    let releaseSnapshot!: () => void
-    let snapshotArrived!: () => void
-    const heldSnapshot = new Promise<void>((resolve) => { releaseSnapshot = resolve })
-    const gotSnapshot = new Promise<void>((resolve) => { snapshotArrived = resolve })
-    await page.route(`**/api/threads/${ids[0]}/events`, async (route) => {
-      const response = await route.fetch()
-      snapshotArrived()
-      await heldSnapshot
-      await route.fulfill({ response })
-    })
+    // Hold the conversation's snapshot inside the page: the request still leaves from the Cockpit
+    // window (so it carries the window key, R0), the server answers before the event below, and the
+    // answer reaches the app only after it. (Playwright's route.fetch re-sends the request without
+    // the key and is rightly refused since R0.)
+    await page.evaluate((id) => {
+      const w = window as unknown as { __realFetch?: typeof fetch; __release?: () => void; __arrived?: boolean }
+      const real = w.__realFetch ?? (w.__realFetch = window.fetch.bind(window))
+      let held = false
+      const release = new Promise<void>((resolve) => { w.__release = resolve })
+      w.__arrived = false
+      window.fetch = async (input, init) => {
+        const response = await real(input, init)
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        if (!held && url.endsWith(`/threads/${id}/events`)) { held = true; w.__arrived = true; await release }
+        return response
+      }
+    }, ids[0])
+    const releaseSnapshot = () => page.evaluate(() => (window as unknown as { __release: () => void }).__release())
     await alpha.click()
-    await gotSnapshot
+    await page.waitForFunction(() => (window as unknown as { __arrived?: boolean }).__arrived === true)
     await apiPost(page, `/api/threads/${ids[0]}/messages`, { text: 'Please remember this' })
     // The Error pill carries the failed turn's time (A11): "Error · 0:00".
     await alpha.getByText(mode === 'missing' ? /^Error( · \d+:\d\d)?$/ : 'Needs you', { exact: true }).waitFor()
-    releaseSnapshot()
+    await releaseSnapshot()
     if (mode === 'missing') await headStatus(page).filter({ hasText: 'Error' }).waitFor()
     else {
       await page.locator('.approval.open').waitFor()
       await page.locator('.approval.open').getByRole('button', { name: 'Deny', exact: true }).click()
       await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
     }
-    await page.unroute(`**/api/threads/${ids[0]}/events`)
+    await page.evaluate(() => { const w = window as unknown as { __realFetch: typeof fetch }; window.fetch = w.__realFetch })
     await page.getByRole('button', { name: 'New conversation', exact: true }).click()
     console.log(`PASS ${mode}: an event arriving during detail load survives the older snapshot`)
   }
