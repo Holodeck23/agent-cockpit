@@ -3,8 +3,9 @@ import type { OutputLine } from '../../../server/processes/output.ts'
 import { api, type ProcessInfo, type Project } from '../api.ts'
 import { SearchIcon, TerminalIcon } from './icons.tsx'
 import { shortLabel, stateText } from './ProcessChip.tsx'
-import { native } from '../native.ts'
 import { groupProcesses, ownerText } from '../process-groups.ts'
+import type { PreviewOpen } from '../../../server/preview/types.ts'
+import { processPreview } from '../preview-owner.ts'
 
 // Every process the cockpit runner started in this project (dev servers, watchers),
 // with a live log beside the selected one. Agents start them through the cockpit MCP;
@@ -15,6 +16,7 @@ interface ProcessesProps {
   /** All projects' processes, newest first, kept current by the event stream. */
   processes: ProcessInfo[]
   onError: (message: string) => void
+  onOpenSite: (preview: PreviewOpen) => void
 }
 
 const MAX_LINES = 2000
@@ -48,7 +50,7 @@ function useProcessLog(id: string | undefined): Log | undefined {
   return log?.id === id ? log : undefined
 }
 
-export function Processes({ project, processes, onError }: ProcessesProps) {
+export function Processes({ project, processes, onError, onOpenSite }: ProcessesProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string>()
   const [pending, setPending] = useState('')
@@ -144,10 +146,8 @@ export function Processes({ project, processes, onError }: ProcessesProps) {
                 <code title={selected.command}>{selected.command}</code>
                 <span className={`process-state process-${selected.status}`}><span className="process-dot" aria-hidden />{stateText(selected)}</span>
                 <span className="process-owner">{ownerText(selected)}</span>
-                {selected.url && selected.status !== 'exited' ? <button type="button" className="process-url" onClick={() => {
-                  if (native) native.openPreview(selected.url!)
-                  else window.open(selected.url, '_blank', 'noopener,noreferrer')
-                }}>{selected.url}</button> : null}
+                {selected.url && selected.status !== 'exited' ? <button type="button" className="process-url" title={selected.url}
+                  onClick={() => { const preview = processPreview(selected); if (preview) onOpenSite(preview) }}>Open site</button> : null}
               </div>
               <div className="process-actions">
                 <button type="button" disabled={Boolean(pending)} onClick={() => void act('restart', selected)}>

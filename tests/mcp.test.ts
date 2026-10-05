@@ -14,13 +14,14 @@ import { HttpError, sendJson } from '../server/http/json.ts'
 import { createMcpSessions, type McpSessions } from '../server/mcp/sessions.ts'
 import { createCockpitApi, createCockpitMcpServer } from '../server/mcp/tools.ts'
 import { createProcessRunner, type ProcessRunner } from '../server/processes/runner.ts'
+import type { PreviewOpen } from '../server/preview/types.ts'
 
 interface Harness {
   readonly memoryFile: string
   readonly url: string
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
-  readonly opened: string[]
+  readonly opened: PreviewOpen[]
   readonly inspected: string[]
   connect(token: string): Promise<Client>
 }
@@ -39,7 +40,7 @@ async function harness(options: { agentWorkflows?: boolean } = {}): Promise<Harn
   const sessions = createMcpSessions()
   const processes = createProcessRunner({ graceMs: 500 })
   runner = processes
-  const opened: string[] = []
+  const opened: PreviewOpen[] = []
   const inspected: string[] = []
   const workflows = createWorkflowStore(mkdtempSync(join(tmpdir(), 'cockpit-workflows-mcp-')))
   const memoryRoot = mkdtempSync(join(tmpdir(), 'cockpit-memory-mcp-'))
@@ -149,7 +150,7 @@ describe('cockpit MCP tools', () => {
     expect(log).toMatch(/pass since=\d+/)
 
     expect(textOf(await client.callTool({ name: 'open_preview', arguments: {} }))).toContain('Opened http://localhost:5199/')
-    expect(h.opened).toEqual(['http://localhost:5199/'])
+    expect(h.opened).toEqual([{ url: 'http://localhost:5199/', threadId: 't1', projectPath: dir }])
 
     const inspected = await client.callTool({ name: 'inspect_preview', arguments: {} })
     expect(inspected.isError).not.toBe(true)

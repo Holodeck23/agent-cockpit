@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { NewProject } from './new-project.ts'
 import type { ReleaseNotes } from './updates.ts'
+import type { PreviewOpen } from '../server/preview/types.ts'
 
 type CopyOutcome = { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }
 
@@ -27,11 +28,12 @@ const cockpit = {
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   /** Drives the Dock icon: animated while agents work, badged with how many need you. */
   setActivity: (activity: { working: number; needs: number }): void => ipcRenderer.send('cockpit:activity', activity),
-  /** Opens a local dev-server URL in Cockpit's embedded preview pane. */
-  openPreview: (url: string): void => ipcRenderer.send('cockpit:open-preview', url),
   /** The process runner's open_preview tool reaches the page through this event. */
-  onPreviewOpen: (listener: (url: string) => void): (() => void) => {
-    const receive = (_event: IpcRendererEvent, url: unknown): void => { if (typeof url === 'string') listener(url) }
+  onPreviewOpen: (listener: (preview: PreviewOpen) => void): (() => void) => {
+    const receive = (_event: IpcRendererEvent, value: unknown): void => {
+      const preview = value as Partial<PreviewOpen> | undefined
+      if (preview && typeof preview.url === 'string' && typeof preview.projectPath === 'string' && (preview.threadId === undefined || typeof preview.threadId === 'string')) listener(preview as PreviewOpen)
+    }
     ipcRenderer.on('cockpit:preview-open', receive)
     return () => ipcRenderer.removeListener('cockpit:preview-open', receive)
   },

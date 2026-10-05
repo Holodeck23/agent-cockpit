@@ -9,6 +9,7 @@ import type { Workflow, WorkflowStore } from '../workflows/store.ts'
 import { AgentWorkflowRefused, agentWorkflowSchema, saveAgentWorkflow } from '../workflows/agent-input.ts'
 import { readCursor } from './process-routes.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
+import type { PreviewOpen } from '../preview/types.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
 // Every call carries that session's bearer token, and everything it can see or
@@ -41,7 +42,7 @@ export interface McpRouteDeps {
   readonly processes: ProcessRunner
   /** The owner a process started by this conversation's agent records (K1); resolved by the host. */
   readonly processOwner?: (threadId: string) => ProcessOwner
-  readonly openUrl: (url: string) => Promise<void> | void
+  readonly openUrl: (preview: PreviewOpen) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   readonly memory?: MemoryStore
   /** Whether the project lets agents update and schedule workflows (Project settings). */
@@ -121,7 +122,7 @@ export async function handleMcpRoute(
   }
   if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
-    await openUrl(target)
+    await openUrl({ url: target, threadId: grant.threadId, projectPath: grant.projectPath })
     sendJson(res, 200, { data: { opened: target } })
     return
   }

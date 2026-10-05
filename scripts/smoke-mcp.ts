@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { startServer } from '../server/start.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 import { DEV_PROMPT, makeDevProject } from './lib/dev-fixture.ts'
+import type { PreviewOpen } from '../server/preview/types.ts'
 
 const agent = process.argv[2] === 'codex' ? 'codex' : 'claude'
 const mcpScript = fileURLToPath(new URL('../dist-electron/mcp.cjs', import.meta.url))
@@ -16,7 +17,7 @@ if (!existsSync(mcpScript)) throw new Error('Run `npm run build:electron` first 
 
 const webDist = mkdtempSync(join(tmpdir(), 'cockpit-web-'))
 writeFileSync(join(webDist, 'index.html'), '<h1>smoke</h1>')
-const opened: string[] = []
+const opened: PreviewOpen[] = []
 const running = await startServer({
   port: 0,
   webDist,
@@ -57,12 +58,14 @@ const ok = await done
 const processes = running.processes.list(project)
 const live = processes.find((p) => p.status === 'running' && p.url)
 const served = live?.url ? await fetch(live.url).then((r) => r.text()).catch(() => '') : ''
+const liveUrl = live?.url
 const checks: Array<[string, boolean, string]> = [
   ['turn finished', ok, ''],
   ['started the dev server through cockpit', tools.includes('mcp__cockpit__start_process'), tools.join(', ')],
   ['dev server is running with a detected URL', Boolean(live), JSON.stringify(processes.map((p) => [p.name, p.status, p.url]))],
   ['read the dev-server log', tools.includes('mcp__cockpit__read_process_output'), ''],
-  ['opened the preview at that URL', Boolean(live?.url) && opened.includes(live?.url ?? ''), opened.join(', ')],
+  ['opened the preview at that URL and bound it to the conversation', Boolean(liveUrl)
+    && opened.some((preview) => preview.url === liveUrl && preview.threadId === meta?.id && preview.projectPath === project), JSON.stringify(opened)],
   ['the page is actually served', served.includes('Sprout is growing'), ''],
 ]
 for (const [name, pass, detail] of checks) console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`)

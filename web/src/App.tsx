@@ -34,6 +34,8 @@ import { PhoneNotify } from './components/PhoneNotify.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
 import { PreviewPane } from './components/PreviewPane.tsx'
+import { forgetPreview, previewUrl, rememberPreview, type PreviewMap } from './preview-owner.ts'
+import type { PreviewOpen } from '../../server/preview/types.ts'
 
 const NO_THREADS: never[] = []
 
@@ -79,7 +81,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const setSection = useCallback((next: Section) => { setGalleryFirst(false); setSectionState(next) }, [])
   const openGallery = useCallback(() => { setGalleryFirst(true); setSectionState('workflows') }, [])
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string>()
+  const [previews, setPreviews] = useState<PreviewMap>({})
   // Help → Release Notes, or the "Updated to" view after an update (lead set).
   const [releaseNotes, setReleaseNotes] = useState<{ lead?: string }>()
   // A reply's path:line link opens Files at that line (desktop only; Files stays on the Mac).
@@ -102,7 +104,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
-  useEffect(() => local ? native?.onPreviewOpen(setPreviewUrl) : undefined, [local])
+  useEffect(() => local ? native?.onPreviewOpen((preview) => setPreviews((current) => rememberPreview(current, preview))) : undefined, [local])
   // A clicked Mac notification opens its conversation, in whichever project it belongs to.
   const threadsRef = useRef(cockpit.threads)
   threadsRef.current = cockpit.threads
@@ -149,6 +151,19 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const detailProject = projects.all.find((p) => p.path === cockpit.detail?.meta.projectPath)
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
+  const previewTarget = activePath ? {
+    projectPath: activePath,
+    ...(section === 'conversations' && selectedId ? { threadId: selectedId } : {}),
+  } : undefined
+  const activePreviewUrl = previewUrl(previews, previewTarget)
+  const openProcessSite = (preview: PreviewOpen): void => {
+    setPreviews((current) => rememberPreview(current, preview))
+    if (preview.threadId) {
+      selectProject(preview.projectPath)
+      selectThread(preview.threadId)
+      setSection('conversations')
+    }
+  }
 
   if (local && director === undefined) return <div className="app first-run"><main className="first-run-body" role="status">Opening Cockpit…</main></div>
   if (local && director) return <FirstRun onDone={() => { setDirector(false); void projects.refresh(); cockpit.refresh() }} onCreated={(meta) => {
@@ -205,7 +220,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
       ) : null}
       <ReplyContext.Provider value={replyContext}>
-      <div className={`workspace${local && previewUrl ? ' has-preview' : ''}`}>
+      <div className={`workspace${local && activePreviewUrl ? ' has-preview' : ''}`}>
         <div className="workspace-main">
       {section === 'conversations' ? (
         <div className={`layout${selectedId ? ' has-selection' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
@@ -260,13 +275,14 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         <Memory key={activePath ?? 'no-project'} project={projects.active} threads={cockpit.threads} onError={cockpit.reportError}
           onOpenThread={(id) => { cockpit.select(id); setSection('conversations') }} />
       ) : section === 'processes' ? (
-        <Processes key={activePath ?? 'no-project'} project={projects.active} processes={cockpit.processes} onError={cockpit.reportError} />
+        <Processes key={activePath ?? 'no-project'} project={projects.active} processes={cockpit.processes} onError={cockpit.reportError} onOpenSite={openProcessSite} />
       ) : (
         <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError} initialGallery={galleryFirst}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />
       )}
         </div>
-        {local && previewUrl ? <PreviewPane url={previewUrl} onClose={() => setPreviewUrl(undefined)} /> : null}
+        {local && activePreviewUrl && previewTarget ? <PreviewPane url={activePreviewUrl}
+          onClose={() => setPreviews((current) => forgetPreview(current, previewTarget))} /> : null}
       </div>
       </ReplyContext.Provider>
     </div>

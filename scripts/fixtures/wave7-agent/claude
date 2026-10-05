@@ -18,10 +18,24 @@ while IFS= read -r line; do
   turn=$((turn + 1))
   command="node server.js"
   case "$line" in *other-command*) command="node other.js" ;; esac
-  status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
+  response=$(curl -s -w '\n%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
     -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
     -d "{\"command\":\"$command\",\"name\":\"dev server\"}")
-  text="Asked for the dev server (HTTP $status)."
+  status=$(printf '%s\n' "$response" | tail -n 1)
+  body=$(printf '%s\n' "$response" | sed '$d')
+  url=$(printf '%s\n' "$body" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+  route="process"
+  case "$line" in
+    *login-preview*) route="login" ;;
+    *docs-preview*) route="docs" ;;
+    *docs-updated-preview*) route="docs-updated" ;;
+  esac
+  if [ -n "$url" ]; then
+    curl -s -o /dev/null -X POST "$COCKPIT_MCP_URL/api/mcp/preview" \
+      -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
+      -d "{\"url\":\"${url}${route}\"}"
+  fi
+  text="Asked for the dev server ($route, HTTP $status)."
   printf '{"type":"assistant","message":{"id":"w7-fixture-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$text"
   printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$text"
 done

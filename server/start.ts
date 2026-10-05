@@ -24,6 +24,7 @@ import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
+import type { PreviewOpen } from './preview/types.ts'
 
 export interface StartOptions {
   /** 0 picks a free port. */
@@ -45,7 +46,7 @@ export interface StartOptions {
   /** How to start the cockpit MCP server; without it, agent sessions get no cockpit tools. */
   readonly mcp?: McpCommand
   /** Opens a preview for the user; defaults to macOS `open`. The app retargets this to its preview pane. */
-  readonly openUrl?: (url: string) => Promise<void> | void
+  readonly openUrl?: (preview: PreviewOpen) => Promise<void> | void
   /** Captures a local preview for an agent to inspect. Available in the desktop shell. */
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
@@ -59,7 +60,7 @@ export interface StartOptions {
   readonly windowKey?: string
 }
 
-function openWithSystem(url: string): Promise<void> {
+function openWithSystem({ url }: PreviewOpen): Promise<void> {
   return new Promise((resolve, reject) => {
     spawn('open', [url], { stdio: 'ignore' })
       .on('error', reject)

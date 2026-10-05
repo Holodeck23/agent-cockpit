@@ -306,7 +306,7 @@ const procsOther = join(root, 'procs-other')
 const SERVER = `const http = require('node:http')
 http.createServer((req, res) => res.end('ok')).listen(0, '127.0.0.1', function () { console.log('Local: http://127.0.0.1:' + this.address().port + '/') })`
 for (const dir of [procs, procsOther]) { mkdirSync(dir); writeFileSync(join(dir, 'server.js'), SERVER); writeFileSync(join(dir, 'other.js'), SERVER) }
-interface Proc { id: string; name: string; status: string; pid?: number; projectPath: string; owner: { kind: string; title?: string; formerly?: string }; sharedWith?: Array<{ title: string }> }
+interface Proc { id: string; name: string; status: string; pid?: number; url?: string; projectPath: string; owner: { kind: string; title?: string; formerly?: string }; sharedWith?: Array<{ title: string }> }
 const app2 = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state-procs'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave7-agent') })
 const p2 = await app2.firstWindow()
 const procList = async (dir: string): Promise<Proc[]> => (await get<Proc[]>(p2, '/api/processes')).filter((p) => p.projectPath === dir)
@@ -324,9 +324,9 @@ try {
   p2.setDefaultTimeout(15_000)
   await openProject(p2, procsOther, 'Other folder')
   await openProject(p2, procs, 'Procs')
-  await startIn(procs, 'Login work')
+  await startIn(procs, 'Login work', 'start the dev server login-preview')
   check('W7-06 an agent’s start records its conversation as owner', await until('owned', async () => (await running(procs))[0]?.owner.title === 'Login work', 15_000))
-  await startIn(procs, 'Docs work')
+  await startIn(procs, 'Docs work', 'start the dev server docs-preview')
   check('W7-06 a second conversation reuses it (same command) and sees the original owner', await until('reused', async () => (await lastReply('Docs work')).includes('HTTP 201'))
     && (await running(procs)).length === 1 && (await running(procs))[0]!.owner.title === 'Login work'
     && (await running(procs))[0]!.sharedWith?.[0]?.title === 'Docs work')
@@ -339,10 +339,29 @@ try {
   alivePid = (await running(procsOther))[0]!.pid ?? 0
 
   await p2.reload()
+  const threads = await get<Array<{ meta: { id: string; title: string } }>>(p2, '/api/threads')
+  const docs = threads.find((t) => t.meta.title === 'Docs work')!
+  const conversations = p2.getByRole('navigation', { name: 'Conversations' })
+  check('W7.3 previews opened by background conversations do not replace the workspace pane', await p2.getByRole('complementary', { name: 'App preview' }).count() === 0)
+  await conversations.getByText('Login work', { exact: true }).first().click()
+  const previewAddress = p2.locator('.preview-address code')
+  check('W7.3 selecting a conversation reveals only its own preview', await until('Login preview', async () => (await previewAddress.textContent())?.endsWith('/login') === true))
+  await shot(p2, 'preview-owner-login')
+  await apiPost(p2, `/api/threads/${docs.meta.id}/messages`, { text: 'start the dev server docs-updated-preview' })
+  check('W7.3 a background conversation can update its preview', await until('Docs updated preview', async () => (await lastReply('Docs work')).includes('docs-updated')))
+  check('W7.3 that background update never replaces the visible conversation preview', (await previewAddress.textContent())?.endsWith('/login') === true)
+  await conversations.getByText('Docs work', { exact: true }).first().click()
+  check('W7.3 the updated preview is waiting when its owner comes on screen', await until('updated Docs preview', async () => (await previewAddress.textContent())?.endsWith('/docs-updated') === true))
+  await shot(p2, 'preview-owner-docs')
+
   await p2.getByRole('button', { name: /^Processes/ }).click()
   const group = p2.getByRole('region', { name: 'Login work' })
   check('W7-06 Processes groups it under its owner', await until('group', () => group.getByRole('button', { name: /dev server/ }).isVisible()))
   check('W7-06 the row names the owner and who else uses it', await p2.getByText('Started by “Login work” · also used by “Docs work”').isVisible())
+  await p2.getByRole('button', { name: 'Open site', exact: true }).click()
+  check('W7.3 Open site routes to the process owner conversation', await until('owner conversation', async () => (await p2.locator('.thread-head h1').textContent())?.trim() === 'Login work'))
+  check('W7.3 Open site replaces only that owner’s preview', (await previewAddress.textContent()) === (await running(procs))[0]?.url)
+  await p2.getByRole('button', { name: /^Processes/ }).click()
   await shot(p2, 'processes-owned')
   await p2.getByRole('button', { name: 'Stop', exact: true }).click()
   check('W7-07 a stopped process leaves the running list', await until('stopped', async () => (await running(procs)).length === 0
