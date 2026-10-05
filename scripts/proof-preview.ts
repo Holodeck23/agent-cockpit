@@ -37,7 +37,7 @@ try {
     && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(await pane.locator('.preview-address code').textContent() ?? ''))
   check('the running app renders inside Cockpit', await page.frameLocator('.preview-pane iframe').getByText('Preview is live.').isVisible())
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor({ timeout: 30_000 })
-  check('the agent received a real PNG inspection', await page.getByText('inspected its PNG: yes', { exact: false }).isVisible())
+  check('the agent received a real PNG inspection', await page.locator('.bubble.agent').getByText('inspected its PNG: yes', { exact: false }).isVisible())
 
   const before = (await pane.boundingBox())!.width
   const handle = page.getByRole('button', { name: 'Resize preview' })
