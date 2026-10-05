@@ -176,6 +176,8 @@ try {
   const newFill = await page.getByRole('button', { name: 'New conversation' }).evaluate((el) => getComputedStyle(el).backgroundColor)
   check('E1 so does the new-conversation button', newFill === 'rgb(181, 50, 112)', newFill)
   await page.getByRole('button', { name: 'Mark complete' }).click()
+  // The pointer stays on the button after the click, and hover (rightly) outranks the tint.
+  await page.mouse.move(5, 5)
   const completeColor = () => page.locator('.head-action[aria-pressed="true"]').evaluate((el) => getComputedStyle(el).color)
   check('E1 the Complete control takes the tint', await until('tinted', async () => (await completeColor()) === 'rgb(181, 50, 112)'), await completeColor())
   await shot(page, 'e1-tint-light')

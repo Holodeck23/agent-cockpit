@@ -156,9 +156,14 @@ try {
   await peek.getByRole('button', { name: 'Open in Files' }).click()
   check('A8 Open in Files opens it', await until('files', async () => (await page.getByRole('tablist', { name: 'Open files' }).getByRole('tab', { selected: true }).innerText()).startsWith('app.ts')))
   await open('Clips')
-  await page.locator('.workflow-clip summary').hover()
   const flowPeek = page.locator('.peek', { has: page.locator('.workflow-clip') }).locator('.peek-panel')
-  check('A8 hovering a workflow clip shows the instructions it sent', await until('workflow peek', async () => (await flowPeek.innerText()).includes('Review the diff for risky changes.')),
+  // Hover once the reopened view has settled: a hover that lands while the transcript still
+  // scrolls into place (or where the pointer already was) never enters the clip (1 in ~8 runs).
+  const hoverFlow = async (): Promise<boolean> => {
+    if ((await flowPeek.count()) === 0) { await page.mouse.move(5, 5); await page.locator('.workflow-clip summary').hover() }
+    return (await flowPeek.innerText({ timeout: 500 })).includes('Review the diff for risky changes.')
+  }
+  check('A8 hovering a workflow clip shows the instructions it sent', await until('workflow peek', hoverFlow),
     `panels open: ${await page.locator('.peek-panel').count()}; texts: ${(await page.locator('.peek-panel').allInnerTexts()).join(' | ').slice(0, 200)}`)
 
   // A9: search every message, completed included while searching.
