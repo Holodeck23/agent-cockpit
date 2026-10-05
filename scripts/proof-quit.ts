@@ -6,11 +6,10 @@ import { execFile, execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checker, launchPackagedApp, ROOT } from './lib/launch-app.ts'
+import { APP_BUNDLE, checker, launchPackagedApp, ROOT } from './lib/launch-app.ts'
 import { openProject, startConversation } from './lib/ui.ts'
 
 const { check, finish } = checker()
-const appPath = process.env.COCKPIT_APP ?? join(ROOT, 'release/mac-arm64/Cockpit.app')
 const agentDir = join(ROOT, 'scripts/fixtures/silent-agent')
 const agentsAlive = (): number => {
   try { return execFileSync('pgrep', ['-f', agentDir], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).length } catch { return 0 }
@@ -37,7 +36,7 @@ async function quitCase(label: string, veto: boolean): Promise<void> {
     }
     check(`${label}: an agent is mid-turn before quitting`, agentsAlive() > 0)
     const quitAt = Date.now()
-    execFile('osascript', ['-e', `tell application "${appPath}" to quit`])
+    execFile('osascript', ['-e', `tell application "${APP_BUNDLE}" to quit`])
     for (let i = 0; i < 40 && !exitedAt; i += 1) await new Promise((r) => setTimeout(r, 250))
     check(`${label}: Quit ends the app process`, exitedAt > 0, exitedAt ? `${exitedAt - quitAt} ms` : 'still running after 10 s')
     await new Promise((r) => setTimeout(r, 500))
