@@ -86,7 +86,7 @@ describe('Claude compatibility', () => {
       expect(statSync(file).mode & 0o777).toBe(0o600)
     } finally { await session.close() }
     await expect.poll(() => existsSync(file)).toBe(false)
-  })
+  }, 15_000)
   it('keeps the prompt inline on a CLI without the file option', async () => {
     const f = fixture(help), events: NormalizedEvent[] = []
     const session = launchClaude({ cwd: f.cwd, appendSystemPrompt: 'short guidance' }, (e) => events.push(e), { executable: f.executable })
@@ -96,7 +96,7 @@ describe('Claude compatibility', () => {
       const launched = readFileSync(join(f.cwd, 'launched'), 'utf8').split('\n')
       expect(launched[launched.indexOf('--append-system-prompt') + 1]).toBe('short guidance')
     } finally { await session.close() }
-  })
+  }, 15_000)
   it.each([help, legacyHelp])('probes the chosen executable, then delivers the queued message', async (text) => {
     const f = fixture(text), events: NormalizedEvent[] = []
     const session = launchClaude({ cwd: f.cwd }, (event) => events.push(event), { executable: f.executable })

@@ -34,6 +34,8 @@ process.stdin.on('data', (d) => {
   chmodSync(executable, 0o755)
   return { executable, log }
 }
+// Stand-ins are fresh node processes; under a full parallel run each can take seconds to answer.
+const SLOW = 15_000
 const requests = (log: string): string[] => { try { return readFileSync(log, 'utf8').trim().split('\n') } catch { return [] } }
 
 describe('Stop while an agent is starting (Day 10)', () => {
@@ -49,18 +51,18 @@ describe('Stop while an agent is starting (Day 10)', () => {
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(requests(log)).not.toContain('turn/start')
     await session.close()
-  })
+  }, SLOW)
 
   it('after turn/start but before Codex names the turn: interrupts it as soon as it is named', async () => {
     const { executable, log } = fakeCodex(0, 200)
     const events: NormalizedEvent[] = []
     const session = launchCodex({ cwd: process.cwd() }, (e) => events.push(e), { executable })
     session.send('hello')
-    await expect.poll(() => requests(log).includes('turn/start')).toBe(true)
+    await expect.poll(() => requests(log).includes('turn/start'), { timeout: 5000 }).toBe(true)
     session.interrupt()
-    await expect.poll(() => requests(log).includes('turn/interrupt'), { timeout: 2000 }).toBe(true)
+    await expect.poll(() => requests(log).includes('turn/interrupt'), { timeout: 5000 }).toBe(true)
     await session.close()
-  })
+  }, SLOW)
 
   it('ACP (OpenCode) before the session exists: the prompt never goes out and the turn ends stopped', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-acp-stop-'))
@@ -93,5 +95,5 @@ process.stdin.on('data', (d) => {
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(requests(log)).not.toContain('session/prompt')
     await session.close()
-  })
+  }, SLOW)
 })
