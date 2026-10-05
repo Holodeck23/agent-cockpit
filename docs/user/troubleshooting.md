@@ -52,6 +52,14 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 
 ## Files & Previews
 
+**Symptom:** A file name shows something like `⟨U+202E⟩`, or Cockpit asks before opening a file.
+*   **Likely Cause:** The name contains characters that hide or reverse text. Cockpit shows them so the name cannot pretend to be something else (`Invoice-⟨U+202E⟩fdp.command` is a script, not a PDF). It asks before opening any file macOS would run or install.
+*   **Recovery:** Open it only if you know where it came from. Rename it in Files (**⋯ → Rename…**) if the characters were not intended.
+
+**Symptom:** An agent's request to start a process, remember something or save a workflow failed with "approval expired" or "denied".
+*   **Likely Cause:** Cockpit asks before an agent starts or stops a process, saves a memory or saves a workflow, and the card waits 45 seconds. If nobody answers in time, the request lapses.
+*   **Recovery:** Ask the agent to try again and answer the card. For processes, **Allow for this session** covers the rest of that agent session.
+
 **Symptom:** Cockpit warns about a file conflict when saving an edit.
 *   **Likely Cause:** You edited a file inside Cockpit, but that same file was modified by an external editor (or Git) before you saved.
 *   **Recovery:** Review the changes. Choose **Save mine as a copy** to preserve your edits to a new file, or **Revert** to load the external changes.

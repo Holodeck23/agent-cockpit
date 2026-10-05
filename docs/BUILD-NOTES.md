@@ -314,5 +314,51 @@ A full audit of `f31ae29` found two faults that could take down far more than th
   - The JSON-RPC message handlers and the Claude and Antigravity line parsers ran outside any guard, one step before the guarded sink. Now a throw there becomes a protocol error in that conversation.
 - **Docs:** ARCHITECTURE.md had drifted. It described a three-call preload and two agents, and did not mention the window key, which now carries most of the desktop security story. It now covers all four adapters, the full preload surface, the window key, tolerant reads and agent pipes. The user guides now document v0.1.4.
 - **Gate:** typecheck, `check:paths` and both builds pass; vitest passes 666 tests here, 10 of them new. The audit environment was Linux as root. There, four existing tests fail for environmental reasons only (no `/bin/zsh`, root ignores `chmod 0500`, no zombie reaping in the container, a pooled keep-alive socket). They pass on macOS CI. No packaged-app proof was run for this repair; it changes no UI or protocol behaviour on the happy path.
-- **Still open from the audit, in order:** status and summaries re-read whole event logs on every streamed token (H2). Then the other findings, tracked privately until fixed.
+- **Next:** everything else the audit and a five-surface red team found. See the section below.
+
+## Audit and red-team follow-through (2026-10-05)
+
+A five-surface red team was run against the repair branch: the local API and window key, a prompt-injected agent, phone access, the renderer, and files and data. Its findings and the rest of the audit's were fixed on the same branch. Each has a test that fails on the code before it, unless noted.
+
+- **Repository config ran a program (critical).** Cockpit runs `git status` as soon as a folder opens, and a repository's own `.git/config` can name a `core.fsmonitor` program. Every git call now sets `core.fsmonitor=` on the command line. Hooks still run only for switch and push, which you start.
+- **The CLI's approval was bypassable.** The MCP session token is in the agent's environment, so its shell could call `/api/mcp` directly. It could start processes, write memory that every project reads, or plant workflows, all without a card. Those routes now ask on the server through Cockpit's own card (host actions), and the CLIs pre-approve the tools. Processes offer Allow for this session. Stand-in agents in the packaged proofs follow the new flow. `proof:preview` and `proof:processes` now click Allow on the card.
+- **Workflows.**
+  - An agent's update to a workflow that runs with more than manual or plan permissions, or with hooks, now pauses its schedule.
+  - The scheduler no longer stops for the session on one bad tick.
+- **Agents.** Agents run as their own process group, so a CLI that has to be terminated or killed takes its shell commands with it.
+- **Files.**
+  - File names show hiding and reordering characters visibly.
+  - Opening a runnable file asks first, with its real name.
+  - Editor saves re-check that the folder still resolves to the same real path. This narrows, but cannot fully close, the window to a symlink swapped in by another writer at the same moment. No test: the race can't be staged deterministically.
+- **Phone.**
+  - Revoking a phone ends its open live stream.
+  - Push endpoints must belong to a browser push service. Before, it was any HTTPS URL, which made a blind SSRF from the Mac.
+  - Re-asking to pair replaces the request instead of handing back its id.
+  - Pending pairing requests are capped per login.
+- **Approval cards.**
+  - Agent-written titles stay on one line.
+  - Cards show Cockpit's description and risk badges, array commands whole, and all input.
+  - The detail is capped and scrolls from its top.
+- **Page and previews.**
+  - The page has a Content-Security-Policy. In Chromium, a Markdown document's remote image is refused and no request leaves.
+  - Previews and captures can never open Cockpit's own ports.
+  - Captures use an in-memory session cleared after each one, and cannot navigate off loopback.
+  - The project picture route sets CORP.
+- **Performance.** Event logs are read incrementally and a streamed token reuses the last status. On an 8 MB conversation, a status read went from 28.4 ms to 0.8 ms. The half-line check before an append now runs on every append. Only the first per process missed a line cut short inside a running process.
+- **Smaller fixes.**
+  - Atomic writes use random temp names created exclusively, and the state folder is kept at 0700.
+  - Session import skips message lines that name no folder.
+  - Reply links show their destination, and the real host when the text names another site.
+  - The live stream drops a client past 8 MB buffered.
+  - `@milkdown/kit` moved to devDependencies.
+  - The unit suite now also passes on Linux and as root. Four tests had depended on macOS details.
+- **Gate.** Typecheck, `check:paths`, both builds and vitest pass: 696 tests plus 1 skipped as root, 30 new or changed. The page and its policy were exercised in Chromium against the built UI. No packaged-app proof could be run here, because Electron does not run in this environment. The changes most worth a packaged run on a Mac are:
+  - the approval cards (`proof:processes`, `proof:preview`, `proof:memory`, `proof:director`, `proof:reliability`);
+  - the open-file confirmation;
+  - a capture through `inspect_preview`.
+- **Not changed, by decision.**
+  - Hardened runtime, notarization and the asar-integrity fuses wait for a Developer ID.
+  - A paired phone still sees every project; that is the phone's purpose.
+  - An agent can still screenshot any non-Cockpit localhost page, as its shell can already reach it.
+  - The router's phone check on the documents space stays as a second line behind the route allowlist.
 
