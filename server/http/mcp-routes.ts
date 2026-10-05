@@ -3,7 +3,7 @@ import { listConversations, listConversationsInput, readConversation, readConver
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { McpSessions } from '../mcp/sessions.ts'
-import type { ProcessRunner } from '../processes/runner.ts'
+import { ProcessConflictError, type ProcessOwner, type ProcessRunner } from '../processes/runner.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import type { Workflow, WorkflowStore } from '../workflows/store.ts'
 import { AgentWorkflowRefused, agentWorkflowSchema, saveAgentWorkflow } from '../workflows/agent-input.ts'
@@ -39,6 +39,8 @@ export interface McpRouteDeps {
   readonly workflows?: WorkflowStore
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
+  /** The owner a process started by this conversation's agent records (K1); resolved by the host. */
+  readonly processOwner?: (threadId: string) => ProcessOwner
   readonly openUrl: (url: string) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   readonly memory?: MemoryStore
@@ -53,7 +55,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   url: URL,
   parts: readonly string[],
-  { sessions, processes, openUrl, capturePreview, workflows, memory, conversations, control, agentWorkflows, enableWorkflow }: McpRouteDeps,
+  { sessions, processes, processOwner, openUrl, capturePreview, workflows, memory, conversations, control, agentWorkflows, enableWorkflow }: McpRouteDeps,
 ): Promise<void> {
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
@@ -130,7 +132,13 @@ export async function handleMcpRoute(
     if (method === 'GET') return sendJson(res, 200, { data: processes.list(projectPath) })
     if (method === 'POST') {
       const body = parseBody(startBody, await readJson(req))
-      return sendJson(res, 201, { data: processes.start({ projectPath, ...body }) })
+      const owner: ProcessOwner = processOwner?.(grant.threadId) ?? { kind: 'project' }
+      try {
+        return sendJson(res, 201, { data: processes.start({ projectPath, ...body }, owner) })
+      } catch (error) {
+        if (error instanceof ProcessConflictError) throw new HttpError(409, error.message)
+        throw error
+      }
     }
     throw new HttpError(404, 'Not found')
   }

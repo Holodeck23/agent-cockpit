@@ -133,7 +133,7 @@ describe('process runner', () => {
     expect(stopped.signal).toBe('SIGKILL')
   })
 
-  it('reuses a running process with the same name and replaces an exited one', async () => {
+  it('reuses a running process with the same name and command, and keeps an exited one as finished history', async () => {
     runner = createProcessRunner()
     const dir = project()
     const long = script(dir, 'long.js', 'setInterval(() => {}, 1000)')
@@ -142,7 +142,7 @@ describe('process runner', () => {
     await runner.stop(first.process.id)
     const again = runner.start({ projectPath: dir, command: long, name: 'dev' })
     expect(again.reused).toBe(false)
-    expect(runner.list(dir).map((p: ProcessInfo) => p.id)).toEqual([again.process.id])
+    expect(runner.list(dir).map((p: ProcessInfo) => [p.id, p.status])).toEqual([[again.process.id, 'running'], [first.process.id, 'exited']])
   })
 
   it('restarts a running process as a new one with the same command and name, and an exited one too', async () => {
@@ -154,7 +154,7 @@ describe('process runner', () => {
     expect(second).toMatchObject({ name: 'dev', command: long, status: 'running' })
     expect(second.id).not.toBe(first.id)
     expect(alive(first.pid!)).toBe(false)
-    expect(runner.list(dir).map((p: ProcessInfo) => p.id)).toEqual([second.id])
+    expect(runner.list(dir).filter((p: ProcessInfo) => p.status !== 'exited').map((p) => p.id)).toEqual([second.id])
     await runner.stop(second.id)
     const third = await runner.restart(second.id)
     expect(third.status).toBe('running')

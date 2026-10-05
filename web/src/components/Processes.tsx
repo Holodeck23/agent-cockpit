@@ -4,6 +4,7 @@ import { api, type ProcessInfo, type Project } from '../api.ts'
 import { SearchIcon, TerminalIcon } from './icons.tsx'
 import { shortLabel, stateText } from './ProcessChip.tsx'
 import { native } from '../native.ts'
+import { groupProcesses, ownerText } from '../process-groups.ts'
 
 // Every process the cockpit runner started in this project (dev servers, watchers),
 // with a live log beside the selected one. Agents start them through the cockpit MCP;
@@ -51,11 +52,16 @@ export function Processes({ project, processes, onError }: ProcessesProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string>()
   const [pending, setPending] = useState('')
+  // Finished processes leave the list; Show finished brings back their bounded history.
+  const [finished, setFinished] = useState(false)
   const mine = project ? processes.filter((p) => p.projectPath === project.path) : []
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  const shown = mine.filter((p) => words.every((w) => `${p.name} ${p.command} ${p.url ?? ''}`.toLowerCase().includes(w)))
-  // Follow the newest process until the person picks one.
-  const selected = mine.find((p) => p.id === selectedId) ?? mine[0]
+  const shown = mine.filter((p) => words.every((w) => `${p.name} ${p.command} ${p.url ?? ''} ${ownerText(p)}`.toLowerCase().includes(w)))
+  const groups = groupProcesses(shown, finished)
+  const visible = groups.flatMap((g) => g.processes)
+  const finishedCount = mine.filter((p) => p.status === 'exited').length
+  // Follow the newest process in view until the person picks one.
+  const selected = visible.find((p) => p.id === selectedId) ?? visible[0]
   const log = useProcessLog(selected?.id)
   const running = mine.filter((p) => p.status !== 'exited').length
 
@@ -98,21 +104,36 @@ export function Processes({ project, processes, onError }: ProcessesProps) {
             <span>When you ask your agent to start your site or server, it shows up here with its output.</span>
           </div>
         ) : null}
-        {mine.length > 0 && shown.length === 0 ? <p className="workflow-none" role="status">No processes match.</p> : null}
-        <ul className="process-items">
-          {shown.map((p) => (
-            <li key={p.id}>
-              <button type="button" className={`process-item process-${p.status}${p.id === selected?.id ? ' selected' : ''}`}
-                aria-current={p.id === selected?.id} onClick={() => { setSelectedId(p.id); pinned.current = true }}>
-                <span className="process-dot" aria-hidden />
-                <span className="process-text">
-                  <span className="process-name">{p.name}</span>
-                  <span className="process-meta">{stateText(p)}{p.url && p.status !== 'exited' ? ` · ${shortLabel(p)}` : ''}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        {mine.length > 0 ? (
+          <div className="process-view" role="group" aria-label="Which processes">
+            <button type="button" aria-pressed={!finished} onClick={() => setFinished(false)}>Running</button>
+            <button type="button" aria-pressed={finished} onClick={() => setFinished(true)}>Show finished{finishedCount ? ` (${finishedCount})` : ''}</button>
+            {finished && finishedCount ? (
+              <button type="button" className="process-clear" title="Removes finished rows from this list. Nothing is stopped."
+                onClick={() => void api.clearFinishedProcesses(project.path).catch((e: unknown) => onError(e instanceof Error ? e.message : String(e)))}>Clear finished</button>
+            ) : null}
+          </div>
+        ) : null}
+        {mine.length > 0 && visible.length === 0 ? <p className="workflow-none" role="status">{words.length ? 'No processes match.' : finished ? 'No finished processes.' : 'Nothing running. Finished ones are under Show finished.'}</p> : null}
+        {groups.map((group) => (
+          <section key={group.key} className="process-group" aria-label={group.label}>
+            <h2 className="process-group-title">{group.label}</h2>
+            <ul className="process-items">
+              {group.processes.map((p) => (
+                <li key={p.id}>
+                  <button type="button" className={`process-item process-${p.status}${p.id === selected?.id ? ' selected' : ''}`}
+                    aria-current={p.id === selected?.id} onClick={() => { setSelectedId(p.id); pinned.current = true }}>
+                    <span className="process-dot" aria-hidden />
+                    <span className="process-text">
+                      <span className="process-name">{p.name}</span>
+                      <span className="process-meta">{stateText(p)}{p.url && p.status !== 'exited' ? ` · ${shortLabel(p)}` : ''}{p.sharedWith?.length ? ` · shared with ${p.sharedWith.length}` : ''}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </nav>
       <main className="process-detail">
         {selected ? (
@@ -122,6 +143,7 @@ export function Processes({ project, processes, onError }: ProcessesProps) {
                 <h2>{selected.name}</h2>
                 <code title={selected.command}>{selected.command}</code>
                 <span className={`process-state process-${selected.status}`}><span className="process-dot" aria-hidden />{stateText(selected)}</span>
+                <span className="process-owner">{ownerText(selected)}</span>
                 {selected.url && selected.status !== 'exited' ? <button type="button" className="process-url" onClick={() => {
                   if (native) native.openPreview(selected.url!)
                   else window.open(selected.url, '_blank', 'noopener,noreferrer')

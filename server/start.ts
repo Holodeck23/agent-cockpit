@@ -109,7 +109,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
   const workspaces = createWorkspaceStore(root)
-  const processes = createProcessRunner()
+  const processes = createProcessRunner({ ledgerFile: join(root, 'processes.json') })
   const sessions = createMcpSessions()
   // Known once listening; sessions only start after that.
   let baseUrl = ''
@@ -195,7 +195,12 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
   const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
-    mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
+    mcp: { sessions, processes, openUrl,
+      processOwner: (threadId) => {
+        const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
+        const runId = manager.currentRunId(threadId)
+        return { kind: 'conversation', threadId, title: meta?.title ?? 'Deleted conversation', ...(runId ? { runId } : {}) }
+      }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)

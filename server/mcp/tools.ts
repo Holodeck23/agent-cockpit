@@ -132,7 +132,8 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
       try {
         const { process: started, reused } = await api.start({ command, ...(name ? { name } : {}) })
         const read = await settle(api, started.id, reused ? 0 : (wait_seconds ?? 10))
-        const lead = reused ? 'Already running (not started again).' : 'Started.'
+        const owner = started.owner?.kind === 'conversation' ? ` It belongs to the conversation “${started.owner.title}”; it stays theirs.` : ''
+        const lead = reused ? `Already running (not started again).${owner}` : 'Started.'
         return text(`${lead}\n${formatRead(read)}`)
       } catch (error) {
         return failure(error)

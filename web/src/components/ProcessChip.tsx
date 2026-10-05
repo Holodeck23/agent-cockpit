@@ -23,6 +23,7 @@ export function shortLabel(info: ProcessInfo): string {
 }
 
 export function stateText(info: ProcessInfo): string {
+  if (info.interrupted) return 'Interrupted: Cockpit quit while it ran'
   if (info.status === 'running') return 'Running'
   if (info.status === 'stopping') return 'Stopping…'
   if (info.signal) return `Stopped (${info.signal})`

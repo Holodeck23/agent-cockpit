@@ -166,7 +166,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
               onFind={() => setFinding(true)}
               onMarkUnread={() => { markUnread(meta.id); onBack?.() }}
-              onDelete={() => api.deleteThread(meta.id).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
+              ownedProcesses={processes.filter((p) => p.status !== 'exited' && p.owner?.kind === 'conversation' && p.owner.threadId === meta.id)}
+              onDelete={(choice) => api.deleteThread(meta.id, choice).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
               running={running}
             />
           </div>}

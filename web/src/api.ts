@@ -155,7 +155,8 @@ export const api = {
   interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
   switchAgent: (id: string, settings: Partial<ThreadSettings>) =>
     request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),
-  deleteThread: (id: string) => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: {} }),
+  /** `processes` decides what happens to running processes the conversation owns (K2); without it such a delete is refused. */
+  deleteThread: (id: string, processes?: 'stop' | 'keep') => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: processes ? { processes } : {} }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
   presets: () => request<Preset[]>('/api/presets'),
@@ -165,6 +166,8 @@ export const api = {
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
   restartProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/restart`, { method: 'POST', body: {} }),
+  /** Drops this folder's finished rows from the history; stops nothing. */
+  clearFinishedProcesses: (projectPath: string) => request<{ cleared: number }>(`/api/processes/clear-finished?${new URLSearchParams({ project: projectPath })}`, { method: 'POST', body: {} }),
   /** Output lines after `since`, or the last `tail` lines. */
   readProcess: (id: string, options: { since?: number; tail?: number }) =>
     request<ProcessRead>(`/api/processes/${id}/output?${new URLSearchParams(Object.entries(options).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),

@@ -162,6 +162,8 @@ interface Live {
   runId?: string
   /** Runs of messages still waiting in the queue, by queued id: a taken one becomes the current run. */
   readonly queuedRuns: Map<string, string>
+  /** Revokes the session's control grant; also on close, in case no exit event comes (ID-06). */
+  readonly releaseGrant: () => void
 }
 
 /** The conversation's agent is still working, so this cannot happen yet (HTTP 409). */
@@ -207,6 +209,8 @@ export interface ThreadManager {
   /** Resume with manual permissions and CLI defaults; retain the native session when the agent is unchanged. */
   resumeRecovered(threadId: string, agent: AgentId, text: string, agentText: string): ThreadMeta
   summaries(): ThreadSummary[]
+  /** The run the conversation's agent is working on now, if any. */
+  currentRunId(threadId: string): string | undefined
   status(threadId: string): ThreadStatus
   /** The agent message currently being streamed, or '' between messages. */
   partialText(threadId: string): string
@@ -244,7 +248,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const closeEntry = (entry: Live): Promise<void> => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
     entry.stopRequested = true
-    const closingSession = entry.session.close()
+    const closingSession = entry.session.close().finally(entry.releaseGrant)
     closing.add(closingSession)
     void closingSession.then(() => closing.delete(closingSession), () => closing.delete(closingSession))
     return closingSession
@@ -354,8 +358,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       handleEvent(event)
     }
     let released = false
+    const releaseGrant = (): void => { if (!released) { released = true; mcp?.release() } }
     const handleEvent: EventSink = (event) => {
-      if (event.kind === 'exit' && !released) { released = true; mcp?.release() }
+      if (event.kind === 'exit') releaseGrant()
       // An old process may still talk after its replacement started: it is labelled, never acted on (ID-04).
       if (generations.get(meta.id) !== generation) {
         if (STALE_LABELLED.has(event.kind)) record(meta.id, { kind: 'stale_event', generation: launchNumber, eventKind: event.kind })
@@ -407,7 +412,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '', generation: launchNumber, queuedRuns: new Map() }
+    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '', generation: launchNumber, queuedRuns: new Map(), releaseGrant }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -560,6 +565,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!awaitingOf(store.events(threadId))) throw new Error('Nothing is waiting on you in this conversation')
       record(threadId, { kind: 'awaiting_dismissed' })
     },
+    currentRunId: (threadId) => (live.get(threadId)?.turnRunning ? live.get(threadId)?.runId : undefined),
     async remove(threadId) {
       requireMeta(threadId)
       hostActions.cancel(threadId)

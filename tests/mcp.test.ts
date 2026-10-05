@@ -137,8 +137,12 @@ describe('cockpit MCP tools', () => {
     const [proc] = h.processes.list(dir)
     expect(proc).toMatchObject({ name: 'dev', status: 'running', projectPath: dir })
 
-    const again = textOf(await client.callTool({ name: 'start_process', arguments: { command: 'anything', name: 'dev' } }))
+    const again = textOf(await client.callTool({ name: 'start_process', arguments: { command: `"${process.execPath}" dev.js`, name: 'dev' } }))
     expect(again).toContain('Already running')
+    // W7-06: the same name with a different command is a conflict, not a silent reuse.
+    const clash = textOf(await client.callTool({ name: 'start_process', arguments: { command: 'anything', name: 'dev' } }))
+    expect(clash).toMatch(/already running here with a different command/)
+    expect(h.processes.list(dir)).toHaveLength(1)
 
     const log = textOf(await client.callTool({ name: 'read_process_output', arguments: { id: proc?.id } }))
     expect(log).toContain('! warming up')

@@ -3,6 +3,7 @@ import type { NormalizedEvent } from '../../../server/agents/types.ts'
 import { native } from '../native.ts'
 import { usePopover } from '../usePopover.ts'
 import { usageLine } from '../usage.ts'
+import type { ProcessInfo } from '../api.ts'
 import { FileIcon, MoreIcon, SearchIcon, TrashIcon } from './icons.tsx'
 
 type UsageEvent = Extract<NormalizedEvent, { kind: 'usage' }>
@@ -16,7 +17,10 @@ interface ThreadMenuProps {
   onFind?: () => void
   /** Absent on the phone, where conversations can't be deleted. */
   onMarkUnread?: () => void
-  onDelete?: () => Promise<void>
+  /** `processes` says what happens to the running processes this conversation owns (K2). */
+  onDelete?: (processes?: 'stop' | 'keep') => Promise<void>
+  /** Running processes this conversation owns: deleting it needs a decision about them. */
+  ownedProcesses?: readonly ProcessInfo[]
   /** A turn is running: deleting stops the agent first, and it cannot be marked complete yet. */
   running?: boolean
   /** Revision the running session started with (and its text), and the project's current one. */
@@ -30,7 +34,7 @@ function instructionsNote({ session, current }: { session?: number; current?: nu
   return `Project instructions: revision ${current} is saved; it applies when the agent next starts${session ? ` (this session has ${session})` : ''}.`
 }
 
-export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted, onFind, onMarkUnread, onDelete, running = false, instructions }: ThreadMenuProps) {
+export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted, onFind, onMarkUnread, onDelete, ownedProcesses = [], running = false, instructions }: ThreadMenuProps) {
   const instructionLine = instructions ? instructionsNote(instructions) : undefined
   const { open, setOpen: setPopover, ref } = usePopover<HTMLDivElement>()
   const [confirming, setConfirming] = useState(false)
@@ -45,13 +49,38 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
         </button>
         <div className="menu menu-right delete-confirm" role="alertdialog" aria-label="Delete conversation">
           <p className="delete-title">Delete this conversation?</p>
-          <p className="menu-note">Its messages, decisions and transcript file are removed from this Mac.{running ? ' The agent working on it is stopped first.' : ''} Project files and running processes are not touched.</p>
+          <p className="menu-note">Its messages, decisions and transcript file are removed from this Mac.{running ? ' The agent working on it is stopped first.' : ''} Project files are not touched.</p>
+          {ownedProcesses.length ? (
+            <div className="delete-processes">
+              <p className="menu-note">It started {ownedProcesses.length === 1 ? 'a process that is' : `${ownedProcesses.length} processes that are`} still running:</p>
+              <ul aria-label="Processes this conversation owns">
+                {ownedProcesses.map((p) => (
+                  <li key={p.id}><strong>{p.name}</strong>{p.sharedWith?.length ? ` · also used by ${p.sharedWith.map((u) => `“${u.title}”`).join(', ')}` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="menu-note">No running process belongs to it.</p>
+          )}
           <div className="delete-actions">
             <button type="button" className="button-soft" disabled={deleting} onClick={() => setConfirming(false)}>Cancel</button>
-            <button type="button" className="button-danger" disabled={deleting}
-              onClick={() => { setDeleting(true); void onDelete().finally(() => { setDeleting(false); setOpen(false) }) }}>
-              {deleting ? 'Deleting…' : 'Delete'}
-            </button>
+            {ownedProcesses.length ? (
+              <>
+                <button type="button" className="button-soft" disabled={deleting} title="They keep running and move to Project processes"
+                  onClick={() => { setDeleting(true); void onDelete('keep').finally(() => { setDeleting(false); setOpen(false) }) }}>
+                  Keep as project processes
+                </button>
+                <button type="button" className="button-danger" disabled={deleting}
+                  onClick={() => { setDeleting(true); void onDelete('stop').finally(() => { setDeleting(false); setOpen(false) }) }}>
+                  {deleting ? 'Deleting…' : 'Stop owned processes'}
+                </button>
+              </>
+            ) : (
+              <button type="button" className="button-danger" disabled={deleting}
+                onClick={() => { setDeleting(true); void onDelete().finally(() => { setDeleting(false); setOpen(false) }) }}>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
           </div>
         </div>
       </div>

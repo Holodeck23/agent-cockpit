@@ -41,3 +41,12 @@
   position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
   background: var(--project-fill, var(--success)); color: #fff; font-size: 10px; font-weight: 600; line-height: 15px; text-align: center;
 }
+/* K2: running / finished views, groups by owning conversation. */
+.process-view { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.process-view button { padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); color: var(--secondary); font-size: 12.5px; }
+.process-view button[aria-pressed='true'] { background: var(--field); color: var(--strong); border-color: var(--input-border); }
+.process-view .process-clear { margin-left: auto; color: var(--link); }
+.process-group { margin-top: 14px; }
+.process-group-title { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-group .process-items { margin-top: 6px; }
+.process-owner { font-size: 12.5px; color: var(--muted); }

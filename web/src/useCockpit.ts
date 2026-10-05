@@ -52,8 +52,9 @@ export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate)
   })
 }
 
-/** Replaces the process with the same id, or adds it at the front. */
+/** Replaces the process with the same id, or adds it at the front; a cleared one leaves. */
 function upsertProcess(list: ProcessInfo[], info: ProcessInfo): ProcessInfo[] {
+  if (info.cleared) return list.filter((p) => p.id !== info.id)
   return list.some((p) => p.id === info.id) ? list.map((p) => (p.id === info.id ? info : p)) : [info, ...list]
 }
 

@@ -8,7 +8,7 @@ import { documentsFolder, listDocuments, markDocument, renameFile, searchDocumen
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
-import type { ProcessRunner } from '../processes/runner.ts'
+import { ProcessConflictError, type ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type Project, type ProjectStore } from '../projects/store.ts'
 import type { WorkspaceStore } from '../projects/workspaces.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
@@ -73,6 +73,8 @@ const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'den
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
 const completedBody = z.object({ completed: z.boolean() })
+/** What happens to the running processes a deleted conversation owns (K2). */
+const deleteThreadBody = z.object({ processes: z.enum(['stop', 'keep']).optional() })
 const checkReferencesBody = z.object({ projectPath: z.string().min(1).max(1000), text: z.string().max(200_000) })
 const writeFileBody = z.object({
   projectPath: z.string().min(1).max(1000),
@@ -522,6 +524,13 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         sendJson(res, 202, { data: {} })
       } else if (method === 'DELETE' && !action) {
         if (viaPhone) throw new HttpError(403, 'Conversations can only be deleted on the Mac')
+        // K2: a conversation that owns running processes is deleted only with an explicit choice for them.
+        const { processes: choice } = parseBody(deleteThreadBody, await readJson(req))
+        const owned = processes.ownedBy(threadId)
+        if (owned.length && !choice) {
+          throw new HttpError(409, `This conversation owns running processes (${owned.map((p) => p.name).join(', ')}). Choose Stop owned processes or Keep as project processes.`)
+        }
+        if (owned.length && choice) await processes.release(threadId, choice)
         await manager.remove(threadId)
         sendJson(res, 200, { data: { deleted: threadId } })
       } else if (method === 'POST' && action === 'completed') {
@@ -540,7 +549,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ThreadBusyError || error instanceof OperationConflictError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })
