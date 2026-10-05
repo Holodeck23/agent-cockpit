@@ -84,6 +84,28 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const openGallery = useCallback(() => { setGalleryFirst(true); setSectionState('workflows') }, [])
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
   const [previews, setPreviews] = useState<PreviewMap>({})
+  // A4: the conversation list can be hidden; the Conversations tab then opens it as a dropdown.
+  const [listHidden, setListHidden] = useState(() => { try { return localStorage.getItem('cockpit:list-hidden') === 'true' } catch { return false } })
+  const [listOpen, setListOpen] = useState(false)
+  const focusSectionTab = (): void => { requestAnimationFrame(() => document.getElementById('section-conversations')?.focus()) }
+  const setHidden = (hidden: boolean): void => {
+    setListHidden(hidden)
+    setListOpen(false)
+    try { localStorage.setItem('cockpit:list-hidden', String(hidden)) } catch { /* not kept across launches */ }
+    if (hidden) focusSectionTab()
+  }
+  const closeList = (): void => { setListOpen(false); focusSectionTab() }
+  // The open dropdown takes focus (its search field) and closes on a click anywhere else.
+  useEffect(() => {
+    if (!listOpen) return
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.list-dropdown input[type="search"]')?.focus())
+    const outside = (event: MouseEvent): void => {
+      const target = event.target as Element | null
+      if (!target?.closest('.list-dropdown, #section-conversations')) setListOpen(false)
+    }
+    document.addEventListener('mousedown', outside)
+    return () => document.removeEventListener('mousedown', outside)
+  }, [listOpen])
   // The in-app browser (wave 9) where the desktop app has one; the iframe preview otherwise.
   const inAppBrowser = local && Boolean(native?.browser)
   const [layouts, setLayouts] = useState<LayoutMap>(() => (inAppBrowser ? loadLayouts() : {}))
@@ -168,6 +190,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const detailProject = projects.all.find((p) => p.path === cockpit.detail?.meta.projectPath)
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
+  const hideList = listHidden && !phone
   const previewTarget = activePath ? {
     projectPath: activePath,
     ...(section === 'conversations' && selectedId ? { threadId: selectedId } : {}),
@@ -215,6 +238,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         working={visible.filter((t) => isWorking(t.status)).length}
         appearance={<AppearanceMenu theme={theme.mode} onTheme={theme.set} appearance={appearance} onChange={updateAppearance} />}
         conversationsOnly={phone}
+        listDropdown={hideList ? { open: listOpen, onToggle: () => (listOpen ? closeList() : setListOpen(true)), selectedTitle: cockpit.detail?.meta.title, needs: visible.filter(needsYou).length } : undefined}
         runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}
         pins={phone ? [] : [...(projects.active?.pinnedFiles ?? []), ...pinnedDocuments.map((name) => `${DOCUMENTS_PREFIX}${name}`)]}
         onOpenPin={(path) => openFileFromReply({ path })}
@@ -246,10 +270,20 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       <div className={`workspace${(local && activePreviewUrl && !inAppBrowser) || browserOpen ? ' has-preview' : ''}`}>
         <div className="workspace-main">
       {section === 'conversations' ? (
-        <div className={`layout${selectedId ? ' has-selection' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
-          {phone ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
-          <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
-            {...(phone ? { projectName, canCreate: false } : {})} />
+        <div className={`layout${selectedId ? ' has-selection' : ''}${hideList ? ' list-hidden' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
+          {phone || hideList ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
+          {hideList ? null : (
+            <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
+              {...(phone ? { projectName, canCreate: false } : { listToggle: { label: 'Hide list', onClick: () => setHidden(true) } })} />
+          )}
+          {hideList && listOpen ? (
+            <div className="list-dropdown" role="dialog" aria-label="Conversations list"
+              onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeList() } }}>
+              <ConversationList key={`list-drop:${activePath ?? ''}`} threads={visible} selectedId={selectedId} rowShows={appearance.rows}
+                onSelect={(id) => { cockpit.select(id); setListOpen(false) }}
+                listToggle={{ label: 'Keep list open', onClick: () => setHidden(false) }} />
+            </div>
+          ) : null}
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (
             <ThreadView
               initialDraft={fileDraft?.threadId === selectedId ? fileDraft?.text : undefined}

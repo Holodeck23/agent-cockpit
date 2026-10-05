@@ -33,6 +33,7 @@
   .workspace.has-preview { grid-template-columns: minmax(360px, 1fr) auto; }
   .preview-pane { min-width: 340px; }
   .layout { grid-template-columns: 260px minmax(0, 1fr); }
+  .layout.list-hidden { grid-template-columns: minmax(0, 1fr); }
   /* The list is fixed at this width, so its resize handle (which follows the stored width) goes. */
   .list-resize { display: none; }
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { SECTION_ORDER } from '../shortcuts.ts'
-import { Bars, ChatIcon, FileIcon, FolderIcon, MemoryIcon, TerminalIcon, WorkflowIcon } from './icons.tsx'
+import { Bars, ChatIcon, ChevronDownIcon, FileIcon, FolderIcon, MemoryIcon, TerminalIcon, WorkflowIcon } from './icons.tsx'
 import { fileName, spaceOf, visibleName } from '../file-text.ts'
 
 export type Section = 'conversations' | 'files' | 'workflows' | 'memory' | 'processes'
@@ -20,11 +20,17 @@ interface SubNavProps {
   /** Pinned project files and documents ("documents:<name>"), reopened from any section. */
   pins?: readonly string[]
   onOpenPin?: (path: string) => void
+  /** A4: while the conversation list is hidden, the Conversations tab opens it as a dropdown. */
+  listDropdown?: { readonly open: boolean; readonly onToggle: () => void; readonly selectedTitle?: string; readonly needs: number }
 }
 
-export function SubNav({ section, onSection, working, appearance, tools, conversationsOnly = false, runningProcesses = 0, pins = [], onOpenPin }: SubNavProps) {
+export function SubNav({ section, onSection, working, appearance, tools, conversationsOnly = false, runningProcesses = 0, pins = [], onOpenPin, listDropdown }: SubNavProps) {
+  const dropdown = (id: Section) => (id === 'conversations' && listDropdown && section === 'conversations' ? listDropdown : undefined)
   const item = (id: Section, icon: ReactNode, label: string, extra?: ReactNode) => (
-    <button type="button" role="tab" aria-selected={section === id} className="subnav-item" title={conversationsOnly ? undefined : `${label} (⌥⌘${SECTION_ORDER.indexOf(id) + 1})`} onClick={() => onSection(id)}>
+    <button type="button" role="tab" aria-selected={section === id} className="subnav-item" id={`section-${id}`}
+      title={dropdown(id) ? 'Show conversations' : conversationsOnly ? undefined : `${label} (⌥⌘${SECTION_ORDER.indexOf(id) + 1})`}
+      aria-haspopup={dropdown(id) ? 'dialog' : undefined} aria-expanded={dropdown(id) ? dropdown(id)!.open : undefined}
+      onClick={() => (dropdown(id) ? dropdown(id)!.onToggle() : onSection(id))}>
       {icon}
       {label}
       {extra}
@@ -38,12 +44,21 @@ export function SubNav({ section, onSection, working, appearance, tools, convers
           'conversations',
           <ChatIcon />,
           'Conversations',
-          working > 0 ? (
-            <span className="subnav-badge" aria-label={`${working} working`}>
-              <Bars live />
-              {working}
-            </span>
-          ) : null,
+          <>
+            {working > 0 ? (
+              <span className="subnav-badge" aria-label={`${working} working`}>
+                <Bars live />
+                {working}
+              </span>
+            ) : null}
+            {listDropdown && section === 'conversations' ? (
+              <>
+                {listDropdown.needs > 0 ? <span className="subnav-needs" aria-label={`${listDropdown.needs} need you`}>{listDropdown.needs}</span> : null}
+                {listDropdown.selectedTitle ? <span className="subnav-selected" title={listDropdown.selectedTitle}>{listDropdown.selectedTitle}</span> : null}
+                <ChevronDownIcon className="subnav-caret" />
+              </>
+            ) : null}
+          </>,
         )}
         {conversationsOnly ? null : item('files', <FolderIcon />, 'Files')}
         {conversationsOnly ? null : item('workflows', <WorkflowIcon />, 'Workflows')}
