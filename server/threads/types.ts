@@ -36,6 +36,12 @@ export interface ThreadMeta {
   readonly instructionsRevision?: number
   /** That revision's text, so the thread can show what its session received even after edits. */
   readonly instructionsText?: string
+  /** Opaque primary workspace (G-IDENTITY); absent on conversations from before it, resolved by projectPath. */
+  readonly workspaceId?: string
+  /** This agent + session's binding; minted with sessionId. Legacy conversations derive one (identity.ts). */
+  readonly bindingId?: string
+  /** Agent processes launched for this conversation so far; stamped on each session_boundary. */
+  readonly sessionGeneration?: number
   readonly createdAt: string
   readonly updatedAt: string
 }

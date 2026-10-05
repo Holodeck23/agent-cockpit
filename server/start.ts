@@ -114,6 +114,15 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agentWorkflowsAllowed = (projectPath: string): boolean =>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
   const manager = createThreadManager(store, {
+    workspaceFor: (projectPath) => {
+      try {
+        workspaces.ensure([projectPath])
+        return workspaces.primaryFor(projectPath)?.workspace.id
+      } catch (error) {
+        console.warn('[cockpit] no workspace identity:', error instanceof Error ? error.message : error)
+        return undefined
+      }
+    },
     instructions: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
@@ -134,6 +143,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       : {}),
   })
   const workflowStore = createWorkflowStore(root)
+  // A crash left these runs open: they end as interrupted; nothing is relaunched or replayed (ID-07).
+  const interrupted = manager.recoverInterrupted()
+  if (interrupted.length > 0) console.warn(`[cockpit] marked ${interrupted.length} unfinished run(s) as interrupted`)
   // Additive identity migration: registers every folder Cockpit already knows; rewrites no legacy file.
   try {
     workspaces.ensure([...projects.list({ includeHidden: true }).map((p) => p.path), ...store.list().map((m) => m.projectPath), ...workflowStore.list().map((w) => w.projectPath)])

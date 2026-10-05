@@ -332,3 +332,15 @@ describe('Retry carries the images of the failed message (R8)', () => {
     expect(items.find((i) => i.type === 'failure')).toMatchObject({ retryText: 'hi', retryImages: [] })
   })
 })
+
+describe('runs interrupted by a crash (ID-07)', () => {
+  it('say so plainly instead of showing a failure, and labelled stale events show nothing', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'write the file', runId: 'r1' }),
+      at(1, { kind: 'stale_event', generation: 1, eventKind: 'result' }),
+      at(2, { kind: 'result', ok: false, interrupted: true, runId: 'r1' }),
+    ], 'claude')
+    expect(items.map((item) => item.type)).toEqual(['message', 'note'])
+    expect(items[1]).toMatchObject({ type: 'note', text: expect.stringMatching(/^Interrupted: .*Nothing was sent again/) })
+  })
+})

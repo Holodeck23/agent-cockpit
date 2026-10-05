@@ -15,6 +15,7 @@ import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } fro
 import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
 import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
+import { bindingIdOf, inputHash, unfinishedRun } from './identity.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
 
 export interface LaunchRequest {
@@ -134,6 +135,8 @@ export interface ManagerOptions {
   readonly instructions?: InstructionsProvider
   /** Where conversation images are kept; defaults to the store's own state folder. */
   readonly images?: ImageStore
+  /** The opaque primary workspace for a project folder (G-IDENTITY); undefined when it cannot be resolved. */
+  readonly workspaceFor?: (projectPath: string) => string | undefined
 }
 
 interface Live {
@@ -153,10 +156,22 @@ interface Live {
   /** Text streamed so far for the message in progress, so a late viewer sees all of it. */
   partial: string
   idleTimer?: NodeJS.Timeout
+  /** This process's launch number for the conversation. */
+  readonly generation: number
+  /** The run the agent is working on now; its result is stamped with it. */
+  runId?: string
+  /** Runs of messages still waiting in the queue, by queued id: a taken one becomes the current run. */
+  readonly queuedRuns: Map<string, string>
 }
 
 /** The conversation's agent is still working, so this cannot happen yet (HTTP 409). */
 export class ThreadBusyError extends Error {}
+
+/** An operation ID already used for a different request (HTTP 409); the first request stands (ID-05). */
+export class OperationConflictError extends Error {}
+
+/** A late event worth a label: what a replaced process tried to say, never deltas, usage or its own exit. */
+const STALE_LABELLED = new Set<NormalizedEvent['kind']>(['session', 'result', 'assistant_text', 'tool_use', 'approval_request', 'question', 'error', 'subagent'])
 
 export interface ThreadManager {
   /**
@@ -168,7 +183,10 @@ export interface ThreadManager {
   canControl(threadId: string): boolean
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
-  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, images?: readonly IncomingImage[]): void
+  /** `operationId` makes a repeat of the same request a no-op that answers with the first run. */
+  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, images?: readonly IncomingImage[], operationId?: string): { runId: string; replayed: boolean }
+  /** At startup: closes runs a crash left open as interrupted, and returns their conversations. Relaunches nothing (ID-07). */
+  recoverInterrupted(): string[]
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
   /** Takes back a message still waiting in the agent's queue (J1); resolves to its text and images for your draft. */
   unqueue(threadId: string, queuedId: string): Promise<{ text: string; images: { file: string; name?: string }[] }>
@@ -257,6 +275,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!incoming.id || !waiting?.delete(incoming.id)) return
       const entry = live.get(threadId)!
       entry.afterResult = false
+      const taken = entry.queuedRuns.get(incoming.id)
+      if (taken) { entry.runId = taken; entry.queuedRuns.delete(incoming.id) }
       // A message queued past the end of a turn (or a Stop) starts the next one when taken.
       if (!entry.turnRunning) {
         entry.turnRunning = true
@@ -268,8 +288,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
     if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false })
     // A failed result right after the user pressed Stop is a stop, not an error.
-    const event: NormalizedEvent =
+    const stopped: NormalizedEvent =
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
+    const event: NormalizedEvent = stopped.kind === 'result' && !stopped.runId && entry?.runId ? { ...stopped, runId: entry.runId } : stopped
     // Deltas are for live rendering only; the final assistant_text is persisted.
     if (event.kind !== 'text_delta') store.append(threadId, event)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
@@ -318,7 +339,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const pending = new Map<string, PendingApproval>()
     const questions: Live['questions'] = new Map()
     const requestIds = new Map<string, string>()
-    record(meta.id, { kind: 'session_boundary' })
+    // Persisted before the boundary, so every event after it belongs to this launch, even across a restart.
+    const launchNumber = (meta.sessionGeneration ?? 0) + 1
+    const workspaceId = meta.workspaceId ?? options.workspaceFor?.(meta.projectPath)
+    store.update(meta.id, { sessionGeneration: launchNumber, bindingId: bindingIdOf(meta), ...(workspaceId ? { workspaceId } : {}) })
+    record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta) })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
@@ -331,8 +356,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     let released = false
     const handleEvent: EventSink = (event) => {
       if (event.kind === 'exit' && !released) { released = true; mcp?.release() }
-      // An old process may exit after its replacement has already started.
-      if (generations.get(meta.id) !== generation) return
+      // An old process may still talk after its replacement started: it is labelled, never acted on (ID-04).
+      if (generations.get(meta.id) !== generation) {
+        if (STALE_LABELLED.has(event.kind)) record(meta.id, { kind: 'stale_event', generation: launchNumber, eventKind: event.kind })
+        return
+      }
       if (event.kind === 'approval_request') {
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
@@ -379,7 +407,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '' }
+    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '', generation: launchNumber, queuedRuns: new Map() }
     live.set(meta.id, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
@@ -391,10 +419,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = []): void => {
-    hostActions.cancel(threadId)
+  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = [], operationId?: string): { runId: string; replayed: boolean } => {
     if (deleted.has(threadId)) throw new Error('This conversation was deleted')
     const meta = requireMeta(threadId)
+    const operation = operationId ? { id: operationId, inputHash: inputHash(text, attached) } : undefined
+    if (operation) {
+      // Checked before any effect, against the durable log, so a repeat after a restart is still one request.
+      const earlier = store.events(threadId).find((e) => e.event.kind === 'user_text' && e.event.operation?.id === operation.id)?.event
+      if (earlier?.kind === 'user_text') {
+        if (earlier.operation?.inputHash !== operation.inputHash) throw new OperationConflictError('This request ID was already used for a different message')
+        return { runId: earlier.runId!, replayed: true }
+      }
+    }
+    hostActions.cancel(threadId)
     // Every image is checked and stored first, so a bad one sends nothing.
     const stored = attached.map((image) => ({ ...images.save(threadId, image.bytes), image }))
     const outgoing: OutgoingImage[] = stored.map(({ path, mediaType, image }) => ({ path, mediaType, data: image.bytes.toString('base64') }))
@@ -402,16 +439,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
     const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
-    if (queuedId) entry.waiting.add(queuedId)
-    else entry.afterResult = false
+    const runId = randomUUID()
+    const bound = requireMeta(threadId)
+    const binding = queuedId ? { bindingId: bindingIdOf(bound), ...(bound.workspaceId ? { workspaceId: bound.workspaceId } : {}), agent: bound.settings.agent, generation: entry.generation } : undefined
+    if (queuedId) { entry.waiting.add(queuedId); entry.queuedRuns.set(queuedId, runId) }
+    else { entry.afterResult = false; entry.runId = runId }
     entry.turnRunning = true
     if (meta.completed) {
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}) })
+    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}), runId, ...(operation ? { operation } : {}), ...(binding ? { binding } : {}) })
     for (const { file, mediaType, image } of stored) record(threadId, { kind: 'image', file, mediaType, from: 'you', ...(image.name ? { name: image.name } : {}) })
     entry.session.send(agentText, queuedId, outgoing.length ? outgoing : undefined)
+    return { runId, replayed: false }
   }
 
   return {
@@ -430,6 +471,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         projectPath,
         settings,
         sessionId: randomUUID(),
+        bindingId: randomUUID(),
+        ...(options.workspaceFor?.(projectPath) ? { workspaceId: options.workspaceFor(projectPath) } : {}),
         sessionStarted: false,
         completed: false,
         createdAt: now,
@@ -539,7 +582,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (entry) void closeEntry(entry)
       const handoff = buildHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
-      const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
+      const next = store.update(threadId, { settings, sessionId: randomUUID(), bindingId: randomUUID(), sessionStarted: false, handoff })
       broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       return next
     },
@@ -571,6 +614,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       }
       send(threadId, text, agentText)
       return requireMeta(threadId)
+    },
+    recoverInterrupted() {
+      const recovered: string[] = []
+      for (const meta of store.list()) {
+        if (live.has(meta.id) || deleted.has(meta.id)) continue
+        const run = unfinishedRun(meta.id, store.events(meta.id))
+        if (!run) continue
+        record(meta.id, { kind: 'result', ok: false, interrupted: true, runId: run.runId })
+        recovered.push(meta.id)
+      }
+      return recovered
     },
     summaries() {
       const all = store.list().map((meta): ThreadSummary => {

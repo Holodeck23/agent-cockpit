@@ -59,6 +59,12 @@ export type GitView = GitState & { readonly busy: readonly string[]; readonly pu
 export type MessageImage = { readonly data: string; readonly name?: string } | { readonly stored: string; readonly name?: string }
 /** An image a conversation holds, by its stored name. */
 export interface StoredImage { readonly file: string; readonly name?: string }
+/** randomUUID exists only in secure contexts; without it the host simply gets no operation ID. */
+const operationId = (): { operationId?: string } => {
+  const id = globalThis.crypto?.randomUUID?.()
+  return id ? { operationId: id } : {}
+}
+
 export const api = {
   recentWork: (projectPath: string) => request<RecoveryView>(`/api/recovery?${new URLSearchParams({ projectPath })}`),
   resumeWork: (body: z.infer<typeof resumeRecoveryBody>) => request<ThreadMeta>('/api/recovery', { method: 'POST', body }),
@@ -126,8 +132,9 @@ export const api = {
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
   createThread: (body: { projectPath: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),
+  /** One operation ID per call: a request the network repeats is answered once by the host (ID-05). */
   send: (id: string, text: string, images?: readonly MessageImage[]) =>
-    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}) } }),
+    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}), ...operationId() } }),
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
   /** Takes a waiting message back; resolves to its text and images for the draft (J1, R8). */

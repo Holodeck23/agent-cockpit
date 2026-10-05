@@ -380,8 +380,10 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         return
       case 'result': {
         if (compacting !== undefined) endCompaction(ts, event.ok ? 'done' : 'failed')
-        const failed = !event.ok && !event.stopped
-        if (failed && !failedThisTurn) {
+        const failed = !event.ok && !event.stopped && !event.interrupted
+        if (event.interrupted) {
+          items.push({ type: 'note', key, text: 'Interrupted: Cockpit stopped before this turn finished. Nothing was sent again.', tone: 'plain' })
+        } else if (failed && !failedThisTurn) {
           const words = failureWords(event.text)
           items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
         } else if (!failed) {
