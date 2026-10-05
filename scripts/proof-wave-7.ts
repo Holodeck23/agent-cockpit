@@ -362,6 +362,7 @@ try {
   alivePid = (await running(procsOther))[0]!.pid ?? 0
 
   const threads = await get<Array<{ meta: { id: string; title: string } }>>(p2, '/api/threads')
+  const login = threads.find((t) => t.meta.title === 'Login work')!
   const docs = threads.find((t) => t.meta.title === 'Docs work')!
   const conversations = p2.getByRole('navigation', { name: 'Conversations' })
   check('W7.3 previews opened by background conversations do not replace the workspace pane', await p2.getByRole('complementary', { name: 'App preview' }).count() === 0)
@@ -397,7 +398,8 @@ try {
     && alivePid > 0 && (() => { try { process.kill(alivePid, 0); return true } catch { return false } })())
 
   // Deleting the owner needs a decision; Keep moves the server to Project processes, still running.
-  await apiPost(p2, `/api/threads/${(await get<Array<{ meta: { id: string; title: string } }>>(p2, '/api/threads')).find((t) => t.meta.title === 'Login work')!.meta.id}/messages`, { text: 'start it again' })
+  await apiPost(p2, `/api/threads/${login.meta.id}/messages`, { text: 'start it again' })
+  await approveProcessStart(login.meta.id, 'Login restart')
   await until('restarted', async () => (await running(procs)).length === 1)
   await p2.getByRole('tab', { name: /^Conversations/ }).click()
   await p2.getByRole('navigation', { name: 'Conversations' }).getByText('Login work', { exact: true }).first().click()
