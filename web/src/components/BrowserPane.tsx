@@ -35,15 +35,19 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
   const covered = useOverlayOver(viewport)
   const layoutRef = useRef(layout)
   layoutRef.current = layout
+  // State events seen for this page. A reply that was overtaken by an event is older than it
+  // (a local redirect completes inside loadURL), so it must not overwrite the newer state.
+  const stateEvents = useRef(0)
 
   const open = useCallback((url: string) => {
     if (!browser) return
     setRefused(undefined)
     setCapacity(undefined)
+    const seen = stateEvents.current
     void browser.open(pageKey, projectPath, url).then((result) => {
       if ('capacity' in result) { setRefused(result.error); setCapacity(result.capacity) }
       else if ('error' in result && !('key' in result)) setRefused(result.error)
-      else setState(result as BrowserPageState)
+      else if (stateEvents.current === seen) setState(result as BrowserPageState)
     })
   }, [browser, pageKey, projectPath])
 
@@ -55,9 +59,10 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
     const explicit = lastNonce.current !== undefined && lastNonce.current !== openNonce
     lastNonce.current = openNonce
     if (explicit) { open(layoutRef.current.url); return }
+    const seen = stateEvents.current
     void browser.state(pageKey).then((existing) => {
       if (cancelled) return
-      if (existing) setState(existing)
+      if (existing) { if (stateEvents.current === seen) setState(existing) }
       else open(layoutRef.current.url)
     })
     return () => { cancelled = true }
@@ -65,6 +70,7 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
 
   useEffect(() => browser?.onState((next) => {
     if (next.key !== pageKey) return
+    stateEvents.current += 1
     setState(next)
     if (!next.error && /^https?:\/\//.test(next.url)) onLayout({ url: next.url })
   }), [browser, pageKey, onLayout])

@@ -85,9 +85,9 @@ function AgentState({ status, loading }: { status: AgentStatus | undefined; load
 function UseMyChrome({ checked, readiness, onChange }: { checked: boolean; readiness: AgentStatus['chrome']; onChange: (chrome: boolean) => void }) {
   const unsupported = readiness?.supported === false
   const state = !readiness ? 'Checking Claude Code and the Chrome extension…'
-    : unsupported ? 'This Claude Code does not support it (no --chrome option). Update Claude Code to use it.'
-    : readiness.extension ? 'Claude Code supports it and the Claude extension’s helper is installed. Chrome is checked when Claude first uses it.'
-    : 'The Claude extension for Chrome is not set up on this Mac (its helper is missing). Install it in Chrome first.'
+    : unsupported ? 'Not available: this Claude Code has no --chrome option. Update it first.'
+    : readiness.extension ? 'Ready: the Claude extension’s helper is installed. Chrome is checked on first use.'
+    : 'Not set up: the Claude extension’s helper is missing. Install the extension in Chrome first.'
   return (
     <div className="use-chrome">
       <label className="check">
@@ -95,8 +95,9 @@ function UseMyChrome({ checked, readiness, onChange }: { checked: boolean; readi
         <span>Use my Chrome</span>
       </label>
       <p className="picker-note">
-        Lets Claude use your installed Chrome and the sites you are signed in to there, through the Claude extension.
-        This is separate from Cockpit’s own browser pane. Stopping or quitting never closes Chrome or its tabs. {state}
+        Claude uses your own Chrome, with the sites you are signed in to, through the Claude extension.
+        It is separate from Cockpit’s browser, and stopping never closes Chrome or its tabs.
+        <br />{state}
       </p>
     </div>
   )
