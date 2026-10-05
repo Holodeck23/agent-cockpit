@@ -1,6 +1,7 @@
 // Packaged gate for wave 7. So far: W7.1 A12 (workflow conversation titles) and F16 (+ New workflow from the
 // new-conversation screen); W7.2 J4 (Changes: working changes, this run, bounded diffs, line targets, non-Git
-// and unborn folders). Stand-in agents only (scripts/fixtures/wave65-agent), no provider usage.
+// and unborn folders); W7.3 K1/K2 (process owners, reuse, finished view, deleting an owner). Stand-in agents only
+// (scripts/fixtures/wave65-agent, wave7-agent), no provider usage.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-7
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -239,5 +240,93 @@ try {
   check('proof ran to the end', false)
 } finally {
   await app.close()
+}
+// K1/K2 / W7-06..07: process ownership, in a second launch whose stand-in starts "dev server" through
+// the cockpit MCP API with each conversation's own token.
+const procs = join(root, 'procs')
+const procsOther = join(root, 'procs-other')
+const SERVER = `const http = require('node:http')
+http.createServer((req, res) => res.end('ok')).listen(0, '127.0.0.1', function () { console.log('Local: http://127.0.0.1:' + this.address().port + '/') })`
+for (const dir of [procs, procsOther]) { mkdirSync(dir); writeFileSync(join(dir, 'server.js'), SERVER); writeFileSync(join(dir, 'other.js'), SERVER) }
+interface Proc { id: string; name: string; status: string; pid?: number; projectPath: string; owner: { kind: string; title?: string; formerly?: string }; sharedWith?: Array<{ title: string }> }
+const app2 = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state-procs'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave7-agent') })
+const p2 = await app2.firstWindow()
+const procList = async (dir: string): Promise<Proc[]> => (await get<Proc[]>(p2, '/api/processes')).filter((p) => p.projectPath === dir)
+const running = async (dir: string): Promise<Proc[]> => (await procList(dir)).filter((p) => p.status === 'running')
+const lastReply = async (title: string): Promise<string> => {
+  const thread = (await get<Array<{ meta: { id: string; title: string } }>>(p2, '/api/threads')).find((t) => t.meta.title === title)
+  if (!thread) return ''
+  const detail = await get<{ events: Array<{ event: { kind: string; text?: string } }> }>(p2, `/api/threads/${thread.meta.id}/events`)
+  return detail.events.filter((e) => e.event.kind === 'assistant_text').at(-1)?.event.text ?? ''
+}
+const startIn = (dir: string, title: string, text = 'start the dev server') =>
+  apiPost(p2, '/api/threads', { projectPath: dir, title, text, settings: { agent: 'claude' } })
+let alivePid = 0
+try {
+  p2.setDefaultTimeout(15_000)
+  await openProject(p2, procsOther, 'Other folder')
+  await openProject(p2, procs, 'Procs')
+  await startIn(procs, 'Login work')
+  check('W7-06 an agent’s start records its conversation as owner', await until('owned', async () => (await running(procs))[0]?.owner.title === 'Login work', 15_000))
+  await startIn(procs, 'Docs work')
+  check('W7-06 a second conversation reuses it (same command) and sees the original owner', await until('reused', async () => (await lastReply('Docs work')).includes('HTTP 201'))
+    && (await running(procs)).length === 1 && (await running(procs))[0]!.owner.title === 'Login work'
+    && (await running(procs))[0]!.sharedWith?.[0]?.title === 'Docs work')
+  await startIn(procs, 'Clash', 'start the other-command server')
+  check('W7-06 the same name with a different command is refused', await until('conflict', async () => (await lastReply('Clash')).includes('HTTP 409'))
+    && (await running(procs)).length === 1)
+  await startIn(procsOther, 'Elsewhere')
+  check('W7-06 another workspace starts its own, independently', await until('other', async () => (await running(procsOther)).length === 1)
+    && (await running(procs)).length === 1)
+  alivePid = (await running(procsOther))[0]!.pid ?? 0
+
+  await p2.reload()
+  await p2.getByRole('button', { name: /^Processes/ }).click()
+  const group = p2.getByRole('region', { name: 'Login work' })
+  check('W7-06 Processes groups it under its owner', await until('group', () => group.getByRole('button', { name: /dev server/ }).isVisible()))
+  check('W7-06 the row names the owner and who else uses it', await p2.getByText('Started by “Login work” · also used by “Docs work”').isVisible())
+  await shot(p2, 'processes-owned')
+  await p2.getByRole('button', { name: 'Stop', exact: true }).click()
+  check('W7-07 a stopped process leaves the running list', await until('stopped', async () => (await running(procs)).length === 0
+    && await p2.getByText('Nothing running. Finished ones are under Show finished.').isVisible()))
+  await p2.getByRole('button', { name: /^Show finished/ }).click()
+  check('W7-07 Show finished keeps its history', await group.getByRole('button', { name: /dev server/ }).isVisible())
+  await shot(p2, 'processes-finished')
+  await p2.getByRole('button', { name: 'Clear finished' }).click()
+  check('W7-07 Clear finished drops the rows and stops nothing', await until('cleared', async () => (await procList(procs)).length === 0)
+    && alivePid > 0 && (() => { try { process.kill(alivePid, 0); return true } catch { return false } })())
+
+  // Deleting the owner needs a decision; Keep moves the server to Project processes, still running.
+  await apiPost(p2, `/api/threads/${(await get<Array<{ meta: { id: string; title: string } }>>(p2, '/api/threads')).find((t) => t.meta.title === 'Login work')!.meta.id}/messages`, { text: 'start it again' })
+  await until('restarted', async () => (await running(procs)).length === 1)
+  await p2.getByRole('tab', { name: /^Conversations/ }).click()
+  await p2.getByRole('navigation', { name: 'Conversations' }).getByText('Login work', { exact: true }).first().click()
+  await p2.getByRole('button', { name: 'More', exact: true }).click()
+  await p2.getByRole('menuitem', { name: /Delete conversation/ }).or(p2.getByRole('button', { name: /Delete conversation/ })).first().click()
+  const dialog = p2.getByRole('alertdialog', { name: 'Delete conversation' })
+  check('W7-07 deleting the owner lists its running process', await dialog.getByRole('list', { name: 'Processes this conversation owns' }).getByText('dev server').isVisible())
+  check('W7-07 and offers only Stop or Keep', await dialog.getByRole('button', { name: 'Stop owned processes' }).isVisible()
+    && await dialog.getByRole('button', { name: 'Keep as project processes' }).isVisible() && await dialog.getByRole('button', { name: 'Delete', exact: true }).count() === 0)
+  await shot(p2, 'processes-delete-decision')
+  await dialog.getByRole('button', { name: 'Keep as project processes' }).click()
+  check('W7-07 Keep: the server runs on as a project process, never another conversation’s', await until('kept', async () => {
+    const [p] = await running(procs)
+    return p?.owner.kind === 'project' && p.owner.formerly === 'Login work'
+  }))
+  await p2.getByRole('button', { name: /^Processes/ }).click()
+  check('W7-07 it shows under Project processes', await until('project group', () => p2.getByRole('region', { name: 'Project processes' }).getByRole('button', { name: /dev server/ }).isVisible()))
+  for (const theme of ['Light', 'Dark'] as const) {
+    await setTheme(p2, theme)
+    await shot(p2, `processes-${theme.toLowerCase()}`)
+  }
+  await p2.setViewportSize({ width: 700, height: 760 })
+  await shot(p2, 'processes-narrow')
+  check('narrow: Processes fits without sideways scroll', await p2.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
+} catch (error) {
+  console.log(`FAIL  unexpected (processes): ${error instanceof Error ? error.message : String(error)}`)
+  await shot(p2, 'processes-failure').catch(() => undefined)
+  check('process proof ran to the end', false)
+} finally {
+  await app2.close()
 }
 finish('PROOF WAVE 7')
