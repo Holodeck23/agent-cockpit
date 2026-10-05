@@ -1,6 +1,7 @@
 // Agent replies are untrusted text rendered as Markdown. React builds every element (nothing is
 // ever set as HTML), raw HTML in a reply is shown as the text it is, links must be http(s) and
-// open in the browser, and images are never fetched: they show as their alt text.
+// open beside the chat in the in-app browser (G5), or in the default browser with ⌘ or where there
+// is none, and images are never fetched: they show as their alt text.
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -12,7 +13,13 @@ export type CommitOutcome = 'opened' | 'copied' | 'missing'
 const OUTCOME: Record<CommitOutcome, string> = { opened: '', copied: 'Copied (no web page for this repository)', missing: 'Not a commit in this project' }
 
 /** Where a reply's `path:line` references point and what opening one does. */
-export const ReplyContext = createContext<{ projectPath?: string; onOpenFile?: (target: FileTarget) => void; onOpenCommit?: (hash: string) => Promise<CommitOutcome> }>({})
+export const ReplyContext = createContext<{
+  projectPath?: string
+  onOpenFile?: (target: FileTarget) => void
+  onOpenCommit?: (hash: string) => Promise<CommitOutcome>
+  /** Opens a web link in the conversation's browser pane; absent where there is none. */
+  onOpenWeb?: (url: string) => void
+}>({})
 
 /** The address if it is an absolute http(s) URL, else ''. */
 export function safeUrl(url: string): string {
@@ -51,15 +58,24 @@ export function misleadingHost(text: string, href: string): string | undefined {
   return named && real && named !== real ? real : undefined
 }
 
-const external = (href: string | undefined, children: ReactNode, className?: string): ReactNode => {
-  if (!href) return <span className={className}>{children}</span>
+function WebLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
+  const { onOpenWeb } = useContext(ReplyContext)
   const real = misleadingHost(textOf(children), href)
   return (
-    <a href={href} target="_blank" rel="noreferrer noopener" className={className} title={href}>
+    <a href={href} target="_blank" rel="noreferrer noopener" className={className} title={onOpenWeb ? `${href} (⌘-click: your browser)` : href}
+      onClick={(event) => {
+        // ⌘/Ctrl/Shift-click or a middle click is the explicit "open in my browser".
+        if (!onOpenWeb || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
+        event.preventDefault()
+        onOpenWeb(href)
+      }}>
       {children}{real ? <span className="link-real-host"> ↗ {real}</span> : null}
     </a>
   )
 }
+
+const external = (href: string | undefined, children: ReactNode, className?: string): ReactNode =>
+  href ? <WebLink href={href} className={className}>{children}</WebLink> : <span className={className}>{children}</span>
 
 function FileButton({ target, children }: { target: FileTarget; children: ReactNode }) {
   const { onOpenFile } = useContext(ReplyContext)
