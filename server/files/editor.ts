@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { closeSync, fsyncSync, linkSync, lstatSync, openSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { closeSync, fsyncSync, linkSync, lstatSync, openSync, realpathSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { contained, explained, HIDDEN, MAX_BYTES, readText, versionOf } from './browser.ts'
 
@@ -17,12 +17,25 @@ function encode(text: string): Buffer {
   return data
 }
 
+/**
+ * The folder was checked to be inside the project as a real path. If something swaps a folder on
+ * that path for a symlink before the write (an agent writing in the project at the same moment),
+ * it would no longer resolve to the same place: refuse rather than write outside the project.
+ */
+function assertSameFolder(folder: string): void {
+  let now: string
+  try { now = realpathSync(folder) } catch { now = '' }
+  if (now !== folder) throw new FileConflictError('The folder changed while saving; try again')
+}
+
 /** Writes beside the target, flushes, then hands the finished file to `place`; never leaves a partial file. */
 function writeBeside(target: string, data: Buffer, mode: number, place: (tmp: string) => void): void {
+  assertSameFolder(dirname(target))
   const tmp = join(dirname(target), `.${basename(target)}.cockpit-${randomUUID()}.tmp`)
   const fd = openSync(tmp, 'wx', mode)
   try {
     try { writeSync(fd, data); fsyncSync(fd) } finally { closeSync(fd) }
+    assertSameFolder(dirname(target))
     place(tmp)
   } finally {
     try { unlinkSync(tmp) } catch { /* already moved into place */ }
