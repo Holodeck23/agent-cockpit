@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { workflowInputSchema, type Workflow, type WorkflowStore } from './store.ts'
+import type { ThreadSettings } from '../threads/types.ts'
 
 // What an agent may do with save_workflow (decision P1, 2026-10-03). By default it only creates
 // a new workflow with its schedule off, for the user to review. A project setting lets agents
@@ -43,7 +44,7 @@ export function saveAgentWorkflow(store: WorkflowStore, projectPath: string, raw
   /** Turns the schedule on (the runner works out the next run). */
   enable: (id: string) => Workflow
   timeZone: string
-}): Workflow & { updated: boolean } {
+}): Workflow & { updated: boolean; pausedReason?: string } {
   const input = agentWorkflowSchema.parse(raw)
   const existing = checkAgentWorkflow(store, projectPath, input, options.allowed)
 
@@ -57,6 +58,15 @@ export function saveAgentWorkflow(store: WorkflowStore, projectPath: string, raw
     intervalMinutes: existing?.intervalMinutes ?? null, calendar: existing?.calendar ?? null, ...schedule,
   }, existing?.id)
   // Saving pauses a schedule; an allowed agent's save keeps one that was on, or turns on the one it set.
-  const enabled = input.schedule !== undefined || existing?.enabled === true
-  return { ...(enabled ? options.enable(saved.id) : saved), updated: existing !== undefined }
+  // Not for a workflow that runs with more than manual permissions: an agent rewriting its prompt would
+  // get its instructions run unattended with those permissions, so its schedule waits for the user.
+  const unattended = existing && runsUnattended(existing.settings)
+  const enabled = !unattended && (input.schedule !== undefined || existing?.enabled === true)
+  return { ...(enabled ? options.enable(saved.id) : saved), updated: existing !== undefined,
+    ...(unattended ? { pausedReason: `it runs with ${existing.settings.permissionMode} permissions${existing.settings.useHooks ? ' and your hooks' : ''}, so the user must turn its schedule back on in Workflows` } : {}) }
+}
+
+/** More than read-only or ask-every-time: such a run can act without anyone approving it. */
+export function runsUnattended(settings: ThreadSettings): boolean {
+  return !(settings.permissionMode === 'manual' || settings.permissionMode === 'plan') || settings.useHooks
 }
