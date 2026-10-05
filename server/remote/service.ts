@@ -51,6 +51,12 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
   const configuredPort = (): number => portOverride ?? store.read().port
   const boundPort = (): number | undefined => (server?.listening ? (server.address() as AddressInfo).port : undefined)
   const listeners = new Set<() => void>()
+  // Open live streams per paired phone, so revoking a phone can end them.
+  const streams = new Map<string, Set<ServerResponse>>()
+  const endStreams = (deviceId: string): void => {
+    for (const res of streams.get(deviceId) ?? []) res.destroy()
+    streams.delete(deviceId)
+  }
   const changed = (): void => { for (const listener of listeners) listener() }
 
   const status = (): RemoteStatus => {
@@ -118,6 +124,12 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
         return sendJson(res, 200, { data: { notifications: false } })
       }
       if (!isRemoteRoute(method, url.pathname) || !api) return sendJson(res, 403, { error: 'Not available from the phone' })
+      // The live stream is one long request: a phone revoked while it is open must not keep receiving it.
+      if (url.pathname === '/api/stream') {
+        const open = streams.get(device.id) ?? new Set<ServerResponse>()
+        streams.set(device.id, open.add(res))
+        res.once('close', () => { open.delete(res); if (open.size === 0 && streams.get(device.id) === open) streams.delete(device.id) })
+      }
       await api(req, res, true)
     } catch (err) {
       const code = err instanceof HttpError ? err.status : 400
@@ -208,6 +220,7 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
     if (parts[2] === 'devices' && parts[3] && parts[4] === 'revoke' && method === 'POST') {
       if (!store.revoke(parts[3])) throw new HttpError(404, 'Unknown phone')
       push.unsubscribe({ deviceId: parts[3] })
+      endStreams(parts[3])
       changed()
       return sendJson(res, 200, { data: status() })
     }

@@ -1,7 +1,7 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkflowStore, expandWorkflows, resolveWorkflows } from '../server/workflows/store.ts'
 import { createWorkflowRunner } from '../server/workflows/runner.ts'
 import { createThreadStore } from '../server/threads/store.ts'
@@ -84,6 +84,23 @@ describe('workflows', () => {
     h.store.save({ projectPath: h.root, name: 'inspect', prompt: 'Something else entirely' }, inspect.id)
     const [first] = h.threads.events(t.id).filter(({ event }) => event.kind === 'user_text')
     expect(first?.event).toMatchObject({ kind: 'user_text', text: '@workflow:inspect', workflows: [{ name: 'inspect', prompt: 'Inspect the diff' }] })
+  })
+
+  it('keeps scheduling after workflows.json could not be read for a while (M3)', async () => {
+    const h = setup(); const w = h.save(); h.runner.setEnabled(w.id, true)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const file = join(h.root, 'workflows.json')
+      const good = readFileSync(file, 'utf8')
+      writeFileSync(file, '[{"broken"')
+      h.advance(10 * 60_000)
+      expect(() => h.runner.tick()).not.toThrow()
+      expect(() => h.runner.tick()).not.toThrow()
+      expect(errors).toHaveBeenCalledTimes(1)
+      writeFileSync(file, good)
+      h.runner.tick()
+      expect(h.sessions).toHaveLength(1)
+    } finally { errors.mockRestore() }
   })
 
   it('runs once after downtime, skips overlap including approvals, and persists next due time', () => {

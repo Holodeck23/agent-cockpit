@@ -61,6 +61,11 @@ try {
   await button.click()
 
   await startConversation(page, 'Start the dev server please')
+  // Cockpit asks before an agent starts a process, whichever way the agent calls it.
+  const approval = page.locator('.approval.open')
+  await approval.waitFor({ timeout: 30_000 })
+  check('Cockpit asks before the agent starts a process', /start_process|Start a process/i.test(await approval.textContent() ?? ''))
+  await approval.getByRole('button', { name: 'Allow', exact: true }).click()
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor({ timeout: 30_000 })
   const first = await until(page, 'the dev server URL', async () => (await mine(page)).find((p) => p.url && p.status === 'running'))
   check('the agent started it through the cockpit MCP', first.name === 'dev server' && alive(first.pid), first.url)
@@ -70,7 +75,8 @@ try {
   const port = new URL(first.url!).port
   check('listed with state and port', await page.getByRole('button', { name: new RegExp(`dev server Running · :${port}`) }).isVisible())
   check('detail shows command and URL', await page.locator('.process-detail-title code').textContent() === 'node server.js'
-    && await page.getByRole('link', { name: first.url! }).isVisible())
+    // Since the preview pane (9c07d6a) the URL is a button that opens it, not a link.
+    && await page.getByRole('button', { name: first.url! }).isVisible())
   await until(page, 'ten ticks in the log', async () => /tick 10\b/.test(await log.textContent() ?? ''))
   const text = await log.textContent() ?? ''
   check('log shows the startup line and keeps growing', text.includes(`Local: http://127.0.0.1:${port}/`) && /tick 10\b/.test(text))

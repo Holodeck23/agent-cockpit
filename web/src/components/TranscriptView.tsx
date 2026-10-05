@@ -63,6 +63,8 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
   )
 }
 
+const lineCount = (text: string): number => text.split('\n').length
+
 export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
@@ -183,7 +185,21 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                 <div className="approval-title">
                   <strong>{agentName(item.agent)}</strong> wants to use <strong>{item.toolName}</strong>
                 </div>
-                <code className="approval-detail">{item.detail}</code>
+                {item.note ? <p className="approval-note">{item.note}</p> : null}
+                {item.flags?.length ? (
+                  <ul className="approval-flags" aria-label="Also asks for">
+                    {item.flags.map((flag) => <li key={flag}>{flag}</li>)}
+                  </ul>
+                ) : null}
+                {/* Capped and scrolled from its top: a long command cannot push its start out of view beside Allow. */}
+                <code className="approval-detail" tabIndex={0}>{item.detail}</code>
+                {lineCount(item.detail) > 1 ? <span className="approval-lines">{lineCount(item.detail)} lines; scroll to read them all</span> : null}
+                {item.fullInput ? (
+                  <details className="approval-input">
+                    <summary>All input</summary>
+                    <pre>{item.fullInput}</pre>
+                  </details>
+                ) : null}
                 {open ? (
                   <div className="approval-actions">
                     <button type="button" className="button-primary" onClick={() => onApprove(item.requestId, 'allow')}>

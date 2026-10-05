@@ -47,32 +47,50 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     if (enabled) expandWorkflows(workflow.prompt, workflow.projectPath, store)
     return store.update(id, { enabled, nextRunAt: enabled ? new Date(next!).toISOString() : null, lastError: undefined })
   }
+  // One bad workflow, or a workflows.json that cannot be read, must not stop every schedule for the
+  // rest of the session: the tick skips what fails and tries again in 5 seconds. Each problem is logged once.
+  const reported = new Set<string>()
+  const report = (what: string, error: unknown): void => {
+    const message = `${what}: ${error instanceof Error ? error.message : String(error)}`
+    if (reported.has(message)) return
+    reported.add(message)
+    console.error(`[cockpit] scheduler: ${message}`)
+  }
   const tick = () => {
     if (stopped) return
-    for (const workflow of store.list()) {
-      if (!workflow.enabled || !workflow.nextRunAt || Date.parse(workflow.nextRunAt) > now()) continue
-      const next = nextRunAfter(workflow, now())
-      if (next === undefined) continue
-      // Persist the claim before launching: no duplicate launch after restart, no backlog replay.
-      // The next run is counted from now, so a long gap means one late run, not one per missed slot.
-      store.update(workflow.id, { nextRunAt: new Date(next).toISOString() })
-      if (isBusy(workflow.id)) continue
-      try { run(workflow.id, 'scheduled') } catch { /* run saved the error and paused the schedule */ }
+    let all: Workflow[]
+    try { all = store.list() } catch (error) { report('could not read workflows', error); return }
+    for (const workflow of all) {
+      try {
+        if (!workflow.enabled || !workflow.nextRunAt || Date.parse(workflow.nextRunAt) > now()) continue
+        const next = nextRunAfter(workflow, now())
+        if (next === undefined) continue
+        // Persist the claim before launching: no duplicate launch after restart, no backlog replay.
+        // The next run is counted from now, so a long gap means one late run, not one per missed slot.
+        store.update(workflow.id, { nextRunAt: new Date(next).toISOString() })
+        if (isBusy(workflow.id)) continue
+        try { run(workflow.id, 'scheduled') } catch { /* run saved the error and paused the schedule */ }
+      } catch (error) {
+        report(`workflow ${workflow.name}`, error)
+      }
     }
   }
   const unsubscribe = manager.subscribe(({ threadId, event }) => {
     if (event.kind !== 'error' && !(event.kind === 'result' && !event.ok)) return
-    const thread = threads.get(threadId)
-    if (!thread?.workflowId || thread.workflowTrigger !== 'scheduled' || !store.get(thread.workflowId)) return
-    store.update(thread.workflowId, { enabled: false, nextRunAt: null,
-      lastError: event.kind === 'error' ? event.message : event.stopped ? 'Scheduled run was stopped' : 'Scheduled run failed; open its conversation' })
+    // Runs inside the manager's broadcast: a throw here would keep the update from the other listeners.
+    try {
+      const thread = threads.get(threadId)
+      if (!thread?.workflowId || thread.workflowTrigger !== 'scheduled' || !store.get(thread.workflowId)) return
+      store.update(thread.workflowId, { enabled: false, nextRunAt: null,
+        lastError: event.kind === 'error' ? event.message : event.stopped ? 'Scheduled run was stopped' : 'Scheduled run failed; open its conversation' })
+    } catch (error) { report('could not pause a failed scheduled run', error) }
   })
   return {
     run, setEnabled, tick,
     start() {
       if (timer || stopped) return
       timer = setInterval(() => {
-        try { tick() } catch (error) { console.error('[cockpit] scheduler stopped:', error); if (timer) clearInterval(timer); timer = undefined }
+        try { tick() } catch (error) { report('tick failed', error) }
       }, 5000)
       timer.unref()
     },

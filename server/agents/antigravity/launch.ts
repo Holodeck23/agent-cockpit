@@ -4,8 +4,9 @@ import { createInterface } from 'node:readline'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
-import { stopChild } from '../stop.ts'
-import type { AgentSession, EventSink, OutgoingImage } from '../types.ts'
+import { AGENT_SPAWN, stopChild } from '../stop.ts'
+import { guardStdin } from '../stdin.ts'
+import type { AgentSession, EventSink, NormalizedEvent, OutgoingImage } from '../types.ts'
 import { withImagePaths } from '../image-input.ts'
 import { parseAntigravityLine } from './parse.ts'
 
@@ -60,15 +61,22 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
   if (value.imagesDir) mkdirSync(value.imagesDir, { recursive: true, mode: 0o700 })
   const child = spawn(deps.executable ?? 'agy', buildAntigravityArgs(value), {
     cwd: value.cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
     env: { ...process.env, ...deps.env },
   })
   let exited = false
   let firstTurn = true
   const stderrTail: string[] = []
+  guardStdin(child, () => { if (!exited) onEvent({ kind: 'error', message: 'Antigravity stopped taking input; that message was not delivered' }) })
 
   createInterface({ input: child.stdout }).on('line', (line) => {
-    for (const event of parseAntigravityLine(line)) onEvent(event)
+    // A parser that throws on an odd line must not escape the readline callback (H1).
+    let events: NormalizedEvent[]
+    try { events = parseAntigravityLine(line) } catch (error) {
+      onEvent({ kind: 'error', message: `Could not read Antigravity output: ${error instanceof Error ? error.message : String(error)}` })
+      return
+    }
+    for (const event of events) onEvent(event)
   })
   createInterface({ input: child.stderr }).on('line', (line) => {
     stderrTail.push(line)

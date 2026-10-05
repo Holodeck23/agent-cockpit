@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import { ALL_EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
-import { stopChild } from '../stop.ts'
+import { AGENT_SPAWN, stopChild } from '../stop.ts'
 import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
 import { codexInput } from '../image-input.ts'
 import { codexEffort } from './efforts.ts'
@@ -97,7 +97,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   const opts = codexLaunchSchema.parse(input)
   const child = spawn(deps.executable ?? 'codex', ['app-server', ...(deps.configArgs ?? [])], {
     cwd: opts.cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
     env: { ...process.env, ...deps.env },
   })
   let exited = false

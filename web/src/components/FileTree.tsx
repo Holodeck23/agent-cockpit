@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type FileListing, type Project } from '../api.ts'
-import { nextInFolder, type NewFileKind } from '../file-text.ts'
+import { nextInFolder, visibleName, type NewFileKind } from '../file-text.ts'
 import { dropPin, renamePin, togglePin } from '../pins.ts'
 import { useFileDrop } from '../useFileDrop.ts'
 import { FileRow } from './FileRow.tsx'
@@ -70,7 +70,7 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
       {listing?.entries.map((entry) => entry.kind === 'directory' ? (
         <button type="button" key={entry.path} className="file-row" onClick={() => setFolder(entry.path)}>
           <FolderIcon />
-          <span>{entry.name}</span>
+          <span>{visibleName(entry.name)}</span>
           <span>›</span>
         </button>
       ) : (

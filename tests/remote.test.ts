@@ -75,11 +75,19 @@ describe('pairing store', () => {
     expect(store.deviceFor(token, OWNER)?.name).toBe('Pixel')
     expect(store.deviceFor(token, 'guest@example.com')).toBeUndefined()
     expect(JSON.stringify(store.read())).not.toContain(token!)
+    // Asking again replaces the request and never hands its id (the redemption secret) back (L2).
+    const first = store.requestPairing('Pixel 9a', OWNER)
     const again = store.requestPairing('Pixel 9a', OWNER)
-    expect(store.requestPairing('Pixel 9a', OWNER)).toEqual(again)
+    expect(again.id).not.toBe(first.id)
+    expect(store.redeem(first.id, OWNER)).toBeUndefined()
     for (let i = 0; i < 10; i += 1) store.requestPairing('Pixel 9a', OWNER)
     expect(store.pendingPairings()).toHaveLength(1)
-    store.decide(again.id, false)
+    const latest = store.pendingPairings()[0]!
+    store.decide(latest.id, false)
+    // Many requests from one login drop its oldest instead of locking pairing out (L12).
+    for (let i = 0; i < 8; i += 1) store.requestPairing(`Spam ${i}`, 'guest@example.com')
+    expect(store.pendingPairings().filter((r) => r.login === 'guest@example.com')).toHaveLength(5)
+    expect(() => store.requestPairing('Owner phone', OWNER)).not.toThrow()
     const late = store.requestPairing('Other', OWNER)
     clock += 6 * 60_000
     expect(() => store.decide(late.id, true)).toThrow(/expired/)
@@ -87,10 +95,10 @@ describe('pairing store', () => {
 })
 
 interface Reply { status: number; body: string; cookie?: string }
-function call(port: number, path: string, init: { method?: string; headers?: Record<string, string>; body?: unknown; host?: string } = {}): Promise<Reply> {
+function call(port: number, path: string, init: { method?: string; headers?: Record<string, string>; body?: unknown; host?: string; fresh?: boolean } = {}): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const body = init.body === undefined ? undefined : JSON.stringify(init.body)
-    const req = request({ host: init.host ?? '127.0.0.1', port, path, method: init.method ?? 'GET',
+    const req = request({ host: init.host ?? '127.0.0.1', port, path, method: init.method ?? 'GET', ...(init.fresh ? { agent: false } : {}),
       headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...init.headers } }, (res) => {
       let text = ''
       res.on('data', (chunk) => { text += chunk })
@@ -130,6 +138,36 @@ const viaTailscale = (extra: Record<string, string> = {}) =>
   ({ host: HOST, 'x-forwarded-proto': 'https', 'tailscale-user-login': OWNER, ...extra })
 
 describe('phone access over HTTP', () => {
+  it('ends a revoked phone\'s open live stream (M6)', async () => {
+    const { server, local, root } = await setup()
+    try {
+      await local('/api/remote', { enabled: true })
+      const port = server.remote.port()!
+      const pairing = JSON.parse((await call(port, '/api/remote/pair', { method: 'POST', body: { name: 'Lost phone' }, headers: viaTailscale() })).body).data
+      await local(`/api/remote/pairings/${pairing.id}`, { approve: true })
+      const cookie = (await call(port, `/api/remote/pair/${pairing.id}`, { headers: viaTailscale() })).cookie!.split(';')[0]!
+      let ended = false
+      const lines: string[] = []
+      const stream = request({ host: '127.0.0.1', port, path: '/api/stream', headers: viaTailscale({ cookie, accept: 'text/event-stream' }) }, (res) => {
+        res.setEncoding('utf8')
+        res.on('data', (chunk: string) => lines.push(chunk))
+        res.on('close', () => { ended = true })
+      })
+      stream.on('error', () => { ended = true })
+      stream.end()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      const device = JSON.parse((await local('/api/remote')).body).data.devices[0]
+      await local(`/api/remote/devices/${device.id}/revoke`, {})
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(ended).toBe(true)
+      const before = lines.length
+      await local('/api/threads', { projectPath: root, text: 'after revoke' })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(lines.length).toBe(before)
+      stream.destroy()
+    } finally { await server.close() }
+  })
+
   it('pairs a phone, serves only the phone routes, and refuses every other path', async () => {
     const { server, ts, local } = await setup()
     try {
@@ -184,7 +222,8 @@ describe('phone access over HTTP', () => {
       const off = JSON.parse((await local('/api/remote', { enabled: false })).body).data
       expect(off).toMatchObject({ enabled: false, running: false })
       expect(ts.calls).toEqual([`serve ${port} on 443`, 'unserve 443'])
-      await expect(call(port, '/')).rejects.toThrow(/ECONNREFUSED/)
+      // A new connection, not one kept alive from earlier requests, so the closed port is what answers.
+      await expect(call(port, '/', { fresh: true })).rejects.toThrow(/ECONNREFUSED/)
     } finally { await server.close() }
   })
 

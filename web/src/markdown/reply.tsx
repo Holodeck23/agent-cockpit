@@ -37,8 +37,29 @@ function htmlAsText() {
   return (tree: MdNode): void => walk(tree)
 }
 
-const external = (href: string | undefined, children: ReactNode, className?: string): ReactNode =>
-  href ? <a href={href} target="_blank" rel="noreferrer noopener" className={className}>{children}</a> : <span className={className}>{children}</span>
+const textOf = (node: ReactNode): string =>
+  typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(textOf).join('') : ''
+const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } }
+
+/**
+ * Electron shows no status bar, so a link's destination is in its tooltip; and when its text names
+ * a different site than it goes to ([github.com/you](https://evil.example)), the real one is shown.
+ */
+export function misleadingHost(text: string, href: string): string | undefined {
+  const named = /^(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[/:?#]|$)/i.exec(text.trim())?.[1]?.toLowerCase().replace(/^www\./, '')
+  const real = hostOf(href)
+  return named && real && named !== real ? real : undefined
+}
+
+const external = (href: string | undefined, children: ReactNode, className?: string): ReactNode => {
+  if (!href) return <span className={className}>{children}</span>
+  const real = misleadingHost(textOf(children), href)
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" className={className} title={href}>
+      {children}{real ? <span className="link-real-host"> ↗ {real}</span> : null}
+    </a>
+  )
+}
 
 function FileButton({ target, children }: { target: FileTarget; children: ReactNode }) {
   const { onOpenFile } = useContext(ReplyContext)

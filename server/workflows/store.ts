@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { ensurePrivateDir, writeFileAtomic } from '../files/atomic.ts'
+import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import type { WorkflowSnapshot } from '../agents/types.ts'
@@ -37,12 +38,11 @@ export interface WorkflowStore {
 }
 
 export function createWorkflowStore(root: string): WorkflowStore {
-  mkdirSync(root, { recursive: true, mode: 0o700 })
+  ensurePrivateDir(root)
   const file = join(root, 'workflows.json')
   const read = (): Workflow[] => existsSync(file) ? z.array(workflowSchema).parse(JSON.parse(readFileSync(file, 'utf8'))) : []
   const write = (rows: Workflow[]): void => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(rows, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(rows, null, 2))
   }
   return {
     list: (projectPath) => read().filter((w) => !w.archived && (projectPath === undefined || w.projectPath === projectPath)),

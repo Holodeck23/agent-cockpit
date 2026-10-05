@@ -46,8 +46,6 @@ export interface McpCommand {
  */
 export interface CockpitMcpLaunch extends McpCommand {
   readonly secretEnv: Readonly<Record<string, string>>
-  /** Tools this session may also call without an approval card, from the project's settings. */
-  readonly alsoAllowed?: readonly string[]
 }
 
 export const MCP_SERVER_NAME = 'cockpit'
@@ -56,9 +54,11 @@ export const MCP_TOKEN_ENV = 'COCKPIT_MCP_TOKEN'
 
 /** Read-only or harmless tools the agent may call without an approval card. */
 export const AUTO_ALLOWED_TOOLS = ['list_processes', 'read_process_output', 'open_preview', 'inspect_preview', 'recall', 'list_conversations', 'read_conversation'] as const
-// Transport invocation is preapproved; Cockpit itself asks the user before every control mutation.
-export const HOST_APPROVED_TOOLS = ['start_conversation', 'send_to_conversation', 'stop_conversation'] as const
-export const ALL_TOOLS = ['start_process', 'stop_process', 'save_workflow', 'remember', ...AUTO_ALLOWED_TOOLS, ...HOST_APPROVED_TOOLS] as const
+// Transport invocation is preapproved; Cockpit itself asks the user, on the server, before every one
+// of these runs. The CLI's own gate is not enough: the session token is in the agent's environment,
+// so its shell can call the routes directly. (save_workflow skips the card when the project lets agents manage workflows.)
+export const HOST_APPROVED_TOOLS = ['start_conversation', 'send_to_conversation', 'stop_conversation', 'start_process', 'stop_process', 'remember', 'save_workflow'] as const
+export const ALL_TOOLS = [...AUTO_ALLOWED_TOOLS, ...HOST_APPROVED_TOOLS] as const
 
 /** Appended to the agent's system prompt so it reaches for the tools on its own. */
 export const COCKPIT_GUIDANCE = [

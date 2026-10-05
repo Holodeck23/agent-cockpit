@@ -302,3 +302,63 @@ Fixed an actual import failure where Claude canonicalizes `/var` to `/private/va
 Bumped the package to 0.1.1 and updated the README, user guides and landing page for recovery, MCP controls, installation and measured timing. Added an independent-Mac tester checklist and release checksum. The final DMG is 133,455,985 bytes, SHA-256 `b34ad184bf0144502624e557c8d5a8cdd9acad2bbc41c12d051f8e83ad9dbede`. Its copied app passed signature/version/archive checks, recovery (6), director (12), startup recovery (5 scenarios) and MCP controls (8). Source verification passed 356 tests and both builds. Landing interaction/contrast/overflow checks passed at 390, 768 and 1280px. Publication and the external tester outcome are recorded separately; the latter is still pending.
 
 Published v0.1.1 from `d2c7416` and deployed the updated static page to `https://agent-cockpit-theta.vercel.app`. The complete unauthenticated DMG download matches the installed candidate’s SHA-256; the public page exactly matches the reviewed source and passes its hosted interaction/version/gallery check. The remaining handoff is an independent tester on their own Mac.
+
+## Robustness repair after the audit (2026-10-05)
+
+A full audit of `f31ae29` found two faults that could take down far more than the conversation that hit them. Both are fixed, each with a regression test that fails on the old code.
+
+- **A closed agent pipe threw out of the server (H1).** A CLI that exits, or closes stdin, still looks writable until Node handles its exit. The next send, approval or Stop then fails asynchronously with EPIPE as an `'error'` event that nothing handled. Under `npm start` that ends the server and every agent. In the app, Electron's default handler puts up the main-process error box. Reproduced with a stand-in that closes stdin and keeps running. Now `server/agents/stdin.ts` attaches a handler in the Claude and Antigravity adapters and in the JSON-RPC client that Codex and OpenCode share. The lost write becomes an error event in that conversation ("stopped taking input; that message was not delivered"), and the exit handler ends the session as before. The manager also records agent events inside a guard, so a failed write (a full disk) loses that event instead of throwing out of a stdout handler. Test: `tests/stdin-lost.test.ts` (Claude, Antigravity, JSON-RPC).
+- **One half-written file emptied the conversation list (H3).** `events.jsonl` was parsed line by line without a guard, and the list reads every conversation. So half a line left by a crash, a power cut or a full disk made `GET /api/threads` fail, and the window showed no conversations at all. A `meta.json` that did not parse did the same. A further trap: the next append would have joined the half line and lost the new event too. Now lines that are not events are skipped, a `meta.json` that does not parse leaves its conversation out of the list, each is reported once per file, and nothing is rewritten. The first append to a log in each process starts on a fresh line when the file lacks a final newline, and checks again after a failed append. Test: `tests/thread-store-damage.test.ts` (torn last line, append after it, non-event lines, broken meta, and the list over HTTP).
+- **Red-team follow-up on H1:** a red-team pass against these two fixes found two gaps, both now closed with tests that fail on the previous commit.
+  - The outer guard kept the server alive, but a failed `store.append` still skipped every state change that follows it in `record()`. A result or exit that could not be saved therefore left the conversation working for good, with its session still live. Persistence inside `record()` now fails on its own and the state still moves on (`tests/manager-disk-full.test.ts`).
+  - The JSON-RPC message handlers and the Claude and Antigravity line parsers ran outside any guard, one step before the guarded sink. Now a throw there becomes a protocol error in that conversation.
+- **Docs:** ARCHITECTURE.md had drifted. It described a three-call preload and two agents, and did not mention the window key, which now carries most of the desktop security story. It now covers all four adapters, the full preload surface, the window key, tolerant reads and agent pipes. The user guides now document v0.1.4.
+- **Gate:** typecheck, `check:paths` and both builds pass; vitest passes 666 tests here, 10 of them new. The audit environment was Linux as root. There, four existing tests fail for environmental reasons only (no `/bin/zsh`, root ignores `chmod 0500`, no zombie reaping in the container, a pooled keep-alive socket). They pass on macOS CI. No packaged-app proof was run for this repair; it changes no UI or protocol behaviour on the happy path.
+- **Next:** everything else the audit and a five-surface red team found. See the section below.
+
+## Audit and red-team follow-through (2026-10-05)
+
+A five-surface red team was run against the repair branch: the local API and window key, a prompt-injected agent, phone access, the renderer, and files and data. Its findings and the rest of the audit's were fixed on the same branch. Each has a test that fails on the code before it, unless noted.
+
+- **Repository config ran a program (critical).** Cockpit runs `git status` as soon as a folder opens, and a repository's own `.git/config` can name a `core.fsmonitor` program. Every git call now sets `core.fsmonitor=` on the command line. Hooks still run only for switch and push, which you start.
+- **The CLI's approval was bypassable.** The MCP session token is in the agent's environment, so its shell could call `/api/mcp` directly. It could start processes, write memory that every project reads, or plant workflows, all without a card. Those routes now ask on the server through Cockpit's own card (host actions), and the CLIs pre-approve the tools. Processes offer Allow for this session. Stand-in agents in the packaged proofs follow the new flow. `proof:preview` and `proof:processes` now click Allow on the card.
+- **Workflows.**
+  - An agent's update to a workflow that runs with more than manual or plan permissions, or with hooks, now pauses its schedule.
+  - The scheduler no longer stops for the session on one bad tick.
+- **Agents.** Agents run as their own process group, so a CLI that has to be terminated or killed takes its shell commands with it.
+- **Files.**
+  - File names show hiding and reordering characters visibly.
+  - Opening a runnable file asks first, with its real name.
+  - Editor saves re-check that the folder still resolves to the same real path. This narrows, but cannot fully close, the window to a symlink swapped in by another writer at the same moment. No test: the race can't be staged deterministically.
+- **Phone.**
+  - Revoking a phone ends its open live stream.
+  - Push endpoints must belong to a browser push service. Before, it was any HTTPS URL, which made a blind SSRF from the Mac.
+  - Re-asking to pair replaces the request instead of handing back its id.
+  - Pending pairing requests are capped per login.
+- **Approval cards.**
+  - Agent-written titles stay on one line.
+  - Cards show Cockpit's description and risk badges, array commands whole, and all input.
+  - The detail is capped and scrolls from its top.
+- **Page and previews.**
+  - The page has a Content-Security-Policy. In Chromium, a Markdown document's remote image is refused and no request leaves.
+  - Previews and captures can never open Cockpit's own ports.
+  - Captures use an in-memory session cleared after each one, and cannot navigate off loopback.
+  - The project picture route sets CORP.
+- **Performance.** Event logs are read incrementally and a streamed token reuses the last status. On an 8 MB conversation, a status read went from 28.4 ms to 0.8 ms. The half-line check before an append now runs on every append. Only the first per process missed a line cut short inside a running process.
+- **Smaller fixes.**
+  - Atomic writes use random temp names created exclusively, and the state folder is kept at 0700.
+  - Session import skips message lines that name no folder.
+  - Reply links show their destination, and the real host when the text names another site.
+  - The live stream drops a client past 8 MB buffered.
+  - `@milkdown/kit` moved to devDependencies.
+  - The unit suite now also passes on Linux and as root. Four tests had depended on macOS details.
+- **Gate.** Typecheck, `check:paths`, both builds and vitest pass: 696 tests plus 1 skipped as root, 30 new or changed. The page and its policy were exercised in Chromium against the built UI. No packaged-app proof could be run here, because Electron does not run in this environment. The changes most worth a packaged run on a Mac are:
+  - the approval cards (`proof:processes`, `proof:preview`, `proof:memory`, `proof:director`, `proof:reliability`);
+  - the open-file confirmation;
+  - a capture through `inspect_preview`.
+- **Not changed, by decision.**
+  - Hardened runtime, notarization and the asar-integrity fuses wait for a Developer ID.
+  - A paired phone still sees every project; that is the phone's purpose.
+  - An agent can still screenshot any non-Cockpit localhost page, as its shell can already reach it.
+  - The router's phone check on the documents space stays as a second line behind the route allowlist.
+

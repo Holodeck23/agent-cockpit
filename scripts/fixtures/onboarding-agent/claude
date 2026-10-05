@@ -1,6 +1,6 @@
 #!/bin/sh
 [ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
-# First-run stand-in: asks approval, runs the supplied sample command, and asks the desktop shell
+# First-run stand-in: starts the sample through Cockpit (which asks for approval), runs the supplied sample command, and asks the desktop shell
 # for the same PNG that inspect_preview returns to a real agent.
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit preview fixture)"; exit 0; }
 session=""
@@ -18,15 +18,14 @@ while IFS= read -r line; do
     printf '{"type":"result","subtype":"success","is_error":false,"result":"Project explored.","total_cost_usd":0,"duration_ms":5}\n'
     continue
   fi
-  printf '{"type":"control_request","request_id":"sample-start","request":{"subtype":"can_use_tool","tool_name":"mcp__cockpit__start_process","input":{"command":"%s","name":"90-second sample"},"permission_suggestions":[]}}\n' "$command"
-  IFS= read -r answer
-  case "$answer" in
-    *'"behavior":"allow"'*) ;;
-    *) printf '{"type":"result","subtype":"success","is_error":false,"result":"Sample start denied.","total_cost_usd":0,"duration_ms":5}\n'; continue ;;
-  esac
+  # Like the real MCP server: the CLI does not ask; Cockpit shows its own approval card and this POST waits for it.
   started=$(curl -s -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
     -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
     -d "{\"command\":\"$command\",\"name\":\"90-second sample\"}")
+  case "$started" in
+    *'"process"'*) ;;
+    *) printf '{"type":"result","subtype":"success","is_error":false,"result":"Sample start denied.","total_cost_usd":0,"duration_ms":5}\n'; continue ;;
+  esac
   id=$(printf '%s' "$started" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   url=""
   attempts=0

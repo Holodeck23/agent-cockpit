@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,7 +27,13 @@ async function until<T>(read: () => T | undefined, ms = 5000): Promise<T> {
 const alive = (pid: number): boolean => {
   try {
     process.kill(pid, 0)
-    return true
+  } catch {
+    return false
+  }
+  // A killed process whose parent is gone stays a zombie until init reaps it, which a container
+  // without an init never does. A zombie runs nothing and holds no port: it counts as gone.
+  try {
+    return !execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim().startsWith('Z')
   } catch {
     return false
   }

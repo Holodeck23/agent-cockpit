@@ -53,7 +53,8 @@ Cockpit window (React) ──HTTP + SSE──►  local server (Node, 127.0.0.1,
 
 - **Adapters** turn each CLI's wire protocol into one event model, so threads, storage and UI never care which agent is talking.
 - **CLI settings are validated.** Agent tools and approved process commands can still execute shell commands with your account permissions.
-- **Local UI requests are checked.** Cockpit checks host, origin and JSON writes. MCP uses session tokens; optional phone access uses pairing and a separate authenticated listener.
+- **Local UI requests are checked.** Cockpit checks host, origin and JSON writes, and in the desktop app only the Cockpit window holds the per-launch key the API requires, so other programs on the Mac cannot drive it. MCP uses session tokens; optional phone access uses pairing and a separate authenticated listener.
+- **Cockpit itself approves what agents change through it.** Starting processes, saving memory or workflows and controlling other conversations ask on Cockpit's own card, however the agent calls them.
 - **The desktop app is the same server** in Electron's main process, with a sandboxed page and no Node in the renderer.
 
 ## Screenshots

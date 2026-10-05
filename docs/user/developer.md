@@ -1,6 +1,6 @@
 # Developer Guide
 
-> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide is for developers looking to build, test, and package Agent Cockpit locally.
 
@@ -21,8 +21,8 @@ Cockpit window (React) ──HTTP + SSE──►  local server (Node, 127.0.0.1,
 
 -   **Adapters:** These translate each specific CLI's wire protocol (e.g., Claude's stream-json, Codex's JSON-RPC) into a unified event model.
 -   **Security:** CLI settings are validated. Approved process commands run in a shell, and provider tools retain the filesystem access allowed by their CLI policy.
--   **Server:** The local UI routes check host and origin. MCP routes use session-scoped tokens; the optional phone listener authenticates paired devices. The desktop application packages this same server into an Electron main process.
--   **State Storage:** Threads, workflows, and configuration are stored as plain files in `~/.agent-cockpit/`.
+-   **Server:** The local UI routes check host, origin and JSON writes. In the desktop app every `/api` request must also carry a key made at each launch, which the main process adds only to the Cockpit window's own requests, so other programs on the Mac (an agent's shell included) cannot use the desktop API. MCP routes use session-scoped tokens; the optional phone listener authenticates paired devices. The desktop application packages this same server into an Electron main process.
+-   **State Storage:** Threads, workflows, and configuration are stored as plain files in `~/.agent-cockpit/`. A conversation's event log is append-only; a damaged line or `meta.json` is skipped on read and never rewritten.
 
 ## Local Development & Build Commands
 
@@ -31,16 +31,18 @@ Ensure you have Node.js and `npm` installed. Run `npm ci` in the repository firs
 | Command | Description |
 | :--- | :--- |
 | `npm run doctor` | Checks the supported platform, installed agent CLIs, and Tailscale (does not test account authentication). |
-| `npm run verify` | Runs TypeScript type checking, unit tests, Vite web build, and Electron build. |
+| `npm run verify` | Checks that no home-directory paths are committed, then runs TypeScript type checking, unit tests, the Vite web build and the Electron build (the same steps as CI). |
 | `npm start` | Starts the backend on port 4317 by default (`COCKPIT_PORT` overrides it). Run `npm run build` and `npm run build:electron` first for the UI and MCP bundle. |
 | `npm run dev:server` | Starts the backend server with hot-reload via `tsx watch`. |
 | `npm run dev:web` | Starts the Vite dev server for the React frontend. |
 | `npm run app` | Builds the project and opens the Electron desktop app locally. |
-| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.3-arm64.dmg`. |
+| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.4-arm64.dmg`. |
 
 ## Testing and Proofs
 
 Testing is separated into isolated packaged proofs (using Playwright against the packaged Electron app) and live-provider smoke tests.
+
+**Unit tests** (`npm test`, vitest) run on macOS in CI, and also pass on Linux. One test needs an ordinary user account, because it relies on file permissions that `root` ignores; it is skipped when run as root. When a test spawns a stand-in CLI, write it like `tests/claude-capabilities.test.ts` does, and allow for macOS scanning a fresh executable on its first run.
 
 **Packaged Proofs (No API Cost):**
 These tests verify UI and application logic against protocol stand-ins and local files without consuming live API usage limits.
