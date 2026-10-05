@@ -325,9 +325,25 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     broadcast(threadId, event)
   }
 
+  /**
+   * Ends a thread's live session before its exit is recorded (delete, switch agent, change settings,
+   * recovery): pending Cockpit actions are refused and what was allowed for that session is
+   * forgotten now, not when an exit that is dropped as stale would have done it.
+   */
+  const retire = (threadId: string): Promise<void> => {
+    hostActions.cancel(threadId)
+    hostActions.forget(threadId)
+    const entry = live.get(threadId)
+    live.delete(threadId)
+    generations.delete(threadId)
+    return entry ? closeEntry(entry) : Promise.resolve()
+  }
+
   const ensureSession = (meta: ThreadMeta): Live => {
     const existing = live.get(meta.id)
     if (existing?.session.alive()) return existing
+    // A new session starts with nothing allowed for it, however the previous one ended.
+    hostActions.forget(meta.id)
     const generation = Symbol()
     generations.set(meta.id, generation)
     const pending = new Map<string, PendingApproval>()
@@ -536,12 +552,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     async remove(threadId) {
       requireMeta(threadId)
-      hostActions.cancel(threadId)
       deleted.add(threadId)
-      const entry = live.get(threadId)
-      live.delete(threadId)
-      generations.delete(threadId)
-      if (entry) await closeEntry(entry)
+      await retire(threadId)
       store.remove(threadId)
       images.remove(threadId)
       lastStatus.delete(threadId)
@@ -552,9 +564,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
       if (busy(entry)) throw new Error('Stop the current turn before switching agents')
-      generations.delete(threadId)
-      live.delete(threadId)
-      if (entry) void closeEntry(entry)
+      void retire(threadId)
       const handoff = buildHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       const next = store.update(threadId, { settings, sessionId: randomUUID(), sessionStarted: false, handoff })
@@ -567,9 +577,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const entry = live.get(threadId)
       if (busy(entry)) throw new Error('Stop the current turn before changing settings')
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
-      generations.delete(threadId)
-      live.delete(threadId)
-      if (entry) void closeEntry(entry)
+      void retire(threadId)
       const next = store.update(threadId, { settings })
       record(threadId, { kind: 'settings_changed', ...(settings.model ? { model: settings.model } : {}), ...(settings.effort ? { effort: settings.effort } : {}), permissionMode: settings.permissionMode })
       return next
@@ -582,9 +590,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
       else {
         // Re-launch even an idle session so an earlier permissive policy cannot survive recovery.
-        generations.delete(threadId)
-        live.delete(threadId)
-        if (entry) void closeEntry(entry)
+        void retire(threadId)
         store.update(threadId, { settings })
       }
       send(threadId, text, agentText)
