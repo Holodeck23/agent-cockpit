@@ -86,6 +86,11 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
     return () => window.removeEventListener('keydown', onKey)
   }, [phone, activityOpen, setActivityOpen, finding])
 
+  // Use my Chrome: Claude's first Chrome call is still waiting for Chrome (at most 30 s, chrome-watch.ts).
+  const connectingChrome = useMemo(() => {
+    const last = events.findLast((e) => e.event.kind === 'chrome_connection')?.event
+    return last?.kind === 'chrome_connection' && last.phase === 'connecting'
+  }, [events])
   const sentKey = useMemo(() => String(events.findLastIndex((e) => e.event.kind === 'user_text')), [events])
   const { hasNew, jumpToLatest } = useStickToBottom(scroller, meta.id, `${events.length}:${streaming.length}`, sentKey)
 
@@ -98,6 +103,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
     model: meta.settings.model ?? '',
     effort: meta.settings.effort ?? '',
     permissionMode: meta.settings.permissionMode,
+    ...(meta.settings.useChrome ? { chrome: true } : {}),
   }
 
   return (
@@ -208,6 +214,13 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           </button>
         ) : null}
       </div>
+      {running && connectingChrome ? (
+        <div className="chrome-connecting" role="status">
+          <span className="starting-dot" aria-hidden="true" />
+          <span>Connecting to your Chrome… Cockpit stops waiting after 30 seconds.</span>
+          <button type="button" className="button-soft" onClick={() => guard(api.interrupt(meta.id))}>Cancel</button>
+        </div>
+      ) : null}
       {!running && !meta.completed && followUps.length > 0 ? (
         <div className="follow-ups" role="group" aria-label="Suggested follow-ups">
           <div className="follow-ups-row">

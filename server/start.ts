@@ -1,3 +1,5 @@
+import { createBrowserAgent, type BrowserHost } from './browser/agent.ts'
+import { createBrowserLeases, type BrowserLeases } from './browser/agent-policy.ts'
 import { createConversationControl } from './mcp/control.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type ServerResponse } from 'node:http'
@@ -24,7 +26,7 @@ import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
-import type { PreviewOpen } from './preview/types.ts'
+import type { PreviewCapture, PreviewOpen } from './preview/types.ts'
 
 export interface StartOptions {
   /** 0 picks a free port. */
@@ -49,6 +51,8 @@ export interface StartOptions {
   readonly openUrl?: (preview: PreviewOpen) => Promise<void> | void
   /** Captures a local preview for an agent to inspect. Available in the desktop shell. */
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
+  /** inspect_preview on the conversation's own page (desktop app, W9-11); capturePreview stays for result evidence. */
+  readonly inspectPreview?: (preview: PreviewOpen) => Promise<PreviewCapture>
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
   /** How agent CLIs are checked for the picker; a fake in tests. */
@@ -58,6 +62,8 @@ export interface StartOptions {
    * Without it, any local process can use the API, which only `npm start` should allow.
    */
   readonly windowKey?: string
+  /** The in-app browser's pages (desktop app only), read when an agent calls a browser tool. */
+  readonly browserHost?: () => BrowserHost | undefined
 }
 
 function openWithSystem({ url }: PreviewOpen): Promise<void> {
@@ -82,6 +88,10 @@ export interface RunningServer {
   /** Durable result cards and finite host checks (pilot 10.1). */
   readonly results: ResultService
   readonly checks: CheckRunner
+  /** Agents' browser grants; the desktop shell revokes a page's grants when the page goes away. */
+  readonly browserLeases: BrowserLeases
+  /** Whether an agent is using a browser page now (a call, or a grant of a live run). */
+  browserInUse(pageKey: string): boolean
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -229,17 +239,27 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  const agents = createAgentStatus(store, options.agentProbe)
+  // Tests that fake the version check fake Chrome readiness too: no real CLI is run.
+  const agents = createAgentStatus(store, options.agentProbe, undefined, options.agentProbe ? async () => ({ supported: false, extension: false }) : undefined)
+  const browserLeases = createBrowserLeases()
+  const browser = options.browserHost ? createBrowserAgent({
+    host: options.browserHost,
+    leases: browserLeases,
+    cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])],
+    // Only while the conversation is working and Stop has not been pressed.
+    currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
+    approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
+  }) : undefined
   const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
         const runId = manager.currentRunId(threadId)
         return { kind: 'conversation', threadId, title: meta?.title ?? 'Deleted conversation', ...(runId ? { runId } : {}) }
-      }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
+      }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), ...(options.inspectPreview ? { inspectPreview: options.inspectPreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
       approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
-      cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])] } },
+      cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])], ...(browser ? { browser } : {}) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)
   server.on('request', (req, res) => {
@@ -267,5 +287,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
 }

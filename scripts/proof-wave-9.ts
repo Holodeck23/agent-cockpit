@@ -1,7 +1,8 @@
 // Packaged gate for wave 9 order 10 (in-app browser): W9-01 per-conversation pages and layout,
 // W9-02 navigation/loading/error/redirect/mobile/expand, W9-03 reply links, W9-04 website logins
 // per workspace across a restart and Clear website data, W9-05 new windows/permissions/downloads/
-// overlays, SEC-02 page against Cockpit's own origins. Stand-in agent only (fixtures/wave9-agent).
+// overlays, SEC-02 page against Cockpit's own origins; then order 11 (proof-wave-9-agent.ts): the
+// agent's browser tools and approvals (W9-06–W9-12, SEC-01–SEC-03). Stand-in agent only (fixtures/wave9-agent).
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:wave-9
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
@@ -11,6 +12,7 @@ import { join } from 'node:path'
 import type { ElectronApplication, Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { messageBox, openProject, setTheme } from './lib/ui.ts'
+import { agentBrowserProof } from './proof-wave-9-agent.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave9-proof-'))
@@ -315,4 +317,6 @@ try {
   siteA.close()
   siteB.close()
 }
+// ---------- order 11: the agent's browser tools, approvals, residency, legacy tools, Use my Chrome ----------
+await agentBrowserProof(check)
 finish('proof:wave-9')

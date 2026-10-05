@@ -1,8 +1,18 @@
 #!/bin/sh
-[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
-# Stand-in `claude` for proof:wave-9 (in-app browser). "open <url>" asks Cockpit to open that local
-# page (open_preview). "links <a> <b>" replies with web links to <a> and <b>, an unsafe-scheme link
-# and a file reference, so the proof can click them. Anything else gets a one-line answer.
+# Its --help also declares --chrome (Use my Chrome, W9-12), as Claude 2.1.289's does.
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; printf '  --chrome                              Enable Claude in Chrome integration\n'; exit 0; }
+# Stand-in `claude` for proof:wave-9 (in-app browser). By message:
+#   "open <url>"     asks Cockpit to open that local page (open_preview);
+#   "inspect <url> <file>"  inspect_preview, writing the HTTP status to <file>.code and the body to <file>.out;
+#   "links <a> <b>"  replies with web links to <a> and <b>, an unsafe-scheme link and a file reference;
+#   "session <dir>"  one turn (one run) of browser calls: waits for <dir>/<n>-<op>.json (n = 1, 2, …),
+#                    POSTs it to /api/mcp/browser/<op>, writes <dir>/<n>.code and <dir>/<n>.out, and
+#                    ends the turn at <dir>/<n>-end.json. Runs in the background, so Stop reaches it;
+#   "chrome <ok|off|hang|drop>"  a Claude-in-Chrome call that answers, answers "not connected",
+#                    never answers (until Stop), or answers and then drops;
+#   anything else gets a one-line answer.
+# With W9_ARGS set it appends each launch's arguments there, and its Cockpit MCP address and token
+# to W9_ARGS.token, so the proof can replay a call after Stop (W9-09).
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 9 fixture)"; exit 0; }
 session=""
 previous=""
@@ -10,14 +20,56 @@ for arg in "$@"; do
   case "$previous" in --session-id|--resume) session="$arg" ;; esac
   previous="$arg"
 done
+if [ -n "$W9_ARGS" ]; then
+  { printf '%s\n' "$@"; printf -- '-----\n'; } >> "$W9_ARGS"
+  printf '%s %s\n' "$COCKPIT_MCP_URL" "$COCKPIT_MCP_TOKEN" > "$W9_ARGS.token"
+fi
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave9-fixture"}\n' "$session"
 turn=0
+bg=""
 say() {
   printf '{"type":"assistant","message":{"id":"w9-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$1"
   printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$1"
 }
+chrome_call() { printf '{"type":"assistant","message":{"id":"w9-c%s","role":"assistant","content":[{"type":"tool_use","id":"%s","name":"mcp__claude-in-chrome__tabs_context_mcp","input":{}}]}}\n' "$1" "$1"; }
+chrome_answer() { printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"%s","type":"tool_result","content":[{"type":"text","text":"%s"}]}]}}\n' "$1" "$2"; }
+browse_session() {
+  dir=$1
+  n=1
+  while :; do
+    waited=0
+    file=""
+    while [ -z "$file" ]; do
+      for candidate in "$dir/$n-"*.json; do [ -e "$candidate" ] && file=$candidate; done
+      [ -n "$file" ] && break
+      waited=$((waited + 1))
+      [ "$waited" -gt 1800 ] && { say "Session timed out waiting for step $n."; return; }
+      sleep 0.1
+    done
+    op=${file##*/}; op=${op#*-}; op=${op%.json}
+    [ "$op" = "end" ] && { say "Session done after $((n - 1)) calls."; return; }
+    # As a real Claude does: the call (its input whole, as the agent wrote it), then its result.
+    printf '{"type":"assistant","message":{"id":"w9-b%s-%s","role":"assistant","content":[{"type":"tool_use","id":"b%s-%s","name":"mcp__cockpit__browser_%s","input":%s}]}}\n' "$turn" "$n" "$turn" "$n" "$op" "$(tr -d '\n' < "$file")"
+    code=$(curl -s -o "$dir/$n.out.part" -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/browser/$op" \
+      -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' --data-binary "@$file")
+    mv "$dir/$n.out.part" "$dir/$n.out"
+    printf '%s' "$code" > "$dir/$n.code"
+    printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"b%s-%s","type":"tool_result","content":[{"type":"text","text":"HTTP %s"}]}]}}\n' "$turn" "$n" "$code"
+    n=$((n + 1))
+  done
+}
+stop_background() {
+  if [ -n "$bg" ] && kill "$bg" 2>/dev/null; then
+    bg=""
+    printf '{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":5}\n'
+  fi
+}
 while IFS= read -r line; do
-  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  case "$line" in
+    *'"subtype":"interrupt"'*) stop_background; continue ;;
+    *'"type":"user"'*) ;;
+    *) continue ;;
+  esac
   turn=$((turn + 1))
   text=$(printf '%s' "$line" | sed -n 's/.*"text":"\([^"]*\)".*/\1/p')
   case "$text" in
@@ -26,9 +78,25 @@ while IFS= read -r line; do
       code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/preview" \
         -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$url\"}")
       say "Opened $url (HTTP $code)." ;;
+    inspect\ *)
+      set -- ${text#inspect }
+      code=$(curl -s -o "$2.out" -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/preview/screenshot" \
+        -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$1\"}")
+      printf '%s' "$code" > "$2.code"
+      say "Inspected $1 (HTTP $code)." ;;
     links\ *)
       set -- ${text#links }
       say "Local: [the app]($1). Remote: [docs]($2). Unsafe: [launch](cockpit-proof-app://run). File: README.md:1" ;;
+    session\ *)
+      browse_session "${text#session }" &
+      bg=$! ;;
+    chrome\ ok) chrome_call "c$turn"; sleep 1; chrome_answer "c$turn" "Tab 1: Example"; say "Chrome answered." ;;
+    chrome\ off) chrome_call "c$turn"; sleep 1; chrome_answer "c$turn" "Browser extension is not connected. Please ensure the Claude browser extension is installed and running."; say "Chrome is not there." ;;
+    chrome\ drop) chrome_call "a$turn"; chrome_answer "a$turn" "Tab 1: Example"; chrome_call "b$turn"; chrome_answer "b$turn" "Browser extension is not connected."; say "Chrome went away." ;;
+    chrome\ hang)
+      chrome_call "c$turn"
+      sleep 600 &
+      bg=$! ;;
     *) say "OK." ;;
   esac
 done

@@ -48,6 +48,9 @@ export const ROUTES: readonly RouteClass[] = [
   { method: 'GET', route: 'git/diff', phone: false },
   { method: 'GET', route: 'git/base', phone: false },
   { method: 'GET', route: 'git/run', phone: false },
+
+  // The agent's browser tools (H3, wave 9): agents' MCP calls on the Mac, never the phone.
+  { method: 'POST', route: 'mcp/browser/:op', phone: false },
 ]
 
 const patternOf = (route: string): RegExp =>

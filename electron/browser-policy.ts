@@ -62,3 +62,70 @@ export function pageKeyOk(value: unknown): value is string {
 export function partitionFor(workspacePath: string): string {
   return `persist:cockpit-web-${createHash('sha256').update(workspacePath).digest('hex').slice(0, 16)}`
 }
+
+// ---------- agent input (H3): pure pieces of electron/browser-agent-host.ts ----------
+
+/** True when a read or capture still describes the page it was asked of: same revision, same site.
+ *  A navigation in between bumps the revision, so content and metadata could belong to two pages. */
+export function samePage(before: { revision: number; origin: string }, after: { revision: number; origin: string } | undefined): boolean {
+  return after !== undefined && after.revision === before.revision && after.origin === before.origin
+}
+
+/** The revision an element ref belongs to ("e12-3" → 12), or undefined for anything else. */
+export function refParts(ref: string): { revision: number; index: number } | undefined {
+  const match = /^e(\d{1,12})-(\d{1,4})$/.exec(ref)
+  return match ? { revision: Number(match[1]), index: Number(match[2]) } : undefined
+}
+
+/** A point in CSS pixels must fall inside the page's current viewport. */
+export function insideViewport(x: number, y: number, viewport: { readonly width: number; readonly height: number }): boolean {
+  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < viewport.width && y < viewport.height
+}
+
+/** The pointer positions of a drag after the press: `steps` even moves ending exactly at `to`. */
+export function dragPath(from: { x: number; y: number }, to: { x: number; y: number }, steps: number): Array<{ x: number; y: number }> {
+  const n = Math.max(1, Math.min(20, Math.floor(steps)))
+  return Array.from({ length: n }, (_, i) => ({ x: Math.round(from.x + ((to.x - from.x) * (i + 1)) / n), y: Math.round(from.y + ((to.y - from.y) * (i + 1)) / n) }))
+}
+
+/** The tool's key names as Electron's sendInputEvent spells them, and the character a key types. */
+export const KEY_EVENTS: Readonly<Record<string, { readonly keyCode: string; readonly char?: string }>> = {
+  Enter: { keyCode: 'Enter', char: '\r' }, Tab: { keyCode: 'Tab' }, Escape: { keyCode: 'Escape' },
+  Backspace: { keyCode: 'Backspace' }, Delete: { keyCode: 'Delete' }, Space: { keyCode: 'Space', char: ' ' },
+  ArrowUp: { keyCode: 'Up' }, ArrowDown: { keyCode: 'Down' }, ArrowLeft: { keyCode: 'Left' }, ArrowRight: { keyCode: 'Right' },
+  Home: { keyCode: 'Home' }, End: { keyCode: 'End' }, PageUp: { keyCode: 'PageUp' }, PageDown: { keyCode: 'PageDown' },
+}
+
+// ---------- residency (W9-10) ----------
+
+export const RESIDENCY = { maxIdle: 4, idleMs: 5 * 60_000, maxTotal: 8 } as const
+
+export interface ResidentPage {
+  readonly key: string
+  /** Last time it was shown or operated. */
+  readonly lastUsed: number
+  /** Shown, last shown, running an agent call or grant, downloading, or holding unsaved input. */
+  readonly pinned: boolean
+}
+
+/**
+ * Pages to unload now: every idle page unused for `idleMs`, then the least recently used idle
+ * pages beyond `maxIdle`. A pinned page is never chosen.
+ */
+export function evictions(pages: readonly ResidentPage[], now: number, limits: { maxIdle: number; idleMs: number } = RESIDENCY): string[] {
+  const idle = pages.filter((p) => !p.pinned).sort((a, b) => a.lastUsed - b.lastUsed)
+  const expired = idle.filter((p) => now - p.lastUsed >= limits.idleMs)
+  const kept = idle.filter((p) => now - p.lastUsed < limits.idleMs)
+  const over = kept.slice(0, Math.max(0, kept.length - limits.maxIdle))
+  return [...expired, ...over].map((p) => p.key)
+}
+
+/**
+ * Before a new page loads: the idle page to unload to stay within `maxTotal`, nothing when there
+ * is room, or `full` when every page is pinned (the caller explains and names them).
+ */
+export function roomForPage(pages: readonly ResidentPage[], maxTotal: number = RESIDENCY.maxTotal): { evict?: string } | { full: true } {
+  if (pages.length < maxTotal) return {}
+  const oldest = pages.filter((p) => !p.pinned).sort((a, b) => a.lastUsed - b.lastUsed)[0]
+  return oldest ? { evict: oldest.key } : { full: true }
+}

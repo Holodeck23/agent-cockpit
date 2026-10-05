@@ -14,6 +14,12 @@ export const RESOLVED: Record<ApprovalBehavior, string> = {
   deny: 'Denied',
 }
 
+/** How an answer reads; a wider Allow the asker named ("Allow on example.com for this run") keeps its own words. */
+export function resolvedLabel(entry: ApprovalItem): string {
+  if (entry.resolution === 'allow_session' && entry.allowWiderLabel) return entry.allowWiderLabel.replace(/^Allow\b/, 'Allowed')
+  return RESOLVED[entry.resolution!]
+}
+
 /** `open` holds approvals that can still be answered; those stay as cards. */
 export function groupDecisions(items: readonly TranscriptItem[], open: ReadonlySet<string>): ShownItem[] {
   const shown: ShownItem[] = []
@@ -29,7 +35,7 @@ export function groupDecisions(items: readonly TranscriptItem[], open: ReadonlyS
 
 /** "1 decision · Allowed", "3 decisions · 2 allowed, 1 denied". */
 export function decisionSummary(entries: readonly ApprovalItem[]): string {
-  if (entries.length === 1) return `1 decision · ${RESOLVED[entries[0]!.resolution!]}`
+  if (entries.length === 1) return `1 decision · ${resolvedLabel(entries[0]!)}`
   const allowed = entries.filter((e) => e.resolution !== 'deny').length
   const denied = entries.length - allowed
   const parts = [allowed ? `${allowed} allowed` : '', denied ? `${denied} denied` : ''].filter(Boolean)

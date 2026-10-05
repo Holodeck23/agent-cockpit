@@ -1,5 +1,7 @@
 // Phase 7 gate, run against the packaged app: the agent opens a local app inside Cockpit,
-// receives an isolated PNG of that app, and the person can resize, reload, close and reopen it.
+// receives a PNG of that app, and the person can resize, reload, close and reopen it. Since wave 9
+// the desktop app shows it in the in-app browser (a host-drawn page, not an iframe), and the PNG is
+// that conversation's own page (W9-11).
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,6 +19,17 @@ server.listen(0, '127.0.0.1', () => console.log('Local: http://127.0.0.1:' + ser
 const fixture = join(ROOT, 'scripts/fixtures/preview-agent/claude')
 chmodSync(fixture, 0o755)
 const { check, finish } = checker()
+// The page is drawn by the host over the pane, so its text is read from the main process.
+const pageText = async (): Promise<string> => app.evaluate(async ({ BrowserWindow }) => {
+  const view = BrowserWindow.getAllWindows().flatMap((w) => w.contentView.children).find((v) => v.getVisible())
+  const contents = (view as unknown as { webContents?: Electron.WebContents } | undefined)?.webContents
+  return contents ? String(await contents.executeJavaScript('document.body.innerText', true)) : ''
+})
+const showsApp = async (): Promise<boolean> => {
+  const end = Date.now() + 15_000
+  while (Date.now() < end) { if ((await pageText().catch(() => '')).includes('Preview is live.')) return true; await new Promise((r) => setTimeout(r, 150)) }
+  return false
+}
 mkdirSync(PROOF_DIR, { recursive: true })
 const app = await launchPackagedApp({ COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/preview-agent') })
 const page = await app.firstWindow()
@@ -30,17 +43,17 @@ try {
   await approval.waitFor({ timeout: 30_000 })
   check('Cockpit asks before the agent starts a process', /start_process|Start a process/i.test(await approval.textContent() ?? ''))
   await approval.getByRole('button', { name: 'Allow', exact: true }).click()
-  await page.getByRole('complementary', { name: 'App preview' }).waitFor({ timeout: 30_000 })
-  const pane = page.getByRole('complementary', { name: 'App preview' })
+  await page.getByRole('complementary', { name: 'Browser' }).waitFor({ timeout: 30_000 })
+  const pane = page.getByRole('complementary', { name: 'Browser' })
   check('open_preview targets the embedded pane', await pane.isVisible())
   check('the pane identifies a local URL', await pane.getByText('Local', { exact: true }).isVisible()
-    && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(await pane.locator('.preview-address code').textContent() ?? ''))
-  check('the running app renders inside Cockpit', await page.frameLocator('.preview-pane iframe').getByText('Preview is live.').isVisible())
+    && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(await pane.getByRole('textbox', { name: 'Address' }).inputValue()))
+  check('the running app renders inside Cockpit', await showsApp())
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor({ timeout: 30_000 })
   check('the agent received a real PNG inspection', await page.locator('.bubble.agent').getByText('inspected its PNG: yes', { exact: false }).isVisible())
 
   const before = (await pane.boundingBox())!.width
-  const handle = page.getByRole('button', { name: 'Resize preview' })
+  const handle = page.getByRole('button', { name: 'Resize browser' })
   const box = (await handle.boundingBox())!
   await page.mouse.move(box.x + 5, box.y + box.height / 2)
   await page.mouse.down()
@@ -50,15 +63,15 @@ try {
   check('the pane resizes from its left edge', after > before + 70, `${before} -> ${after}`)
 
   await pane.getByRole('button', { name: 'Reload' }).click()
-  check('reload keeps the local app visible', await page.frameLocator('.preview-pane iframe').getByText('Preview is live.').isVisible())
+  check('reload keeps the local app visible', await showsApp())
   await page.screenshot({ path: join(PROOF_DIR, 'phase-7-preview.png') })
-  await pane.getByRole('button', { name: 'Close preview' }).click()
+  await pane.getByRole('button', { name: 'Close browser' }).click()
   check('the pane closes without stopping the app', !(await pane.isVisible()))
 
   await page.getByRole('button', { name: /^Processes/ }).click()
   await page.locator('.process-url').click()
-  await page.getByRole('complementary', { name: 'App preview' }).waitFor()
-  check('a process URL reopens in the pane', await page.getByRole('complementary', { name: 'App preview' }).isVisible())
+  await page.getByRole('complementary', { name: 'Browser' }).waitFor()
+  check('a process URL reopens in the pane', await page.getByRole('complementary', { name: 'Browser' }).isVisible())
 
   // Complete the tester mission in this same clean home and synthetic project.
   const processInfo = async () => page.evaluate(async () =>
@@ -79,8 +92,7 @@ try {
   const second = await waitForReplacement(first.id)
   check('restart replaces the server and ends the old process', !alive(first.pid) && alive(second.pid))
   await page.locator('.process-url').click()
-  await page.frameLocator('.preview-pane iframe').getByText('Preview is live.').waitFor()
-  check('the restarted app renders in the embedded preview', true)
+  check('the restarted app renders in the embedded preview', await showsApp())
   await page.getByRole('button', { name: /^Processes/ }).click()
   await page.getByRole('button', { name: 'Stop', exact: true }).click()
   await page.getByRole('button', { name: /^Show finished/ }).click()

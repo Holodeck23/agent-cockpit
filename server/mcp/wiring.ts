@@ -1,4 +1,4 @@
-import { AUTO_ALLOWED_TOOLS, HOST_APPROVED_TOOLS, MCP_SERVER_NAME, type CockpitMcpLaunch } from './sessions.ts'
+import { ALL_TOOLS, MCP_SERVER_NAME, type CockpitMcpLaunch } from './sessions.ts'
 
 // How each CLI is told about the cockpit MCP server. Verified against
 // claude 2.1.284 (stdio servers inherit the agent's env) and codex 0.147
@@ -13,7 +13,7 @@ export function claudeMcpOptions(launch: CockpitMcpLaunch) {
         [MCP_SERVER_NAME]: { type: 'stdio', command: launch.command, args: [...launch.args], env: { ...launch.env } },
       },
     },
-    allowedTools: [...AUTO_ALLOWED_TOOLS, ...HOST_APPROVED_TOOLS].map((tool) => `mcp__${MCP_SERVER_NAME}__${tool}`),
+    allowedTools: ALL_TOOLS.map((tool) => `mcp__${MCP_SERVER_NAME}__${tool}`),
     env: launch.secretEnv,
   }
 }
@@ -29,7 +29,7 @@ export function codexMcpConfigArgs(launch: CockpitMcpLaunch): string[] {
     `${key}.args=${toml([...launch.args])}`,
     `${key}.env_vars=${toml(Object.keys(launch.secretEnv))}`,
     ...(env.length ? [`${key}.env={${env.map(([name, value]) => `${toml(name)}=${toml(value)}`).join(', ')}}`] : []),
-    ...[...AUTO_ALLOWED_TOOLS, ...HOST_APPROVED_TOOLS].map((tool) => `${key}.tools.${tool}.approval_mode="approve"`),
+    ...ALL_TOOLS.map((tool) => `${key}.tools.${tool}.approval_mode="approve"`),
   ]
   return pairs.flatMap((pair) => ['-c', pair])
 }

@@ -48,7 +48,12 @@ export type NormalizedEvent =
   /** Another conversation (or Cockpit) switched the project's branch; `byTitle` names that conversation. */
   | { kind: 'branch_changed'; from: string; to: string; byTitle?: string }
   /** Same agent, new model/effort/permissions; the native session continues from the next message. */
-  | { kind: 'settings_changed'; model?: string; effort?: string; permissionMode: string }
+  | { kind: 'settings_changed'; model?: string; effort?: string; permissionMode: string; chrome?: boolean }
+  /**
+   * Use my Chrome (H4): Claude's first call to the user's Chrome is connecting; it connected, failed
+   * (no answer within the limit, or an error), was cancelled (the turn stopped first) or dropped.
+   */
+  | { kind: 'chrome_connection'; phase: 'connecting' | 'connected' | 'failed' | 'cancelled' | 'disconnected'; detail?: string }
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }

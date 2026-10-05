@@ -7,6 +7,7 @@ import { agentWorkflowShape, type AgentWorkflowInput } from '../workflows/agent-
 import { workflowInputSchema } from '../workflows/store.ts'
 import type { OutputLine } from '../processes/output.ts'
 import type { ProcessInfo, ProcessRead } from '../processes/runner.ts'
+import { browserInputs, type BrowserOperation } from '../browser/agent-policy.ts'
 
 // The tools an agent sees as mcp__cockpit__*. They are thin: each one is a
 // call back to the cockpit's /api/mcp routes, which enforce the project scope.
@@ -26,6 +27,7 @@ export interface CockpitApi {
   inspect(url: string): Promise<{ inspected: string; data: string; mimeType: 'image/png'; width: number; height: number }>
   recall(query: string): Promise<{ text: string }>
   remember(body: { text: string; scope: 'project' | 'everywhere' }): Promise<{ id: string }>
+  browser(operation: BrowserOperation, body: Record<string, unknown>): Promise<unknown>
 }
 
 export function createCockpitApi(baseUrl: string, token: string): CockpitApi {
@@ -61,6 +63,7 @@ export function createCockpitApi(baseUrl: string, token: string): CockpitApi {
     inspect: (url) => call('POST', '/preview/screenshot', { url }),
     recall: (q) => call('GET', `/memory?${new URLSearchParams({ q })}`),
     remember: (body) => call('POST', '/memory', body),
+    browser: (operation, body) => call('POST', `/browser/${operation}`, body),
   }
 }
 
@@ -303,5 +306,38 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
     title: 'Stop a conversation', description: 'Request interruption of another conversation in this project. interrupt_requested means a request, not verified termination; read its status afterward. Does not stop its dev servers or delete work.' + controlDescription,
     inputSchema: stopConversationInput.shape,
   }, async (input) => { try { return text(JSON.stringify(await api.stopConversation(input))) } catch (error) { return failure(error) } })
+  registerBrowserTools(server, api)
   return server
+}
+
+const BROWSER_TOOL_TEXT: Record<BrowserOperation, { title: string; description: string; readOnly?: boolean }> = {
+  read: { title: 'Read the browser page', readOnly: true, description: 'Read this conversation’s browser page: address, title, visible text and the visible interactive elements, each with a ref (valid for this revision only) and its box in CSS pixels. Opens a blank page if there is none. Reading a remote site asks the user first.' },
+  screenshot: { title: 'Screenshot the browser page', readOnly: true, description: 'A PNG of exactly this conversation’s browser page (not Cockpit), at its viewport size, with the page revision it shows. Remote sites ask the user first.' },
+  navigate: { title: 'Navigate the browser page', description: 'Open an http(s) address in this conversation’s browser page, or go back, forward or reload. Local apps open directly; a remote site asks the user first. Never retried: check the returned page.' },
+  click: { title: 'Click in the browser page', description: 'Click an element (ref from browser_read) or a point (x, y in CSS pixels of the viewport). Needs the current revision; a stale one is refused, never redirected to another target. Asks the user first unless they allowed this site for this run.' },
+  type: { title: 'Type in the browser page', description: 'Type text into an element (ref or x, y; it is clicked first) or into the focused element. Cockpit keeps only the character count, never the text. Same revision and approval rules as browser_click.' },
+  key: { title: 'Press a key in the browser page', description: 'Press one key (Enter, Tab, Escape, Backspace, arrows…), optionally with modifiers. Same revision and approval rules as browser_click.' },
+  hover: { title: 'Hover in the browser page', description: 'Move the pointer over an element or point, e.g. to open a hover menu. Same revision and approval rules as browser_click.' },
+  scroll: { title: 'Scroll the browser page', description: 'Scroll by dx, dy CSS pixels (positive dy scrolls down) at a point (default: the middle). Returns the page’s new scroll position. Same revision and approval rules as browser_click.' },
+  drag: { title: 'Drag in the browser page', description: 'Press at from, move in up to 20 steps, release at to (CSS pixels in the viewport). Same revision and approval rules as browser_click.' },
+}
+
+/** One tool per browser operation; each is a call to /api/mcp/browser/<operation>, which applies the policy. */
+function registerBrowserTools(server: McpServer, api: CockpitApi): void {
+  for (const operation of Object.keys(BROWSER_TOOL_TEXT) as BrowserOperation[]) {
+    const { title, description, readOnly } = BROWSER_TOOL_TEXT[operation]
+    server.registerTool(`browser_${operation}`, {
+      title, description, inputSchema: browserInputs[operation].shape, ...(readOnly ? { annotations: { readOnlyHint: true } } : {}),
+    }, async (input: Record<string, unknown>) => {
+      try {
+        const result = await api.browser(operation, input) as Record<string, unknown>
+        if (operation === 'screenshot') {
+          const { data, mimeType, ...rest } = result as { data: string; mimeType: 'image/png' }
+          return { content: [{ type: 'text' as const, text: JSON.stringify(rest) }, { type: 'image' as const, data, mimeType }] }
+        }
+        const failed = typeof result.outcome === 'string' && result.outcome !== 'done'
+        return { ...text(JSON.stringify(result)), ...(failed ? { isError: true } : {}) }
+      } catch (error) { return failure(error) }
+    })
+  }
 }

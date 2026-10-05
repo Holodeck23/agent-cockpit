@@ -36,6 +36,26 @@ done
   return { cwd, executable }
 }
 
+const chromeHelp = `${help}  --chrome                              Enable Claude in Chrome integration
+`
+
+describe('Use my Chrome (W9-12)', () => {
+  it('adds --chrome only when asked, keeping strict MCP wiring', () => {
+    const plain = buildClaudeArgs({ cwd: '/p' }, parseClaudeHelp(chromeHelp))
+    const chrome = buildClaudeArgs({ cwd: '/p', chrome: true }, parseClaudeHelp(chromeHelp))
+    expect(plain).not.toContain('--chrome')
+    expect(chrome).toContain('--strict-mcp-config')
+    expect(chrome.filter((arg) => arg !== '--chrome')).toEqual(plain)
+    validateClaudeArgs(chrome, parseClaudeHelp(chromeHelp))
+  })
+
+  it('reads support from the declared option and refuses it where the CLI lacks it', () => {
+    expect(parseClaudeHelp(chromeHelp).chrome).toBe(true)
+    expect(parseClaudeHelp(help).chrome).toBe(false)
+    expect(() => validateClaudeArgs(buildClaudeArgs({ cwd: '/p', chrome: true }), parseClaudeHelp(help))).toThrow(/does not support --chrome/)
+  })
+})
+
 describe('Claude compatibility', () => {
   it('keeps host/stdin approvals and changes only the optional flag for legacy CLIs', () => {
     const modern = buildClaudeArgs({ cwd: '/p' }, parseClaudeHelp(help))

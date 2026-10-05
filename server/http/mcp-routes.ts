@@ -12,7 +12,8 @@ import type { HostActionOptions } from '../threads/host-actions.ts'
 import { readCursor } from './process-routes.ts'
 import { oneLine } from '../files/visible-name.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
-import type { PreviewOpen } from '../preview/types.ts'
+import type { PreviewCapture, PreviewOpen } from '../preview/types.ts'
+import type { BrowserAgent } from '../browser/agent.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
 // Every call carries that session's bearer token, and everything it can see or
@@ -53,6 +54,8 @@ export interface McpRouteDeps {
   readonly processOwner?: (threadId: string) => ProcessOwner
   readonly openUrl: (preview: PreviewOpen) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
+  /** The desktop app: inspect_preview captures the calling conversation's own page at that local address (W9-11). */
+  readonly inspectPreview?: (preview: PreviewOpen) => Promise<PreviewCapture>
   readonly memory?: MemoryStore
   /** Whether the project lets agents update and schedule workflows (Project settings). */
   readonly agentWorkflows?: (projectPath: string) => boolean
@@ -65,7 +68,9 @@ export interface McpRouteDeps {
    * The agent's own CLI gate is not enough: its session token is in its environment, so its shell
    * can call these routes directly. Without this, the routes that change things refuse.
    */
-  readonly approve?: (grant: McpGrant, toolName: string, input: Record<string, unknown>, options: HostActionOptions, signal: AbortSignal) => Promise<void>
+  readonly approve?: (grant: McpGrant, toolName: string, input: Record<string, unknown>, options: HostActionOptions, signal: AbortSignal) => Promise<unknown>
+  /** The agent's browser tools (H3): desktop app only. */
+  readonly browser?: BrowserAgent
 }
 
 const APPROVAL_SECONDS = 45
@@ -160,9 +165,25 @@ export async function handleMcpRoute(
       return sendJson(res, 201, { data: entry })
     }
   }
+  // /api/mcp/browser/<operation>: the conversation's own page, under the browser policy (H3).
+  if (parts[2] === 'browser' && parts.length === 4 && method === 'POST') {
+    if (!deps.browser) throw new HttpError(503, 'The in-app browser is only available in the Cockpit desktop app')
+    const body = await readJson(req)
+    const abort = new AbortController()
+    const disconnected = (): void => { if (!res.writableEnded) abort.abort() }
+    res.once('close', disconnected)
+    try {
+      return sendJson(res, 200, { data: await deps.browser.handle(grant, parts[3]!, body, abort.signal) })
+    } finally { res.removeListener('close', disconnected) }
+  }
   if (parts[2] === 'preview' && parts[3] === 'screenshot' && method === 'POST') {
-    if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
+    if (deps.inspectPreview) {
+      const shot = await deps.inspectPreview({ url: target, threadId: grant.threadId, projectPath: grant.projectPath })
+        .catch((error: unknown) => { throw new HttpError(409, error instanceof Error ? error.message : String(error)) })
+      return sendJson(res, 200, { data: { inspected: shot.page?.url ?? target, ...shot } })
+    }
+    if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')
     return sendJson(res, 200, { data: { inspected: target, ...(await capturePreview(target)) } })
   }
   if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {

@@ -12,6 +12,11 @@ export interface HostActionOptions {
    * runs without asking again. Forgotten when the session ends (`forget`).
    */
   readonly sessionKey?: string
+  /**
+   * Offers a second Allow whose scope the caller keeps itself (the browser's "for this run on
+   * <site>" grant): the request resolves `allow_session` and nothing is remembered here.
+   */
+  readonly grant?: { readonly label: string }
 }
 
 /**
@@ -23,10 +28,11 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
   const pending = new Map<string, { threadId: string; sessionKey?: string; finish: (behavior: ApprovalBehavior, error?: string) => void }>()
   const allowedForSession = new Set<string>()
   return {
-    request(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options: HostActionOptions = {}): Promise<void> {
-      const { timeoutMs = 45_000, label = 'Conversation action', sessionKey } = options
+    /** Resolves `allow`, or `allow_session` when the person chose the session or grant option. */
+    request(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options: HostActionOptions = {}): Promise<Exclude<ApprovalBehavior, 'deny'>> {
+      const { timeoutMs = 45_000, label = 'Conversation action', sessionKey, grant } = options
       const description = options.description ?? 'Cockpit conversation control; one action only. Expires after 45 seconds.'
-      if (sessionKey && allowedForSession.has(`${threadId}\n${sessionKey}`)) return Promise.resolve()
+      if (sessionKey && allowedForSession.has(`${threadId}\n${sessionKey}`)) return Promise.resolve('allow_session')
       if ([...pending.values()].some((p) => p.threadId === threadId)) return Promise.reject(new Error('Answer the pending Cockpit action first'))
       if (signal?.aborted) return Promise.reject(new Error(`${label} disconnected`))
       return new Promise((resolve, reject) => {
@@ -37,14 +43,15 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
           if (!pending.delete(requestId)) return
           clearTimeout(timer); signal?.removeEventListener('abort', abort)
           if (behavior === 'allow_session' && sessionKey) allowedForSession.add(`${threadId}\n${sessionKey}`)
-          record(threadId, { kind: 'approval_resolved', requestId, behavior: behavior === 'deny' ? 'deny' : behavior === 'allow_session' && sessionKey ? 'allow_session' : 'allow' })
-          if (behavior === 'deny') reject(new Error(error ?? `${label} denied by the user`))
-          else resolve()
+          const chosen = behavior === 'deny' ? 'deny' : behavior === 'allow_session' && (sessionKey || grant) ? 'allow_session' : 'allow'
+          record(threadId, { kind: 'approval_resolved', requestId, behavior: chosen })
+          if (chosen === 'deny') reject(new Error(error ?? `${label} denied by the user`))
+          else resolve(chosen)
         }
         pending.set(requestId, { threadId, ...(sessionKey ? { sessionKey } : {}), finish })
         signal?.addEventListener('abort', abort, { once: true })
         // A non-empty suggestion list is what makes the card offer Allow for this session.
-        const suggestions = sessionKey ? [{ type: 'cockpitSession', key: sessionKey }] : []
+        const suggestions = grant ? [{ type: 'cockpitGrant', label: grant.label }] : sessionKey ? [{ type: 'cockpitSession', key: sessionKey }] : []
         record(threadId, { kind: 'approval_request', requestId, toolName, input, suggestions, description })
       })
     },

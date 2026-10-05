@@ -1,5 +1,5 @@
 // Packaged proof for R0: only the Cockpit window can use the desktop API. Another program on the
-// Mac (an agent's shell) forges Host and Origin; a page in the preview pane, or in a second
+// Mac (an agent's shell) forges Host and Origin; a page in the in-app browser, or in a second
 // window, runs in the same app. None of them may read a conversation or answer its approval.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:window-key
 // Control: run it with --control against a build from before R0. There the attacks must WORK,
@@ -50,13 +50,16 @@ async function forged(port: number, method: string, path: string, body?: unknown
   return response.status
 }
 
-// A page on another local port, the kind an agent's dev server serves into the preview pane.
-// Its GETs carry no Origin, so on a build without the key they passed the old guard.
+// A page on another local port, the kind an agent's dev server serves into the in-app browser.
+// It records what its own requests got: a fetch to its own server (which must work, or "blocked"
+// below would prove nothing) and a fetch to Cockpit's API.
 let cockpitPort = 0
 const devServer = createServer((_req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' })
-  res.end(`<p>Preview page</p><img id="probe" src="http://127.0.0.1:${cockpitPort}/api/threads/${seeded.id}/images/${icon.file}?probe=iframe-img">
-<script>fetch('http://127.0.0.1:${cockpitPort}/api/threads?probe=iframe-nocors', { mode: 'no-cors' })</script>`)
+  res.end(`<p>Preview page</p><img id="probe" src="http://127.0.0.1:${cockpitPort}/api/threads/${seeded.id}/images/${icon.file}?probe=page-img">
+<script>window.probes = {}
+fetch('/?probe=own-server').then((r) => { probes.own = 'status ' + r.status }, () => { probes.own = 'blocked' })
+fetch('http://127.0.0.1:${cockpitPort}/api/threads?probe=page-nocors', { mode: 'no-cors' }).then((r) => { probes.api = 'answered (' + r.type + ')' }, () => { probes.api = 'blocked' })</script>`)
 })
 await new Promise<void>((resolve) => devServer.listen(0, '127.0.0.1', resolve))
 const devUrl = `http://127.0.0.1:${(devServer.address() as AddressInfo).port}/`
@@ -121,30 +124,43 @@ try {
     imgs.length === 1 && imgs.every((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0))))
   await shot(page, 'image')
 
-  // The preview pane: an iframe in the same window, first on another port, then on Cockpit's own.
-  const openPreview = (url: string) => app.evaluate(({ BrowserWindow }, preview) => {
-    const win = BrowserWindow.getAllWindows().find((w) => w.isVisible())
-    win?.webContents.send('cockpit:preview-open', preview)
-  }, { url, projectPath: project, threadId: seeded.id })
-  await openPreview(devUrl)
-  const frame = page.frameLocator('.preview-pane iframe')
-  await frame.getByText('Preview page').waitFor()
-  await until('iframe probe', async () => statuses.has('iframe-nocors'))
-  // A refused image never shows as a response (the browser blocks the JSON error body), so look at
-  // what the preview page got: pixels, or none.
-  const devFrame = page.frames().find((f) => f.url() === devUrl)
-  const settled = devFrame ? await until('probe image settled', () => devFrame.evaluate(() => (document.getElementById('probe') as HTMLImageElement).complete)) : false
-  const pixels = settled && devFrame ? await devFrame.evaluate(() => (document.getElementById('probe') as HTMLImageElement).naturalWidth) : -1
-  // Not part of the hole: the image route's same-origin resource policy already stopped this
-  // before the key, so it holds on both builds (a guard, not a control).
-  check('a preview page cannot show a conversation image', pixels === 0, `naturalWidth ${pixels}`)
-  check(label('an API read by a preview page'), blocked(statuses.get('iframe-nocors')), `status ${statuses.get('iframe-nocors')}`)
-  await shot(page, 'preview-other-port')
-  await openPreview(`http://127.0.0.1:${cockpitPort}/?probe=iframe-self`)
-  const selfFrame = await until('self frame', async () => page.frames().some((f) => f.url().includes('probe=iframe-self')))
-  const inner = page.frames().find((f) => f.url().includes('probe=iframe-self'))
-  const innerStatus = selfFrame && inner ? await inner.evaluate(async () => (await fetch('/api/threads')).status) : undefined
-  check(label('an API call from Cockpit\'s own page inside the preview pane'), blocked(innerStatus), `status ${innerStatus}`)
+  // The in-app browser (wave 9): the host draws the page in its own view, in the workspace's
+  // partition, so it is read from the main process. The host cancels every request to Cockpit's
+  // ports, so the API never answers at all: the probe is "blocked", not a 403. A build from before
+  // the in-app browser had an iframe here instead, so the control run skips this part.
+  if (!control) {
+    const openPreview = (url: string) => app.evaluate(({ BrowserWindow }, preview) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.isVisible())
+      win?.webContents.send('cockpit:preview-open', preview)
+    }, { url, projectPath: project, threadId: seeded.id })
+    const views = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().flatMap((w) => w.contentView.children)
+      .map((v) => (v as unknown as { webContents?: Electron.WebContents }).webContents)
+      .filter((c): c is Electron.WebContents => Boolean(c) && !c!.isDestroyed()).map((c) => c.getURL()))
+    const inView = (url: string, js: string): Promise<unknown> => app.evaluate(async ({ BrowserWindow }, { url, js }) => {
+      const contents = BrowserWindow.getAllWindows().flatMap((w) => w.contentView.children)
+        .map((v) => (v as unknown as { webContents?: Electron.WebContents }).webContents)
+        .find((c) => c && !c.isDestroyed() && c.getURL() === url)
+      return contents ? await contents.executeJavaScript(js, true) : undefined
+    }, { url, js })
+    await openPreview(devUrl)
+    check('the dev page opens in the in-app browser', await until('dev page', async () => String(await inView(devUrl, 'document.body.innerText')).includes('Preview page')))
+    const probes = async () => (await inView(devUrl, 'JSON.stringify(window.probes)')) as string | undefined
+    await until('page probes', async () => { const p = JSON.parse((await probes()) ?? '{}') as Record<string, string>; return Boolean(p.own && p.api) })
+    const got = JSON.parse((await probes()) ?? '{}') as Record<string, string>
+    check('the page can still fetch from its own server', got.own === 'status 200', got.own)
+    check('an API read by a page in the in-app browser is blocked by the host', got.api === 'blocked', got.api)
+    const settled = await until('probe image settled', async () => (await inView(devUrl, `document.getElementById('probe').complete`)) === true)
+    const pixels = settled ? await inView(devUrl, `document.getElementById('probe').naturalWidth`) : -1
+    check('a page in the in-app browser cannot show a conversation image', pixels === 0, `naturalWidth ${pixels}`)
+    await shot(page, 'preview-other-port')
+    // Cockpit's own address is refused before anything loads: the pane says so, and no view holds it.
+    await openPreview(`http://127.0.0.1:${cockpitPort}/?probe=self`)
+    const pane = page.getByRole('complementary', { name: 'Browser' })
+    check('the in-app browser refuses Cockpit\'s own address', await until('refusal', async () =>
+      (await pane.getByRole('alert').filter({ hasText: 'not Cockpit itself' }).count()) === 1))
+    check('no page ever loads Cockpit\'s own address', !(await views()).some((url) => url.includes('probe=self')))
+    await shot(page, 'preview-self-refused')
+  }
 
   // A second window in the same app (as the hidden window that captures a preview for an agent).
   const second = await app.evaluate(async ({ BrowserWindow }, url) => {

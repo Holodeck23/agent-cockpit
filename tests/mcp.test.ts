@@ -38,7 +38,7 @@ afterEach(async () => {
   runner = undefined
 })
 
-async function harness(options: { agentWorkflows?: boolean; deny?: boolean } = {}): Promise<Harness> {
+async function harness(options: { agentWorkflows?: boolean; deny?: boolean; ownPage?: PreviewOpen[] } = {}): Promise<Harness> {
   const sessions = createMcpSessions()
   const processes = createProcessRunner({ graceMs: 500 })
   runner = processes
@@ -57,7 +57,11 @@ async function harness(options: { agentWorkflows?: boolean; deny?: boolean } = {
         if (options.deny) throw new Error('Cockpit action denied by the user')
       },
       enableWorkflow: (id) => workflows.update(id, { enabled: true, nextRunAt: new Date(Date.now() + 60_000).toISOString() }),
-      capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } } }).catch(
+      capturePreview: async (u) => { inspected.push(u); return { data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800 } },
+      ...(options.ownPage ? { inspectPreview: async (preview: PreviewOpen) => {
+        options.ownPage!.push(preview)
+        return { data: 'b3du', mimeType: 'image/png' as const, width: 520, height: 700, page: { pageId: `thread:${preview.threadId}`, revision: 9, url: `${preview.url}settings` } }
+      } } : {}) }).catch(
       (error: unknown) => sendJson(res, error instanceof HttpError ? error.status : 500, { error: (error as Error).message }),
     )
   })
@@ -95,7 +99,7 @@ describe('cockpit MCP tools', () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['inspect_preview', 'list_conversations', 'list_processes', 'open_preview', 'read_conversation', 'read_process_output', 'recall', 'remember', 'save_workflow', 'send_to_conversation', 'start_conversation', 'start_process', 'stop_conversation', 'stop_process'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['browser_click', 'browser_drag', 'browser_hover', 'browser_key', 'browser_navigate', 'browser_read', 'browser_screenshot', 'browser_scroll', 'browser_type', 'inspect_preview', 'list_conversations', 'list_processes', 'open_preview', 'read_conversation', 'read_process_output', 'recall', 'remember', 'save_workflow', 'send_to_conversation', 'start_conversation', 'start_process', 'stop_conversation', 'stop_process'])
   })
 
   it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
@@ -172,6 +176,23 @@ describe('cockpit MCP tools', () => {
     expect(stopped).toContain('exited')
   })
 
+  it('inspects the calling conversation’s own page, never a remote site (W9-11)', async () => {
+    const own: PreviewOpen[] = []
+    const h = await harness({ ownPage: own })
+    const dir = devProject()
+    const client = await h.connect(h.sessions.issue({ threadId: 't7', projectPath: dir }))
+    const shot = await client.callTool({ name: 'inspect_preview', arguments: { url: 'http://localhost:5199/' } })
+    expect(shot.content).toEqual([
+      { type: 'text', text: 'Screenshot of http://localhost:5199/settings (520×700).' },
+      { type: 'image', data: 'b3du', mimeType: 'image/png' },
+    ])
+    expect(own).toEqual([{ url: 'http://localhost:5199/', threadId: 't7', projectPath: dir }])
+    expect(h.inspected).toEqual([])
+    const remote = await client.callTool({ name: 'inspect_preview', arguments: { url: 'https://example.com/' } })
+    expect(remote.isError).toBe(true)
+    expect(own).toHaveLength(1)
+  })
+
   it('refuses to preview a non-local page', async () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
@@ -218,7 +239,8 @@ describe('MCP wiring per CLI', () => {
     const options = claudeMcpOptions(launch)
     expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: launch.env })
     expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__inspect_preview', 'mcp__cockpit__recall', 'mcp__cockpit__list_conversations', 'mcp__cockpit__read_conversation',
-      'mcp__cockpit__start_conversation', 'mcp__cockpit__send_to_conversation', 'mcp__cockpit__stop_conversation', 'mcp__cockpit__start_process', 'mcp__cockpit__stop_process', 'mcp__cockpit__remember', 'mcp__cockpit__save_workflow'])
+      'mcp__cockpit__start_conversation', 'mcp__cockpit__send_to_conversation', 'mcp__cockpit__stop_conversation', 'mcp__cockpit__start_process', 'mcp__cockpit__stop_process', 'mcp__cockpit__remember', 'mcp__cockpit__save_workflow',
+      ...['read', 'screenshot', 'navigate', 'click', 'type', 'key', 'hover', 'scroll', 'drag'].map((op) => `mcp__cockpit__browser_${op}`)])
     expect(JSON.stringify(options.mcpConfig)).not.toContain('secret')
     expect(options.env).toEqual(launch.secretEnv)
   })

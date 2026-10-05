@@ -13,6 +13,8 @@ export const threadSettingsSchema = z.object({
   effort: z.enum(ALL_EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   useHooks: z.boolean().default(false),
+  /** Use my Chrome (H4, Claude only): applies at the next launch, so only while the conversation is idle. */
+  useChrome: z.boolean().optional(),
 })
 export type ThreadSettings = z.output<typeof threadSettingsSchema>
 
