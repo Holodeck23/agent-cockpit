@@ -150,7 +150,8 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
   }
 
   async function operate(grant: McpGrant, op: string, body: unknown, signal: AbortSignal): Promise<unknown> {
-    if (!(op in browserInputs)) throw new HttpError(404, 'Not found')
+    // Own keys only: "toString" or "constructor" are not operations.
+    if (!Object.hasOwn(browserInputs, op)) throw new HttpError(404, 'Not found')
     const operation = op as BrowserOperation
     const host = deps.host()
     if (!host) throw new HttpError(503, 'The in-app browser is only available in the Cockpit desktop app')

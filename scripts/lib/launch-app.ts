@@ -13,10 +13,14 @@ export const LAUNCHD_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 export const APP_BUNDLE = process.env.COCKPIT_APP ?? join(ROOT, 'release/mac-arm64/Cockpit.app')
 export const EXECUTABLE = join(APP_BUNDLE, 'Contents/MacOS/Cockpit')
 
-/** `extraEnv` adds proof-specific settings, e.g. COCKPIT_AGENT_PATH for a stand-in agent. */
-export async function launchPackagedApp(extraEnv: Readonly<Record<string, string>> = {}): Promise<ElectronApplication> {
+/**
+ * `extraEnv` adds proof-specific settings, e.g. COCKPIT_AGENT_PATH for a stand-in agent; `args`
+ * adds Chromium switches, e.g. --host-resolver-rules so a test site can stand in for a remote one.
+ */
+export async function launchPackagedApp(extraEnv: Readonly<Record<string, string>> = {}, args: readonly string[] = []): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: EXECUTABLE,
+    ...(args.length ? { args: [...args] } : {}),
     env: {
       HOME: process.env.HOME ?? '',
       USER: process.env.USER ?? '',

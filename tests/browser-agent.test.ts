@@ -69,6 +69,11 @@ describe('browser scope comes from the session, not the request (W9-08, SEC-03)'
     expect(h.acts).toEqual([])
   })
 
+  it('knows only its own operations, not names an object inherits', async () => {
+    const h = harness()
+    for (const op of ['toString', 'constructor', '__proto__', 'hasOwnProperty', '..%2Fthreads']) expect(await status(h.call(op))).toBe(404)
+  })
+
   it('works only while the conversation is working, and not after Stop', async () => {
     const h = harness()
     h.setRun(undefined)

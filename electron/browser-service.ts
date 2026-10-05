@@ -157,9 +157,11 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   const touch = (page: Page | undefined): void => { if (page) page.lastUsed = Date.now() }
 
   // ---------- residency (W9-10): at most `maxIdle` idle pages, idle ones unloaded after `idleMs` ----------
-  const pinned = (key: string, page: Page): boolean =>
-    page.view.getVisible() || key === lastShown || page.downloads > 0 || (deps.inUse?.(key) ?? false)
-  const resident = (): ResidentPage[] => [...pages].map(([key, page]) => ({ key, lastUsed: page.lastUsed, pinned: pinned(key, page) }))
+  // The last page shown (hidden now only by an overlay, or just left) is spared by the idle sweep,
+  // but not when the person opens another page: their attention has moved to that one.
+  const pinned = (key: string, page: Page, opening = false): boolean =>
+    page.view.getVisible() || (!opening && key === lastShown) || page.downloads > 0 || (deps.inUse?.(key) ?? false)
+  const resident = (opening = false): ResidentPage[] => [...pages].map(([key, page]) => ({ key, lastUsed: page.lastUsed, pinned: pinned(key, page, opening) }))
   /** Unsaved input, or a page too busy to answer, keeps a page loaded. */
   async function unsaved(page: Page): Promise<boolean> {
     if (page.view.webContents.isDestroyed()) return false
@@ -170,10 +172,10 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     }
   }
   /** Unloads one page, remembering its address so it can come back (visibly reloaded). */
-  async function unload(key: string): Promise<boolean> {
+  async function unload(key: string, opening = false): Promise<boolean> {
     const page = pages.get(key)
-    if (!page || pinned(key, page) || await unsaved(page)) return false
-    if (pages.get(key) !== page || pinned(key, page)) return false
+    if (!page || pinned(key, page, opening) || await unsaved(page)) return false
+    if (pages.get(key) !== page || pinned(key, page, opening)) return false
     const url = page.view.webContents.getURL()
     if (/^https?:\/\//.test(url)) unloaded.set(key, url)
     service.close(key)
@@ -189,9 +191,9 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   async function makeRoom(): Promise<CapacityRefusal | undefined> {
     const tried = new Set<string>()
     for (;;) {
-      const room = roomForPage(resident().map((p) => (tried.has(p.key) ? { ...p, pinned: true } : p)), limits.maxTotal)
+      const room = roomForPage(resident(true).map((p) => (tried.has(p.key) ? { ...p, pinned: true } : p)), limits.maxTotal)
       if (!('full' in room) && !room.evict) return undefined
-      if ('evict' in room && room.evict) { tried.add(room.evict); await unload(room.evict); continue }
+      if ('evict' in room && room.evict) { tried.add(room.evict); await unload(room.evict, true); continue }
       const capacity = await Promise.all([...pages].map(async ([key, page]) => ({ key, title: page.view.webContents.getTitle(), url: page.view.webContents.getURL(), unsaved: await unsaved(page) })))
       return { error: `Cockpit already has ${pages.size} pages loaded and all of them are in use (shown, used by an agent, downloading or holding unsaved typing). Close one of them to open another.`, capacity }
     }

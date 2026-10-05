@@ -70,7 +70,8 @@ const pointScript = (revision: number, index: number): string => `(() => {
 
 const SCROLL_SCRIPT = '({ x: Math.round(scrollX), y: Math.round(scrollY) })'
 
-export function createBrowserAgentHost(service: BrowserService): BrowserHost {
+/** `navigated` tells the window an agent moved its page, so the pane shows on that conversation. */
+export function createBrowserAgentHost(service: BrowserService, navigated: (key: string, url: string) => void = () => {}): BrowserHost {
   const queues = new Map<string, Promise<unknown>>()
   /** Input to one page runs one action at a time; a failed action never blocks the next. */
   const serial = <T>(key: string, run: () => Promise<T>): Promise<T> => {
@@ -209,7 +210,9 @@ export function createBrowserAgentHost(service: BrowserService): BrowserHost {
       const refused = service.load(key, url)
       if (refused) throw new Error(refused)
       await settle(contents)
-      return info(key) ?? gone(key)
+      const page = info(key) ?? gone(key)
+      if (page.url) navigated(key, page.url)
+      return page
     },
     historyUrl(key, direction) {
       const history = service.agentPage(key)?.contents.navigationHistory
@@ -221,7 +224,9 @@ export function createBrowserAgentHost(service: BrowserService): BrowserHost {
       const contents = contentsOf(key)
       service.navigate(key, action)
       await settle(contents)
-      return info(key) ?? gone(key)
+      const page = info(key) ?? gone(key)
+      if (page.url) navigated(key, page.url)
+      return page
     },
     async read(key): Promise<PageRead> {
       const contents = contentsOf(key)

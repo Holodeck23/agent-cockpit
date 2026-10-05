@@ -110,7 +110,14 @@ async function boot(): Promise<void> {
     inUse: (key) => running?.browserInUse(key) ?? false,
     limits: browserLimits(),
   })
-  browserHost = createBrowserAgentHost(browser)
+  // An agent's navigation shows its page beside that conversation, without bringing the window forward.
+  browserHost = createBrowserAgentHost(browser, (key, url) => {
+    const threadId = key.startsWith('thread:') ? key.slice('thread:'.length) : undefined
+    const projectPath = threadId ? running?.store.get(threadId)?.projectPath : undefined
+    if (threadId && projectPath && /^https?:\/\//.test(url) && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('cockpit:preview-open', { url, projectPath, threadId, loaded: true })
+    }
+  })
   // A page that goes away takes its agent grants with it (W9-09).
   const leases = running.browserLeases
   browser.onDestroyed((key) => leases.revokePage(key))
@@ -124,10 +131,19 @@ async function boot(): Promise<void> {
   })
 }
 
-/** W9-10 limits; a proof build may shorten the idle time so the packaged proof can watch an unload. */
+/**
+ * W9-10 limits. A proof build may shorten the idle time and lower the page limit, so the packaged
+ * proof can watch an unload and a full house in seconds; a release build ignores both.
+ */
 function browserLimits(): { maxIdle: number; idleMs: number; maxTotal: number } {
   const idle = Number(process.env.COCKPIT_PROOF_BROWSER_IDLE_MS)
-  return { ...RESIDENCY, ...(!IS_RELEASE_BUILD && Number.isFinite(idle) && idle >= 1000 ? { idleMs: idle } : {}) }
+  const max = Number(process.env.COCKPIT_PROOF_BROWSER_MAX)
+  if (IS_RELEASE_BUILD) return { ...RESIDENCY }
+  return {
+    ...RESIDENCY,
+    ...(Number.isFinite(idle) && idle >= 1000 ? { idleMs: idle } : {}),
+    ...(Number.isInteger(max) && max >= 2 && max <= RESIDENCY.maxTotal ? { maxTotal: max } : {}),
+  }
 }
 
 // In memory only (no "persist:"), and cleared after every capture.
