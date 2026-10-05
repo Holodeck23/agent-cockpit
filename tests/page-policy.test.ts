@@ -30,5 +30,7 @@ describe('what the page may load', () => {
     expect(() => assertLocalUrl('http://[::1]:47821/', [4317, 47821])).toThrow(/Cockpit itself/)
     expect(assertLocalUrl('http://localhost:5173/', [4317])).toBe('http://localhost:5173/')
     expect(() => assertLocalUrl('http://localhost/', [80])).toThrow(/Cockpit itself/)
+    // The frame policy cannot name an IPv6 address, so an IPv6 preview opens as localhost.
+    expect(assertLocalUrl('http://[::1]:5173/app', [4317])).toBe('http://localhost:5173/app')
   })
 })

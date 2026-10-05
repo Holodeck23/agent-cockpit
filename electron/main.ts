@@ -126,7 +126,16 @@ function showPreview(url: string): void {
  * Render the same local URL in an isolated, hidden Chromium window so an agent receives the
  * preview itself—not a screenshot of Cockpit chrome. The window is short-lived and has no Node API.
  */
-async function capturePreview(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
+// Captures share one in-memory session that is cleared after each, so they run one at a time:
+// a capture finishing must not clear the storage of another still loading.
+let captureQueue: Promise<unknown> = Promise.resolve()
+function capturePreview(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
+  const run = captureQueue.then(() => captureOne(url), () => captureOne(url))
+  captureQueue = run.catch(() => undefined)
+  return run
+}
+
+async function captureOne(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
   const target = assertLocalUrl(url)
   const preview = new BrowserWindow({
     show: false,

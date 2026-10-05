@@ -37,6 +37,8 @@ export function assertLocalUrl(raw: string, cockpitPorts: readonly number[] = []
   // desktop API key, and the frame is sandboxed with allow-same-origin for ordinary dev servers.
   const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80))
   if (cockpitPorts.includes(port)) throw new HttpError(400, 'Preview cannot open Cockpit itself')
+  // The page's frame policy cannot name an IPv6 address; localhost reaches the same server.
+  if (url.hostname === '[::1]') url.hostname = 'localhost'
   return url.toString()
 }
 
