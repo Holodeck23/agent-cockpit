@@ -4,6 +4,7 @@ import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { nextCalendarRun } from './calendar.ts'
 import { expandWorkflows, resolveWorkflows, type Workflow, type WorkflowStore } from './store.ts'
+import { titleFor } from './title.ts'
 import { isBusy as busyStatus } from '../threads/status.ts'
 
 /** When a schedule fires next after `after`; undefined when the workflow has no schedule. */
@@ -31,7 +32,7 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
       const agentText = expandFiles(resolved.text, workflow.projectPath)
       const thread = manager.create({ projectPath: workflow.projectPath, settings: workflow.settings, text: workflow.prompt, agentText,
         ...(resolved.used.length ? { workflows: resolved.used } : {}),
-        title: `${workflow.title || workflow.name} · ${trigger === 'scheduled' ? 'Scheduled' : 'Run'}`,
+        title: titleFor(workflow),
         workflowId: id, workflowTrigger: trigger })
       store.update(id, { lastThreadId: thread.id, lastRunAt: new Date(now()).toISOString(), lastError: undefined })
       return thread

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { writeFileAtomic } from '../files/atomic.ts'
 import { basename, isAbsolute, join } from 'node:path'
 import { z } from 'zod'
+import { StoreReadError } from '../state/read-error.ts'
 
 // <root>/projects.json: the folders the cockpit knows about. Pinned ones are the
 // tabs across the top; the rest show up under "Projects ▾" as recent.
@@ -96,14 +97,14 @@ function fresh(path: string, now: string): Project {
 export function createProjectStore(root: string): ProjectStore {
   const file = join(root, 'projects.json')
 
+  // Unreadable is never empty: an empty list would be written back over the user's projects.
   const read = (): Project[] => {
     if (!existsSync(file)) return []
-    try {
-      const parsed = z.array(projectSchema).safeParse(JSON.parse(readFileSync(file, 'utf8')))
-      return parsed.success ? parsed.data : []
-    } catch {
-      return []
-    }
+    let raw: unknown
+    try { raw = JSON.parse(readFileSync(file, 'utf8')) } catch { throw new StoreReadError('UNREADABLE', file, 'not valid JSON') }
+    const parsed = z.array(projectSchema).safeParse(raw)
+    if (!parsed.success) throw new StoreReadError('UNREADABLE', file, 'unexpected format')
+    return parsed.data
   }
   const write = (projects: readonly Project[]): void => {
     writeFileAtomic(file, JSON.stringify(projects, null, 2))

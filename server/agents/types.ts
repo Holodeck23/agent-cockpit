@@ -28,8 +28,19 @@ export interface AgentQuestion {
   readonly multiSelect: boolean
 }
 
+/** The binding a queued request was accepted under. */
+export interface QueueBinding {
+  readonly bindingId: string
+  readonly workspaceId?: string
+  readonly agent: AgentId
+  readonly generation: number
+}
+
 export type NormalizedEvent =
-  | { kind: 'session_boundary' }
+  /** A new agent process starts here: its launch number for this conversation and the binding it runs under. */
+  | { kind: 'session_boundary'; generation?: number; bindingId?: string }
+  /** Something a replaced agent process sent after its replacement started; kept as a label, never acted on (ID-04). */
+  | { kind: 'stale_event'; generation: number; eventKind: string }
   | { kind: 'delegation_started'; requestKey: string }
   | { kind: 'completion_changed'; completed: boolean }
   /** You dismissed the question or blocker the last turn ended with. */
@@ -42,7 +53,15 @@ export type NormalizedEvent =
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
   /** `queuedId` is set when you sent it while the agent was working and the agent queues it (J1). */
-  | { kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[]; queuedId?: string }
+  | {
+      kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[]; queuedId?: string
+      /** The run this request opens; legacy events derive one (threads/identity.ts). */
+      runId?: string
+      /** The caller's operation ID and a hash of its input, so a repeated request has one effect (ID-05). */
+      operation?: { id: string; inputHash: string }
+      /** A queued request keeps the binding it was accepted under (ID-03). */
+      binding?: QueueBinding
+    }
   /** The agent took a message you sent; `id` names a queued one (J1). */
   | { kind: 'user_taken'; text: string; id?: string }
   /** You took a queued message back before the agent took it (J1); it went back to your draft. */
@@ -84,7 +103,8 @@ export type NormalizedEvent =
   | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior }
   /** usedPercent only when the provider reports one; status stays the provider's own word. */
   | { kind: 'usage'; limitType: string; status: string; resetsAt?: number; usedPercent?: number }
-  | { kind: 'result'; ok: boolean; stopped?: boolean; text?: string; costUsd?: number; durationMs?: number }
+  /** `interrupted`: Cockpit stopped running (a crash) before the agent finished; recorded at the next start. */
+  | { kind: 'result'; ok: boolean; stopped?: boolean; interrupted?: boolean; runId?: string; text?: string; costUsd?: number; durationMs?: number }
   | { kind: 'agent_switch'; from: AgentId; to: AgentId }
   | { kind: 'exit'; code: number | null }
   | { kind: 'error'; message: string }

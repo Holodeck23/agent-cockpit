@@ -1,5 +1,6 @@
 import type { NewProject } from '../../electron/new-project.ts'
 import type { ReleaseNotes } from '../../electron/updates.ts'
+import type { PreviewOpen } from '../../server/preview/types.ts'
 
 // Present only inside the desktop app (electron/preload.ts); undefined in a browser.
 export interface CockpitBridge {
@@ -16,8 +17,7 @@ export interface CockpitBridge {
   pathForFile(file: File): string
   fileAction(request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined>
   setActivity(activity: { working: number; needs: number }): void
-  openPreview(url: string): void
-  onPreviewOpen(listener: (url: string) => void): () => void
+  onPreviewOpen(listener: (preview: PreviewOpen) => void): () => void
   copyText(text: string): void
   /** A native notification; clicking it brings Cockpit forward and reports the conversation id. */
   notify(notification: { threadId: string; title: string; body: string }): void

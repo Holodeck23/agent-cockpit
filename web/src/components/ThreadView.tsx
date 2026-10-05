@@ -10,6 +10,7 @@ import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
+import { ChangesView } from './ChangesView.tsx'
 import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
@@ -33,9 +34,11 @@ interface ThreadViewProps {
   /** Phone: reply, approve and stop only; a back button returns to the list. */
   phone?: boolean
   onBack?: () => void
+  /** Opens a file in Files at a line (desktop; Changes uses it for a right-side line). */
+  onOpenFile?: (target: { path: string; line: number }) => void
 }
 
-export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onOpenFile }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = isBusy(status)
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
@@ -63,7 +66,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const [finding, setFinding] = useState(false)
   // A message taken back from the agent's queue returns to the draft (J1).
   const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true; readonly images?: readonly StoredImage[] }>()
-  useEffect(() => { setFinding(false); setRestore(undefined) }, [meta.id])
+  // J4: Changes replaces the transcript while open; from a run's note it starts on This run.
+  const [changesFor, setChangesFor] = useState<{ runId?: string }>()
+  useEffect(() => { setFinding(false); setRestore(undefined); setChangesFor(undefined) }, [meta.id])
   useEffect(() => {
     if (phone) return
     const onKey = (event: globalThis.KeyboardEvent): void => {
@@ -132,6 +137,11 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
                 {meta.completed ? 'Completed' : 'Complete'}
               </button>
             )}
+            {phone ? null : (
+              <button type="button" className="head-action" aria-pressed={Boolean(changesFor)} title="Uncommitted changes in this folder" onClick={() => setChangesFor(changesFor ? undefined : {})}>
+                Changes
+              </button>
+            )}
             {phone ? null : <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />}
           </div>
         </div>
@@ -156,13 +166,18 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               onToggleCompleted={() => guard(api.setCompleted(meta.id, !meta.completed))}
               onFind={() => setFinding(true)}
               onMarkUnread={() => { markUnread(meta.id); onBack?.() }}
-              onDelete={() => api.deleteThread(meta.id).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
+              ownedProcesses={processes.filter((p) => p.status !== 'exited' && p.owner?.kind === 'conversation' && p.owner.threadId === meta.id)}
+              onDelete={(choice) => api.deleteThread(meta.id, choice).then(() => onBack?.(), (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}
               running={running}
             />
           </div>}
         </div>
       </header>
-      <div className="events" ref={scroller}>
+      {changesFor && !phone ? (
+        <ChangesView projectPath={meta.projectPath} threadId={meta.id} runId={changesFor.runId} refreshKey={running ? 'running' : `idle:${events.length}`}
+          onOpenFile={(target) => onOpenFile?.(target)} onClose={() => setChangesFor(undefined)} />
+      ) : null}
+      <div className="events" ref={scroller} hidden={Boolean(changesFor && !phone)}>
         {finding ? <FindBar root={scroller} contentKey={`${meta.id}:${events.length}`} onClose={() => setFinding(false)} /> : null}
         <TranscriptView
           threadId={meta.id}
@@ -177,6 +192,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           onSendNow={() => guard(api.interrupt(meta.id))}
           onRetry={(text, images) => guard(api.send(meta.id, text, images.map(({ file, name }) => ({ stored: file, ...(name ? { name } : {}) }))))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
+          onOpenChanges={phone ? undefined : (runId) => setChangesFor({ runId })}
         />
         {meta.completed && !running ? (
           <div className="completed-bar" role="status">

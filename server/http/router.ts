@@ -8,14 +8,17 @@ import { documentsFolder, listDocuments, markDocument, renameFile, searchDocumen
 import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
-import type { ProcessRunner } from '../processes/runner.ts'
-import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
+import { ProcessConflictError, type ProcessRunner } from '../processes/runner.ts'
+import { projectPatchSchema, type Project, type ProjectStore } from '../projects/store.ts'
+import type { WorkspaceStore } from '../projects/workspaces.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
 import { MAX_MEMORY_CHARS, MemoryReadError, memoryScope, type MemoryStore } from '../memory/store.ts'
+import { StoreReadError } from '../state/read-error.ts'
+import { workflowTitle } from '../workflows/title.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { ThreadBusyError, type ThreadManager } from '../threads/manager.ts'
+import { OperationConflictError, ThreadBusyError, type ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
@@ -24,10 +27,14 @@ import type { IncomingImage } from '../threads/manager.ts'
 import { hasWindowKey, isTrustedRequest } from './guard.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { handleGitRoute } from './git-routes.ts'
+import type { RunObservationStore } from '../runs/observations.ts'
+import type { CheckRunner } from '../results/checks.ts'
+import type { ResultService } from '../results/service.ts'
 import type { PresetStore } from '../presets/store.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
+import { handleResultRoute } from './result-routes.ts'
 import { resolveWorkflows } from '../workflows/store.ts'
 import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
@@ -63,11 +70,14 @@ const createThreadBody = z.object({
   settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
   images: messageImages,
 })
-const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages })
+/** `operationId`: one per send attempt, so a repeated request is answered once (ID-05). */
+const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional() })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
 const completedBody = z.object({ completed: z.boolean() })
+/** What happens to the running processes a deleted conversation owns (K2). */
+const deleteThreadBody = z.object({ processes: z.enum(['stop', 'keep']).optional() })
 const checkReferencesBody = z.object({ projectPath: z.string().min(1).max(1000), text: z.string().max(200_000) })
 const writeFileBody = z.object({
   projectPath: z.string().min(1).max(1000),
@@ -99,6 +109,8 @@ export interface ApiDeps {
   readonly manager: ThreadManager
   readonly store: ThreadStore
   readonly projects: ProjectStore
+  /** Opaque project/workspace identity (G-IDENTITY). Absent in tests that do not need it. */
+  readonly workspaces?: WorkspaceStore
   readonly processes: ProcessRunner
   readonly mcp: McpRouteDeps
   readonly remote: RemoteAccess
@@ -109,9 +121,33 @@ export interface ApiDeps {
   readonly presets?: PresetStore
   /** Where the CLIs keep their sessions (~), for Import conversations; tests point it elsewhere. */
   readonly importHome?: string
+  /** Each run's before/after workspace observations (W7-05). */
+  readonly runs?: RunObservationStore
+  /** Durable run results and finite host checks (desktop mutations, scoped reads). */
+  readonly results?: ResultService
+  readonly checks?: CheckRunner
+  readonly observingRun?: (runId: string) => boolean
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+/**
+ * Each project with its opaque IDs. An unreadable workspaces.json leaves them off (and is reported)
+ * rather than hiding the projects; features that need an ID refuse on their own.
+ */
+function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | undefined): Array<Project & { projectId?: string; workspaceId?: string }> {
+  if (!workspaces) return [...list]
+  try {
+    workspaces.ensure(list.map((p) => p.path))
+    return list.map((p) => {
+      const found = workspaces.primaryFor(p.path)
+      return found ? { ...p, projectId: found.project.id, workspaceId: found.workspace.id } : p
+    })
+  } catch (error) {
+    console.warn('[cockpit]', error instanceof Error ? error.message : error)
+    return [...list]
+  }
+}
+
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -362,7 +398,14 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         return true
       }
       if (parts[1] === 'git') {
-        await handleGitRoute(req, res, url, parts, { projects, manager }, viaPhone)
+        await handleGitRoute(req, res, url, parts, { projects, manager, ...(runs ? { runs } : {}), ...(observingRun ? { observing: observingRun } : {}) }, viaPhone)
+        return true
+      }
+      if ((parts[1] === 'runs' || parts[1] === 'checks') && results && checks) {
+        await handleResultRoute(req, res, url, parts, {
+          manager, store, results, checks,
+          isOpen: (projectPath) => projects.list({ includeHidden: true }).some((project) => project.path === projectPath),
+        }, viaPhone)
         return true
       }
       if (parts[1] === 'processes') {
@@ -417,7 +460,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts[1] === 'projects' && parts.length === 2) {
         if (method === 'GET') {
           projects.ensure(store.list().map((meta) => ({ path: meta.projectPath, at: meta.updatedAt })))
-          sendJson(res, 200, { data: projects.list() })
+          sendJson(res, 200, { data: withIdentity(projects.list(), workspaces) })
           return true
         }
         if (method === 'POST') {
@@ -444,7 +487,9 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req, IMAGE_BODY_BYTES))
         assertDirectory(body.projectPath)
-        const meta = manager.create({ ...body, ...expandedFor(body.text, body.projectPath), images: decodeImages(body.images) })
+        // A12: an explicit title wins; otherwise a message opening with one workflow is named after it.
+        const title = body.title?.trim() || workflowTitle(body.text, body.projectPath, workflows.store)
+        const meta = manager.create({ ...body, ...(title ? { title } : {}), ...expandedFor(body.text, body.projectPath), images: decodeImages(body.images) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -477,10 +522,10 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         })
         res.end(image.bytes)
       } else if (method === 'POST' && action === 'messages') {
-        const { text, images: attached } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
+        const { text, images: attached, operationId } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
         const expanded = expandedFor(text, store.get(threadId)!.projectPath)
-        manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes))
-        sendJson(res, 202, { data: { status: manager.status(threadId) } })
+        const { runId, replayed } = manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes), operationId)
+        sendJson(res, 202, { data: { status: manager.status(threadId), runId, replayed } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
@@ -490,10 +535,19 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
         manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'interrupt') {
+        await checks?.cancelForThread(threadId)
         manager.interrupt(threadId)
         sendJson(res, 202, { data: {} })
       } else if (method === 'DELETE' && !action) {
         if (viaPhone) throw new HttpError(403, 'Conversations can only be deleted on the Mac')
+        // K2: a conversation that owns running processes is deleted only with an explicit choice for them.
+        const { processes: choice } = parseBody(deleteThreadBody, await readJson(req))
+        const owned = processes.ownedBy(threadId)
+        if (owned.length && !choice) {
+          throw new HttpError(409, `This conversation owns running processes (${owned.map((p) => p.name).join(', ')}). Choose Stop owned processes or Keep as project processes.`)
+        }
+        if (owned.length && choice) await processes.release(threadId, choice)
+        await checks?.cancelForThread(threadId)
         await manager.remove(threadId)
         sendJson(res, 200, { data: { deleted: threadId } })
       } else if (method === 'POST' && action === 'completed') {
@@ -512,7 +566,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof ThreadBusyError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

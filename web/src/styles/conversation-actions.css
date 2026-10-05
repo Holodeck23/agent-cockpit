@@ -19,3 +19,7 @@
 .decision-denied .decision-answer { color: var(--danger); }
 .completed-bar { display: flex; align-items: center; gap: 10px; margin: 18px auto 6px; padding: 10px 14px; width: fit-content; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--secondary); font-size: 13.5px; }
 .completed-bar .icon { width: 16px; height: 16px; color: var(--success); }
+/* K2: deleting a conversation that owns running processes. */
+.delete-confirm:has(.delete-processes) { width: 360px; }
+.delete-processes ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--body); }
+.delete-confirm:has(.delete-processes) .delete-actions { flex-wrap: wrap; }

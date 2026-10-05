@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
 import type { StoredEvent, ThreadMeta } from './types.ts'
 import { withAttachmentNote } from '../files/references.ts'
+import { StoreReadError } from '../state/read-error.ts'
 import { ensurePrivateDir, writeFileAtomic } from '../files/atomic.ts'
 
 // File-first storage, one folder per thread, outside the repo:
@@ -96,15 +97,12 @@ export function createThreadStore(root: string = defaultRoot(), cacheBudget = 64
   const readMeta = (id: string): ThreadMeta | undefined => {
     const file = join(dirOf(id), 'meta.json')
     if (!existsSync(file)) return undefined
-    try {
-      const meta = JSON.parse(readFileSync(file, 'utf8')) as ThreadMeta
-      if (meta && typeof meta === 'object' && meta.id === id && typeof meta.updatedAt === 'string') return meta
-    } catch {
-      // reported below
-    }
-    // Left on disk untouched, so nothing is lost; the conversation is just not listed.
+    let meta: ThreadMeta | undefined
+    try { meta = JSON.parse(readFileSync(file, 'utf8')) as ThreadMeta } catch { /* reported below */ }
+    if (meta && typeof meta === 'object' && meta.id === id && typeof meta.updatedAt === 'string') return meta
+    // Left on disk untouched; the list skips it and opening it reports the damage (ID-02).
     reportOnce(file, 'a conversation\'s meta.json is damaged and was left out')
-    return undefined
+    throw new StoreReadError('UNREADABLE', file, 'not valid conversation metadata')
   }
   /**
    * Parsed events per thread, read incrementally. Status, the list's summaries and every streamed
@@ -172,8 +170,14 @@ export function createThreadStore(root: string = defaultRoot(), cacheBudget = 64
       return readdirSync(threadsDir)
         .filter((name) => ID_PATTERN.test(name))
         .flatMap((id) => {
-          const meta = readMeta(id)
-          return meta ? [meta] : []
+          // One damaged conversation must not hide the rest; opening it reports the damage.
+          try {
+            const meta = readMeta(id)
+            return meta ? [meta] : []
+          } catch (error) {
+            console.warn('[cockpit]', error instanceof Error ? error.message : error)
+            return []
+          }
         })
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },

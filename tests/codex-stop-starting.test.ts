@@ -44,7 +44,8 @@ describe('Stop while an agent is starting (Day 10)', () => {
     session.send('hello')
     session.interrupt()
     expect(events).toContainEqual({ kind: 'result', ok: false, stopped: true })
-    await expect.poll(() => events.some((e) => e.kind === 'session')).toBe(true)
+    // The stand-in is a fresh node process; under a full parallel run it can take over a second to answer.
+    await expect.poll(() => events.some((e) => e.kind === 'session'), { timeout: 5000 }).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(requests(log)).not.toContain('turn/start')
     await session.close()
@@ -88,7 +89,7 @@ process.stdin.on('data', (d) => {
     session.send('hello')
     session.interrupt()
     expect(events).toContainEqual({ kind: 'result', ok: false, stopped: true })
-    await expect.poll(() => events.some((e) => e.kind === 'session')).toBe(true)
+    await expect.poll(() => events.some((e) => e.kind === 'session'), { timeout: 5000 }).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(requests(log)).not.toContain('session/prompt')
     await session.close()

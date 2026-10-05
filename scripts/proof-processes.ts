@@ -76,7 +76,8 @@ try {
   check('listed with state and port', await page.getByRole('button', { name: new RegExp(`dev server Running · :${port}`) }).isVisible())
   check('detail shows command and URL', await page.locator('.process-detail-title code').textContent() === 'node server.js'
     // Since the preview pane (9c07d6a) the URL is a button that opens it, not a link.
-    && await page.getByRole('button', { name: first.url! }).isVisible())
+    && await page.getByRole('button', { name: 'Open site', exact: true }).isVisible()
+    && await page.locator('.process-url').getAttribute('title') === first.url)
   await until(page, 'ten ticks in the log', async () => /tick 10\b/.test(await log.textContent() ?? ''))
   const text = await log.textContent() ?? ''
   check('log shows the startup line and keeps growing', text.includes(`Local: http://127.0.0.1:${port}/`) && /tick 10\b/.test(text))
@@ -98,6 +99,7 @@ try {
   await until(page, 'the stop', async () => (await mine(page)).find((p) => p.id === second.id && p.status === 'exited'))
   check('stop ends it and closes the port', !alive(second.pid) && !(await reachable(second.url!)))
   check('top bar no longer counts it', (await button.getAttribute('aria-label')) === 'Processes')
+  await page.getByRole('button', { name: /^Show finished/ }).click()
   await page.getByRole('button', { name: 'Start again' }).click()
   const third = await until(page, 'the server again', async () => (await mine(page)).find((p) => p.status === 'running' && p.url))
   check('start again brings it back', await reachable(third.url!))

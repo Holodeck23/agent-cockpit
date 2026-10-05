@@ -73,6 +73,7 @@
     "proof:quit": "tsx scripts/proof-quit.ts",
     "proof:window-key": "tsx scripts/proof-window-key.ts",
     "proof:wave-6.5": "tsx scripts/proof-wave-6.5.ts",
+    "proof:wave-7": "tsx scripts/proof-wave-7.ts",
     "proof:cross-wave": "tsx scripts/proof-cross-wave.ts"
   },
   "author": "",

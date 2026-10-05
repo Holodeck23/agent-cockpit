@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { startServer } from '../server/start.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import type { ThreadMeta } from '../server/threads/types.ts'
+import { StoreReadError } from '../server/state/read-error.ts'
 
 // A crash, a power cut or a full disk can leave half a line in events.jsonl or a meta.json that
 // does not parse. One damaged conversation must not hide the others (H3).
@@ -67,7 +68,7 @@ describe('a damaged conversation on disk', () => {
     const file = join(root, 'threads', bad.id, 'meta.json')
     writeFileSync(file, '{"id":')
     expect(store.list().map((m) => m.id)).toEqual([good.id])
-    expect(store.get(bad.id)).toBeUndefined()
+    expect(() => store.get(bad.id)).toThrow(StoreReadError)
     expect(readFileSync(file, 'utf8')).toBe('{"id":')
   })
 

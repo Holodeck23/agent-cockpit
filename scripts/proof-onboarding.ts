@@ -11,7 +11,7 @@ import { launchCodex } from '../server/agents/codex/launch.ts'
 import type { AgentSession, NormalizedEvent } from '../server/agents/types.ts'
 import type { ThreadDetail } from '../web/src/api.ts'
 import { SAMPLE_SERVER } from '../server/onboarding/sample.ts'
-import { launchPackagedApp, ROOT } from './lib/launch-app.ts'
+import { EXECUTABLE, launchPackagedApp } from './lib/launch-app.ts'
 
 if (!process.argv.includes('--live')) throw new Error('This proof uses a real provider. Pass --live explicitly.')
 if (!process.env.COCKPIT_ONBOARDING_OUT) throw new Error('Set COCKPIT_ONBOARDING_OUT to the durable evidence folder.')
@@ -21,7 +21,6 @@ const runs = Number(process.argv.find((v) => v.startsWith('--runs='))?.split('='
 assert.ok(Number.isInteger(runs) && runs >= 1 && runs <= 5, 'Use one to five measured runs')
 mkdirSync(output, { recursive: true })
 const quote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'"
-const appPath = process.env.COCKPIT_APP ?? join(ROOT, 'release/mac-arm64/Cockpit.app')
 const summaries: Array<Record<string, unknown>> = []
 
 async function seed(project: string, evidence: string): Promise<string> {
@@ -53,7 +52,7 @@ for (let run = 1; run <= runs; run++) {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-onboarding-live-'))
   const project = join(root, 'launch-counter')
   mkdirSync(project)
-  const command = `ELECTRON_RUN_AS_NODE=1 ${quote(join(appPath, 'Contents/MacOS/Cockpit'))} server.cjs`
+  const command = `ELECTRON_RUN_AS_NODE=1 ${quote(EXECUTABLE)} server.cjs`
   const files = { 'server.cjs': SAMPLE_SERVER, 'README.md': `# Launch-counter app\n\nA dependency-free local web app with a working counter button.\n\nStart it with this exact command (the installed Cockpit runtime):\n\n\`\`\`sh\n${command}\n\`\`\`\n\nThe command prints its ephemeral local URL. There are no dependencies to install. In Cockpit use start_process for this command, read_process_output, open_preview and inspect_preview. Leave files unchanged during recovery.\n` }
   for (const [name, content] of Object.entries(files)) { writeFileSync(join(project, name), content); writeFileSync(join(evidence, name), content) }
   execFileSync('git', ['init', '-b', 'feature/counter', project])

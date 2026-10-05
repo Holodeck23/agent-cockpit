@@ -11,14 +11,20 @@ import { createAgentStatus, type VersionProbe } from './agents/status.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
+import { createWorkspaceStore } from './projects/workspaces.ts'
 import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
+import { createRunObservationStore, observeRuns, type RunObserver } from './runs/observations.ts'
+import { createResultStore } from './results/store.ts'
+import { createCheckRunner, type CheckRunner } from './results/checks.ts'
+import { createResultService, type ResultService } from './results/service.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
 import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
+import type { PreviewOpen } from './preview/types.ts'
 
 export interface StartOptions {
   /** 0 picks a free port. */
@@ -40,7 +46,7 @@ export interface StartOptions {
   /** How to start the cockpit MCP server; without it, agent sessions get no cockpit tools. */
   readonly mcp?: McpCommand
   /** Opens a preview for the user; defaults to macOS `open`. The app retargets this to its preview pane. */
-  readonly openUrl?: (url: string) => Promise<void> | void
+  readonly openUrl?: (preview: PreviewOpen) => Promise<void> | void
   /** Captures a local preview for an agent to inspect. Available in the desktop shell. */
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
@@ -54,7 +60,7 @@ export interface StartOptions {
   readonly windowKey?: string
 }
 
-function openWithSystem(url: string): Promise<void> {
+function openWithSystem({ url }: PreviewOpen): Promise<void> {
   return new Promise((resolve, reject) => {
     spawn('open', [url], { stdio: 'ignore' })
       .on('error', reject)
@@ -71,6 +77,11 @@ export interface RunningServer {
   readonly remote: RemoteAccess
   /** Known project folders; the desktop shell checks these before opening one in Finder. */
   readonly projects: ProjectStore
+  /** Records each run's before/after workspace observations; tests settle it before reading. */
+  readonly runObserver: RunObserver
+  /** Durable result cards and finite host checks (pilot 10.1). */
+  readonly results: ResultService
+  readonly checks: CheckRunner
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -129,7 +140,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const root = options.stateRoot ?? defaultRoot()
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
-  const processes = createProcessRunner()
+  const workspaces = createWorkspaceStore(root)
+  const processes = createProcessRunner({ ledgerFile: join(root, 'processes.json') })
   const sessions = createMcpSessions()
   // Known once listening; sessions only start after that.
   let baseUrl = ''
@@ -137,6 +149,15 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agentWorkflowsAllowed = (projectPath: string): boolean =>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
   const manager = createThreadManager(store, {
+    workspaceFor: (projectPath) => {
+      try {
+        workspaces.ensure([projectPath])
+        return workspaces.primaryFor(projectPath)?.workspace.id
+      } catch (error) {
+        console.warn('[cockpit] no workspace identity:', error instanceof Error ? error.message : error)
+        return undefined
+      }
+    },
     instructions: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
@@ -154,7 +175,24 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         }
       : {}),
   })
+  const runs = createRunObservationStore(root)
+  const runObserver = observeRuns(manager, runs)
+  const resultStore = createResultStore(root)
+  const checks = createCheckRunner(resultStore)
+  const results = createResultService({
+    store: resultStore, checks, runs, observing: runObserver.observing,
+    ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}),
+  })
   const workflowStore = createWorkflowStore(root)
+  // A crash left these runs open: they end as interrupted; nothing is relaunched or replayed (ID-07).
+  const interrupted = manager.recoverInterrupted()
+  if (interrupted.length > 0) console.warn(`[cockpit] marked ${interrupted.length} unfinished run(s) as interrupted`)
+  // Additive identity migration: registers every folder Cockpit already knows; rewrites no legacy file.
+  try {
+    workspaces.ensure([...projects.list({ includeHidden: true }).map((p) => p.path), ...store.list().map((m) => m.projectPath), ...workflowStore.list().map((w) => w.projectPath)])
+  } catch (error) {
+    console.warn('[cockpit] workspace identities not registered:', error instanceof Error ? error.message : error)
+  }
   const memory = createMemoryStore(root)
   const presets = createPresetStore(root)
   const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
@@ -192,8 +230,13 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
-  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, presets, importHome: process.env.COCKPIT_IMPORT_HOME,
-    mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+    mcp: { sessions, processes, openUrl,
+      processOwner: (threadId) => {
+        const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
+        const runId = manager.currentRunId(threadId)
+        return { kind: 'conversation', threadId, title: meta?.title ?? 'Deleted conversation', ...(runId ? { runId } : {}) }
+      }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
       approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
       cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])] } },
@@ -213,7 +256,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown()])
+      runObserver.stop()
+      await runObserver.settle()
       await new Promise<void>((resolve) => {
         server.close(() => resolve())
         server.closeAllConnections()
@@ -222,5 +267,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, close }
 }

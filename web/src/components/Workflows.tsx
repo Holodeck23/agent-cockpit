@@ -81,10 +81,14 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
   </div>
 }
 
-export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread }: {
+export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread, onCancel, saveOnly = false }: {
   workflow?: Workflow; projectPath: string; busy: boolean
   onSave: (input: WorkflowInput, intent: Intent) => Promise<void>
-  onPause: () => Promise<void>; onArchive: () => Promise<void>; onOpenThread: (id: string) => void
+  onPause?: () => Promise<void>; onArchive?: () => Promise<void>; onOpenThread?: (id: string) => void
+  /** Shown as Cancel: leaves without saving anything. */
+  onCancel?: () => void
+  /** Only Save: opened from another screen, saving must not also start or schedule a run (F16). */
+  saveOnly?: boolean
 }) {
   const [name, setName] = useState(workflow?.name ?? '')
   const [title, setTitle] = useState(workflow?.title ?? '')
@@ -129,13 +133,16 @@ export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, o
       <p className="workflow-help">Saving pauses an existing schedule. Scheduled runs use these permissions and appear in Conversations. A failure pauses the schedule; a busy run skips the next occurrence.</p>
       <div className="workflow-actions">
         <button type="submit" className="button-primary" value="save">{busy ? 'Working…' : 'Save workflow'}</button>
-        <button type="submit" value="run">Save and run</button>
-        <button type="submit" value="schedule" disabled={!canSchedule(repeat)}>Save and enable schedule</button>
+        {saveOnly ? null : <>
+          <button type="submit" value="run">Save and run</button>
+          <button type="submit" value="schedule" disabled={!canSchedule(repeat)}>Save and enable schedule</button>
+        </>}
+        {onCancel ? <button type="button" onClick={onCancel}>Cancel</button> : null}
       </div>
     </fieldset></form>
     {workflow ? <footer className="workflow-run"><div><strong>Latest run</strong><span>{when(workflow.lastRunAt)}</span>
-      {workflow.lastThreadId ? <button type="button" onClick={() => onOpenThread(workflow.lastThreadId!)}>Open conversation →</button> : <span>No runs yet</span>}</div>
-      <div className="workflow-actions">{workflow.enabled ? <button type="button" disabled={busy} onClick={() => void onPause()}>Pause schedule</button> : null}
-        <button type="button" disabled={busy} onClick={() => void onArchive()}>Archive workflow</button></div></footer> : null}
+      {workflow.lastThreadId && onOpenThread ? <button type="button" onClick={() => onOpenThread(workflow.lastThreadId!)}>Open conversation →</button> : <span>No runs yet</span>}</div>
+      <div className="workflow-actions">{workflow.enabled && onPause ? <button type="button" disabled={busy} onClick={() => void onPause()}>Pause schedule</button> : null}
+        {onArchive ? <button type="button" disabled={busy} onClick={() => void onArchive()}>Archive workflow</button> : null}</div></footer> : null}
   </main>
 }

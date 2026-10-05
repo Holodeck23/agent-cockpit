@@ -1,18 +1,25 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { colorFor, createProjectStore, PROJECT_COLORS } from '../server/projects/store.ts'
+import { StoreReadError } from '../server/state/read-error.ts'
 import { tabOrder } from '../web/src/project-tabs.ts'
 
 const newRoot = (): string => mkdtempSync(join(tmpdir(), 'cockpit-projects-'))
 
 describe('project store', () => {
-  it('starts empty and survives a corrupt file', () => {
+  it('starts empty; a corrupt file fails visibly and is never overwritten (ID-02)', () => {
     const root = newRoot()
     expect(createProjectStore(root).list()).toEqual([])
-    writeFileSync(join(root, 'projects.json'), '{not json')
-    expect(createProjectStore(root).list()).toEqual([])
+    for (const bad of ['{not json', '[{"path":"/a","name":"A","color":"blue","pinned":true,"lastOpenedAt":"x"},', '[{"path":"/a"}]']) {
+      writeFileSync(join(root, 'projects.json'), bad)
+      const store = createProjectStore(root)
+      expect(() => store.list()).toThrow(StoreReadError)
+      expect(() => store.open('/b')).toThrow(/preserved/)
+      expect(() => store.ensure([{ path: '/c', at: '2026-09-01T10:00:00.000Z' }])).toThrow(StoreReadError)
+      expect(readFileSync(join(root, 'projects.json'), 'utf8')).toBe(bad)
+    }
   })
 
   it('registers folders from threads unpinned, dated by their latest thread', () => {

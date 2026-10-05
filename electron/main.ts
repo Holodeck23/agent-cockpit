@@ -18,6 +18,7 @@ import { HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
 import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
+import type { PreviewOpen } from '../server/preview/types.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -119,8 +120,8 @@ function sendToPage(channel: string, ...args: unknown[]): void {
 }
 
 /** Opens the local URL in the React-owned pane. The page remains the source of truth for pane layout. */
-function showPreview(url: string): void {
-  sendToPage('cockpit:preview-open', assertLocalUrl(url))
+function showPreview(preview: PreviewOpen): void {
+  sendToPage('cockpit:preview-open', { ...preview, url: assertLocalUrl(preview.url) })
 }
 
 /**
@@ -307,10 +308,6 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     if (mode === 'system' || mode === 'light' || mode === 'dark') nativeTheme.themeSource = mode
-  })
-  ipcMain.on('cockpit:open-preview', (event, target: unknown) => {
-    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || typeof target !== 'string') return
-    try { showPreview(target) } catch { /* The server remains the authority for preview URLs. */ }
   })
   // Open in the default app, show in Finder, or move to the Trash: one file of a known project,
   // in its folder or in the project's documents. Resolves to an error message, or undefined.

@@ -43,6 +43,8 @@
   --orange: #f58220;
   --success: light-dark(#386244, #a6cbb6);
   --danger: light-dark(#c2402f, #f08a7c);
+  --diff-add-bg: light-dark(#e6f4ea, #1d3326);
+  --diff-del-bg: light-dark(#fdecea, #3a2220);
 
   /* "needs you" */
   --needs-bg: light-dark(#fff1df, #342b23);

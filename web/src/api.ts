@@ -3,6 +3,9 @@ import type { Preset } from '../../server/presets/store.ts'
 import type { z } from 'zod'
 export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
+import type { BaseFile, Changes, FileDiff, NoRepository } from '../../server/git/changes.ts'
+import type { RunChanges } from '../../server/runs/run-changes.ts'
+import type { Assessment, CheckDefinition, CheckRecord, EvidenceRecord, ResultRecord } from '../../server/results/types.ts'
 import type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 import type { MemoryEntry } from '../../server/memory/store.ts'
 import type { SessionSummary } from '../../server/import/sessions.ts'
@@ -59,6 +62,13 @@ export type GitView = GitState & { readonly busy: readonly string[]; readonly pu
 export type MessageImage = { readonly data: string; readonly name?: string } | { readonly stored: string; readonly name?: string }
 /** An image a conversation holds, by its stored name. */
 export interface StoredImage { readonly file: string; readonly name?: string }
+/** randomUUID exists only in secure contexts; without it the host simply gets no operation ID. */
+const operationId = (): { operationId?: string } => {
+  const id = globalThis.crypto?.randomUUID?.()
+  return id ? { operationId: id } : {}
+}
+const requiredOperationId = (): string => globalThis.crypto?.randomUUID?.() ?? `check-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
 export const api = {
   recentWork: (projectPath: string) => request<RecoveryView>(`/api/recovery?${new URLSearchParams({ projectPath })}`),
   resumeWork: (body: z.infer<typeof resumeRecoveryBody>) => request<ThreadMeta>('/api/recovery', { method: 'POST', body }),
@@ -74,6 +84,24 @@ export const api = {
   /** A commit named in a reply: its full hash and web page, or a 404 when it isn't a commit here. */
   gitCommit: (projectPath: string, hash: string) => request<{ hash: string; url?: string }>(`/api/git/commit?${new URLSearchParams({ projectPath, hash })}`),
   pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
+  /** J4: the workspace's uncommitted changes against HEAD (or an empty base), and one file's bounded diff. */
+  gitChanges: (projectPath: string) => request<Changes | NoRepository>(`/api/git/changes?${new URLSearchParams({ projectPath })}`),
+  gitDiff: (projectPath: string, path: string) => request<FileDiff>(`/api/git/diff?${new URLSearchParams({ projectPath, path })}`),
+  /** The base revision's copy of a changed path: the read-only view of a left-side line. */
+  gitBase: (projectPath: string, path: string) => request<BaseFile>(`/api/git/base?${new URLSearchParams({ projectPath, path })}`),
+  /** One run's before/after observations, compared (W7-05). */
+  gitRun: (threadId: string, runId: string) => request<RunChanges>(`/api/git/run?${new URLSearchParams({ threadId, runId })}`),
+  /** Host-observed result evidence for one finished provider turn (pilot 10.1). */
+  result: (threadId: string, runId: string) => request<ResultRecord>(`/api/runs/${encodeURIComponent(runId)}/result?${new URLSearchParams({ threadId })}`),
+  runCheck: (threadId: string, runId: string, definition: CheckDefinition) =>
+    request<CheckRecord>(`/api/runs/${encodeURIComponent(runId)}/checks`, { method: 'POST', body: { threadId, operationId: requiredOperationId(), definition } }),
+  cancelCheck: (checkId: string) => request<CheckRecord>(`/api/checks/${encodeURIComponent(checkId)}/cancel`, { method: 'POST', body: {} }),
+  captureResultPreview: (threadId: string, runId: string, url: string) =>
+    request<EvidenceRecord>(`/api/runs/${encodeURIComponent(runId)}/preview`, { method: 'POST', body: { threadId, url } }),
+  assessResultPreview: (threadId: string, runId: string, evidenceId: string, verdict: Assessment['verdict'], note?: string) =>
+    request<Assessment>(`/api/runs/${encodeURIComponent(runId)}/assessments`, { method: 'POST', body: { threadId, evidenceId, verdict, note } }),
+  resultEvidence: (threadId: string, runId: string, evidenceId: string) =>
+    `/api/runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}?${new URLSearchParams({ threadId })}`,
   listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
   /** A "documents:" path reads from the project's documents; the result keeps the same naming. */
   readFile: async (projectPath: string, tabPath: string) => {
@@ -126,8 +154,9 @@ export const api = {
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
   createThread: (body: { projectPath: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),
+  /** One operation ID per call: a request the network repeats is answered once by the host (ID-05). */
   send: (id: string, text: string, images?: readonly MessageImage[]) =>
-    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}) } }),
+    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}), ...operationId() } }),
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
   /** Takes a waiting message back; resolves to its text and images for the draft (J1, R8). */
@@ -139,7 +168,8 @@ export const api = {
   interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
   switchAgent: (id: string, settings: Partial<ThreadSettings>) =>
     request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),
-  deleteThread: (id: string) => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: {} }),
+  /** `processes` decides what happens to running processes the conversation owns (K2); without it such a delete is refused. */
+  deleteThread: (id: string, processes?: 'stop' | 'keep') => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: processes ? { processes } : {} }),
   setCompleted: (id: string, completed: boolean) =>
     request<ThreadMeta>(`/api/threads/${id}/completed`, { method: 'POST', body: { completed } }),
   presets: () => request<Preset[]>('/api/presets'),
@@ -149,6 +179,8 @@ export const api = {
   listProcesses: () => request<ProcessInfo[]>('/api/processes'),
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
   restartProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/restart`, { method: 'POST', body: {} }),
+  /** Drops this folder's finished rows from the history; stops nothing. */
+  clearFinishedProcesses: (projectPath: string) => request<{ cleared: number }>(`/api/processes/clear-finished?${new URLSearchParams({ project: projectPath })}`, { method: 'POST', body: {} }),
   /** Output lines after `since`, or the last `tail` lines. */
   readProcess: (id: string, options: { since?: number; tail?: number }) =>
     request<ProcessRead>(`/api/processes/${id}/output?${new URLSearchParams(Object.entries(options).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
@@ -187,6 +219,9 @@ export function subscribe({ onUpdate, onProcess, onOpen, onRemote }: StreamHandl
 export type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 
 export type { FileEntry, FileListing, FilePreview } from '../../server/files/browser.ts'
+export type { BaseFile, ChangedFile, Changes, DiffLine, FileDiff, NoRepository } from '../../server/git/changes.ts'
+export type { RunChanges } from '../../server/runs/run-changes.ts'
+export type { Assessment, CheckDefinition, CheckRecord, EvidenceRecord, ResultRecord } from '../../server/results/types.ts'
 export type { DocumentEntry, DocumentMatch } from '../../server/files/documents.ts'
 export type { MemoryEntry } from '../../server/memory/store.ts'
 /** A session the CLI ran in this project, as the import window lists it. */

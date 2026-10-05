@@ -3,7 +3,7 @@ import { listConversations, listConversationsInput, readConversation, readConver
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { McpSessions } from '../mcp/sessions.ts'
-import type { ProcessRunner } from '../processes/runner.ts'
+import { ProcessConflictError, type ProcessOwner, type ProcessRunner } from '../processes/runner.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import type { Workflow, WorkflowStore } from '../workflows/store.ts'
 import { AgentWorkflowRefused, agentWorkflowSchema, checkAgentWorkflow, saveAgentWorkflow } from '../workflows/agent-input.ts'
@@ -12,6 +12,7 @@ import type { HostActionOptions } from '../threads/host-actions.ts'
 import { readCursor } from './process-routes.ts'
 import { oneLine } from '../files/visible-name.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
+import type { PreviewOpen } from '../preview/types.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
 // Every call carries that session's bearer token, and everything it can see or
@@ -48,7 +49,9 @@ export interface McpRouteDeps {
   readonly workflows?: WorkflowStore
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
-  readonly openUrl: (url: string) => Promise<void> | void
+  /** The owner a process started by this conversation's agent records (K1); resolved by the host. */
+  readonly processOwner?: (threadId: string) => ProcessOwner
+  readonly openUrl: (preview: PreviewOpen) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   readonly memory?: MemoryStore
   /** Whether the project lets agents update and schedule workflows (Project settings). */
@@ -89,7 +92,7 @@ export async function handleMcpRoute(
   parts: readonly string[],
   deps: McpRouteDeps,
 ): Promise<void> {
-  const { sessions, processes, openUrl, capturePreview, workflows, memory, conversations, control, agentWorkflows, enableWorkflow } = deps
+  const { sessions, processes, processOwner, openUrl, capturePreview, workflows, memory, conversations, control, agentWorkflows, enableWorkflow } = deps
   const auth = req.headers.authorization ?? ''
   const grant = auth.startsWith('Bearer ') ? sessions.resolve(auth.slice('Bearer '.length)) : undefined
   if (!grant) throw new HttpError(401, 'Missing or expired cockpit session token')
@@ -164,7 +167,7 @@ export async function handleMcpRoute(
   }
   if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
-    await openUrl(target)
+    await openUrl({ url: target, threadId: grant.threadId, projectPath: grant.projectPath })
     sendJson(res, 200, { data: { opened: target } })
     return
   }
@@ -175,9 +178,15 @@ export async function handleMcpRoute(
     if (method === 'GET') return sendJson(res, 200, { data: processes.list(projectPath) })
     if (method === 'POST') {
       const body = parseBody(startBody, await readJson(req))
+      const owner: ProcessOwner = processOwner?.(grant.threadId) ?? { kind: 'project' }
       const started = await approved(deps, grant, res, 'start_process', { command: body.command, ...(body.name ? { name: body.name } : {}) },
         { description: 'Run this command in the project, as a process Cockpit keeps running.', sessionKey: 'processes' },
-        () => processes.start({ projectPath, ...body }))
+        () => {
+          try { return processes.start({ projectPath, ...body }, owner) } catch (error) {
+            if (error instanceof ProcessConflictError) throw new HttpError(409, error.message)
+            throw error
+          }
+        })
       return sendJson(res, 201, { data: started })
     }
     throw new HttpError(404, 'Not found')

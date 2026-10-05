@@ -27,6 +27,13 @@ export async function handleProcessRoute(
     sendJson(res, 200, { data: runner.list(url.searchParams.get('project') ?? undefined) })
     return
   }
+  // Show finished → Clear: the finished rows of one folder leave the history; nothing is stopped.
+  if (id === 'clear-finished' && method === 'POST') {
+    const project = url.searchParams.get('project') ?? ''
+    if (!project) throw new HttpError(400, 'Which project?')
+    sendJson(res, 200, { data: { cleared: runner.clearFinished(project) } })
+    return
+  }
   if (!id || !runner.get(id)) throw new HttpError(404, 'Unknown process')
   if (method === 'GET' && action === 'output') {
     const since = readCursor(url.searchParams.get('since'), Number.MAX_SAFE_INTEGER)
