@@ -10,6 +10,7 @@ import { AgentWorkflowRefused, agentWorkflowSchema, checkAgentWorkflow, saveAgen
 import type { McpGrant } from '../mcp/sessions.ts'
 import type { HostActionOptions } from '../threads/host-actions.ts'
 import { readCursor } from './process-routes.ts'
+import { oneLine } from '../files/visible-name.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
@@ -20,8 +21,6 @@ const startBody = z.object({ command: z.string().trim().min(1).max(2000), name: 
 const previewBody = z.object({ url: z.string().min(1).max(2000) })
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
-/** Agent-chosen text on an approval card stays on one line, without characters that reorder or hide text. */
-export const oneLine = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g, ' ').replace(/\s+/g, ' ').trim()
 
 /** Only a local http(s) page can be previewed; the agent must not open arbitrary sites. */
 export function assertLocalUrl(raw: string): string {

@@ -22,3 +22,16 @@ export function launchReason(name: string, mode: number): string | undefined {
   if ((mode & 0o111) !== 0) return 'it is marked executable, so opening it can run it'
   return undefined
 }
+
+const HIDING = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g
+
+/** Agent-chosen text on an approval card that must stay on one line (a title, a name): no newlines, nothing that reorders or hides text. */
+export function oneLine(text: string): string {
+  return text.replace(HIDING, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Longer agent-chosen text (a command, a task): lines and tabs stay, characters that reorder or hide text become visible. */
+export function revealHidden(text: string): string {
+  return text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g,
+    (c) => `⟨U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}⟩`)
+}
