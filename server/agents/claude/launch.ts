@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
+import { guardStdin } from '../stdin.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
 import { claudeUserMessage } from '../image-input.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
@@ -101,6 +102,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   })
   let exited = false
   const stderrTail: string[] = []
+  guardStdin(child, () => { if (!exited) onEvent({ kind: 'error', message: 'Claude Code stopped taking input; that message was not delivered' }) })
 
   const write = (message: unknown): void => {
     if (exited || !child.stdin.writable) {

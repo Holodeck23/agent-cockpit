@@ -326,7 +326,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const deliver: EventSink = (event) => {
       // Even a synchronous launcher callback must follow the initial user_text and live entry.
       if (launching) { queueMicrotask(() => deliver(event)); return }
-      handleEvent(event)
+      // Called from the agent's stdout handlers: a throw here (a full disk on append) would be
+      // uncaught and end the server with every other agent. Losing one event is the lesser harm.
+      try { handleEvent(event) } catch (error) { console.error(`[cockpit] could not record a ${event.kind} event`, error) }
     }
     let released = false
     const handleEvent: EventSink = (event) => {

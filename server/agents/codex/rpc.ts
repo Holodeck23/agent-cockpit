@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { guardStdin } from '../stdin.ts'
 
 // Minimal JSON-RPC over newline-delimited stdio, as spoken by `codex app-server` and by ACP agents
 // (`opencode acp`), which also expect the "jsonrpc": "2.0" member.
@@ -26,6 +27,7 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
   const label = options.label ?? 'Codex'
   let nextId = 1
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
+  guardStdin(child, () => handlers.onProtocolError(`${label} stopped taking input; the last request was not delivered`))
 
   const write = (message: unknown): void => {
     if (!child.stdin.writable) {

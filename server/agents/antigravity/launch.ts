@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
+import { guardStdin } from '../stdin.ts'
 import type { AgentSession, EventSink, OutgoingImage } from '../types.ts'
 import { withImagePaths } from '../image-input.ts'
 import { parseAntigravityLine } from './parse.ts'
@@ -66,6 +67,7 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
   let exited = false
   let firstTurn = true
   const stderrTail: string[] = []
+  guardStdin(child, () => { if (!exited) onEvent({ kind: 'error', message: 'Antigravity stopped taking input; that message was not delivered' }) })
 
   createInterface({ input: child.stdout }).on('line', (line) => {
     for (const event of parseAntigravityLine(line)) onEvent(event)
