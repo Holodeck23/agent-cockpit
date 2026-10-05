@@ -1,10 +1,10 @@
 # User Guide
 
-> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
-*(Documented for v0.1.3)*
+*(Documented for v0.1.4)*
 
 ## Workspace & Projects
 
@@ -33,6 +33,9 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Replies:** Agent replies show as formatted text: headings, lists, tables, code. Web links open in your browser; raw HTML in a reply shows as text and images are never loaded (you see their description). Your own messages stay exactly as you typed them.
 -   **File and commit links:** `src/app.ts:42` in a reply opens Files with that line selected (ranges like `:10-20` too). A commit hash opens the commit on GitHub, GitLab or Bitbucket when the project's `origin` is there; otherwise it copies the hash. Agents are asked to name their commits by short hash.
 -   **Find:** ⌘F highlights matches in the open conversation and lists the matching messages under the bar; click one to jump to it.
+-   **Reading while it works:** the conversation stays where you are reading while the agent writes; **Jump to latest** brings you back to the end. **Copy** on a message puts its text on the clipboard. The conversation list can be resized by dragging its edge.
+-   **Mac notifications:** Cockpit notifies you when an agent finishes or needs you, and clicking the notification opens that conversation. The conversation you are looking at makes no sound and shows no banner. A completed conversation never counts as needing you.
+-   **Dismiss:** a question from the agent can be dismissed without answering; the agent carries on without the answers.
 -   **Search:** The list's search looks through every message, not just titles, and includes completed conversations while you search.
 -   **Peek:** Hover a file or workflow clip on a sent message to see inside it; **Open in Files** opens the file.
 -   **Status States:** A conversation can be Working, Ready, Error, or "Needs you" (waiting for your approval or input).
@@ -111,7 +114,8 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
     -   `open_preview`: Opens a local page (localhost only) in the preview pane.
     -   `inspect_preview`: Returns a screenshot of the local page to the agent.
     -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first). With **Let agents manage workflows** on in Project settings, it does not ask, can update a workflow by name, and can set a schedule.
--   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are included in v0.1.1; the older September 30 v0.1.0 DMG does not have them.
+    -   `recall` and `remember`: Search the project's and everywhere memory, and record a fact (`remember` asks first).
+    -   `start_conversation`, `send_to_conversation`, `stop_conversation` (v0.1.1 and later): Cockpit shows a separate Allow/Deny card for every action, whatever the agent's own permissions. They are restricted to the calling project, refuse self and foreign targets and recursive delegation, and use durable request keys to suppress duplicates.
 
 ## Updates
 
@@ -132,6 +136,7 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 -   **Data Location:** Cockpit state lives in `~/.agent-cockpit/` unless `COCKPIT_HOME` overrides it. Project files and the CLIs’ own credentials/session stores live separately.
 -   **Privacy:** Cockpit does not send telemetry to a central server. Check for Updates, when you choose it, requests the public release list from GitHub's API (no account or project data is sent). Agent runs can send prompts, attachments and project content to the configured provider, including scheduled workflow runs. Tools may also contact external services. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
 -   **Backups:** To back up your Cockpit data, securely copy the `~/.agent-cockpit/` directory.
+-   **Damaged files (after v0.1.4):** a crash, a power cut or a full disk can leave a conversation's files half-written. Cockpit skips the damaged part, keeps every other conversation listed, and never rewrites or deletes the file. See [Troubleshooting](troubleshooting.md#conversations--workflows).
 
 ## Extension Notes for Developers
 
