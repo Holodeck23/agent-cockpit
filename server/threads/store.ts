@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
@@ -11,6 +11,47 @@ import { withAttachmentNote } from '../files/references.ts'
 //   <root>/threads/<id>/messages.md   human/agent-readable transcript
 
 const ID_PATTERN = /^[0-9a-f-]{36}$/
+
+/**
+ * A crash, a power cut or a full disk can leave half a line at the end of events.jsonl, or a
+ * meta.json that does not parse. One such file must not take every conversation down with it:
+ * the conversation list reads them all. Damaged lines are skipped and reported once per file.
+ */
+const reported = new Set<string>()
+function reportOnce(file: string, what: string): void {
+  if (reported.has(file)) return
+  reported.add(file)
+  console.error(`[cockpit] ${what}: ${file}`)
+}
+
+function parseEvents(file: string, text: string): StoredEvent[] {
+  const events: StoredEvent[] = []
+  let skipped = 0
+  for (const line of text.split('\n')) {
+    if (line.length === 0) continue
+    try {
+      const parsed = JSON.parse(line) as StoredEvent
+      if (parsed && typeof parsed === 'object' && typeof parsed.ts === 'string' && parsed.event && typeof parsed.event === 'object') events.push(parsed)
+      else skipped++
+    } catch {
+      skipped++
+    }
+  }
+  if (skipped > 0) reportOnce(file, `skipped ${skipped} damaged line${skipped === 1 ? '' : 's'} in a conversation log`)
+  return events
+}
+
+/** True when the file is empty or its last byte is a newline, so an append starts a fresh line. */
+function endsWithNewline(file: string): boolean {
+  const fd = openSync(file, 'r')
+  try {
+    const size = fstatSync(fd).size
+    if (size === 0) return true
+    const last = Buffer.alloc(1)
+    readSync(fd, last, 0, 1, size - 1)
+    return last[0] === 0x0a
+  } finally { closeSync(fd) }
+}
 
 export interface ThreadStore {
   readonly root: string
@@ -53,8 +94,18 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
   const readMeta = (id: string): ThreadMeta | undefined => {
     const file = join(dirOf(id), 'meta.json')
     if (!existsSync(file)) return undefined
-    return JSON.parse(readFileSync(file, 'utf8')) as ThreadMeta
+    try {
+      const meta = JSON.parse(readFileSync(file, 'utf8')) as ThreadMeta
+      if (meta && typeof meta === 'object' && meta.id === id && typeof meta.updatedAt === 'string') return meta
+    } catch {
+      // reported below
+    }
+    // Left on disk untouched, so nothing is lost; the conversation is just not listed.
+    reportOnce(file, 'a conversation\'s meta.json is damaged and was left out')
+    return undefined
   }
+  // Threads whose log has been checked for a half-written last line since this process started.
+  const checkedEnds = new Set<string>()
 
   return {
     root,
@@ -83,7 +134,17 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
     },
     append(id, event, ts) {
       const stored: StoredEvent = { ts: ts ?? new Date().toISOString(), event }
-      appendFileSync(join(dirOf(id), 'events.jsonl'), `${JSON.stringify(stored)}\n`)
+      const file = join(dirOf(id), 'events.jsonl')
+      // Appending after half a line would join the new event to it and lose both.
+      const lead = !checkedEnds.has(id) && existsSync(file) && !endsWithNewline(file) ? '\n' : ''
+      try {
+        appendFileSync(file, `${lead}${JSON.stringify(stored)}\n`)
+      } catch (error) {
+        // A write cut short (a full disk) may itself leave half a line: check again next time.
+        checkedEnds.delete(id)
+        throw error
+      }
+      checkedEnds.add(id)
       const md = markdownFor(event, stored.ts)
       if (md) appendFileSync(join(dirOf(id), 'messages.md'), md)
       return stored
@@ -91,15 +152,13 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
     events(id) {
       const file = join(dirOf(id), 'events.jsonl')
       if (!existsSync(file)) return []
-      return readFileSync(file, 'utf8')
-        .split('\n')
-        .filter((line) => line.length > 0)
-        .map((line) => JSON.parse(line) as StoredEvent)
+      return parseEvents(file, readFileSync(file, 'utf8'))
     },
     transcriptPath(id) {
       return join(dirOf(id), 'messages.md')
     },
     remove(id) {
+      checkedEnds.delete(id)
       rmSync(dirOf(id), { recursive: true, force: true })
     },
   }
