@@ -99,6 +99,7 @@ try {
   await until(page, 'the stop', async () => (await mine(page)).find((p) => p.id === second.id && p.status === 'exited'))
   check('stop ends it and closes the port', !alive(second.pid) && !(await reachable(second.url!)))
   check('top bar no longer counts it', (await button.getAttribute('aria-label')) === 'Processes')
+  await page.getByRole('button', { name: /^Show finished/ }).click()
   await page.getByRole('button', { name: 'Start again' }).click()
   const third = await until(page, 'the server again', async () => (await mine(page)).find((p) => p.status === 'running' && p.url))
   check('start again brings it back', await reachable(third.url!))
