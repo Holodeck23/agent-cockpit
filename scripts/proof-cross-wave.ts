@@ -85,6 +85,19 @@ try {
   await page.keyboard.type('Check the release plan')
   await page.keyboard.press('Meta+s')
   check('2 the workflow saves', await until('saved', async () => (await page.locator('.workflow-list').getByText('crosscheck').count()) > 0))
+  // ⌘S on an existing workflow, right after typing: one save, with the text just typed (R2).
+  const saves: string[] = []
+  page.on('request', (request) => { if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/workflows')) saves.push(`${request.method()} ${request.postData() ?? ''}`) })
+  await page.locator('.workflow-list').getByText('crosscheck').first().click()
+  await page.locator('.workflow-doc .ProseMirror').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' twice')
+  await page.keyboard.press('Meta+s')
+  await page.waitForTimeout(800)
+  const edited = await getJson<{ data: { name: string; prompt: string }[] }>(page, `/api/workflows?projectPath=${encodeURIComponent(project)}`)
+  check('2 one ⌘S on an existing workflow sends one save', saves.length === 1, saves.map((s) => s.slice(0, 80)).join(' | '))
+  check('2 and keeps the text just typed', edited.data.some((w) => w.name === 'crosscheck' && w.prompt.trim() === 'Check the release plan twice'),
+    JSON.stringify(edited.data.map((w) => w.prompt.trim())))
   const moved = await page.evaluate(async ([dir, folder]) => {
     const res = await fetch('/api/documents/location', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectPath: dir, folder }) })
     return { status: res.status, body: await res.text() }
@@ -106,7 +119,7 @@ try {
   check('3 and settles again', await until('settled', () => settled(page)), await headText(page))
   await shot(page, 'after-restart')
   const workflows = await getJson<{ data: { name: string; prompt: string }[] }>(page, `/api/workflows?projectPath=${encodeURIComponent(project)}`)
-  check('3 the workflow is still there', workflows.data.some((w) => w.name === 'crosscheck' && w.prompt.includes('Check the release plan')))
+  check('3 the workflow is still there', workflows.data.some((w) => w.name === 'crosscheck' && w.prompt.includes('Check the release plan twice')))
   const docs = await getJson<{ data: { custom: boolean } }>(page, `/api/documents/location?projectPath=${encodeURIComponent(project)}`)
   const listed = JSON.stringify(await getJson(page, `/api/documents?projectPath=${encodeURIComponent(project)}`))
   check('3 the project still uses the new documents folder, with its document', docs.data.custom && listed.includes('release-plan.md'))
