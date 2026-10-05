@@ -353,7 +353,6 @@ try {
     && (await running(procs)).length === 1)
   alivePid = (await running(procsOther))[0]!.pid ?? 0
 
-  await p2.reload()
   const threads = await get<Array<{ meta: { id: string; title: string } }>>(p2, '/api/threads')
   const docs = threads.find((t) => t.meta.title === 'Docs work')!
   const conversations = p2.getByRole('navigation', { name: 'Conversations' })
