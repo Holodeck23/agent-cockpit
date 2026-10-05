@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
 import type { StoredEvent, ThreadMeta } from './types.ts'
 import { withAttachmentNote } from '../files/references.ts'
+import { StoreReadError } from '../state/read-error.ts'
 
 // File-first storage, one folder per thread, outside the repo:
 //   <root>/threads/<id>/meta.json     current metadata (atomic rewrite)
@@ -53,7 +54,7 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
   const readMeta = (id: string): ThreadMeta | undefined => {
     const file = join(dirOf(id), 'meta.json')
     if (!existsSync(file)) return undefined
-    return JSON.parse(readFileSync(file, 'utf8')) as ThreadMeta
+    try { return JSON.parse(readFileSync(file, 'utf8')) as ThreadMeta } catch { throw new StoreReadError('UNREADABLE', file, 'not valid JSON') }
   }
 
   return {
@@ -68,8 +69,14 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
       return readdirSync(threadsDir)
         .filter((name) => ID_PATTERN.test(name))
         .flatMap((id) => {
-          const meta = readMeta(id)
-          return meta ? [meta] : []
+          // One damaged conversation must not hide the rest; opening it reports the damage.
+          try {
+            const meta = readMeta(id)
+            return meta ? [meta] : []
+          } catch (error) {
+            console.warn('[cockpit]', error instanceof Error ? error.message : error)
+            return []
+          }
         })
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },

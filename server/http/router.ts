@@ -9,9 +9,11 @@ import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { ProcessRunner } from '../processes/runner.ts'
-import { projectPatchSchema, type ProjectStore } from '../projects/store.ts'
+import { projectPatchSchema, type Project, type ProjectStore } from '../projects/store.ts'
+import type { WorkspaceStore } from '../projects/workspaces.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
 import { MAX_MEMORY_CHARS, MemoryReadError, memoryScope, type MemoryStore } from '../memory/store.ts'
+import { StoreReadError } from '../state/read-error.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -99,6 +101,8 @@ export interface ApiDeps {
   readonly manager: ThreadManager
   readonly store: ThreadStore
   readonly projects: ProjectStore
+  /** Opaque project/workspace identity (G-IDENTITY). Absent in tests that do not need it. */
+  readonly workspaces?: WorkspaceStore
   readonly processes: ProcessRunner
   readonly mcp: McpRouteDeps
   readonly remote: RemoteAccess
@@ -111,7 +115,25 @@ export interface ApiDeps {
   readonly importHome?: string
 }
 
-export function createApiHandler({ manager, store, projects, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+/**
+ * Each project with its opaque IDs. An unreadable workspaces.json leaves them off (and is reported)
+ * rather than hiding the projects; features that need an ID refuse on their own.
+ */
+function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | undefined): Array<Project & { projectId?: string; workspaceId?: string }> {
+  if (!workspaces) return [...list]
+  try {
+    workspaces.ensure(list.map((p) => p.path))
+    return list.map((p) => {
+      const found = workspaces.primaryFor(p.path)
+      return found ? { ...p, projectId: found.project.id, workspaceId: found.workspace.id } : p
+    })
+  } catch (error) {
+    console.warn('[cockpit]', error instanceof Error ? error.message : error)
+    return [...list]
+  }
+}
+
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -415,7 +437,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       if (parts[1] === 'projects' && parts.length === 2) {
         if (method === 'GET') {
           projects.ensure(store.list().map((meta) => ({ path: meta.projectPath, at: meta.updatedAt })))
-          sendJson(res, 200, { data: projects.list() })
+          sendJson(res, 200, { data: withIdentity(projects.list(), workspaces) })
           return true
         }
         if (method === 'POST') {
@@ -510,7 +532,7 @@ export function createApiHandler({ manager, store, projects, processes, mcp, wor
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof ThreadBusyError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ThreadBusyError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

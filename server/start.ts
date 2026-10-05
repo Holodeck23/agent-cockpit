@@ -11,6 +11,7 @@ import { createAgentStatus, type VersionProbe } from './agents/status.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
+import { createWorkspaceStore } from './projects/workspaces.ts'
 import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
@@ -104,6 +105,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const root = options.stateRoot ?? defaultRoot()
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
+  const workspaces = createWorkspaceStore(root)
   const processes = createProcessRunner()
   const sessions = createMcpSessions()
   // Known once listening; sessions only start after that.
@@ -132,6 +134,12 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       : {}),
   })
   const workflowStore = createWorkflowStore(root)
+  // Additive identity migration: registers every folder Cockpit already knows; rewrites no legacy file.
+  try {
+    workspaces.ensure([...projects.list({ includeHidden: true }).map((p) => p.path), ...store.list().map((m) => m.projectPath), ...workflowStore.list().map((w) => w.projectPath)])
+  } catch (error) {
+    console.warn('[cockpit] workspace identities not registered:', error instanceof Error ? error.message : error)
+  }
   const memory = createMemoryStore(root)
   const presets = createPresetStore(root)
   const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
@@ -169,7 +177,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
-  const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, presets, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
