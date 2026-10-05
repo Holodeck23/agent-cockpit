@@ -14,6 +14,7 @@ import type { WorkspaceStore } from '../projects/workspaces.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
 import { MAX_MEMORY_CHARS, MemoryReadError, memoryScope, type MemoryStore } from '../memory/store.ts'
 import { StoreReadError } from '../state/read-error.ts'
+import { workflowTitle } from '../workflows/title.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -465,7 +466,9 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req, IMAGE_BODY_BYTES))
         assertDirectory(body.projectPath)
-        const meta = manager.create({ ...body, ...expandedFor(body.text, body.projectPath), images: decodeImages(body.images) })
+        // A12: an explicit title wins; otherwise a message opening with one workflow is named after it.
+        const title = body.title?.trim() || workflowTitle(body.text, body.projectPath, workflows.store)
+        const meta = manager.create({ ...body, ...(title ? { title } : {}), ...expandedFor(body.text, body.projectPath), images: decodeImages(body.images) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true

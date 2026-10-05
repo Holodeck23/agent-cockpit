@@ -1,10 +1,11 @@
 import { RecoveryCard } from './RecoveryCard.tsx'
-import { useEffect, useState, type FormEvent } from 'react'
-import { api, type Project, type ThreadMeta, type MessageImage, type Workflow } from '../api.ts'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { api, type Project, type ThreadMeta, type MessageImage, type Workflow, type WorkflowInput } from '../api.ts'
 import { displayTitle } from '../workflow-list.ts'
 import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
+import { WorkflowEditor } from './Workflows.tsx'
 import { FolderIcon, PlusIcon, WorkflowIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
 
@@ -85,13 +86,34 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
   const [workflows, setWorkflows] = useState<Workflow[]>()
   const noWorkflows = workflows?.length === 0
   const [fresh, setFresh] = useState(Boolean(initialDraft))
+  // F16: the workflow editor opens here, over the start screen; the composer and its draft stay put.
+  const [newWorkflow, setNewWorkflow] = useState(false)
+  const [savingWorkflow, setSavingWorkflow] = useState(false)
+  const screen = useRef<HTMLElement>(null)
   const projectPath = project?.path
-  useEffect(() => {
-    if (!projectPath) return
+  const loadWorkflows = useCallback(() => {
+    if (!projectPath) return () => undefined
     let live = true
     api.listWorkflows(projectPath).then((rows) => { if (live) setWorkflows(rows) }, () => undefined)
     return () => { live = false }
   }, [projectPath])
+  useEffect(loadWorkflows, [loadWorkflows])
+  const closeWorkflowEditor = (): void => {
+    setNewWorkflow(false)
+    requestAnimationFrame(() => screen.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus())
+  }
+  const saveWorkflow = async (input: WorkflowInput): Promise<void> => {
+    setSavingWorkflow(true)
+    try {
+      await api.saveWorkflow(input)
+      loadWorkflows()
+      closeWorkflowEditor()
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSavingWorkflow(false)
+    }
+  }
 
   const changeChoice = (next: AgentChoice): void => {
     setChoice(next)
@@ -117,13 +139,17 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
   }
 
   return (
-    <main className="thread new-conversation">
+    <main className="thread new-conversation" ref={screen}>
       <header className="thread-head">
         <div className="thread-heading">
           <h1>New conversation</h1>
         </div>
       </header>
-      <div className="events">
+      {newWorkflow && project ? (
+        <div className="events new-workflow">
+          <WorkflowEditor projectPath={project.path} busy={savingWorkflow} saveOnly onSave={saveWorkflow} onCancel={closeWorkflowEditor} />
+        </div>
+      ) : <div className="events">
         <div className="start">
           {project && !fresh ? <RecoveryCard projectPath={project.path} onCreated={onCreated} onFresh={() => setFresh(true)} /> : <>
           <StartArt className="start-art" />
@@ -146,8 +172,11 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
                       </button>
                     ))}
                   </div>
-                  {onOpenWorkflows ? <button type="button" className="link-button" onClick={onOpenWorkflows}>
-                    {workflows.length > WORKFLOW_CARDS ? `All ${workflows.length} workflows →` : 'Browse workflows →'}</button> : null}
+                  <div className="workflow-card-links">
+                    {onOpenWorkflows ? <button type="button" className="link-button" onClick={onOpenWorkflows}>
+                      {workflows.length > WORKFLOW_CARDS ? `All ${workflows.length} workflows →` : 'Browse workflows →'}</button> : null}
+                    <button type="button" className="link-button" onClick={() => setNewWorkflow(true)}>+ New workflow</button>
+                  </div>
                 </section>
               ) : null}
               <div className="suggestions">
@@ -167,6 +196,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
                   <span className="gallery-pointer-go" aria-hidden>→</span>
                 </button>
               ) : null}
+              {noWorkflows ? <button type="button" className="link-button" onClick={() => setNewWorkflow(true)}>+ New workflow</button> : null}
             </>
           ) : (
             <>
@@ -176,7 +206,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
           )}
           </>}
         </div>
-      </div>
+      </div>}
       <Composer
         onBrowseFiles={onBrowseFiles}
         initialDraft={initialDraft}

@@ -66,7 +66,7 @@ try {
   await page.screenshot({ path: join(PROOF_DIR, 'proof-schedules.png') })
 
   const ran = await until(page, 'the scheduled run', async () => (await getJson<Summary[]>(page, '/api/threads'))
-    .find((t) => t.meta.title === 'Calendar check · Scheduled'), 150_000)
+    .find((t) => t.meta.title === '@Calendar check'), 150_000)
   const ranAt = Date.now()
   check('it ran at the chosen minute', ranAt >= target.getTime() && ranAt < target.getTime() + 20_000 && ran.meta.workflowTrigger === 'scheduled',
     `${Math.round((ranAt - target.getTime()) / 1000)} s after`)

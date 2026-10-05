@@ -323,3 +323,6 @@
 .image-viewer::backdrop { background: rgb(0 0 0 / 0.72); }
 .image-viewer img { display: block; max-width: 94vw; max-height: 86vh; object-fit: contain; border-radius: 8px; }
 .image-viewer p { width: fit-content; max-width: 100%; margin: 8px auto 0; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.66); color: #fff; font-size: 12.5px; overflow-wrap: anywhere; }
+.workflow-card-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 18px; }
+/* F16: the workflow editor opened from the start screen fills it; the composer stays below. */
+.new-conversation .events.new-workflow { display: block; padding: 0; }
