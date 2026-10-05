@@ -19,6 +19,8 @@ import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
 import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
 import type { PreviewOpen } from '../server/preview/types.ts'
+import { createBrowserService, type BrowserService } from './browser-service.ts'
+import { registerBrowserIpc } from './browser-ipc.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -34,6 +36,7 @@ const isDev = !app.isPackaged
 
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
+let browser: BrowserService | undefined
 // Quit ends with app.exit, which skips the window's close event, so it saves the place itself.
 let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
@@ -89,7 +92,15 @@ async function boot(): Promise<void> {
   dock?.setDark(nativeTheme.shouldUseDarkColors)
   nativeTheme.on('updated', () => dock?.setDark(nativeTheme.shouldUseDarkColors))
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
-  registerIpc(running.url, join(running.store.root, 'threads'), (path) => running?.projects.list().some((p) => p.path === path) ?? false)
+  const isProject = (path: string): boolean => running?.projects.list().some((p) => p.path === path) ?? false
+  registerIpc(running.url, join(running.store.root, 'threads'), isProject)
+  // The in-app browser (wave 9): pages live in this process, the window's page drives them.
+  browser = createBrowserService({
+    window: () => mainWindow,
+    cockpitPorts: () => (running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : []),
+    publish: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('cockpit:browser-state', state) },
+  })
+  registerBrowserIpc(new URL(running.url).origin, browser, isProject, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
   mainWindow = createWindow(running.url)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
@@ -231,6 +242,7 @@ function createWindow(url: string): BrowserWindow {
   win.on('maximize', saveSoon)
   win.on('unmaximize', saveSoon)
   win.on('close', saveState)
+  win.on('closed', () => browser?.forgetAll())
   // The page drops the room it keeps for the window buttons while they are hidden.
   const sendFullScreen = (): void => { if (!win.isDestroyed()) win.webContents.send('cockpit:full-screen', win.isFullScreen()) }
   win.on('enter-full-screen', sendFullScreen)

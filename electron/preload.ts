@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import type { NewProject } from './new-project.ts'
 import type { ReleaseNotes } from './updates.ts'
 import type { PreviewOpen } from '../server/preview/types.ts'
+import type { NavAction, PageState } from './browser-service.ts'
 
 type CopyOutcome = { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }
 
@@ -36,6 +37,27 @@ const cockpit = {
     }
     ipcRenderer.on('cockpit:preview-open', receive)
     return () => ipcRenderer.removeListener('cockpit:preview-open', receive)
+  },
+  /** The in-app browser (wave 9): one page per conversation, drawn by the host over `rect`. */
+  browser: {
+    open: (key: string, projectPath: string, url: string): Promise<PageState | { error: string }> =>
+      ipcRenderer.invoke('cockpit:browser-open', { key, projectPath, url }) as Promise<PageState | { error: string }>,
+    /** Where the page goes, in window CSS pixels; null hides it (a menu or dialog needs the space). */
+    place: (key: string, rect: { x: number; y: number; width: number; height: number } | null): void => ipcRenderer.send('cockpit:browser-place', { key, rect }),
+    navigate: (key: string, action: NavAction): void => ipcRenderer.send('cockpit:browser-nav', { key, action }),
+    state: (key: string): Promise<PageState | undefined> => ipcRenderer.invoke('cockpit:browser-state', key) as Promise<PageState | undefined>,
+    openExternal: (key: string): void => ipcRenderer.send('cockpit:browser-external', key),
+    close: (key: string): void => ipcRenderer.send('cockpit:browser-close', key),
+    /** Resolves to an error message, if any. */
+    clearData: (projectPath: string): Promise<string | undefined> => ipcRenderer.invoke('cockpit:browser-clear', projectPath) as Promise<string | undefined>,
+    onState: (listener: (state: PageState) => void): (() => void) => {
+      const receive = (_event: IpcRendererEvent, value: unknown): void => {
+        const state = value as Partial<PageState> | undefined
+        if (state && typeof state.key === 'string' && typeof state.url === 'string') listener(state as PageState)
+      }
+      ipcRenderer.on('cockpit:browser-state', receive)
+      return () => ipcRenderer.removeListener('cockpit:browser-state', receive)
+    },
   },
   copyText: (text: string): void => ipcRenderer.send('cockpit:copy-text', text),
   notify: (notification: { threadId: string; title: string; body: string }): void => ipcRenderer.send('cockpit:notify', notification),
