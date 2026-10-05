@@ -194,7 +194,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)

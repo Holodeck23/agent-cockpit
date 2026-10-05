@@ -118,6 +118,7 @@ export interface ApiDeps {
   readonly importHome?: string
   /** Each run's before/after workspace observations (W7-05). */
   readonly runs?: RunObservationStore
+  readonly observingRun?: (runId: string) => boolean
 }
 
 /**
@@ -138,7 +139,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -389,7 +390,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         return true
       }
       if (parts[1] === 'git') {
-        await handleGitRoute(req, res, url, parts, { projects, manager, ...(runs ? { runs } : {}) }, viaPhone)
+        await handleGitRoute(req, res, url, parts, { projects, manager, ...(runs ? { runs } : {}), ...(observingRun ? { observing: observingRun } : {}) }, viaPhone)
         return true
       }
       if (parts[1] === 'processes') {

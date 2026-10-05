@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, wri
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { gitState } from '../server/git/branches.ts'
 import { baseFile, fileDiff, listChanges, MAX_PATHS, parseNumstat, parseStatusV2, type Changes } from '../server/git/changes.ts'
 
 const ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' }
@@ -132,7 +133,7 @@ describe('uncommitted changes (J4, W7-03)', () => {
     await expect(baseFile(root, '../../etc/passwd')).rejects.toThrow(/not changed/)
   })
 
-  it('never runs an external diff, textconv or fsmonitor helper from the repository config', async () => {
+  it('never runs an external diff, textconv or fsmonitor helper from the repository config, nor does the branch pill', async () => {
     const root = repo()
     const marker = join(root, '..', 'helper-ran')
     const helper = join(root, '..', 'helper.sh')
@@ -146,6 +147,7 @@ describe('uncommitted changes (J4, W7-03)', () => {
     await listChanges(root)
     const diff = await fileDiff(root, 'a.txt')
     await baseFile(root, 'a.txt')
+    await gitState(root)
     expect(diff.lines).toEqual(expect.arrayContaining([{ kind: 'add', text: 'TWO', new: 2 }]))
     expect(existsSync(marker)).toBe(false)
   })

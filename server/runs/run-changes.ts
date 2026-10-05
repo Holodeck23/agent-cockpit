@@ -17,11 +17,12 @@ export interface RunChanges {
   readonly concurrent: readonly string[]
 }
 
-export function runChanges(runId: string, record: RunObservation | undefined, stillWorking: boolean): RunChanges {
+/** `inProgress`: the run is still working, or its observation is still being taken. */
+export function runChanges(runId: string, record: RunObservation | undefined, inProgress: boolean): RunChanges {
   const head = (o: Observation) => ({ observedAt: o.observedAt, head: o.head, branch: o.branch, repo: o.repo })
-  if (!record?.before) return { state: 'unrecorded', runId, preexisting: 0, concurrent: [] }
+  if (!record?.before) return { state: inProgress ? 'running' : 'unrecorded', runId, preexisting: 0, concurrent: [] }
   const base = { runId, before: head(record.before), preexisting: record.before.files.length, concurrent: record.concurrent ?? [] }
-  if (!record.after) return { ...base, state: stillWorking && !record.concurrent ? 'running' : 'incomplete' }
+  if (!record.after) return { ...base, state: inProgress ? 'running' : 'incomplete' }
   const comparison = compareObservations(record.before, record.after)
   const uncertain = [
     ...(record.lateBefore ? ['The agent had started before the “before” snapshot finished.'] : []),

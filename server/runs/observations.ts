@@ -73,6 +73,8 @@ export function createRunObservationStore(root: string): RunObservationStore {
 }
 
 export interface RunObserver {
+  /** The run started or ended and its observation is not stored yet. */
+  observing(runId: string): boolean
   /** Resolves once every observation started so far is stored (tests, shutdown). */
   settle(): Promise<void>
   stop(): void
@@ -85,6 +87,7 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
   const pending = new Map<string, Pending>()
   const current = new Map<string, string>() // thread id -> run id in progress
   const work = new Set<Promise<void>>()
+  const finishing = new Set<string>()
   const track = (promise: Promise<void>): void => { work.add(promise); void promise.finally(() => work.delete(promise)) }
   const metaOf = (threadId: string) => manager.summaries().find((s) => s.meta.id === threadId)?.meta
   const othersWorking = (threadId: string, projectPath: string): string[] =>
@@ -112,6 +115,7 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
     if (current.get(threadId) === runId) current.delete(threadId)
     if (!entry) return
     for (const title of othersWorking(threadId, entry.projectPath)) entry.concurrent.add(title)
+    finishing.add(runId)
     track((async () => {
       const before = await entry.before
       let after: Observation | undefined
@@ -123,7 +127,7 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
         ...(before ? { before } : {}), ...(after ? { after } : {}),
         ...(entry.late ? { lateBefore: true } : {}), concurrent: [...entry.concurrent],
       })
-    })())
+    })().finally(() => finishing.delete(runId)))
   }
 
   const unsubscribe = manager.subscribe(({ threadId, event }) => {
@@ -169,6 +173,7 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
   })
 
   return {
+    observing: (runId) => pending.has(runId) || finishing.has(runId),
     async settle() { while (work.size) await Promise.all([...work]) },
     stop: unsubscribe,
   }

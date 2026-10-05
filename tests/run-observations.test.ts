@@ -106,12 +106,17 @@ describe('a run’s before/after observations (W7-05)', () => {
     expect(store.get('run-a')?.lateBefore).toBe(true)
     expect(store.get('run-b')).toBeUndefined()
     emit('t1', { kind: 'user_taken', text: 'second', id: 'q1' })
+    // Between the result and the stored "after", the run reads as still in progress, never incomplete.
+    expect(observer.observing('run-a')).toBe(true)
+    expect(runChanges('run-a', store.get('run-a'), observer.observing('run-a')).state).toBe('running')
     await observer.settle()
+    expect(observer.observing('run-a')).toBe(false)
     expect(store.get('run-a')?.after).toBeDefined()
     expect(store.get('run-b')?.before).toBeDefined()
     expect(runChanges('run-b', store.get('run-b'), true).state).toBe('running')
     expect(runChanges('run-b', store.get('run-b'), false).state).toBe('incomplete')
     expect(runChanges('run-z', undefined, false).state).toBe('unrecorded')
+    expect(runChanges('run-z', undefined, true).state).toBe('running')
   })
 
   it('a damaged or newer record fails visibly and is left exactly as found', () => {

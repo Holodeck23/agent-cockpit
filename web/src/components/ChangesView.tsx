@@ -40,8 +40,17 @@ export function ChangesView({ projectPath, threadId, runId, refreshKey, onOpenFi
   useEffect(() => {
     if (!runId) return
     let live = true
-    api.gitRun(threadId, runId).then((data) => { if (live) setRun({ state: 'ready', data }) }, (e: unknown) => { if (live) setRun({ state: 'error', message: message(e) }) })
-    return () => { live = false }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // A run that just ended is still being observed for a moment: ask again, briefly and boundedly.
+    const load = (tries: number): void => {
+      api.gitRun(threadId, runId).then((data) => {
+        if (!live) return
+        setRun({ state: 'ready', data })
+        if (data.state === 'running' && tries > 0) timer = setTimeout(() => load(tries - 1), 1000)
+      }, (e: unknown) => { if (live) setRun({ state: 'error', message: message(e) }) })
+    }
+    load(30)
+    return () => { live = false; if (timer) clearTimeout(timer) }
   }, [threadId, runId, reloads, refreshKey])
 
   const files = changes.state === 'ready' && changes.data.repo ? changes.data.files : []
@@ -120,7 +129,7 @@ function RunPanel({ run, onShowFile }: { run: Load<RunChanges>; onShowFile: (pat
   if (run.state === 'error') return <p className="changes-note changes-error" role="alert">{run.message}</p>
   const view = run.data
   if (view.state === 'unrecorded') return <p className="changes-note">Cockpit has no before/after record for this run (it ran before Cockpit kept them, or the folder could not be read). Working changes still shows the folder as it is now.</p>
-  if (view.state === 'running') return <p className="changes-note">This run is still working. Its changes are compared when it ends.</p>
+  if (view.state === 'running') return <p className="changes-note">This run is still working, or has just ended and is being compared.</p>
   if (view.state === 'incomplete') return <p className="changes-note">This run has a “before” record but no “after”: Cockpit stopped, or the folder could not be read, before it finished. Working changes shows the folder as it is now.</p>
   const comparison = view.comparison!
   const shown = comparison.files.filter((f) => f.change !== 'unchanged')

@@ -106,7 +106,7 @@ const NOT_A_REPO: GitState = { repo: false, branches: [], changes: [], changeCou
 export async function gitState(projectPath: string): Promise<GitState> {
   if (!insideRepository(projectPath)) return NOT_A_REPO
   const [status, refs] = await Promise.all([
-    run(projectPath, ['status', '--porcelain=v2', '--branch', '--untracked-files=normal']),
+    run(projectPath, ['-c', 'core.fsmonitor=false', 'status', '--porcelain=v2', '--branch', '--untracked-files=normal']),
     run(projectPath, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', `--count=${MAX_BRANCHES}`, 'refs/heads']),
   ])
   const branches = refs.stdout.split('\n').filter(Boolean)
