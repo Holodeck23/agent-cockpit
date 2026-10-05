@@ -12,6 +12,7 @@ import { claudeUserMessage } from '../image-input.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
 import { probeClaude, validateClaudeArgs } from './capabilities.ts'
+import { watchChrome } from './chrome-watch.ts'
 
 export interface ClaudeLaunchDeps {
   /** Override for tests or a non-PATH install. */
@@ -24,10 +25,12 @@ export interface ClaudeLaunchDeps {
  * Starts one long-lived `claude -p` process in stream-json mode. The process
  * stays alive across turns; each `send` is a new user message on stdin.
  */
-export function launchClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps = {}): AgentSession {
+export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: ClaudeLaunchDeps = {}): AgentSession {
   buildClaudeArgs(input) // Validate caller input synchronously, before probing any executable.
   const controller = new AbortController()
   let session: AgentSession | undefined
+  // Use my Chrome: the first Chrome call gets a bounded wait (chrome-watch.ts).
+  const onEvent: EventSink = input.chrome ? watchChrome(events, () => session?.interrupt()) : events
   let ended = false
   let pending: { readonly text: string; readonly images?: readonly OutgoingImage[] } | undefined
   let replays = false

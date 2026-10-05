@@ -9,6 +9,8 @@ export interface ClaudeCapabilities {
   readonly promptSuggestions: boolean
   /** --append-system-prompt-file (J5). 2.1.289 never declares it; it names it only in --bare's prose. */
   readonly appendSystemPromptFile: boolean
+  /** --chrome: Claude in Chrome, for Use my Chrome (H4). */
+  readonly chrome: boolean
   readonly options: ReadonlyMap<string, string>
 }
 
@@ -30,6 +32,7 @@ export function parseClaudeHelp(help: string): ClaudeCapabilities {
     replayUserMessages: options.has('--replay-user-messages'),
     promptSuggestions: options.has('--prompt-suggestions'),
     appendSystemPromptFile: options.has('--append-system-prompt-file') || help.includes('--append-system-prompt[-file]'),
+    chrome: options.has('--chrome'),
     options,
   }
 }
@@ -38,7 +41,7 @@ export function validateClaudeArgs(args: readonly string[], capabilities: Claude
   // This SDK option is hidden from --help in both tested CLI versions. Its
   // behavior is covered by the real Allow/Deny gate, not inferred from help.
   const hidden = '--permission-prompt-tool'
-  const switches = new Set(['--print', '--verbose', '--include-partial-messages', '--strict-mcp-config', '--replay-user-messages'])
+  const switches = new Set(['--print', '--verbose', '--include-partial-messages', '--strict-mcp-config', '--replay-user-messages', '--chrome'])
   for (let i = 0; i < args.length; i++) {
     const option = args[i]!
     const block = capabilities.options.get(option)

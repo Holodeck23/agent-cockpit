@@ -98,7 +98,7 @@ describe('startServer', () => {
     const res = await get(running.port, '/api/agents')
     expect(res.status).toBe(200)
     expect(JSON.parse(res.body)).toEqual({ data: [
-      { id: 'claude', installation: { installed: true, version: 'claude 1.0' } },
+      { id: 'claude', installation: { installed: true, version: 'claude 1.0' }, chrome: { supported: false, extension: false } },
       { id: 'codex', installation: { installed: true, version: 'codex 1.0' } },
       { id: 'antigravity', installation: { installed: true, version: 'agy 1.0' } },
       { id: 'opencode', installation: { installed: true, version: 'opencode 1.0' } },

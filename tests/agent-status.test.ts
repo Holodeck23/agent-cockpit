@@ -51,19 +51,23 @@ describe('createAgentStatus', () => {
       probes += 1
       return command === 'claude' ? { installed: true, version: '2.1.284 (Claude Code)' } : { installed: false, problem: `${command} is not installed or not on your PATH` }
     }
-    const status = createAgentStatus(newStore(), probe, () => clock)
+    let chromeChecks = 0
+    const status = createAgentStatus(newStore(), probe, () => clock, async () => { chromeChecks += 1; return { supported: true, extension: false } })
     const first = await status()
     expect(first).toEqual([
-      { id: 'claude', installation: { installed: true, version: '2.1.284 (Claude Code)' } },
+      // Use my Chrome readiness (W9-12), checked with the version and cached with it, never a turn.
+      { id: 'claude', installation: { installed: true, version: '2.1.284 (Claude Code)' }, chrome: { supported: true, extension: false } },
       { id: 'codex', installation: { installed: false, problem: 'codex is not installed or not on your PATH' } },
       { id: 'antigravity', installation: { installed: false, problem: 'agy is not installed or not on your PATH' } },
       { id: 'opencode', installation: { installed: false, problem: 'opencode is not installed or not on your PATH' } },
     ])
     await status()
     expect(probes).toBe(4)
+    expect(chromeChecks).toBe(1)
     clock = 61_000
     await status()
     expect(probes).toBe(8)
+    expect(chromeChecks).toBe(2)
   })
 
   it('says plainly when a CLI is missing', async () => {

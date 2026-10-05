@@ -239,7 +239,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  const agents = createAgentStatus(store, options.agentProbe)
+  // Tests that fake the version check fake Chrome readiness too: no real CLI is run.
+  const agents = createAgentStatus(store, options.agentProbe, undefined, options.agentProbe ? async () => ({ supported: false, extension: false }) : undefined)
   const browserLeases = createBrowserLeases()
   const browser = options.browserHost ? createBrowserAgent({
     host: options.browserHost,

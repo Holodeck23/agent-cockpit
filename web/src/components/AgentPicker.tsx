@@ -16,6 +16,8 @@ export interface AgentChoice {
   readonly model: string
   readonly effort: string
   readonly permissionMode: ThreadSettings['permissionMode']
+  /** Use my Chrome (Claude only). */
+  readonly chrome?: boolean
 }
 
 const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
@@ -39,9 +41,10 @@ export function choiceSummary(choice: AgentChoice): string {
 }
 
 export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): Partial<ThreadSettings> {
-  const { model: _model, effort: _effort, ...rest } = base ?? { useHooks: false }
+  const { model: _model, effort: _effort, useChrome: _chrome, ...rest } = base ?? { useHooks: false }
   return {
     ...rest,
+    ...(choice.agent === 'claude' && choice.chrome ? { useChrome: true } : {}),
     agent: choice.agent,
     permissionMode: choice.permissionMode,
     ...(choice.model ? { model: choice.model } : {}),
@@ -74,6 +77,27 @@ function AgentState({ status, loading }: { status: AgentStatus | undefined; load
       ) : (
         <p className="agent-state-note">No usage reported yet; it appears after this agent's next turn.</p>
       )}
+    </div>
+  )
+}
+
+/** Use my Chrome (H4): Claude's own Chrome tools through the installed extension, not Cockpit's browser pane. */
+function UseMyChrome({ checked, readiness, onChange }: { checked: boolean; readiness: AgentStatus['chrome']; onChange: (chrome: boolean) => void }) {
+  const unsupported = readiness?.supported === false
+  const state = !readiness ? 'Checking Claude Code and the Chrome extension…'
+    : unsupported ? 'This Claude Code does not support it (no --chrome option). Update Claude Code to use it.'
+    : readiness.extension ? 'Claude Code supports it and the Claude extension’s helper is installed. Chrome is checked when Claude first uses it.'
+    : 'The Claude extension for Chrome is not set up on this Mac (its helper is missing). Install it in Chrome first.'
+  return (
+    <div className="use-chrome">
+      <label className="check">
+        <input type="checkbox" checked={checked} disabled={unsupported && !checked} onChange={(e) => onChange(e.target.checked)} />
+        <span>Use my Chrome</span>
+      </label>
+      <p className="picker-note">
+        Lets Claude use your installed Chrome and the sites you are signed in to there, through the Claude extension.
+        This is separate from Cockpit’s own browser pane. Stopping or quitting never closes Chrome or its tabs. {state}
+      </p>
     </div>
   )
 }
@@ -270,6 +294,9 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
                 ))}
               </select>
             </label>
+            {current.agent === 'claude' ? (
+              <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
+            ) : null}
             {current.agent === 'antigravity' ? (
               <p className="picker-note">
                 {current.permissionMode === 'manual'

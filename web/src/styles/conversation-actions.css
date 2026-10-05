@@ -23,3 +23,6 @@
 .delete-confirm:has(.delete-processes) { width: 360px; }
 .delete-processes ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--body); }
 .delete-confirm:has(.delete-processes) .delete-actions { flex-wrap: wrap; }
+/* Use my Chrome (W9-12): while Claude's first Chrome call waits, with Cancel. */
+.chrome-connecting { display: flex; align-items: center; gap: 10px; margin: 0 auto 8px; padding: 8px 8px 8px 14px; width: fit-content; max-width: calc(100% - 32px); border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--secondary); font-size: 13px; }
+.use-chrome { display: grid; gap: 4px; }

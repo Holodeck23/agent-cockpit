@@ -408,7 +408,17 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       }
       case 'settings_changed': {
         const mode = (PERMISSION_LABEL as Record<string, string>)[event.permissionMode] ?? event.permissionMode
-        items.push({ type: 'note', key, text: `Now ${event.model ?? 'the default model'}, ${event.effort ? `${event.effort} effort` : 'default effort'}, ${mode}. Applies from your next message.`, tone: 'plain' })
+        const chrome = event.chrome === undefined ? '' : event.chrome ? ', using your Chrome' : ', not using your Chrome'
+        items.push({ type: 'note', key, text: `Now ${event.model ?? 'the default model'}, ${event.effort ? `${event.effort} effort` : 'default effort'}, ${mode}${chrome}. Applies from your next message.`, tone: 'plain' })
+        return
+      }
+      case 'chrome_connection': {
+        // "Connecting" shows as a banner with Cancel above the composer while it lasts (ThreadView).
+        const text = event.phase === 'connected' ? 'Connected to your Chrome.'
+          : event.phase === 'cancelled' ? 'Stopped while connecting to your Chrome.'
+          : event.phase === 'failed' ? `Could not reach your Chrome. ${event.detail ?? ''}`.trim()
+          : event.phase === 'disconnected' ? `Your Chrome disconnected. ${event.detail ?? ''}`.trim() : undefined
+        if (text) items.push({ type: 'note', key, text, tone: event.phase === 'failed' || event.phase === 'disconnected' ? 'error' : 'plain' })
         return
       }
       case 'branch_changed':

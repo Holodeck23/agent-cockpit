@@ -76,6 +76,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         effort: effortForClaude(req.settings.effort),
         permissionMode: req.settings.permissionMode,
         useHooks: req.settings.useHooks,
+        chrome: req.settings.useChrome === true,
         sessionId: req.sessionId,
         resume: req.resume,
         appendSystemPrompt: instructionsFor(req),
@@ -631,7 +632,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
       void retire(threadId)
       const next = store.update(threadId, { settings })
-      record(threadId, { kind: 'settings_changed', ...(settings.model ? { model: settings.model } : {}), ...(settings.effort ? { effort: settings.effort } : {}), permissionMode: settings.permissionMode })
+      record(threadId, { kind: 'settings_changed', ...(settings.model ? { model: settings.model } : {}), ...(settings.effort ? { effort: settings.effort } : {}), permissionMode: settings.permissionMode,
+        ...(Boolean(settings.useChrome) !== Boolean(meta.settings.useChrome) ? { chrome: settings.useChrome === true } : {}) })
       return next
     },
     resumeRecovered(threadId, agent, text, agentText) {

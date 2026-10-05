@@ -36,6 +36,8 @@ export const claudeLaunchSchema = z
     sessionId: z.uuid().optional(),
     resume: z.uuid().optional(),
     useHooks: z.boolean().default(false),
+    /** Use my Chrome (H4): Claude's own Chrome tools, through the installed extension. */
+    chrome: z.boolean().default(false),
     // Guidance + project instructions + a whole switch handoff (J5, 400k) must fit; same bound as Codex.
     appendSystemPrompt: z.string().max(500_000).optional(),
     /** The same prompt, written to a private file by the launcher: kept out of argv, which any local user can read. */
@@ -72,6 +74,8 @@ export function buildClaudeArgs(
     '--permission-prompt-tool', 'stdio',
     '--strict-mcp-config',
     '--mcp-config', JSON.stringify(o.mcpConfig),
+    // The Chrome tools are added by this switch even under --strict-mcp-config (probed on 2.1.289).
+    ...(o.chrome ? ['--chrome'] : []),
     '--settings', JSON.stringify(settings),
     // Cockpit owns scheduling and notifications; the agent must not self-schedule.
     '--disallowed-tools', 'ScheduleWakeup,CronCreate,PushNotification,RemoteTrigger',
