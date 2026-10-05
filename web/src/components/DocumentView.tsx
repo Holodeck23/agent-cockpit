@@ -210,7 +210,8 @@ export default function DocumentView({ draft, readOnly, onChange, onSave, onUnav
       {baseline.current?.frontMatter ? <p className="file-help">Front matter is kept as it is. Edit it in Source.</p> : null}
       {problem ? <div className="workflow-notice" role="alert">{problem}</div> : null}
       {mentionMenu && mention ? <div className="doc-mention" style={{ left: mention.left, top: mention.top }}>{mentionMenu}</div> : null}
-      <div className="doc-surface" ref={host} aria-label="Document" onKeyDownCapture={(event) => {
+      {/* Edits reach onChange after a debounce; leaving the document (e.g. pressing Save) reports them first. */}
+      <div className="doc-surface" ref={host} aria-label="Document" onBlur={() => { current.current?.write() }} onKeyDownCapture={(event) => {
         // The @ list takes its keys before the editor does.
         onMentionKey({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing,
           preventDefault: () => event.preventDefault(), stopPropagation: () => event.stopPropagation() })
