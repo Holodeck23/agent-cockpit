@@ -13,6 +13,7 @@ import { readCursor } from './process-routes.ts'
 import { oneLine } from '../files/visible-name.ts'
 import { MAX_MEMORY_CHARS, memoryScope, recallText, type MemoryStore } from '../memory/store.ts'
 import type { PreviewOpen } from '../preview/types.ts'
+import type { BrowserAgent } from '../browser/agent.ts'
 
 // /api/mcp: the cockpit MCP server (one per agent session) calls back here.
 // Every call carries that session's bearer token, and everything it can see or
@@ -65,7 +66,9 @@ export interface McpRouteDeps {
    * The agent's own CLI gate is not enough: its session token is in its environment, so its shell
    * can call these routes directly. Without this, the routes that change things refuse.
    */
-  readonly approve?: (grant: McpGrant, toolName: string, input: Record<string, unknown>, options: HostActionOptions, signal: AbortSignal) => Promise<void>
+  readonly approve?: (grant: McpGrant, toolName: string, input: Record<string, unknown>, options: HostActionOptions, signal: AbortSignal) => Promise<unknown>
+  /** The agent's browser tools (H3): desktop app only. */
+  readonly browser?: BrowserAgent
 }
 
 const APPROVAL_SECONDS = 45
@@ -159,6 +162,17 @@ export async function handleMcpRoute(
         { description: `Remember this ${where}.` }, () => memory.add({ ...body, projectPath, source: { kind: 'conversation', threadId: grant.threadId } }))
       return sendJson(res, 201, { data: entry })
     }
+  }
+  // /api/mcp/browser/<operation>: the conversation's own page, under the browser policy (H3).
+  if (parts[2] === 'browser' && parts.length === 4 && method === 'POST') {
+    if (!deps.browser) throw new HttpError(503, 'The in-app browser is only available in the Cockpit desktop app')
+    const body = await readJson(req)
+    const abort = new AbortController()
+    const disconnected = (): void => { if (!res.writableEnded) abort.abort() }
+    res.once('close', disconnected)
+    try {
+      return sendJson(res, 200, { data: await deps.browser.handle(grant, parts[3]!, body, abort.signal) })
+    } finally { res.removeListener('close', disconnected) }
   }
   if (parts[2] === 'preview' && parts[3] === 'screenshot' && method === 'POST') {
     if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')

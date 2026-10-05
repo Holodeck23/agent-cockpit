@@ -1,3 +1,5 @@
+import { createBrowserAgent, type BrowserHost } from './browser/agent.ts'
+import { createBrowserLeases, type BrowserLeases } from './browser/agent-policy.ts'
 import { createConversationControl } from './mcp/control.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type ServerResponse } from 'node:http'
@@ -58,6 +60,8 @@ export interface StartOptions {
    * Without it, any local process can use the API, which only `npm start` should allow.
    */
   readonly windowKey?: string
+  /** The in-app browser's pages (desktop app only), read when an agent calls a browser tool. */
+  readonly browserHost?: () => BrowserHost | undefined
 }
 
 function openWithSystem({ url }: PreviewOpen): Promise<void> {
@@ -82,6 +86,8 @@ export interface RunningServer {
   /** Durable result cards and finite host checks (pilot 10.1). */
   readonly results: ResultService
   readonly checks: CheckRunner
+  /** Agents' browser grants; the desktop shell revokes a page's grants when the page goes away. */
+  readonly browserLeases: BrowserLeases
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
   close(): Promise<void>
 }
@@ -230,6 +236,15 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
   const agents = createAgentStatus(store, options.agentProbe)
+  const browserLeases = createBrowserLeases()
+  const browser = options.browserHost ? createBrowserAgent({
+    host: options.browserHost,
+    leases: browserLeases,
+    cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])],
+    // Only while the conversation is working and Stop has not been pressed.
+    currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
+    approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
+  }) : undefined
   const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
@@ -239,7 +254,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
       approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
-      cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])] } },
+      cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])], ...(browser ? { browser } : {}) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)
   server.on('request', (req, res) => {
@@ -267,5 +282,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, browserLeases, close }
 }

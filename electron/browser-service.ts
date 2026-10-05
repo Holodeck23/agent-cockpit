@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs'
-import { shell, WebContentsView, session as sessions, type BrowserWindow, type Session } from 'electron'
+import { shell, WebContentsView, session as sessions, type BrowserWindow, type Session, type WebContents } from 'electron'
 import { isAllowedRequest, isNavigable, partitionFor, validBounds, type Bounds } from './browser-policy.ts'
 
 // The in-app browser (H1/H2, wave 9): one page per conversation, owned by this process.
@@ -23,9 +23,15 @@ export type NavAction = 'back' | 'forward' | 'reload' | 'stop'
 interface Page {
   readonly view: WebContentsView
   readonly partition: string
+  readonly projectPath: string
   error?: PageState['error']
   attached: boolean
+  /** Changes on every navigation and viewport resize; drawn from one counter, so no two pages share one. */
+  revision: number
 }
+
+/** A page's size before the pane has ever placed it (an agent opened it in the background). */
+export const DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const
 
 export interface BrowserServiceDeps {
   readonly window: () => BrowserWindow | undefined
@@ -39,6 +45,9 @@ const canonical = (path: string): string => { try { return realpathSync(path) } 
 export function createBrowserService(deps: BrowserServiceDeps) {
   const pages = new Map<string, Page>()
   const guarded = new Set<Session>()
+  const destroyedListeners = new Set<(key: string) => void>()
+  let revisions = 0
+  const bump = (page: Page): void => { page.revision = ++revisions }
 
   // Installed once per partition, never on the control session (whose one onBeforeSendHeaders
   // listener carries the window key, electron/window-key.ts).
@@ -72,8 +81,13 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     const partition = partitionFor(canonical(projectPath))
     const web = sessions.fromPartition(partition)
     guard(web)
-    const view = new WebContentsView({ webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false } })
-    const page: Page = { view, partition, attached: false }
+    // backgroundThrottling off: a page the person is not looking at still takes hover and wheel
+    // input from its agent (order 11 input experiment); W9-10 residency bounds what that costs.
+    const view = new WebContentsView({ webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
+    const page: Page = { view, partition, projectPath, attached: false, revision: 0 }
+    bump(page)
+    view.setBounds({ x: 0, y: 0, ...DEFAULT_VIEWPORT })
+    view.setVisible(false)
     const contents = view.webContents
     // A new window opens in this same page when it is an allowed address; nothing else opens.
     contents.setWindowOpenHandler(({ url }) => {
@@ -85,6 +99,12 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     contents.on('will-redirect', stay)
     contents.on('will-frame-navigate', (details) => { if (!isAllowedRequest(details.url, deps.cockpitPorts())) details.preventDefault() })
     contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) page.error = undefined })
+    contents.on('did-navigate', () => bump(page))
+    contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => { if (isMainFrame) bump(page) })
+    contents.once('destroyed', () => {
+      if (pages.get(key) === page) pages.delete(key)
+      for (const listener of destroyedListeners) listener(key)
+    })
     contents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
       // -3 is an aborted load: a new navigation replaced it, or Stop.
       if (isMainFrame && code !== -3) page.error = { code, description, url }
@@ -95,6 +115,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       contents.on(event as 'did-start-loading', () => publish(key))
     }
     pages.set(key, page)
+    attach(page)
     return page
   }
 
@@ -116,7 +137,17 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       void page.view.webContents.loadURL(url).catch(() => undefined)
       return stateOf(key, page)
     },
-    /** The page's place in the window; undefined hides it. Showing one page hides the others. */
+    /** Loads `url` in an existing page (the agent's navigate); an error message when it may not. */
+    load(key: string, url: string): string | undefined {
+      const page = pages.get(key)
+      if (!page) return 'This conversation has no page.'
+      // Checked here as well as on the server: no path into a page skips the host's own rule.
+      if (!isNavigable(url, deps.cockpitPorts())) return 'Only http and https pages open here, and not Cockpit itself.'
+      page.error = undefined
+      void page.view.webContents.loadURL(url).catch(() => undefined)
+      return undefined
+    },
+        /** The page's place in the window; undefined hides it. Showing one page hides the others. */
     place(key: string, rect: unknown): void {
       const page = pages.get(key)
       if (!page) return
@@ -126,6 +157,8 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const bounds: Bounds | undefined = rect === null ? undefined : validBounds(rect, { width: width!, height: height! })
       if (!bounds) { page.view.setVisible(false); return }
       for (const [other, p] of pages) if (other !== key) p.view.setVisible(false)
+      const before = page.view.getBounds()
+      if (before.width !== bounds.width || before.height !== bounds.height) bump(page)
       page.view.setBounds(bounds)
       page.view.setVisible(true)
     },
@@ -164,7 +197,24 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       return undefined
     },
     /** The window was closed: its views went with it. */
-    forgetAll(): void { pages.clear() },
+    forgetAll(): void {
+      const keys = [...pages.keys()]
+      pages.clear()
+      for (const key of keys) for (const listener of destroyedListeners) listener(key)
+    },
+    /** For the agent tools (electron/browser-agent-host.ts): the page itself, never handed to the renderer. */
+    agentPage(key: string): { readonly contents: WebContents; readonly revision: number; readonly viewport: { width: number; height: number } } | undefined {
+      const page = pages.get(key)
+      if (!page || page.view.webContents.isDestroyed()) return undefined
+      const { width, height } = page.view.getBounds()
+      return { contents: page.view.webContents, revision: page.revision, viewport: { width, height } }
+    },
+    /** The conversation's page, created hidden (blank) in its workspace's partition when it has none. */
+    ensure(key: string, projectPath: string): void { if (!pages.has(key)) create(key, projectPath) },
+    onDestroyed(listener: (key: string) => void): () => void {
+      destroyedListeners.add(listener)
+      return () => destroyedListeners.delete(listener)
+    },
   }
 }
 

@@ -10,6 +10,7 @@ import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { buildHandoff } from './handoff.ts'
+import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { awaitingOf } from './turns.ts'
@@ -182,7 +183,7 @@ export interface ThreadManager {
    * and workflow references. `workflows` records the referenced instructions as they were used.
    */
   /** A Cockpit-side action an agent asked for (conversation control, processes, memory, workflows), approved by the user here. */
-  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options?: HostActionOptions): Promise<void>
+  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options?: HostActionOptions): Promise<Exclude<ApprovalBehavior, 'deny'>>
   canControl(threadId: string): boolean
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
@@ -278,8 +279,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     try { write() } catch (error) { console.error(`[cockpit] could not save a ${kind} event`, error) }
   }
 
-  const record = (threadId: string, incoming: NormalizedEvent): void => {
+  const record = (threadId: string, raw: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
+    // Text an agent types into a web page is never stored or shown, only its length (H3).
+    const incoming = redactBrowserEvent(raw)
     if (incoming.kind === 'image_data') {
       const image = keepImage(threadId, incoming)
       if (image) record(threadId, image)

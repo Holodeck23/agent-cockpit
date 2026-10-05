@@ -62,3 +62,30 @@ export function pageKeyOk(value: unknown): value is string {
 export function partitionFor(workspacePath: string): string {
   return `persist:cockpit-web-${createHash('sha256').update(workspacePath).digest('hex').slice(0, 16)}`
 }
+
+// ---------- agent input (H3): pure pieces of electron/browser-agent-host.ts ----------
+
+/** The revision an element ref belongs to ("e12-3" → 12), or undefined for anything else. */
+export function refParts(ref: string): { revision: number; index: number } | undefined {
+  const match = /^e(\d{1,12})-(\d{1,4})$/.exec(ref)
+  return match ? { revision: Number(match[1]), index: Number(match[2]) } : undefined
+}
+
+/** A point in CSS pixels must fall inside the page's current viewport. */
+export function insideViewport(x: number, y: number, viewport: { readonly width: number; readonly height: number }): boolean {
+  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < viewport.width && y < viewport.height
+}
+
+/** The pointer positions of a drag after the press: `steps` even moves ending exactly at `to`. */
+export function dragPath(from: { x: number; y: number }, to: { x: number; y: number }, steps: number): Array<{ x: number; y: number }> {
+  const n = Math.max(1, Math.min(20, Math.floor(steps)))
+  return Array.from({ length: n }, (_, i) => ({ x: Math.round(from.x + ((to.x - from.x) * (i + 1)) / n), y: Math.round(from.y + ((to.y - from.y) * (i + 1)) / n) }))
+}
+
+/** The tool's key names as Electron's sendInputEvent spells them, and the character a key types. */
+export const KEY_EVENTS: Readonly<Record<string, { readonly keyCode: string; readonly char?: string }>> = {
+  Enter: { keyCode: 'Enter', char: '\r' }, Tab: { keyCode: 'Tab' }, Escape: { keyCode: 'Escape' },
+  Backspace: { keyCode: 'Backspace' }, Delete: { keyCode: 'Delete' }, Space: { keyCode: 'Space', char: ' ' },
+  ArrowUp: { keyCode: 'Up' }, ArrowDown: { keyCode: 'Down' }, ArrowLeft: { keyCode: 'Left' }, ArrowRight: { keyCode: 'Right' },
+  Home: { keyCode: 'Home' }, End: { keyCode: 'End' }, PageUp: { keyCode: 'PageUp' }, PageDown: { keyCode: 'PageDown' },
+}

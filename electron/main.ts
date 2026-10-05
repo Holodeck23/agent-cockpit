@@ -21,6 +21,8 @@ import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
 import type { PreviewOpen } from '../server/preview/types.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
 import { registerBrowserIpc } from './browser-ipc.ts'
+import { createBrowserAgentHost } from './browser-agent-host.ts'
+import type { BrowserHost } from '../server/browser/agent.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -37,6 +39,7 @@ const isDev = !app.isPackaged
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
 let browser: BrowserService | undefined
+let browserHost: BrowserHost | undefined
 // Quit ends with app.exit, which skips the window's close event, so it saves the place itself.
 let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
@@ -84,6 +87,8 @@ async function boot(): Promise<void> {
     openUrl: showPreview,
     capturePreview,
     windowKey,
+    // Created just below, once the server's ports are known; agents call it only later.
+    browserHost: () => browserHost,
   })
   // Before the window loads, so its very first API call carries the key.
   installWindowKey(session.defaultSession, new URL(running.url).origin, windowKey, () => mainWindow)
@@ -100,6 +105,10 @@ async function boot(): Promise<void> {
     cockpitPorts: () => (running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : []),
     publish: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('cockpit:browser-state', state) },
   })
+  browserHost = createBrowserAgentHost(browser)
+  // A page that goes away takes its agent grants with it (W9-09).
+  const leases = running.browserLeases
+  browser.onDestroyed((key) => leases.revokePage(key))
   registerBrowserIpc(new URL(running.url).origin, browser, isProject, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
   mainWindow = createWindow(running.url)
   app.on('activate', () => {

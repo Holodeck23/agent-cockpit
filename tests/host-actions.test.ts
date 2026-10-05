@@ -17,7 +17,7 @@ describe('Cockpit host actions', () => {
     actions.approve('t1', lastRequest().requestId, 'allow_session')
     await first
     // The same kind of action in the same session runs without a card.
-    await expect(actions.request('t1', 'mcp__cockpit__stop_process', {}, undefined, { sessionKey: 'processes' })).resolves.toBeUndefined()
+    await expect(actions.request('t1', 'mcp__cockpit__stop_process', {}, undefined, { sessionKey: 'processes' })).resolves.toBe('allow_session')
     // Another conversation, or another kind of action, still asks.
     void actions.request('t2', 'mcp__cockpit__start_process', {}, undefined, { sessionKey: 'processes' }).catch(() => undefined)
     expect(lastRequest().toolName).toBe('mcp__cockpit__start_process')

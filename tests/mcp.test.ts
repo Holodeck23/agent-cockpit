@@ -95,7 +95,7 @@ describe('cockpit MCP tools', () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
     const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(['inspect_preview', 'list_conversations', 'list_processes', 'open_preview', 'read_conversation', 'read_process_output', 'recall', 'remember', 'save_workflow', 'send_to_conversation', 'start_conversation', 'start_process', 'stop_conversation', 'stop_process'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['browser_click', 'browser_drag', 'browser_hover', 'browser_key', 'browser_navigate', 'browser_read', 'browser_screenshot', 'browser_scroll', 'browser_type', 'inspect_preview', 'list_conversations', 'list_processes', 'open_preview', 'read_conversation', 'read_process_output', 'recall', 'remember', 'save_workflow', 'send_to_conversation', 'start_conversation', 'start_process', 'stop_conversation', 'stop_process'])
   })
 
   it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
@@ -218,7 +218,8 @@ describe('MCP wiring per CLI', () => {
     const options = claudeMcpOptions(launch)
     expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: launch.env })
     expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__inspect_preview', 'mcp__cockpit__recall', 'mcp__cockpit__list_conversations', 'mcp__cockpit__read_conversation',
-      'mcp__cockpit__start_conversation', 'mcp__cockpit__send_to_conversation', 'mcp__cockpit__stop_conversation', 'mcp__cockpit__start_process', 'mcp__cockpit__stop_process', 'mcp__cockpit__remember', 'mcp__cockpit__save_workflow'])
+      'mcp__cockpit__start_conversation', 'mcp__cockpit__send_to_conversation', 'mcp__cockpit__stop_conversation', 'mcp__cockpit__start_process', 'mcp__cockpit__stop_process', 'mcp__cockpit__remember', 'mcp__cockpit__save_workflow',
+      ...['read', 'screenshot', 'navigate', 'click', 'type', 'key', 'hover', 'scroll', 'drag'].map((op) => `mcp__cockpit__browser_${op}`)])
     expect(JSON.stringify(options.mcpConfig)).not.toContain('secret')
     expect(options.env).toEqual(launch.secretEnv)
   })

@@ -42,6 +42,8 @@ export type TranscriptItem =
       /** The whole input, when the detail above shows only part of it. */
       fullInput?: string
       canAllowForSession: boolean
+      /** The wider Allow's own words when the asker defines its scope ("Allow on example.com for this run"). */
+      allowWiderLabel?: string
       resolution?: ApprovalBehavior
     }
   /** `runId`: the note ends that run, whose changes can be opened from it. */
@@ -146,6 +148,15 @@ const COCKPIT_TOOLS: Record<string, string> = {
   list_processes: 'List processes',
   read_process_output: 'Read process output',
   open_preview: 'Open a preview',
+  browser_read: 'Read the browser page',
+  browser_screenshot: 'Screenshot the browser page',
+  browser_navigate: 'Navigate the browser page',
+  browser_click: 'Click in the browser page',
+  browser_type: 'Type in the browser page',
+  browser_key: 'Press a key in the browser page',
+  browser_hover: 'Hover in the browser page',
+  browser_scroll: 'Scroll the browser page',
+  browser_drag: 'Drag in the browser page',
   recall: 'Search memory',
   remember: 'Remember',
 }
@@ -176,9 +187,31 @@ function describeCockpitTool(tool: string, input: unknown): string {
       return `Remembering: ${clip(field(input, 'text') ?? '', 48)}`
     case 'open_preview':
       return `Opening the preview${field(input, 'url') ? ` at ${clip(field(input, 'url') ?? '', 40)}` : ''}`
+    case 'browser_read':
+      return 'Reading the browser page'
+    case 'browser_screenshot':
+      return 'Looking at the browser page'
+    case 'browser_navigate': {
+      const action = field(input, 'action')
+      return action ? `Browser: ${action}` : `Opening ${clip(field(input, 'url') ?? 'a page', 48)} in the browser`
+    }
+    case 'browser_type': {
+      // Only the length is ever kept (server/browser/agent-policy.ts redactBrowserEvent).
+      const characters = (input as { characters?: unknown } | null)?.characters
+      return `Typing${typeof characters === 'number' ? ` ${characters} characters` : ''} in the browser page`
+    }
+    case 'browser_click': case 'browser_key': case 'browser_hover': case 'browser_scroll': case 'browser_drag':
+      return `${COCKPIT_TOOLS[tool]}`
     default:
       return `Using ${tool}`
   }
+}
+
+/** The label of a Cockpit grant offered with an approval (server/threads/host-actions.ts). */
+function grantLabel(suggestions: readonly unknown[]): string | undefined {
+  const grant = suggestions.find((s): s is { type: 'cockpitGrant'; label: string } =>
+    typeof s === 'object' && s !== null && (s as { type?: unknown }).type === 'cockpitGrant' && typeof (s as { label?: unknown }).label === 'string')
+  return grant?.label.slice(0, 120)
 }
 
 /** A plain-words activity line for a tool call: "Reading README.md", "Running npm test". */
@@ -354,6 +387,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           ...(riskFlags(event.input).length ? { flags: riskFlags(event.input) } : {}),
           ...(remainingInput(event.input) ? { fullInput: remainingInput(event.input) } : {}),
           canAllowForSession: event.suggestions.length > 0,
+          ...(grantLabel(event.suggestions) ? { allowWiderLabel: grantLabel(event.suggestions) } : {}),
         })
         return
       case 'question':

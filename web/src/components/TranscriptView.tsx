@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from 'react'
 import type { AgentId, ApprovalBehavior } from '../../../server/agents/types.ts'
-import { decisionSummary, groupDecisions, RESOLVED } from '../decisions.ts'
+import { decisionSummary, groupDecisions, resolvedLabel } from '../decisions.ts'
 import { agentName, elapsed, type TranscriptItem } from '../transcript.ts'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { CopyButton } from './CopyButton.tsx'
@@ -173,7 +173,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                 <ul>
                   {item.entries.map((entry) => (
                     <li key={entry.key} className={entry.resolution === 'deny' ? 'decision-denied' : undefined}>
-                      <span className="decision-answer">{RESOLVED[entry.resolution!]}</span>
+                      <span className="decision-answer">{resolvedLabel(entry)}</span>
                       <span>{agentName(entry.agent)} · {entry.toolName}</span>
                       <code>{entry.detail}</code>
                     </li>
@@ -210,7 +210,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                     </button>
                     {item.canAllowForSession ? (
                       <button type="button" className="button-soft" onClick={() => onApprove(item.requestId, 'allow_session')}>
-                        Allow for this session
+                        {item.allowWiderLabel ?? 'Allow for this session'}
                       </button>
                     ) : null}
                     <button type="button" className="button-soft" onClick={() => onApprove(item.requestId, 'deny')}>
