@@ -86,6 +86,29 @@ const MIME: Record<string, string> = {
   '.mjs': 'text/javascript',
 }
 
+/**
+ * The page renders text agents and repositories write (replies, Markdown documents, file names).
+ * React escapes it; this is the second line: no script, frame or image from anywhere but Cockpit
+ * itself (and local previews in frames), so a hostile Markdown image cannot beacon out or reach the LAN.
+ */
+export const PAGE_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  // React style attributes and the editor's injected styles.
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "media-src 'self' data: blob:",
+  'frame-src http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*',
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ')
+
 function serveStatic(webDist: string, pathname: string, res: ServerResponse): void {
   const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, '')
   let file = join(webDist, safe)
@@ -95,7 +118,9 @@ function serveStatic(webDist: string, pathname: string, res: ServerResponse): vo
     res.end('Web UI not built. Run `npm run build`, or use `npm run dev:web` during development.')
     return
   }
-  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' })
+  const type = MIME[extname(file)] ?? 'application/octet-stream'
+  res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
+    ...(type.startsWith('text/html') ? { 'content-security-policy': PAGE_POLICY } : {}) })
   res.end(readFileSync(file))
 }
 
@@ -170,7 +195,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const api = createApiHandler({ manager, store, projects, processes, workflows, remote, agents, memory, presets, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
-      approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval) } },
+      approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
+      cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])] } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)
   server.on('request', (req, res) => {

@@ -23,7 +23,7 @@ const previewBody = z.object({ url: z.string().min(1).max(2000) })
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 
 /** Only a local http(s) page can be previewed; the agent must not open arbitrary sites. */
-export function assertLocalUrl(raw: string): string {
+export function assertLocalUrl(raw: string, cockpitPorts: readonly number[] = []): string {
   let url: URL
   try {
     url = new URL(raw)
@@ -33,6 +33,10 @@ export function assertLocalUrl(raw: string): string {
   if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !LOOPBACK.has(url.hostname)) {
     throw new HttpError(400, `Preview only opens local http(s) pages (localhost, 127.0.0.1), not ${raw}`)
   }
+  // Cockpit's own page in its preview frame would be same-origin with the window that holds the
+  // desktop API key, and the frame is sandboxed with allow-same-origin for ordinary dev servers.
+  const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80))
+  if (cockpitPorts.includes(port)) throw new HttpError(400, 'Preview cannot open Cockpit itself')
   return url.toString()
 }
 
@@ -47,6 +51,8 @@ export interface McpRouteDeps {
   readonly memory?: MemoryStore
   /** Whether the project lets agents update and schedule workflows (Project settings). */
   readonly agentWorkflows?: (projectPath: string) => boolean
+  /** Cockpit's own listening ports, which a preview may never open. */
+  readonly cockpitPorts?: () => readonly number[]
   /** Turns a workflow's schedule on, as the Workflows page does. */
   readonly enableWorkflow?: (id: string) => Workflow
   /**
@@ -151,11 +157,11 @@ export async function handleMcpRoute(
   }
   if (parts[2] === 'preview' && parts[3] === 'screenshot' && method === 'POST') {
     if (!capturePreview) throw new HttpError(503, 'Preview inspection is only available in the Cockpit desktop app')
-    const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
+    const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
     return sendJson(res, 200, { data: { inspected: target, ...(await capturePreview(target)) } })
   }
   if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {
-    const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url)
+    const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
     await openUrl(target)
     sendJson(res, 200, { data: { opened: target } })
     return

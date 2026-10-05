@@ -12,7 +12,7 @@ import { resolveAppPath } from './shell-path.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
 import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
-import { assertLocalUrl } from '../server/http/mcp-routes.ts'
+import { assertLocalUrl as assertLocalTarget } from '../server/http/mcp-routes.ts'
 import { HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
@@ -94,6 +94,13 @@ async function boot(): Promise<void> {
   })
 }
 
+// In memory only (no "persist:"), and cleared after every capture.
+const CAPTURE_PARTITION = 'cockpit-capture'
+
+/** A local preview target that is not Cockpit itself (its own page in a frame would share the keyed window's origin). */
+const assertLocalUrl = (url: string): string =>
+  assertLocalTarget(url, running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : [])
+
 /** Sends an event to the page, reopening the window first if it was closed. */
 function sendToPage(channel: string, ...args: unknown[]): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -127,12 +134,19 @@ async function capturePreview(url: string): Promise<{ data: string; mimeType: 'i
     height: 800,
     useContentSize: true,
     backgroundColor: '#ffffff',
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+    // Its own in-memory session: no cookies or storage shared with Cockpit's window or with other
+    // local apps you have opened, so an agent cannot screenshot a page as you are signed in to it.
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: CAPTURE_PARTITION },
   })
   preview.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  preview.webContents.on('will-redirect', (event, next) => {
+  preview.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  const stayLocal = (event: { preventDefault(): void }, next: string): void => {
     try { assertLocalUrl(next) } catch { event.preventDefault() }
-  })
+  }
+  preview.webContents.on('will-redirect', stayLocal)
+  // The page cannot navigate itself to a remote site during the capture either.
+  preview.webContents.on('will-navigate', stayLocal)
+  preview.webContents.on('will-frame-navigate', (details) => { if (!details.isMainFrame) stayLocal(details, details.url) })
   try {
     await preview.loadURL(target)
     await new Promise((resolve) => setTimeout(resolve, 250))
@@ -142,7 +156,9 @@ async function capturePreview(url: string): Promise<{ data: string; mimeType: 'i
     const size = image.getSize()
     return { data: image.toPNG().toString('base64'), mimeType: 'image/png', width: size.width, height: size.height }
   } finally {
+    const capture = preview.webContents.session
     if (!preview.isDestroyed()) preview.destroy()
+    await capture.clearStorageData().catch(() => undefined)
   }
 }
 
