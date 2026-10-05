@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { writeFileAtomic } from '../files/atomic.ts'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
@@ -20,8 +21,7 @@ export function createControlStore(root: string) {
     },
     write(key: string, value: ControlOperation) {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
-      writeFileSync(`${file(key)}.tmp`, JSON.stringify(operation.parse(value)), { mode: 0o600 })
-      renameSync(`${file(key)}.tmp`, file(key))
+      writeFileAtomic(file(key), JSON.stringify(operation.parse(value)))
     },
   }
 }

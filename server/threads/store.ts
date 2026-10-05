@@ -1,9 +1,10 @@
-import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { NormalizedEvent } from '../agents/types.ts'
 import type { StoredEvent, ThreadMeta } from './types.ts'
 import { withAttachmentNote } from '../files/references.ts'
+import { ensurePrivateDir, writeFileAtomic } from '../files/atomic.ts'
 
 // File-first storage, one folder per thread, outside the repo:
 //   <root>/threads/<id>/meta.json     current metadata (atomic rewrite)
@@ -80,7 +81,8 @@ function markdownFor(event: NormalizedEvent, ts: string): string | undefined {
 
 export function createThreadStore(root: string = defaultRoot()): ThreadStore {
   const threadsDir = join(root, 'threads')
-  mkdirSync(threadsDir, { recursive: true, mode: 0o700 })
+  ensurePrivateDir(root)
+  ensurePrivateDir(threadsDir)
 
   const dirOf = (id: string): string => {
     if (!ID_PATTERN.test(id)) throw new Error(`Invalid thread id: ${id}`)
@@ -88,8 +90,7 @@ export function createThreadStore(root: string = defaultRoot()): ThreadStore {
   }
   const writeMeta = (meta: ThreadMeta): void => {
     const file = join(dirOf(meta.id), 'meta.json')
-    writeFileSync(`${file}.tmp`, JSON.stringify(meta, null, 2))
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(meta, null, 2))
   }
   const readMeta = (id: string): ThreadMeta | undefined => {
     const file = join(dirOf(id), 'meta.json')

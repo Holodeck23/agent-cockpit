@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { ensurePrivateDir, writeFileAtomic } from '../files/atomic.ts'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
@@ -46,12 +47,11 @@ export type DeviceView = Omit<RemoteDevice, 'tokenHash'>
 const hash = (token: string): string => createHash('sha256').update(token).digest('hex')
 
 export function createRemoteStore(root: string, now = Date.now) {
-  mkdirSync(root, { recursive: true, mode: 0o700 })
+  ensurePrivateDir(root)
   const file = join(root, 'remote.json')
   const read = (): RemoteConfig => configSchema.parse(existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {})
   const write = (config: RemoteConfig): RemoteConfig => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(config, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(config, null, 2))
     return config
   }
   const pending = new Map<string, PairingRequest>()

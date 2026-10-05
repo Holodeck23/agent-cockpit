@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { writeFileAtomic } from '../files/atomic.ts'
 import { join } from 'node:path'
 import webpush from 'web-push'
 import { z } from 'zod'
@@ -69,8 +70,7 @@ export const webPushSender: PushSender = async (subscription, payload, keys) => 
 export function createPushStore(root: string) {
   const file = join(root, 'push.json')
   const write = (data: PushFile): PushFile => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(data, null, 2))
     return data
   }
   const read = (): PushFile => {

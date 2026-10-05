@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { writeFileAtomic } from '../files/atomic.ts'
 import { basename, isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 
@@ -105,8 +106,7 @@ export function createProjectStore(root: string): ProjectStore {
     }
   }
   const write = (projects: readonly Project[]): void => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(projects, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(projects, null, 2))
   }
   const assertPath = (path: string): void => {
     if (!isAbsolute(path)) throw new Error(`Project path must be absolute: ${path}`)
