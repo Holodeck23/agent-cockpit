@@ -31,6 +31,14 @@ const READ_TIMEOUT_MS = 15_000
 const PUSH_TIMEOUT_MS = 90_000
 // Never wait on a terminal prompt; keep reads from taking locks an agent's git might need.
 const GIT_ENV = { GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' }
+/**
+ * A repository's own .git/config is not trusted: Cockpit runs git in a folder as soon as it is
+ * opened (the branch pill, recent work), with no agent and no approval. `core.fsmonitor` names a
+ * program that `git status` runs, so a repository that arrives with its .git folder (a zip, a
+ * shared drive, a folder an agent wrote) could run anything. Command-line config wins over the
+ * repository's. Hooks run only for switch and push, which you start yourself.
+ */
+const GIT_HARDENING = ['-c', 'core.fsmonitor=']
 
 /** Credentials can appear in remote URLs inside git's messages. */
 export function redact(text: string): string {
@@ -40,7 +48,7 @@ export function redact(text: string): string {
 /** `encoding: 'buffer'` returns stdout as a Buffer (typed as string; the caller casts it back). */
 export function run(cwd: string, args: readonly string[], timeout = READ_TIMEOUT_MS, maxBuffer = 2_000_000, encoding: 'utf8' | 'buffer' = 'utf8'): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', ['-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer, encoding: encoding as BufferEncoding }, (error, stdout, stderr) => {
+    execFile('git', [...GIT_HARDENING, '-C', cwd, ...args], { env: { ...process.env, ...GIT_ENV }, timeout, maxBuffer, encoding: encoding as BufferEncoding }, (error, stdout, stderr) => {
       if (!error) { resolve({ stdout: stdout as string, stderr: String(stderr) }); return }
       const killed = (error as { killed?: boolean }).killed
       if ((error as { code?: string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') { reject(new GitError(`git ${args[0]} printed more than ${Math.round(maxBuffer / 1_000_000)} MB and was stopped`)); return }
@@ -106,7 +114,7 @@ const NOT_A_REPO: GitState = { repo: false, branches: [], changes: [], changeCou
 export async function gitState(projectPath: string): Promise<GitState> {
   if (!insideRepository(projectPath)) return NOT_A_REPO
   const [status, refs] = await Promise.all([
-    run(projectPath, ['-c', 'core.fsmonitor=false', 'status', '--porcelain=v2', '--branch', '--untracked-files=normal']),
+    run(projectPath, ['status', '--porcelain=v2', '--branch', '--untracked-files=normal']),
     run(projectPath, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', `--count=${MAX_BRANCHES}`, 'refs/heads']),
   ])
   const branches = refs.stdout.split('\n').filter(Boolean)

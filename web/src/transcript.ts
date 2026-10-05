@@ -9,6 +9,7 @@ import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
 import { takenBackPositions } from '../../server/threads/taken-back.ts'
 import { failureWords } from './agent-errors.ts'
+import { revealHidden } from '../../server/files/visible-name.ts'
 
 /** An image stored with the conversation; `file` names it under /api/threads/:id/images/. */
 export interface ImageRef { readonly file: string; readonly name?: string }
@@ -34,6 +35,12 @@ export type TranscriptItem =
       agent: AgentId
       toolName: string
       detail: string
+      /** What the asker says this is (Cockpit's own cards always say). */
+      note?: string
+      /** Options that make a call riskier than its command shows, e.g. outside the sandbox. */
+      flags?: string[]
+      /** The whole input, when the detail above shows only part of it. */
+      fullInput?: string
       canAllowForSession: boolean
       resolution?: ApprovalBehavior
     }
@@ -85,13 +92,46 @@ function firstField(input: unknown, ...keys: string[]): string | undefined {
   return undefined
 }
 
-/** The main argument of a tool call, for approval cards. */
+const DETAIL_KEYS = ['command', 'CommandLine', 'file_path', 'path', 'AbsolutePath', 'pattern', 'Query', 'url', 'Url', 'query', 'description', 'id', 'message', 'text']
+
+/** argv as a shell line: an array command is shown whole, quoted where it needs to be. */
+const shellLine = (argv: readonly unknown[]): string =>
+  argv.map((a) => { const s = String(a); return /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replaceAll("'", `'\\''`)}'` }).join(' ')
+
+/**
+ * The main argument of a tool call, for approval cards: whole, never cut short, with characters
+ * that reorder or hide text made visible. What is approved must be what is shown.
+ */
 export function toolDetail(input: unknown): string {
-  for (const key of ['command', 'CommandLine', 'file_path', 'path', 'AbsolutePath', 'pattern', 'Query', 'url', 'Url', 'query', 'description', 'id', 'message', 'text']) {
+  const record = typeof input === 'object' && input !== null ? input as Record<string, unknown> : undefined
+  for (const key of DETAIL_KEYS) {
     const value = field(input, key)
-    if (value) return value
+    if (value) return revealHidden(value)
+    const list = record?.[key]
+    if (Array.isArray(list) && list.length) return revealHidden(shellLine(list))
   }
-  return typeof input === 'object' && input !== null ? JSON.stringify(input).slice(0, 160) : ''
+  return record ? revealHidden(JSON.stringify(input)) : ''
+}
+
+/** The input's other fields, when the detail shows only one of them. */
+function remainingInput(input: unknown): string | undefined {
+  if (typeof input !== 'object' || input === null) return undefined
+  const entries = Object.entries(input as Record<string, unknown>)
+  const shown = DETAIL_KEYS.find((key) => field(input, key) || (Array.isArray((input as Record<string, unknown>)[key]) && ((input as Record<string, unknown>)[key] as unknown[]).length))
+  const rest = entries.filter(([key, value]) => key !== shown && value !== undefined && value !== '')
+  return rest.length ? revealHidden(JSON.stringify(input, null, 2)) : undefined
+}
+
+/** Options that make a call riskier than its main argument shows. */
+export function riskFlags(input: unknown): string[] {
+  if (typeof input !== 'object' || input === null) return []
+  const i = input as Record<string, unknown>
+  const flags: string[] = []
+  if (i.dangerouslyDisableSandbox === true) flags.push('Runs outside the sandbox')
+  if (i.run_in_background === true) flags.push('Keeps running in the background')
+  if (i.with_escalated_permissions === true || i.sandbox_permissions === 'require_escalated') flags.push('Asks for escalated permissions')
+  if (typeof i.grantRoot === 'string' && i.grantRoot) flags.push(`Asks to write anywhere under ${revealHidden(i.grantRoot)}`)
+  return flags
 }
 
 const COCKPIT_TOOLS: Record<string, string> = {
@@ -310,6 +350,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           agent,
           toolName: friendlyToolName(event.toolName),
           detail: toolDetail(event.input),
+          ...(event.description ? { note: revealHidden(event.description) } : {}),
+          ...(riskFlags(event.input).length ? { flags: riskFlags(event.input) } : {}),
+          ...(remainingInput(event.input) ? { fullInput: remainingInput(event.input) } : {}),
           canAllowForSession: event.suggestions.length > 0,
         })
         return

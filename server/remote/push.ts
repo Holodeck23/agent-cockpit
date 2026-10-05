@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { writeFileAtomic } from '../files/atomic.ts'
 import { join } from 'node:path'
 import webpush from 'web-push'
 import { z } from 'zod'
@@ -10,12 +11,32 @@ import type { ThreadStore } from '../threads/store.ts'
 // (Google's, for Chrome on Android) cannot read the conversation title.
 // <root>/push.json holds this Mac's signing keys and each phone's subscription.
 
+/**
+ * The browsers' own push services. The Mac posts to whatever endpoint a phone registers, so an
+ * endpoint anywhere else (a LAN address, a loopback service) would turn every approval into a
+ * request from the Mac to a place the phone chose.
+ */
+const PUSH_SERVICES = ['push.apple.com', 'fcm.googleapis.com', 'android.googleapis.com', 'push.services.mozilla.com', 'notify.windows.com']
+
+export function isPushServiceEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint)
+    if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) return false
+    const host = url.hostname.toLowerCase()
+    return PUSH_SERVICES.some((service) => host === service || host.endsWith(`.${service}`))
+  } catch {
+    return false
+  }
+}
+
 const subscriptionSchema = z.object({
   endpoint: z.url().refine((url) => url.startsWith('https://'), 'Push endpoints are HTTPS'),
   keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
 })
 export type PushSubscription = z.output<typeof subscriptionSchema>
-export const pushSubscriptionBody = z.object({ subscription: subscriptionSchema })
+export const pushSubscriptionBody = z.object({ subscription: subscriptionSchema.extend({
+  endpoint: subscriptionSchema.shape.endpoint.refine(isPushServiceEndpoint, 'Push endpoints must belong to a browser push service'),
+}) })
 
 const fileSchema = z.object({
   publicKey: z.string(),
@@ -29,6 +50,8 @@ export interface PushMessage { readonly title: string; readonly body: string; re
 export type PushSender = (subscription: PushSubscription, payload: string, keys: { publicKey: string; privateKey: string }) => Promise<number>
 
 export const webPushSender: PushSender = async (subscription, payload, keys) => {
+  // Also checked here, for subscriptions saved before endpoints were checked.
+  if (!isPushServiceEndpoint(subscription.endpoint)) throw new Error('Not a browser push service endpoint')
   try {
     const result = await webpush.sendNotification(subscription, payload, {
       vapidDetails: { subject: 'https://github.com/Holodeck23/agent-cockpit', ...keys },
@@ -47,8 +70,7 @@ export const webPushSender: PushSender = async (subscription, payload, keys) => 
 export function createPushStore(root: string) {
   const file = join(root, 'push.json')
   const write = (data: PushFile): PushFile => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(data, null, 2))
     return data
   }
   const read = (): PushFile => {

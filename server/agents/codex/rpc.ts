@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { guardStdin } from '../stdin.ts'
 
 // Minimal JSON-RPC over newline-delimited stdio, as spoken by `codex app-server` and by ACP agents
 // (`opencode acp`), which also expect the "jsonrpc": "2.0" member.
@@ -26,6 +27,7 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
   const label = options.label ?? 'Codex'
   let nextId = 1
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
+  guardStdin(child, () => handlers.onProtocolError(`${label} stopped taking input; the last request was not delivered`))
 
   const write = (message: unknown): void => {
     if (!child.stdin.writable) {
@@ -44,11 +46,21 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
       return
     }
     const { id, method } = message
-    if (typeof method === 'string' && (typeof id === 'number' || typeof id === 'string')) {
-      handlers.onServerRequest({ id, method, params: message.params })
-    } else if (typeof method === 'string') {
-      handlers.onNotification(method, message.params)
-    } else if (typeof id === 'number' && pending.has(id)) {
+    // A handler that throws on an odd message must not escape the readline callback (H1).
+    try {
+      if (typeof method === 'string' && (typeof id === 'number' || typeof id === 'string')) {
+        handlers.onServerRequest({ id, method, params: message.params })
+        return
+      }
+      if (typeof method === 'string') {
+        handlers.onNotification(method, message.params)
+        return
+      }
+    } catch (error) {
+      handlers.onProtocolError(`Could not handle ${label} message ${String(method)}: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+    if (typeof id === 'number' && pending.has(id)) {
       const waiter = pending.get(id)
       pending.delete(id)
       if ('error' in message) {

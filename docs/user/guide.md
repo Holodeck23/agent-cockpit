@@ -1,10 +1,10 @@
 # User Guide
 
-> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
-*(Documented for v0.1.3)*
+*(Documented for v0.1.4)*
 
 ## Workspace & Projects
 
@@ -30,9 +30,12 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 
 -   **Starting & Managing:** Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.
 -   **Follow-ups:** Reply to ongoing threads or answer agent questions.
--   **Replies:** Agent replies show as formatted text: headings, lists, tables, code. Web links open in your browser; raw HTML in a reply shows as text and images are never loaded (you see their description). Your own messages stay exactly as you typed them.
+-   **Replies:** Agent replies show as formatted text: headings, lists, tables, code. Web links open in your browser; hover one to see where it goes, and a link whose text names a different site than it goes to shows the real one beside it (↗ host). Raw HTML in a reply shows as text and images are never loaded (you see their description). Your own messages stay exactly as you typed them.
 -   **File and commit links:** `src/app.ts:42` in a reply opens Files with that line selected (ranges like `:10-20` too). A commit hash opens the commit on GitHub, GitLab or Bitbucket when the project's `origin` is there; otherwise it copies the hash. Agents are asked to name their commits by short hash.
 -   **Find:** ⌘F highlights matches in the open conversation and lists the matching messages under the bar; click one to jump to it.
+-   **Reading while it works:** the conversation stays where you are reading while the agent writes; **Jump to latest** brings you back to the end. **Copy** on a message puts its text on the clipboard. The conversation list can be resized by dragging its edge.
+-   **Mac notifications:** Cockpit notifies you when an agent finishes or needs you, and clicking the notification opens that conversation. The conversation you are looking at makes no sound and shows no banner. A completed conversation never counts as needing you.
+-   **Dismiss:** a question from the agent can be dismissed without answering; the agent carries on without the answers.
 -   **Search:** The list's search looks through every message, not just titles, and includes completed conversations while you search.
 -   **Peek:** Hover a file or workflow clip on a sent message to see inside it; **Open in Files** opens the file.
 -   **Status States:** A conversation can be Working, Ready, Error, or "Needs you" (waiting for your approval or input).
@@ -44,6 +47,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Documents & Editing:** Open **Files** to view, edit, and save text files in your project. You can edit Markdown files in the dedicated Markdown Document view.
 -   **Attachments:** Add files and workflows to your message draft via the composer's **+** menu, or type **@** in the message and pick from the list (↑↓, then Enter or Tab; Esc hides it). Text files are limited to 100 KB, with a max of 8 attachments and 200,000 characters per prompt. Note that attachments and prompt text are sent directly to the agent (provider-bound).
 -   **Moving around:** Home, Back, Forward and Up move between folders. The sidebar button at the left of the tabs hides the file list for more room, and Cockpit remembers that choice.
+-   **Opening files in other apps:** **⋯ → Open in default app** asks first when the file can run something on your Mac (a `.command`, `.terminal`, `.app`, script, installer, or any executable file), and shows its real name. A file name with characters that hide or reorder text shows them visibly, as `⟨U+202E⟩`, so a script cannot pass for a PDF.
 -   **Renaming and the Trash:** **⋯ → Rename…** edits the name and the extension in separate fields. When the file you are looking at goes to the Trash, the next file in that folder opens.
 -   **Copying files in:** drag files from Finder onto the file list to copy them into the folder shown, or onto Your documents. Nothing is ever replaced: if the name is taken, the copy is named "name (copy)". Folders and symbolic links are skipped, and the list says why.
 -   **Syntax colours:** code files are coloured by language in the Source view. Very large files (over about 120,000 characters) stay plain.
@@ -69,7 +73,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Gallery & Editing:** Open **Workflows** to access saved instructions and prompts. You can edit existing workflows or pause them. Archiving a workflow hides it from normal views.
 -   **Writing instructions:** instructions are a document with the Markdown toolbar, or plain Source. Type **@** in either to add a file or another workflow. ⌘F finds and replaces, ⌘S saves.
 -   **Starting from a workflow:** a new conversation shows the project's workflows as cards. A card adds `@workflow:name` to your message and runs nothing until you send it. The gallery's featured **Design workshop** proposes three directions for a screen, shows them in the preview, and applies the one you pick.
--   **Agents and workflows:** by default an agent's `save_workflow` only adds a new workflow with its schedule off, after you approve. **Project settings → Let agents manage workflows** lets agents save, update and schedule them without asking, from the next agent session on.
+-   **Agents and workflows:** by default an agent's `save_workflow` only adds a new workflow with its schedule off, after you approve. **Project settings → Let agents manage workflows** lets agents save, update and schedule them without asking. One exception: when an agent updates a workflow that runs with more than manual or plan permissions, or with your hooks, its schedule is paused until you turn it back on in Workflows.
 -   **Schedules:** You can schedule workflows (e.g., run daily tests) with an interval (5 minutes to 30 days), or at a daily, weekday, or selected-weekday time in the saved local timezone and clicking **Save and enable schedule**.
 -   **Missed Runs & Failures:** If Cockpit is closed, at most one missed run is started when you reopen it. Workflows that fail will not block subsequent scheduled runs but will report errors in their thread.
 
@@ -95,23 +99,24 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 3.  Scan the QR code or open the HTTPS address on your phone.
 4.  Choose **Ask my Mac**, match the 6-digit code, and click **Allow** on the Mac.
 5.  You can view conversations, answer approvals, and manage runs from your phone's browser.
-6.  **Revocation:** You can revoke phone access or disable Cockpit’s phone access from the Phone Access panel on your Mac.
+6.  **Revocation:** You can revoke phone access or disable Cockpit’s phone access from the Phone Access panel on your Mac. Revoking a phone also cuts off the conversation stream it has open at that moment.
 7.  **Push Notifications (Experimental):** Notifications are an optional transmission. They require explicit browser notification permission on your phone. You can manage notification settings directly from the phone UI.
 
 ## Agent-to-Agent MCP
 
-Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their own workspace.
+Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their own workspace. Tools marked *Cockpit asks* show Cockpit's own approval card. It appears however the agent calls the tool, and you have 45 seconds to answer before the request lapses; the agent can ask again.
 -   **Available Now:**
     -   `list_conversations`: Lists conversations within the calling project.
     -   `read_conversation`: Reads a specific conversation within the calling project.
-    -   `start_process`: Runs a command such as `npm run dev` in the project and waits for its URL or first output (Asks first).
-    -   `stop_process`: Stops it and everything it spawned (Asks first).
+    -   `start_process`: Runs a command such as `npm run dev` in the project and waits for its URL or first output (*Cockpit asks*; **Allow for this session** covers later starts and stops until the agent's session ends).
+    -   `stop_process`: Stops it and everything it spawned (*Cockpit asks*).
     -   `list_processes`: The project's processes, status and URL.
     -   `read_process_output`: The log, incrementally.
     -   `open_preview`: Opens a local page (localhost only) in the preview pane.
-    -   `inspect_preview`: Returns a screenshot of the local page to the agent.
-    -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (Asks first). With **Let agents manage workflows** on in Project settings, it does not ask, can update a workflow by name, and can set a schedule.
--   **Feature branch M2:** `start_conversation`, `send_to_conversation`, and `stop_conversation` are implemented with a separate Allow/Deny card per action. They are restricted to the calling project, refuse self/foreign targets and recursive delegation, and use durable request keys to suppress duplicates. They are included in v0.1.1; the older September 30 v0.1.0 DMG does not have them.
+    -   `inspect_preview`: Returns a screenshot of the local page to the agent. It is taken in a private browser session, cleared after every capture, so the agent never sees a local app as you are signed in to it. Neither preview tool can open Cockpit itself.
+    -   `save_workflow`: Saves reusable instructions in the current project, with scheduling off (*Cockpit asks*). With **Let agents manage workflows** on in Project settings, it does not ask, can update a workflow by name, and can set a schedule (see Workflows & Schedules for the one exception).
+    -   `recall` and `remember`: Search the project's and everywhere memory, and record a fact (`remember`: *Cockpit asks*; the card says when a note would be read in every project).
+    -   `start_conversation`, `send_to_conversation`, `stop_conversation` (v0.1.1 and later): Cockpit shows a separate Allow/Deny card for every action, whatever the agent's own permissions. They are restricted to the calling project, refuse self and foreign targets and recursive delegation, and use durable request keys to suppress duplicates. The agent-written title stays on one line on the card, so it cannot imitate the card's own fields.
 
 ## Updates
 
@@ -132,6 +137,7 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 -   **Data Location:** Cockpit state lives in `~/.agent-cockpit/` unless `COCKPIT_HOME` overrides it. Project files and the CLIs’ own credentials/session stores live separately.
 -   **Privacy:** Cockpit does not send telemetry to a central server. Check for Updates, when you choose it, requests the public release list from GitHub's API (no account or project data is sent). Agent runs can send prompts, attachments and project content to the configured provider, including scheduled workflow runs. Tools may also contact external services. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
 -   **Backups:** To back up your Cockpit data, securely copy the `~/.agent-cockpit/` directory.
+-   **Damaged files (after v0.1.4):** a crash, a power cut or a full disk can leave a conversation's files half-written. Cockpit skips the damaged part, keeps every other conversation listed, and never rewrites or deletes the file. See [Troubleshooting](troubleshooting.md#conversations--workflows).
 
 ## Extension Notes for Developers
 

@@ -54,6 +54,7 @@
     "proof:opencode": "tsx scripts/proof-opencode.ts",
     "proof:antigravity": "tsx scripts/proof-antigravity.ts",
     "proof:preview": "tsx scripts/proof-preview.ts",
+    "proof:open-file": "tsx scripts/proof-open-file.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts",
     "proof:conversation-read": "tsx scripts/proof-conversation-read.ts",
     "proof:agent-controls": "tsx scripts/proof-agent-controls.ts",
@@ -80,6 +81,7 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "devDependencies": {
+    "@milkdown/kit": "7.22.2",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.3",
@@ -107,8 +109,5 @@
     "web-push": "^3.6.7",
     "zod": "^4.6.5"
   },
-  "private": true,
-  "dependencies": {
-    "@milkdown/kit": "7.22.2"
-  }
+  "private": true
 }

@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { ensurePrivateDir, writeFileAtomic } from '../files/atomic.ts'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
@@ -46,12 +47,11 @@ export type DeviceView = Omit<RemoteDevice, 'tokenHash'>
 const hash = (token: string): string => createHash('sha256').update(token).digest('hex')
 
 export function createRemoteStore(root: string, now = Date.now) {
-  mkdirSync(root, { recursive: true, mode: 0o700 })
+  ensurePrivateDir(root)
   const file = join(root, 'remote.json')
   const read = (): RemoteConfig => configSchema.parse(existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {})
   const write = (config: RemoteConfig): RemoteConfig => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(config, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(config, null, 2))
     return config
   }
   const pending = new Map<string, PairingRequest>()
@@ -90,12 +90,15 @@ export function createRemoteStore(root: string, now = Date.now) {
     requestPairing(name: string, login: string): PairingRequest {
       prune()
       const cleanName = name.trim().slice(0, 80) || 'Phone'
-      // Asking again from the same phone reuses its request instead of stacking new ones.
-      const existing = [...pending.values()].find((r) => r.status === 'pending' && r.login.toLowerCase() === login.toLowerCase() && r.name === cleanName)
-      if (existing) return existing
-      if ([...pending.values()].filter((r) => r.status === 'pending').length >= MAX_PENDING) {
-        throw new Error('Too many pairing requests; approve or wait for them to expire')
-      }
+      const sameLogin = (r: PairingRequest): boolean => r.status === 'pending' && r.login.toLowerCase() === login.toLowerCase()
+      // Asking again with the same name replaces the earlier request instead of stacking new ones.
+      // It is never handed back: its id is the secret that redeems it, and another phone on the
+      // same login could have asked with the same name.
+      for (const [id, request] of pending) if (sameLogin(request) && request.name === cleanName) pending.delete(id)
+      // At most MAX_PENDING per login, oldest dropped first: requests from one login can never
+      // keep another phone, or the owner's own, from pairing.
+      const mine = [...pending.entries()].filter(([, r]) => sameLogin(r)).sort(([, a], [, b]) => a.createdAt - b.createdAt)
+      for (const [id] of mine.slice(0, Math.max(0, mine.length - MAX_PENDING + 1))) pending.delete(id)
       const request: PairingRequest = { id: randomUUID(), code: String(randomInt(0, 1_000_000)).padStart(6, '0'),
         name: cleanName, login, createdAt: now(), status: 'pending' }
       pending.set(request.id, request)

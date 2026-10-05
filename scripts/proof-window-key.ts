@@ -122,10 +122,10 @@ try {
   await shot(page, 'image')
 
   // The preview pane: an iframe in the same window, first on another port, then on Cockpit's own.
-  const openPreview = (url: string) => app.evaluate(({ BrowserWindow }, target) => {
+  const openPreview = (url: string) => app.evaluate(({ BrowserWindow }, preview) => {
     const win = BrowserWindow.getAllWindows().find((w) => w.isVisible())
-    win?.webContents.send('cockpit:preview-open', target)
-  }, url)
+    win?.webContents.send('cockpit:preview-open', preview)
+  }, { url, projectPath: project, threadId: seeded.id })
   await openPreview(devUrl)
   const frame = page.frameLocator('.preview-pane iframe')
   await frame.getByText('Preview page').waitFor()

@@ -1,4 +1,4 @@
-import { createHostActions } from './host-actions.ts'
+import { createHostActions, type HostActionOptions } from './host-actions.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
@@ -181,7 +181,8 @@ export interface ThreadManager {
    * agent receives when references were expanded. They differ only for attachments
    * and workflow references. `workflows` records the referenced instructions as they were used.
    */
-  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal): Promise<void>
+  /** A Cockpit-side action an agent asked for (conversation control, processes, memory, workflows), approved by the user here. */
+  requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options?: HostActionOptions): Promise<void>
   canControl(threadId: string): boolean
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
@@ -261,9 +262,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
   }
 
+  // A streamed token changes no stored event, so its status is the last one worked out for the
+  // thread, unless the live session has since started or finished being busy.
+  const lastStatus = new Map<string, { status: ThreadStatus; busy: boolean }>()
   const broadcast = (threadId: string, event: NormalizedEvent): void => {
-    const update: ThreadUpdate = { threadId, event, status: statusOf(threadId) }
+    const isBusyNow = busy(live.get(threadId))
+    const last = lastStatus.get(threadId)
+    const status = event.kind === 'text_delta' && last && last.busy === isBusyNow ? last.status : deriveStatus(store.events(threadId), isBusyNow)
+    lastStatus.set(threadId, { status, busy: isBusyNow })
+    const update: ThreadUpdate = { threadId, event, status }
     for (const listener of listeners) listener(update)
+  }
+
+  const persist = (write: () => unknown, kind: NormalizedEvent['kind']): void => {
+    try { write() } catch (error) { console.error(`[cockpit] could not save a ${kind} event`, error) }
   }
 
   const record = (threadId: string, incoming: NormalizedEvent): void => {
@@ -288,6 +300,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       }
     }
     if (incoming.kind === 'result' || incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.cancel(threadId)
+    if (incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.forget(threadId)
     const entry = live.get(threadId)
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
     if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false })
@@ -296,7 +309,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
     const event: NormalizedEvent = stopped.kind === 'result' && !stopped.runId && entry?.runId ? { ...stopped, runId: entry.runId } : stopped
     // Deltas are for live rendering only; the final assistant_text is persisted.
-    if (event.kind !== 'text_delta') store.append(threadId, event)
+    // A write that fails (a full disk) loses this event from the log, but the state below must still
+    // move: a lost result or exit would otherwise leave the conversation working, and its session live, for good.
+    if (event.kind !== 'text_delta') persist(() => store.append(threadId, event), event.kind)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
     if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
     if (entry && event.kind === 'subagent') {
@@ -315,7 +330,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Only provider evidence makes a session resumable; constructing a process does not.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
-      if (meta) store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined })
+      if (meta) persist(() => store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined }), event.kind)
     }
     if (entry && event.kind === 'result') {
       entry.pending.clear()
@@ -335,9 +350,25 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     broadcast(threadId, event)
   }
 
+  /**
+   * Ends a thread's live session before its exit is recorded (delete, switch agent, change settings,
+   * recovery): pending Cockpit actions are refused and what was allowed for that session is
+   * forgotten now, not when an exit that is dropped as stale would have done it.
+   */
+  const retire = (threadId: string): Promise<void> => {
+    hostActions.cancel(threadId)
+    hostActions.forget(threadId)
+    const entry = live.get(threadId)
+    live.delete(threadId)
+    generations.delete(threadId)
+    return entry ? closeEntry(entry) : Promise.resolve()
+  }
+
   const ensureSession = (meta: ThreadMeta): Live => {
     const existing = live.get(meta.id)
     if (existing?.session.alive()) return existing
+    // A new session starts with nothing allowed for it, however the previous one ended.
+    hostActions.forget(meta.id)
     const generation = Symbol()
     generations.set(meta.id, generation)
     const pending = new Map<string, PendingApproval>()
@@ -355,7 +386,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const deliver: EventSink = (event) => {
       // Even a synchronous launcher callback must follow the initial user_text and live entry.
       if (launching) { queueMicrotask(() => deliver(event)); return }
-      handleEvent(event)
+      // Called from the agent's stdout handlers: a throw here (a full disk on append) would be
+      // uncaught and end the server with every other agent. Losing one event is the lesser harm.
+      try { handleEvent(event) } catch (error) { console.error(`[cockpit] could not record a ${event.kind} event`, error) }
     }
     let released = false
     const releaseGrant = (): void => { if (!released) { released = true; mcp?.release() } }
@@ -462,9 +495,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   return {
     canControl: (id) => Boolean(live.get(id)?.turnRunning && !live.get(id)?.stopRequested),
-    requestHostAction(threadId, toolName, input, signal) {
+    requestHostAction(threadId, toolName, input, signal, options) {
       if (!live.get(threadId)?.turnRunning || live.get(threadId)?.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
-      return hostActions.request(threadId, toolName, input, signal)
+      return hostActions.request(threadId, toolName, input, signal, options)
     },
     create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth, images: attached }) {
       const now = new Date().toISOString()
@@ -568,14 +601,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     currentRunId: (threadId) => (live.get(threadId)?.turnRunning ? live.get(threadId)?.runId : undefined),
     async remove(threadId) {
       requireMeta(threadId)
-      hostActions.cancel(threadId)
       deleted.add(threadId)
-      const entry = live.get(threadId)
-      live.delete(threadId)
-      generations.delete(threadId)
-      if (entry) await closeEntry(entry)
+      await retire(threadId)
       store.remove(threadId)
       images.remove(threadId)
+      lastStatus.delete(threadId)
       const update: ThreadUpdate = { threadId, event: { kind: 'thread_deleted' }, status: 'idle' }
       for (const listener of listeners) listener(update)
     },
@@ -583,9 +613,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
       if (busy(entry)) throw new Error('Stop the current turn before switching agents')
-      generations.delete(threadId)
-      live.delete(threadId)
-      if (entry) void closeEntry(entry)
+      void retire(threadId)
       const handoff = buildHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       const next = store.update(threadId, { settings, sessionId: randomUUID(), bindingId: randomUUID(), sessionStarted: false, handoff })
@@ -598,9 +626,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const entry = live.get(threadId)
       if (busy(entry)) throw new Error('Stop the current turn before changing settings')
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
-      generations.delete(threadId)
-      live.delete(threadId)
-      if (entry) void closeEntry(entry)
+      void retire(threadId)
       const next = store.update(threadId, { settings })
       record(threadId, { kind: 'settings_changed', ...(settings.model ? { model: settings.model } : {}), ...(settings.effort ? { effort: settings.effort } : {}), permissionMode: settings.permissionMode })
       return next
@@ -613,9 +639,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
       else {
         // Re-launch even an idle session so an earlier permissive policy cannot survive recovery.
-        generations.delete(threadId)
-        live.delete(threadId)
-        if (entry) void closeEntry(entry)
+        void retire(threadId)
         store.update(threadId, { settings })
       }
       send(threadId, text, agentText)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type ReferenceCheck } from '../api.ts'
 import { referencesIn, tokenFor } from '../draft-references.ts'
+import { visibleName } from '../file-text.ts'
 import { FileIcon, WorkflowIcon } from './icons.tsx'
 
 /**
@@ -28,9 +29,9 @@ export function ReferenceChips({ projectPath, text, onRemove }: { projectPath?: 
       {references.map((r) => {
         const token = tokenFor(r.kind, r.reference)
         const problem = checks.find((c) => c.kind === r.kind && c.reference === r.reference && !c.ok)?.problem
-        const name = r.kind === 'file' ? r.label.split('/').pop() ?? r.label : r.label
+        const name = visibleName(r.kind === 'file' ? r.label.split('/').pop() ?? r.label : r.label)
         return (
-          <li key={token} className={`reference-chip${problem ? ' broken' : ''}`} title={problem ?? r.label}>
+          <li key={token} className={`reference-chip${problem ? ' broken' : ''}`} title={problem ?? visibleName(r.label)}>
             {r.kind === 'file' ? <FileIcon /> : <WorkflowIcon />}
             <span>{name}</span>
             {r.count > 1 ? <span className="reference-dup">added {r.count}×</span> : null}

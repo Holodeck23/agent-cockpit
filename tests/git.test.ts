@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -38,6 +38,20 @@ describe('reading git status', () => {
   it('reports a detached HEAD and an empty repository without a branch or commit', () => {
     expect(parseStatus('# branch.oid abcdef1234\n# branch.head (detached)\n')).toEqual({ head: 'abcdef1', changes: [], changeCount: 0 })
     expect(parseStatus('# branch.oid (initial)\n# branch.head main\n')).toEqual({ branch: 'main', changes: [], changeCount: 0 })
+  })
+
+  it('never runs a program that the repository config names as its fsmonitor', async () => {
+    const { root } = fixture()
+    const marker = join(root, '..', 'fsmonitor-ran')
+    git(root, 'config', 'core.fsmonitor', `touch '${marker}'; false`)
+    writeFileSync(join(root, 'README.md'), '# changed\n')
+    // Plain git does run it, so the fixture really is hostile.
+    execFileSync('git', ['-C', root, 'status', '--porcelain=v2'], { env: ENV })
+    expect(existsSync(marker)).toBe(true)
+    rmSync(marker)
+    const state = await gitState(root)
+    expect(state.changeCount).toBe(1)
+    expect(existsSync(marker)).toBe(false)
   })
 
   it('hides credentials in remote URLs', () => {

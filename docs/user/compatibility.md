@@ -1,6 +1,6 @@
 # Agent Compatibility and Limitations
 
-> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 Agent Cockpit provides a unified interface across different AI coding agents. However, each agent has specific requirements, capabilities, and limitations based on its CLI implementation and API provider.
 

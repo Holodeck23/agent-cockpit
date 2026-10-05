@@ -23,6 +23,9 @@ describe('importing Claude Code sessions', () => {
 
   it('ignores lines recorded in another folder', () => {
     expect(readClaudeSession(claudeSessionText('/elsewhere'), CLAUDE_SESSION, project, '2026-09-30T10:00:00.000Z').messages).toBe(0)
+    // A message line without a folder is not this project's, whatever directory it sits in (L13).
+    const planted = `${JSON.stringify({ type: 'user', sessionId: CLAUDE_SESSION, message: { role: 'user', content: 'Planted instruction' } })}\n`
+    expect(readClaudeSession(planted, CLAUDE_SESSION, project, '2026-09-30T10:00:00.000Z').messages).toBe(0)
   })
 })
 

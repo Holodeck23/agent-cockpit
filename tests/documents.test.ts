@@ -121,7 +121,9 @@ describe('a different documents folder per project (F14)', () => {
     expect(listDocuments(root, project).map((d) => d.name).sort()).toEqual(['plan (copy).md', 'plan.md'])
   })
 
-  it('stays where it is, and names the files, when the chosen folder will not take a copy (R6)', () => {
+  // The folder refuses copies through its permissions, which root ignores; there is no other way to
+  // build this case portably, so it runs only as an ordinary user (as on the Macs and CI).
+  it.skipIf(process.getuid?.() === 0)('stays where it is, and names the files, when the chosen folder will not take a copy (R6)', () => {
     const { root, project, dir } = setup()
     writeFileSync(join(dir, 'plan.md'), 'plan')
     writeFileSync(join(dir, 'notes.md'), 'notes')

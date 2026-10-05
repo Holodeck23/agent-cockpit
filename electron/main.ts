@@ -1,17 +1,19 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
-import { existsSync } from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
 import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts'
 import { copyInto } from '../server/files/copy-in.ts'
+import { launchReason, visibleName } from '../server/files/visible-name.ts'
 import { resolveAppPath } from './shell-path.ts'
+import { oneAtATime, withinTime } from './one-at-a-time.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
 import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
-import { assertLocalUrl } from '../server/http/mcp-routes.ts'
+import { assertLocalUrl as assertLocalTarget } from '../server/http/mcp-routes.ts'
 import { HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
@@ -94,6 +96,13 @@ async function boot(): Promise<void> {
   })
 }
 
+// In memory only (no "persist:"), and cleared after every capture.
+const CAPTURE_PARTITION = 'cockpit-capture'
+
+/** A local preview target that is not Cockpit itself (its own page in a frame would share the keyed window's origin). */
+const assertLocalUrl = (url: string): string =>
+  assertLocalTarget(url, running ? [running.port, ...(running.remote.port() ? [running.remote.port()!] : [])] : [])
+
 /** Sends an event to the page, reopening the window first if it was closed. */
 function sendToPage(channel: string, ...args: unknown[]): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -119,7 +128,13 @@ function showPreview(preview: PreviewOpen): void {
  * Render the same local URL in an isolated, hidden Chromium window so an agent receives the
  * preview itself—not a screenshot of Cockpit chrome. The window is short-lived and has no Node API.
  */
-async function capturePreview(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
+// Captures share one in-memory session that is cleared after each, so they run one at a time:
+// a capture finishing must not clear the storage of another still loading. Each load has a time
+// limit, so one page that never finishes cannot stall every capture after it.
+const CAPTURE_LOAD_MS = 15_000
+const capturePreview = oneAtATime(captureOne)
+
+async function captureOne(url: string): Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }> {
   const target = assertLocalUrl(url)
   const preview = new BrowserWindow({
     show: false,
@@ -127,14 +142,22 @@ async function capturePreview(url: string): Promise<{ data: string; mimeType: 'i
     height: 800,
     useContentSize: true,
     backgroundColor: '#ffffff',
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+    // Its own in-memory session: no cookies or storage shared with Cockpit's window or with other
+    // local apps you have opened, so an agent cannot screenshot a page as you are signed in to it.
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: CAPTURE_PARTITION },
   })
   preview.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  preview.webContents.on('will-redirect', (event, next) => {
+  preview.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  const stayLocal = (event: { preventDefault(): void }, next: string): void => {
     try { assertLocalUrl(next) } catch { event.preventDefault() }
-  })
+  }
+  preview.webContents.on('will-redirect', stayLocal)
+  // The page cannot navigate itself to a remote site during the capture either.
+  preview.webContents.on('will-navigate', stayLocal)
+  preview.webContents.on('will-frame-navigate', (details) => { if (!details.isMainFrame) stayLocal(details, details.url) })
   try {
-    await preview.loadURL(target)
+    await withinTime(preview.loadURL(target), CAPTURE_LOAD_MS, `The preview did not finish loading within ${CAPTURE_LOAD_MS / 1000} s`,
+      () => { if (!preview.isDestroyed()) preview.webContents.stop() })
     await new Promise((resolve) => setTimeout(resolve, 250))
     // capturePage returns physical pixels on Retina displays. Normalise the tool payload so
     // agents get a predictable, detailed image without a needlessly large base64 response.
@@ -142,7 +165,9 @@ async function capturePreview(url: string): Promise<{ data: string; mimeType: 'i
     const size = image.getSize()
     return { data: image.toPNG().toString('base64'), mimeType: 'image/png', width: size.width, height: size.height }
   } finally {
+    const capture = preview.webContents.session
     if (!preview.isDestroyed()) preview.destroy()
+    await capture.clearStorageData().catch(() => undefined)
   }
 }
 
@@ -294,7 +319,21 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
     try {
       const target = fileOnDisk(running.store.root, projectPath, spaceSchema.parse(space ?? undefined), path)
       if (action === 'reveal') shell.showItemInFolder(target)
-      else if (action === 'open') { const failure = await shell.openPath(target); if (failure) return failure }
+      else if (action === 'open') {
+        // A repository can carry a script or app named to look like a document. Opening one runs it,
+        // outside any agent approval, so the real name and what it can do are shown first.
+        const reason = launchReason(target, statSync(target).mode)
+        if (reason) {
+          const win = BrowserWindow.fromWebContents(event.sender)
+          const options = { type: 'warning' as const, buttons: ['Cancel', 'Open'], defaultId: 0, cancelId: 0,
+            message: `Open “${visibleName(basename(target))}”?`,
+            detail: `Opening it may run a program on your Mac: ${reason}. Open it only if you trust where it came from.` }
+          const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+          if (response !== 1) return undefined
+        }
+        const failure = await shell.openPath(target)
+        if (failure) return failure
+      }
       else await shell.trashItem(target)
       return undefined
     } catch (error) {

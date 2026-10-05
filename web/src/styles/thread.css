@@ -127,7 +127,13 @@
 .approval { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--needs-bg); border: 1px solid var(--needs-border); color: var(--needs-ink); }
 .approval:not(.open) { opacity: 0.7; }
 .approval-title { font-size: 14px; }
-.approval-detail { display: block; padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--strong); overflow-wrap: anywhere; white-space: pre-wrap; }
+.approval-detail { display: block; max-height: min(40vh, 320px); overflow: auto; padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--strong); overflow-wrap: anywhere; white-space: pre-wrap; unicode-bidi: isolate; }
+.approval-note { margin: 0; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.approval-flags li { padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); font-size: 12.5px; font-weight: 600; }
+.approval-lines { font-size: 12.5px; color: var(--needs-ink); opacity: 0.85; }
+.approval-input summary { cursor: pointer; font-size: 12.5px; }
+.approval-input pre { max-height: 240px; overflow: auto; margin: 6px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--panel) 70%, transparent); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .approval-expired { font-size: 12.5px; }
 

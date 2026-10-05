@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> **v0.1.3 prerelease (2026-10-03).** Adds Check for Updates. This guide covers the updated tester build. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 When issues occur, Cockpit is designed to fail safely and preserve your work.
 
@@ -34,6 +34,14 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 *   **Likely Cause:** The underlying agent process crashed or was interrupted abruptly without sending a clean exit signal.
 *   **Recovery:** Click the **Stop** button on the conversation turn. This requests interruption. Wait for a terminal status before following up. It does not stop the conversation’s dev servers. If it remains stuck, preserve the logs and report the failure.
 
+**Symptom:** A conversation is missing from the list, or the start of a reply is missing from it.
+*   **Likely Cause:** Cockpit or the Mac stopped while that conversation's files were being written (a crash, a power cut, a full disk), so a file under `~/.agent-cockpit/threads/<id>/` is half-written. From the release after v0.1.4, Cockpit skips the damaged part instead of failing: a damaged event line is left out of the conversation, and a conversation whose `meta.json` cannot be read is left out of the list. Every other conversation stays available. (v0.1.4 and earlier could show an empty list instead.)
+*   **Recovery:** Back up `~/.agent-cockpit/` first. Nothing was deleted: the damaged file is still on disk exactly as it was, and `messages.md` beside it is a readable transcript. Started from Terminal, Cockpit names the damaged file once. Restore `meta.json` from a backup, or repair it by hand if you are comfortable editing JSON, then reopen Cockpit. Make sure the disk has free space.
+
+**Symptom:** An error says the agent "stopped taking input; that message was not delivered".
+*   **Likely Cause:** The agent CLI exited, or stopped reading, just as Cockpit sent it your message, an approval or a Stop. Cockpit and your other conversations keep running; only that one message is lost.
+*   **Recovery:** Wait for the conversation to show a terminal status, then send the message again; Cockpit starts or resumes the agent's session. If it keeps happening, run the same CLI in Terminal to see why it exits, and report it with the CLI version.
+
 **Symptom:** You receive a malformed memory error.
 *   **Likely Cause:** `memory.json`, the cross-thread memory store, is unreadable or malformed. This is distinct from an individual conversation failing to load.
 *   **Recovery:** Cockpit is designed to fail safely and will not overwrite corrupted data. Back up the `~/.agent-cockpit/` folder. Repair or restore `memory.json` from a known-good backup before attempting memory changes. For an individual conversation problem, preserve its metadata, event log and transcript separately.
@@ -43,6 +51,14 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 *   **Recovery:** Scroll to the bottom of the conversation thread. If no prompt is visible, reload the Cockpit window (using `Cmd+R` or the View menu) to refresh the UI state.
 
 ## Files & Previews
+
+**Symptom:** A file name shows something like `⟨U+202E⟩`, or Cockpit asks before opening a file.
+*   **Likely Cause:** The name contains characters that hide or reverse text. Cockpit shows them so the name cannot pretend to be something else (`Invoice-⟨U+202E⟩fdp.command` is a script, not a PDF). It asks before opening any file macOS would run or install.
+*   **Recovery:** Open it only if you know where it came from. Rename it in Files (**⋯ → Rename…**) if the characters were not intended.
+
+**Symptom:** An agent's request to start a process, remember something or save a workflow failed with "approval expired" or "denied".
+*   **Likely Cause:** Cockpit asks before an agent starts or stops a process, saves a memory or saves a workflow, and the card waits 45 seconds. If nobody answers in time, the request lapses.
+*   **Recovery:** Ask the agent to try again and answer the card. For processes, **Allow for this session** covers the rest of that agent session.
 
 **Symptom:** Cockpit warns about a file conflict when saving an edit.
 *   **Likely Cause:** You edited a file inside Cockpit, but that same file was modified by an external editor (or Git) before you saved.

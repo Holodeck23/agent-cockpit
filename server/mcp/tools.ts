@@ -17,7 +17,7 @@ export interface CockpitApi {
   stopConversation(input: z.input<typeof stopConversationInput>): Promise<ControlResult>
   listConversations(input: z.input<typeof listConversationsInput>): Promise<ConversationList>
   readConversation(input: z.input<typeof readConversationInput>): Promise<ConversationRead>
-  saveWorkflow(body: AgentWorkflowInput): Promise<Workflow & { updated: boolean }>
+  saveWorkflow(body: AgentWorkflowInput): Promise<Workflow & { updated: boolean; pausedReason?: string }>
   list(): Promise<ProcessInfo[]>
   start(body: { command: string; name?: string }): Promise<{ process: ProcessInfo; reused: boolean }>
   read(id: string, options: { since?: number; tail?: number }): Promise<ProcessRead>
@@ -254,7 +254,8 @@ export function createCockpitMcpServer(api: CockpitApi): McpServer {
     try {
       const saved = await api.saveWorkflow(input)
       const verb = saved.updated ? 'Updated' : 'Saved'
-      return text(saved.enabled ? `${verb} ${saved.name}; scheduled, next run ${saved.nextRunAt ?? 'soon'}.` : `${verb} ${saved.name}. Review it in Workflows; its schedule is paused.`)
+      return text(saved.enabled ? `${verb} ${saved.name}; scheduled, next run ${saved.nextRunAt ?? 'soon'}.`
+        : saved.pausedReason ? `${verb} ${saved.name}. Its schedule is paused: ${saved.pausedReason}.` : `${verb} ${saved.name}. Review it in Workflows; its schedule is paused.`)
     } catch (error) { return failure(error) }
   })
 

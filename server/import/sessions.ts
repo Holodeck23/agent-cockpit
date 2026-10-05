@@ -76,7 +76,7 @@ function summarize(agent: AgentId, sessionId: string, events: StoredEvent[], upd
 export const claudeProjectDir = (home: string, projectPath: string): string =>
   join(home, '.claude', 'projects', projectPath.replace(/[^A-Za-z0-9]/g, '-'))
 
-/** One Claude Code session file as Cockpit events. Lines from other folders or side chains are skipped. */
+/** One Claude Code session file as Cockpit events. Lines from other folders, without a folder, or side chains are skipped. */
 export function readClaudeSession(text: string, sessionId: string, projectPath: string, updatedAt: string): ImportedSession {
   const events: StoredEvent[] = []
   const matchingPaths = new Set([projectPath, canonicalPath(projectPath)])
@@ -84,7 +84,10 @@ export function readClaudeSession(text: string, sessionId: string, projectPath: 
   for (const line of text.split('\n')) {
     const row = parse(line)
     if (!row || (row.type !== 'user' && row.type !== 'assistant') || row.isSidechain === true || row.isMeta === true) continue
-    if (typeof row.cwd === 'string' && !matchingPaths.has(row.cwd)) {
+    // Every message Claude Code writes names its folder. One that does not could have been put
+    // there by anything that can write in ~/.claude, and dashed folder names can collide.
+    if (typeof row.cwd !== 'string') continue
+    if (!matchingPaths.has(row.cwd)) {
       if (!sameProjectPath(row.cwd, projectPath)) continue
       matchingPaths.add(row.cwd)
     }

@@ -87,8 +87,8 @@ export const MAX_FILE_BYTES = 1024 * 1024
 export const MAX_DIFF_LINES = 20_000
 /** Untracked files read to count their lines, in total per list; past it their counts are left out. */
 export const MAX_COUNTED_BYTES = 16 * 1024 * 1024
-// Repository config cannot make a read run a program: no fsmonitor hook, no external diff, no textconv.
-const SAFE = ['-c', 'core.fsmonitor=false', '-c', 'diff.external=']
+// `run` disables fsmonitor globally; this additionally disables external diff helpers.
+const SAFE = ['-c', 'diff.external=']
 const DIFF_FLAGS = ['--no-ext-diff', '--no-textconv', '--no-color', '-M']
 
 interface StatusEntry {

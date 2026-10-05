@@ -65,7 +65,7 @@ async function sample(workspace: string): Promise<Observation> {
 /** Every dirty path, past the summary's bound (paths and status only). */
 async function allPaths(workspace: string): Promise<Array<{ path: string; oldPath?: string; status: ChangeStatus }>> {
   const prefix = (await run(workspace, ['rev-parse', '--show-prefix'])).stdout.trim()
-  const { stdout } = await run(workspace, ['-c', 'core.fsmonitor=false', 'status', '--porcelain=v2', '-z', '--untracked-files=all', '--', '.'], undefined, 16_000_000)
+  const { stdout } = await run(workspace, ['status', '--porcelain=v2', '-z', '--untracked-files=all', '--', '.'], undefined, 16_000_000)
   return parseStatusV2(stdout).entries
     .filter((e) => e.path.startsWith(prefix))
     .map((e) => ({ path: e.path.slice(prefix.length), ...(e.oldPath ? { oldPath: e.oldPath.slice(prefix.length) } : {}), status: e.status }))

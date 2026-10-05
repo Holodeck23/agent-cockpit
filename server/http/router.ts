@@ -417,7 +417,9 @@ export function createApiHandler({ manager, store, projects, workspaces, process
           const project = projects.list().find((p) => p.path === url.searchParams.get('path'))
           const image = project?.image ? readProjectImage(store.root, project.image) : undefined
           if (!image) throw new HttpError(404, 'No picture')
-          res.writeHead(200, { 'content-type': image.mime, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' })
+          // Same-origin only: another site cannot probe which projects exist by loading their pictures (npm start has no window key).
+          res.writeHead(200, { 'content-type': image.mime, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff',
+            'cross-origin-resource-policy': 'same-origin', 'content-security-policy': "default-src 'none'" })
           res.end(image.bytes)
           return true
         }

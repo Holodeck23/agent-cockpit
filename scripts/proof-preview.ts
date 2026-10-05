@@ -25,6 +25,11 @@ await page.waitForLoadState('domcontentloaded')
 try {
   await openProject(page, dir, 'Preview demo')
   await startConversation(page, 'Start the app, open its preview, and inspect the result.')
+  // Cockpit asks before an agent starts a process, whichever way the agent calls it.
+  const approval = page.locator('.approval.open')
+  await approval.waitFor({ timeout: 30_000 })
+  check('Cockpit asks before the agent starts a process', /start_process|Start a process/i.test(await approval.textContent() ?? ''))
+  await approval.getByRole('button', { name: 'Allow', exact: true }).click()
   await page.getByRole('complementary', { name: 'App preview' }).waitFor({ timeout: 30_000 })
   const pane = page.getByRole('complementary', { name: 'App preview' })
   check('open_preview targets the embedded pane', await pane.isVisible())

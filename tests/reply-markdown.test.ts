@@ -23,15 +23,22 @@ describe('agent replies as Markdown', () => {
   })
   it('keeps only web links, opened outside the app', () => {
     const out = html('[ok](https://example.com/a) [js](javascript:alert(1)) [data](data:text/html,x) [file](file:///etc/passwd) [rel](../x) <https://auto.example>')
-    expect(out).toContain('<a href="https://example.com/a" target="_blank" rel="noreferrer noopener">ok</a>')
+    expect(out).toContain('<a href="https://example.com/a" target="_blank" rel="noreferrer noopener" title="https://example.com/a">ok</a>')
     expect(out).toContain('href="https://auto.example"')
     expect(out).not.toMatch(/javascript:|data:text|file:\/\/|href="\.\.\/x"/)
     for (const word of ['js', 'data', 'file', 'rel']) expect(out).toContain(word)
   })
+  it('shows where a link really goes when its text names another site', () => {
+    const out = html('[https://github.com/you/repo](https://evil.example/login) [github.com](https://github.com/x) [docs](https://evil.example/)')
+    expect(out).toContain('title="https://evil.example/login"')
+    expect(out).toContain('<span class="link-real-host"> ↗ evil.example</span>')
+    // Text that names the same site, or no site at all, gets no warning.
+    expect(out.match(/link-real-host/g)).toHaveLength(1)
+  })
   it('never fetches images: shows the alt text, linked when the address is a web one', () => {
     const out = html('![chart](https://tracker.example/p.png) ![local](./a.png)')
     expect(out).not.toContain('<img')
-    expect(out).toContain('<a href="https://tracker.example/p.png" target="_blank" rel="noreferrer noopener" class="reply-image">chart</a>')
+    expect(out).toContain('<a href="https://tracker.example/p.png" target="_blank" rel="noreferrer noopener" class="reply-image" title="https://tracker.example/p.png">chart</a>')
     expect(out).toContain('local')
   })
   it('allows only http and https addresses', () => {

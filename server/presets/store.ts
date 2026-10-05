@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { writeFileAtomic } from '../files/atomic.ts'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { ALL_EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
@@ -48,8 +49,8 @@ export function createPresetStore(root: string): PresetStore {
         }
       }
       mkdirSync(root, { recursive: true })
-      writeFileSync(`${file}.tmp`, `${JSON.stringify({ presets }, null, 2)}\n`, { mode: 0o600 })
-      renameSync(`${file}.tmp`, file)
+      writeFileAtomic(file, `${JSON.stringify({ presets }, null, 2)}
+`)
       return presets
     },
   }

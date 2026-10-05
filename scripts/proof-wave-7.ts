@@ -271,7 +271,14 @@ try {
     await cancel.click()
     check('W7-10 cancellation wins over the command’s late zero exit', await until('cancelled', () => reloadedCard.getByText('Cancelled', { exact: true }).isVisible()))
     check('W7-10 the unrelated preview server remains alive', await fetch(previewUrl).then((response) => response.text()).then((text) => text.includes('Wave 7 preview'), () => false))
-    await shot(page, 'result-card')
+    for (const theme of ['Light', 'Dark'] as const) {
+      await setTheme(page, theme)
+      await shot(page, `result-card-${theme.toLowerCase()}`)
+    }
+    await page.setViewportSize({ width: 700, height: 760 })
+    await shot(page, 'result-card-narrow')
+    check('narrow: the result card fits without sideways scroll', await reloadedCard.evaluate((el) => el.scrollWidth <= el.clientWidth + 1))
+    await page.setViewportSize({ width: 1280, height: 800 })
   } finally {
     await new Promise<void>((resolve) => previewServer.close(() => resolve()))
   }
@@ -317,8 +324,16 @@ const lastReply = async (title: string): Promise<string> => {
   const detail = await get<{ events: Array<{ event: { kind: string; text?: string } }> }>(p2, `/api/threads/${thread.meta.id}/events`)
   return detail.events.filter((e) => e.event.kind === 'assistant_text').at(-1)?.event.text ?? ''
 }
-const startIn = (dir: string, title: string, text = 'start the dev server') =>
-  apiPost(p2, '/api/threads', { projectPath: dir, title, text, settings: { agent: 'claude' } })
+const startIn = async (dir: string, title: string, text = 'start the dev server'): Promise<void> => {
+  const created = await apiPost(p2, '/api/threads', { projectPath: dir, title, text, settings: { agent: 'claude' } }) as { data: { id: string } }
+  let requestId = ''
+  await until(`${title} process approval`, async () => {
+    const detail = await get<{ events: Array<{ event: { kind: string; requestId?: string; toolName?: string } }> }>(p2, `/api/threads/${created.data.id}/events`)
+    requestId = detail.events.find((event) => event.event.kind === 'approval_request' && event.event.toolName === 'mcp__cockpit__start_process')?.event.requestId ?? ''
+    return Boolean(requestId)
+  })
+  if (requestId) await apiPost(p2, `/api/threads/${created.data.id}/approvals/${requestId}`, { behavior: 'allow' })
+}
 let alivePid = 0
 try {
   p2.setDefaultTimeout(15_000)

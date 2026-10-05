@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { writeFileAtomic } from './atomic.ts'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative } from 'node:path'
 import { z } from 'zod'
@@ -90,8 +91,7 @@ function readMarks(root: string, projectPath: string): Marks {
 }
 function writeMarks(root: string, projectPath: string, marks: Marks): void {
   const file = marksFile(root, projectPath)
-  writeFileSync(`${file}.tmp`, JSON.stringify(marks, null, 2), { mode: 0o600 })
-  renameSync(`${file}.tmp`, file)
+  writeFileAtomic(file, JSON.stringify(marks, null, 2))
 }
 
 export interface DocumentEntry { name: string; path: string; pinned: boolean; archived: boolean; modifiedAt: string }

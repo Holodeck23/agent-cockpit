@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { ensurePrivateDir, writeFileAtomic } from '../files/atomic.ts'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
@@ -51,7 +52,7 @@ export class MemoryReadError extends Error {
 }
 
 export function createMemoryStore(root: string): MemoryStore {
-  mkdirSync(root, { recursive: true, mode: 0o700 })
+  ensurePrivateDir(root)
   const file = join(root, 'memory.json')
   const read = (): MemoryEntry[] => {
     let contents: string
@@ -68,8 +69,7 @@ export function createMemoryStore(root: string): MemoryStore {
     }
   }
   const write = (rows: readonly MemoryEntry[]): void => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(rows, null, 2), { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
+    writeFileAtomic(file, JSON.stringify(rows, null, 2))
   }
   const visible = (projectPath: string): MemoryEntry[] =>
     read().filter((e) => e.scope === 'everywhere' || e.projectPath === projectPath).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
