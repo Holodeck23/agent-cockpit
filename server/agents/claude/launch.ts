@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { startErrorMessage } from '../start-error.ts'
-import { stopChild } from '../stop.ts'
+import { AGENT_SPAWN, stopChild } from '../stop.ts'
 import { guardStdin } from '../stdin.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval } from '../types.ts'
 import { claudeUserMessage } from '../image-input.ts'
@@ -97,7 +97,7 @@ function writePromptFile(text: string): { readonly file: string; remove(): void 
 function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[], cleanup: () => void): AgentSession {
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
     env: { ...process.env, ...deps.env },
   })
   let exited = false

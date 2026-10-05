@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
-import { stopChild } from '../stop.ts'
+import { AGENT_SPAWN, stopChild } from '../stop.ts'
 import { guardStdin } from '../stdin.ts'
 import type { AgentSession, EventSink, NormalizedEvent, OutgoingImage } from '../types.ts'
 import { withImagePaths } from '../image-input.ts'
@@ -61,7 +61,7 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
   if (value.imagesDir) mkdirSync(value.imagesDir, { recursive: true, mode: 0o700 })
   const child = spawn(deps.executable ?? 'agy', buildAntigravityArgs(value), {
     cwd: value.cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
     env: { ...process.env, ...deps.env },
   })
   let exited = false

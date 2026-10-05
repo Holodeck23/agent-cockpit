@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { startErrorMessage } from '../start-error.ts'
-import { stopChild } from '../stop.ts'
+import { AGENT_SPAWN, stopChild } from '../stop.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
 import { acpPrompt } from '../image-input.ts'
 import { createRpcClient } from '../codex/rpc.ts'
@@ -35,7 +35,7 @@ export interface AcpLaunchInput {
 type PermissionOption = { optionId: string; kind: string }
 
 export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSession {
-  const child = spawn(input.command, [...input.args], { cwd: input.cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...input.env } })
+  const child = spawn(input.command, [...input.args], { cwd: input.cwd, stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN, env: { ...process.env, ...input.env } })
   let exited = false
   let sessionId: string | undefined
   let loading = false
