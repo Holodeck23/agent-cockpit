@@ -1,12 +1,13 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
-import { existsSync } from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
 import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts'
 import { copyInto } from '../server/files/copy-in.ts'
+import { launchReason, visibleName } from '../server/files/visible-name.ts'
 import { resolveAppPath } from './shell-path.ts'
 import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updates.ts'
 import { updateDialog } from './update-dialog.ts'
@@ -297,7 +298,21 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
     try {
       const target = fileOnDisk(running.store.root, projectPath, spaceSchema.parse(space ?? undefined), path)
       if (action === 'reveal') shell.showItemInFolder(target)
-      else if (action === 'open') { const failure = await shell.openPath(target); if (failure) return failure }
+      else if (action === 'open') {
+        // A repository can carry a script or app named to look like a document. Opening one runs it,
+        // outside any agent approval, so the real name and what it can do are shown first.
+        const reason = launchReason(target, statSync(target).mode)
+        if (reason) {
+          const win = BrowserWindow.fromWebContents(event.sender)
+          const options = { type: 'warning' as const, buttons: ['Cancel', 'Open'], defaultId: 0, cancelId: 0,
+            message: `Open “${visibleName(basename(target))}”?`,
+            detail: `Opening it may run a program on your Mac: ${reason}. Open it only if you trust where it came from.` }
+          const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+          if (response !== 1) return undefined
+        }
+        const failure = await shell.openPath(target)
+        if (failure) return failure
+      }
       else await shell.trashItem(target)
       return undefined
     } catch (error) {

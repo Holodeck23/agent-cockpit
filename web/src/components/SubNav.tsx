@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { SECTION_ORDER } from '../shortcuts.ts'
 import { Bars, ChatIcon, FileIcon, FolderIcon, MemoryIcon, TerminalIcon, WorkflowIcon } from './icons.tsx'
-import { fileName, spaceOf } from '../file-text.ts'
+import { fileName, spaceOf, visibleName } from '../file-text.ts'
 
 export type Section = 'conversations' | 'files' | 'workflows' | 'memory' | 'processes'
 
@@ -52,9 +52,9 @@ export function SubNav({ section, onSection, working, appearance, tools, convers
       {pins.length > 0 && onOpenPin ? (
         <div className="subnav-pins" role="group" aria-label="Pinned files">
           {pins.map((path) => (
-            <button key={path} type="button" className="subnav-pin" title={spaceOf(path).space === 'documents' ? `Your documents / ${fileName(path)}` : path} onClick={() => onOpenPin(path)}>
+            <button key={path} type="button" className="subnav-pin" title={visibleName(spaceOf(path).space === 'documents' ? `Your documents / ${fileName(path)}` : path)} onClick={() => onOpenPin(path)}>
               <FileIcon />
-              <span>{fileName(path)}</span>
+              <span>{visibleName(fileName(path))}</span>
             </button>
           ))}
         </div>

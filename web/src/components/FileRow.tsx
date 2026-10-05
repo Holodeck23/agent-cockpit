@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { api } from '../api.ts'
-import { fileName, joinName, spaceOf, splitName } from '../file-text.ts'
+import { fileName, joinName, spaceOf, splitName, visibleName } from '../file-text.ts'
 import { native } from '../native.ts'
 import { usePopover } from '../usePopover.ts'
 import { FileIcon, MoreIcon, PinIcon } from './icons.tsx'
@@ -33,6 +33,8 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
   const [name, setName] = useState(() => splitName(fileName(path)))
   const [trashing, setTrashing] = useState(false)
   const label = fileName(path)
+  // What is shown; `label` stays the real name for renaming.
+  const shown = visibleName(label)
   const { space, path: plain } = spaceOf(path)
   const act = (run: () => Promise<unknown>): void => { setOpen(false); run().catch((e: unknown) => onError(message(e))) }
   const desktop = (action: 'open' | 'reveal' | 'trash') => async (): Promise<void> => {
@@ -52,10 +54,10 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
     return (
       <form className="file-row file-rename" onSubmit={rename}>
         <FileIcon />
-        <input aria-label={`New name for ${label}`} value={name.stem} autoFocus onFocus={(e) => e.currentTarget.select()}
+        <input aria-label={`New name for ${shown}`} value={name.stem} autoFocus onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => setName({ ...name, stem: e.target.value })} onKeyDown={cancelOnEscape} />
         <span className="file-rename-dot" aria-hidden>.</span>
-        <input className="file-rename-ext" aria-label={`Extension for ${label}`} value={name.ext} placeholder="ext"
+        <input className="file-rename-ext" aria-label={`Extension for ${shown}`} value={name.ext} placeholder="ext"
           onChange={(e) => setName({ ...name, ext: e.target.value })} onKeyDown={cancelOnEscape} />
         <button type="submit" className="button-soft">Rename</button>
       </form>
@@ -65,16 +67,16 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
     <div className={`file-row-wrap${selected ? ' selected' : ''}`} ref={ref}>
       <button type="button" className={`file-row ${selected ? 'selected' : ''}`} onClick={onOpen}>
         <FileIcon />
-        <span>{label}</span>
+        <span>{shown}</span>
         {pinned ? <PinIcon className="file-pin" title="Pinned" /> : null}
         {detail}
       </button>
-      <button type="button" className="file-more" aria-label={`More for ${label}`} aria-expanded={open} onClick={() => setOpen(!open)}><MoreIcon /></button>
+      <button type="button" className="file-more" aria-label={`More for ${shown}`} aria-expanded={open} onClick={() => setOpen(!open)}><MoreIcon /></button>
       {open ? (
-        <div className="menu file-menu" role="menu" aria-label={`${label} actions`}>
+        <div className="menu file-menu" role="menu" aria-label={`${shown} actions`}>
           <button type="button" role="menuitem" className="menu-item" onClick={() => {
             setOpen(false)
-            if (dirty) onError(`Save or discard the changes to ${label} before renaming it`)
+            if (dirty) onError(`Save or discard the changes to ${shown} before renaming it`)
             else { setName(splitName(label)); setRenaming(true) }
           }}>Rename…</button>
           {extra.map((a) => <button key={a.label} type="button" role="menuitem" className="menu-item" onClick={() => act(a.run)}>{a.label}</button>)}
@@ -86,8 +88,8 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
         </div>
       ) : null}
       {trashing ? (
-        <div className="file-confirm" role="alertdialog" aria-label={`Move ${label} to the Trash`}>
-          <span>Move {label} to the Trash? You can put it back from the Trash in Finder.</span>
+        <div className="file-confirm" role="alertdialog" aria-label={`Move ${shown} to the Trash`}>
+          <span>Move {shown} to the Trash? You can put it back from the Trash in Finder.</span>
           <button type="button" className="button-soft" onClick={() => setTrashing(false)}>Cancel</button>
           <button type="button" className="button-danger" onClick={() => {
             setTrashing(false)

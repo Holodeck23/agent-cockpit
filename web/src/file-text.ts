@@ -71,6 +71,8 @@ export const inSpace = (space: FileSpace, path: string): string => (space === 'd
 /** The file name a tab shows: no folders, no space prefix. */
 export const fileName = (path: string): string => spaceOf(path).path.split('/').pop() ?? path
 
+export { visibleName } from '../../server/files/visible-name.ts'
+
 /** Words as a reader counts them: runs of letters or digits, apostrophes and hyphens inside a word. */
 export function wordCount(text: string): number {
   return text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length ?? 0

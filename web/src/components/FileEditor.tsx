@@ -1,5 +1,5 @@
 import { lazy, Suspense, useDeferredValue, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { fileName, isDirty, lineCount, lineRange, linesOfSelection, spaceOf, wordCount, type OpenFile } from '../file-text.ts'
+import { fileName, isDirty, lineCount, lineRange, linesOfSelection, spaceOf, visibleName, wordCount, type OpenFile } from '../file-text.ts'
 import { languageFor } from '../syntax-language.ts'
 import { findIn, replaceAllIn } from '../editor-find.ts'
 import { usePopover } from '../usePopover.ts'
@@ -34,7 +34,8 @@ export interface Jump { readonly path: string; readonly line: number; readonly e
 
 // Guessed words must not land in files; the editor holds exactly what was typed.
 const PLAIN_TEXT: Record<string, string> = { writingsuggestions: 'false', autoCorrect: 'off', autoCapitalize: 'off' }
-const nameOf = fileName
+/** Shown names make hidden or reordering characters visible (see visibleName). */
+const nameOf = (path: string): string => visibleName(fileName(path))
 const isMarkdown = (path: string): boolean => /\.(md|markdown)$/i.test(path)
 // The rich editor is loaded only when a Markdown file is shown as a document.
 const DocumentView = lazy(() => import('./DocumentView.tsx'))
@@ -100,7 +101,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
         <div className="file-tab-list" role="tablist" aria-label="Open files">
           {files.map((f) => (
             <div key={f.path} className={`file-tab${f.path === active ? ' active' : ''}`}>
-              <button type="button" role="tab" aria-selected={f.path === active} title={f.path} onClick={() => onSelect(f.path)}>
+              <button type="button" role="tab" aria-selected={f.path === active} title={visibleName(f.path)} onClick={() => onSelect(f.path)}>
                 {nameOf(f.path)}
                 {isDirty(f) ? <span className="file-dirty" aria-label="unsaved">●</span> : null}
               </button>
@@ -116,7 +117,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
         <>
           <header>
             <div>
-              <h2>{inDocuments ? <><span className="file-space">Your documents /</span> {nameOf(file.path)}</> : file.path}</h2>
+              <h2>{inDocuments ? <><span className="file-space">Your documents /</span> {nameOf(file.path)}</> : visibleName(file.path)}</h2>
               {file.eol === '\r\n' ? <span>Windows line endings</span> : null}
             </div>
             <div className="file-actions">
@@ -293,7 +294,7 @@ function OpenTabsMenu({ files, active, onSelect, onCloseMany }: {
       {open ? (
         <div className="menu" role="menu" aria-label="Open tabs">
           {files.map((f) => (
-            <button key={f.path} type="button" role="menuitemradio" aria-checked={f.path === active} className="menu-item" title={f.path} onClick={() => pick(() => onSelect(f.path))}>
+            <button key={f.path} type="button" role="menuitemradio" aria-checked={f.path === active} className="menu-item" title={visibleName(f.path)} onClick={() => pick(() => onSelect(f.path))}>
               <span>{nameOf(f.path)}</span>{isDirty(f) ? <span className="file-dirty" aria-label="unsaved">●</span> : null}
             </button>
           ))}
