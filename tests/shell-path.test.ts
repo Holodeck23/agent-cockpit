@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { extractMarkedPath, fallbackDirs, loginShellPath, mergePath, resolveAppPath } from '../electron/shell-path.ts'
 
@@ -27,7 +28,9 @@ describe('mergePath', () => {
 
 describe('loginShellPath', () => {
   it('reads PATH from a real login shell', () => {
-    const path = loginShellPath('/bin/zsh')
+    // zsh on a Mac; whichever login shell exists elsewhere.
+    const shell = ['/bin/zsh', '/bin/bash', '/usr/bin/bash'].find((candidate) => existsSync(candidate))!
+    const path = loginShellPath(shell)
     expect(path).toBeDefined()
     expect(path?.split(':')).toContain('/usr/bin')
   })

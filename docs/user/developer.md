@@ -42,7 +42,7 @@ Ensure you have Node.js and `npm` installed. Run `npm ci` in the repository firs
 
 Testing is separated into isolated packaged proofs (using Playwright against the packaged Electron app) and live-provider smoke tests.
 
-**Unit tests** (`npm test`, vitest) run on macOS, as CI does. A few assume a Mac and a normal user account: they use `/bin/zsh`, file permissions that `root` ignores, and a system that reaps orphaned processes. On Linux or as root those four fail without anything being wrong. When a test spawns a stand-in CLI, write it like `tests/claude-capabilities.test.ts` does, and allow for macOS scanning a fresh executable on its first run.
+**Unit tests** (`npm test`, vitest) run on macOS in CI, and also pass on Linux. One test needs an ordinary user account, because it relies on file permissions that `root` ignores; it is skipped when run as root. When a test spawns a stand-in CLI, write it like `tests/claude-capabilities.test.ts` does, and allow for macOS scanning a fresh executable on its first run.
 
 **Packaged Proofs (No API Cost):**
 These tests verify UI and application logic against protocol stand-ins and local files without consuming live API usage limits.

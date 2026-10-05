@@ -95,10 +95,10 @@ describe('pairing store', () => {
 })
 
 interface Reply { status: number; body: string; cookie?: string }
-function call(port: number, path: string, init: { method?: string; headers?: Record<string, string>; body?: unknown; host?: string } = {}): Promise<Reply> {
+function call(port: number, path: string, init: { method?: string; headers?: Record<string, string>; body?: unknown; host?: string; fresh?: boolean } = {}): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const body = init.body === undefined ? undefined : JSON.stringify(init.body)
-    const req = request({ host: init.host ?? '127.0.0.1', port, path, method: init.method ?? 'GET',
+    const req = request({ host: init.host ?? '127.0.0.1', port, path, method: init.method ?? 'GET', ...(init.fresh ? { agent: false } : {}),
       headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...init.headers } }, (res) => {
       let text = ''
       res.on('data', (chunk) => { text += chunk })
@@ -222,7 +222,8 @@ describe('phone access over HTTP', () => {
       const off = JSON.parse((await local('/api/remote', { enabled: false })).body).data
       expect(off).toMatchObject({ enabled: false, running: false })
       expect(ts.calls).toEqual([`serve ${port} on 443`, 'unserve 443'])
-      await expect(call(port, '/')).rejects.toThrow(/ECONNREFUSED/)
+      // A new connection, not one kept alive from earlier requests, so the closed port is what answers.
+      await expect(call(port, '/', { fresh: true })).rejects.toThrow(/ECONNREFUSED/)
     } finally { await server.close() }
   })
 
