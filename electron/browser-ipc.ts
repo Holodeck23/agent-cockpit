@@ -15,7 +15,7 @@ export function registerBrowserIpc(origin: string, service: BrowserService, isPr
       return false
     }
   }
-  ipcMain.handle('cockpit:browser-open', async (event, request: unknown) => {
+  ipcMain.handle('cockpit:browser-open', (event, request: unknown) => {
     if (!fromCockpit(event)) return { error: 'Not allowed' }
     const { key, projectPath, url } = (request ?? {}) as Record<string, unknown>
     if (!pageKeyOk(key) || typeof projectPath !== 'string' || !isProject(projectPath) || typeof url !== 'string' || url.length > 8192) return { error: 'Not a page Cockpit can open' }

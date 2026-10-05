@@ -107,11 +107,13 @@ export function createBrowserService(deps: BrowserServiceDeps) {
 
   return {
     /** Opens `url` in the conversation's page, creating it in the workspace's partition if needed. */
-    async open(key: string, projectPath: string, url: string): Promise<PageState | { error: string }> {
+    open(key: string, projectPath: string, url: string): PageState | { error: string } {
       if (!isNavigable(url, deps.cockpitPorts())) return { error: 'Only http and https pages open here, and not Cockpit itself.' }
       const page = pages.get(key) ?? create(key, projectPath)
       page.error = undefined
-      await page.view.webContents.loadURL(url).catch(() => undefined)
+      // Not awaited: a page that never finishes loading must not hold the caller. Progress,
+      // the final address and any error arrive as state events.
+      void page.view.webContents.loadURL(url).catch(() => undefined)
       return stateOf(key, page)
     },
     /** The page's place in the window; undefined hides it. Showing one page hides the others. */
