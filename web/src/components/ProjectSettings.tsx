@@ -113,6 +113,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             </span>
           </label>
           <DocumentsFolder projectPath={project.path} />
+          {native?.browser ? <WebsiteData projectPath={project.path} projectName={project.name} /> : null}
           <div className="field">
             <span>Folder</span>
             <div className="project-folder">
@@ -148,6 +149,29 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           </footer>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The in-app browser's website data for this project (W9.2): logins and storage of the sites
+ * opened in its conversations. Separate from agent sign-ins, which this never touches.
+ */
+function WebsiteData({ projectPath, projectName }: { projectPath: string; projectName: string }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const clear = (): void => {
+    setBusy(true)
+    void native?.browser?.clearData(projectPath).then((error) => setNote(error ?? `Cleared website data for ${projectName}.`)).finally(() => setBusy(false))
+  }
+  return (
+    <div className="field">
+      <span>Website data</span>
+      <div className="project-folder">
+        <p className="modal-note">Logins and storage of sites opened in this project&apos;s browser. Agent sign-ins are separate and stay as they are.</p>
+        <button type="button" className="button-soft" disabled={busy} onClick={clear}>Clear website data</button>
+      </div>
+      {note ? <p className="modal-note" role="status">{note}</p> : null}
     </div>
   )
 }

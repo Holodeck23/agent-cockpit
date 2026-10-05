@@ -34,7 +34,9 @@ import { PhoneNotify } from './components/PhoneNotify.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
 import { PreviewPane } from './components/PreviewPane.tsx'
-import { forgetPreview, previewUrl, rememberPreview, type PreviewMap } from './preview-owner.ts'
+import { BrowserPane } from './components/BrowserPane.tsx'
+import { loadLayouts, openPage, saveLayouts, updatePage, type LayoutMap, type PaneLayout } from './browser-layout.ts'
+import { forgetPreview, previewKey, previewUrl, rememberPreview, type PreviewMap } from './preview-owner.ts'
 import type { PreviewOpen } from '../../server/preview/types.ts'
 
 const NO_THREADS: never[] = []
@@ -82,6 +84,15 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const openGallery = useCallback(() => { setGalleryFirst(true); setSectionState('workflows') }, [])
   const [phonePanelOpen, setPhonePanelOpen] = useState(false)
   const [previews, setPreviews] = useState<PreviewMap>({})
+  // The in-app browser (wave 9) where the desktop app has one; the iframe preview otherwise.
+  const inAppBrowser = local && Boolean(native?.browser)
+  const [layouts, setLayouts] = useState<LayoutMap>(() => (inAppBrowser ? loadLayouts() : {}))
+  const [openNonce, setOpenNonce] = useState(0)
+  useEffect(() => { if (inAppBrowser) saveLayouts(layouts) }, [inAppBrowser, layouts])
+  const showPage = useCallback((preview: PreviewOpen) => {
+    if (inAppBrowser) { setLayouts((current) => openPage(current, previewKey(preview), preview.url)); setOpenNonce((n) => n + 1) }
+    else setPreviews((current) => rememberPreview(current, preview))
+  }, [inAppBrowser])
   // Help → Release Notes, or the "Updated to" view after an update (lead set).
   const [releaseNotes, setReleaseNotes] = useState<{ lead?: string }>()
   // A reply's path:line link opens Files at that line (desktop only; Files stays on the Mac).
@@ -99,12 +110,18 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     else await navigator.clipboard?.writeText(commit.hash.slice(0, 12)).catch(() => undefined)
     return 'copied'
   }, [replyProject])
-  const replyContext = useMemo(() => ({ projectPath: replyProject, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply }),
-    [replyProject, openFileFromReply, openCommitFromReply])
+  const replyThread = phone ? undefined : cockpit.detail?.meta.id
+  // G5: a web link in a reply opens beside the chat, in that conversation's own page.
+  const openWebFromReply = useCallback((url: string) => {
+    if (replyProject && replyThread) showPage({ url, projectPath: replyProject, threadId: replyThread })
+  }, [replyProject, replyThread, showPage])
+  const replyContext = useMemo(() => ({ projectPath: replyProject, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply,
+    ...(inAppBrowser ? { onOpenWeb: openWebFromReply } : {}) }),
+    [replyProject, openFileFromReply, openCommitFromReply, inAppBrowser, openWebFromReply])
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
-  useEffect(() => local ? native?.onPreviewOpen((preview) => setPreviews((current) => rememberPreview(current, preview))) : undefined, [local])
+  useEffect(() => local ? native?.onPreviewOpen(showPage) : undefined, [local, showPage])
   // A clicked Mac notification opens its conversation, in whichever project it belongs to.
   const threadsRef = useRef(cockpit.threads)
   threadsRef.current = cockpit.threads
@@ -156,8 +173,14 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     ...(section === 'conversations' && selectedId ? { threadId: selectedId } : {}),
   } : undefined
   const activePreviewUrl = previewUrl(previews, previewTarget)
+  const activePageKey = previewTarget ? previewKey(previewTarget) : undefined
+  const activeLayout = inAppBrowser && activePageKey ? layouts[activePageKey] : undefined
+  const browserOpen = Boolean(activeLayout?.visible && previewTarget)
+  const changeLayout = useCallback((change: Partial<PaneLayout>) => {
+    if (activePageKey) setLayouts((current) => updatePage(current, activePageKey, change))
+  }, [activePageKey])
   const openProcessSite = (preview: PreviewOpen): void => {
-    setPreviews((current) => rememberPreview(current, preview))
+    showPage(preview)
     if (preview.threadId) {
       selectProject(preview.projectPath)
       selectThread(preview.threadId)
@@ -220,7 +243,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
       ) : null}
       <ReplyContext.Provider value={replyContext}>
-      <div className={`workspace${local && activePreviewUrl ? ' has-preview' : ''}`}>
+      <div className={`workspace${(local && activePreviewUrl && !inAppBrowser) || browserOpen ? ' has-preview' : ''}`}>
         <div className="workspace-main">
       {section === 'conversations' ? (
         <div className={`layout${selectedId ? ' has-selection' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
@@ -281,7 +304,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />
       )}
         </div>
-        {local && activePreviewUrl && previewTarget ? <PreviewPane url={activePreviewUrl}
+        {browserOpen && activeLayout && activePageKey && previewTarget ? (
+          <BrowserPane key={activePageKey} pageKey={activePageKey} projectPath={previewTarget.projectPath} layout={activeLayout} openNonce={openNonce}
+            onLayout={changeLayout} onClose={() => changeLayout({ visible: false })} />
+        ) : null}
+        {!inAppBrowser && local && activePreviewUrl && previewTarget ? <PreviewPane url={activePreviewUrl}
           onClose={() => setPreviews((current) => forgetPreview(current, previewTarget))} /> : null}
       </div>
       </ReplyContext.Provider>

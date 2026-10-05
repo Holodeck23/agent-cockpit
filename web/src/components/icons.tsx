@@ -228,3 +228,30 @@ export const CopyIcon = (p: IconProps) => (
     <path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8" />
   </Svg>
 )
+export const ReloadIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+    <path d="M19.5 4.5v4.2h-4.2" />
+  </Svg>
+)
+export const CloseIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m6.5 6.5 11 11M17.5 6.5l-11 11" />
+  </Svg>
+)
+export const ExternalIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13.5 4.5h6v6M19.5 4.5l-8 8" />
+    <path d="M17.5 13.5v4a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h4" />
+  </Svg>
+)
+export const ExpandIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5 13.5 10.5M4.5 19.5l6-6" />
+  </Svg>
+)
+export const RestoreIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M19.5 10H14V4.5M4.5 14H10v5.5M14 10l5.5-5.5M10 14l-5.5 5.5" />
+  </Svg>
+)
