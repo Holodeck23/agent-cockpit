@@ -244,6 +244,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     for (const listener of listeners) listener(update)
   }
 
+  const persist = (write: () => unknown, kind: NormalizedEvent['kind']): void => {
+    try { write() } catch (error) { console.error(`[cockpit] could not save a ${kind} event`, error) }
+  }
+
   const record = (threadId: string, incoming: NormalizedEvent): void => {
     if (deleted.has(threadId)) return
     if (incoming.kind === 'image_data') {
@@ -271,7 +275,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const event: NormalizedEvent =
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
     // Deltas are for live rendering only; the final assistant_text is persisted.
-    if (event.kind !== 'text_delta') store.append(threadId, event)
+    // A write that fails (a full disk) loses this event from the log, but the state below must still
+    // move: a lost result or exit would otherwise leave the conversation working, and its session live, for good.
+    if (event.kind !== 'text_delta') persist(() => store.append(threadId, event), event.kind)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
     if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
     if (entry && event.kind === 'subagent') {
@@ -290,7 +296,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Only provider evidence makes a session resumable; constructing a process does not.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
-      if (meta) store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined })
+      if (meta) persist(() => store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined }), event.kind)
     }
     if (entry && event.kind === 'result') {
       entry.pending.clear()

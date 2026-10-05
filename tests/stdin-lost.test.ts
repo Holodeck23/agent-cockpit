@@ -68,4 +68,20 @@ sleep 2
       child.kill('SIGKILL')
     }
   })
+
+  it('JSON-RPC: a handler that throws on a message becomes a protocol error, not a crash', async () => {
+    const child = spawn('/bin/sh', ['-c', 'printf \'{"method":"odd/notice","params":{}}\\n{"id":7,"method":"odd/request","params":{}}\\n\'; sleep 1'], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const errors: string[] = []
+    createRpcClient(child, {
+      onNotification() { throw new TypeError('cannot read properties of undefined') },
+      onServerRequest() { throw new TypeError('cannot read properties of undefined') },
+      onProtocolError: (message) => errors.push(message),
+    })
+    try {
+      await expect.poll(() => errors.length).toBe(2)
+      expect(errors.every((m) => /Could not handle Codex message odd\//.test(m))).toBe(true)
+    } finally {
+      child.kill('SIGKILL')
+    }
+  })
 })

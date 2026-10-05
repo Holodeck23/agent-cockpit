@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline'
 import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
 import { guardStdin } from '../stdin.ts'
-import type { AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
+import type { AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval } from '../types.ts'
 import { claudeUserMessage } from '../image-input.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
@@ -130,7 +130,13 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
         if (id && replies.has(id)) { replies.get(id)!(message.response?.response); replies.delete(id); return }
       } catch { /* parsed below as usual */ }
     }
-    for (const event of parseClaudeLine(line)) onEvent(event)
+    // A parser that throws on an odd line must not escape the readline callback (H1).
+    let events: NormalizedEvent[]
+    try { events = parseClaudeLine(line) } catch (error) {
+      onEvent({ kind: 'error', message: `Could not read Claude Code output: ${error instanceof Error ? error.message : String(error)}` })
+      return
+    }
+    for (const event of events) onEvent(event)
   })
   createInterface({ input: child.stderr }).on('line', (line) => {
     stderrTail.push(line)

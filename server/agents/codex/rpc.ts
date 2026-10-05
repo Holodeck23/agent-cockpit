@@ -46,11 +46,21 @@ export function createRpcClient(child: ChildProcessWithoutNullStreams, handlers:
       return
     }
     const { id, method } = message
-    if (typeof method === 'string' && (typeof id === 'number' || typeof id === 'string')) {
-      handlers.onServerRequest({ id, method, params: message.params })
-    } else if (typeof method === 'string') {
-      handlers.onNotification(method, message.params)
-    } else if (typeof id === 'number' && pending.has(id)) {
+    // A handler that throws on an odd message must not escape the readline callback (H1).
+    try {
+      if (typeof method === 'string' && (typeof id === 'number' || typeof id === 'string')) {
+        handlers.onServerRequest({ id, method, params: message.params })
+        return
+      }
+      if (typeof method === 'string') {
+        handlers.onNotification(method, message.params)
+        return
+      }
+    } catch (error) {
+      handlers.onProtocolError(`Could not handle ${label} message ${String(method)}: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+    if (typeof id === 'number' && pending.has(id)) {
       const waiter = pending.get(id)
       pending.delete(id)
       if ('error' in message) {
