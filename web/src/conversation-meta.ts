@@ -54,19 +54,22 @@ export interface FilterInput {
   readonly textMatches?: ReadonlySet<string>
 }
 
+/** The agent is starting up or at work: what the Working tab, the counts and the Dock show. */
+export const isWorking = (status: ThreadStatus): boolean => status === 'starting' || status === 'working'
+
 type NeedsRow = Pick<ThreadSummary, 'status' | 'awaiting'> & { readonly meta?: Pick<ThreadSummary['meta'], 'completed'> }
 /**
  * Waiting on you: an approval is open, or the last turn ended with a question or a blocker (U12).
  * A conversation you marked complete never counts, in the Dock badge, the tabs or the Needs you list.
  */
-export const needsYou = (t: NeedsRow): boolean => !t.meta?.completed && (t.status === 'needs_input' || (Boolean(t.awaiting) && t.status !== 'working'))
+export const needsYou = (t: NeedsRow): boolean => !t.meta?.completed && (t.status === 'needs_input' || (Boolean(t.awaiting) && !isWorking(t.status)))
 /** The status a list row shows: a question or blocker reads as Needs you. */
 export const shownStatus = (t: NeedsRow): ThreadStatus => (needsYou(t) ? 'needs_input' : t.status)
 
 const MATCHES: Record<ListFilter, (t: ThreadSummary, isUnread: (t: ThreadSummary) => boolean) => boolean> = {
   all: () => true,
   needs: (t) => needsYou(t),
-  working: (t) => t.status === 'working',
+  working: (t) => isWorking(t.status),
   unread: (t, isUnread) => isUnread(t),
 }
 
@@ -88,6 +91,8 @@ export function filterConversations(input: FilterInput, filter: ListFilter): { c
 
 export const STATUS_LABEL: Record<ThreadStatus, string> = {
   idle: 'Waiting',
+  // The agent's process is launched and has not reported back yet.
+  starting: 'Starting',
   working: 'Working',
   needs_input: 'Needs you',
   // A finished turn leaves the conversation open; the check mark is for Mark complete.

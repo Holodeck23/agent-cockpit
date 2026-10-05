@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { attentionChanges, DEFAULT_SOUNDS, parseSounds, soundFor, type Seen } from '../web/src/sounds.ts'
 
-type Status = 'idle' | 'working' | 'needs_input' | 'done' | 'error'
+type Status = 'idle' | 'starting' | 'working' | 'needs_input' | 'done' | 'error'
 const row = (id: string, status: Status, at = 't1') => ({ meta: { id }, status, lastActivityAt: at })
 const seen = (...rows: Array<[string, Status, string?]>): Seen => new Map(rows.map(([id, status, at]) => [id, { status, lastActivityAt: at ?? 't0' }]))
 const on = { reply: true, decision: true }
@@ -56,5 +56,8 @@ describe('attentionChanges', () => {
 
   it('a question at the end of a turn is a decision, not a reply', () => {
     expect(attentionChanges(seen(['a', 'working']), [{ ...row('a', 'done'), awaiting: 'question' as const }])).toEqual([{ id: 'a', kind: 'decision' }])
+  })
+  it('a turn that ends straight from Starting is a reply (Day 10)', () => {
+    expect(attentionChanges(seen(['a', 'starting']), [row('a', 'done')])).toEqual([{ id: 'a', kind: 'reply' }])
   })
 })

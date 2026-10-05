@@ -153,6 +153,11 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
     },
     interrupt() {
       if (sessionId) rpc.notify('session/cancel', { sessionId })
+      else if (queued.length > 0) {
+        // Still starting up: the messages never reach the agent, and the turn ends here as stopped.
+        queued.splice(0)
+        onEvent({ kind: 'result', ok: false, stopped: true })
+      }
       // Unanswered permission requests are cancelled with the turn.
       for (const [requestId, pending] of approvals) {
         rpc.respond(pending.rpcId, { outcome: { outcome: 'cancelled' } })

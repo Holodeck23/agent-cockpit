@@ -14,22 +14,45 @@ export class HttpError extends Error {
   }
 }
 
-/** `maxBytes` is raised only by routes that carry images. */
-export async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<unknown> {
-  const chunks: Buffer[] = []
-  let size = 0
-  for await (const chunk of req) {
-    const buffer = chunk as Buffer
-    size += buffer.length
-    if (size > maxBytes) throw new HttpError(413, 'Request body too large')
-    chunks.push(buffer)
-  }
-  if (chunks.length === 0) return {}
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
-  } catch {
-    throw new HttpError(400, 'Body is not valid JSON')
-  }
+// A body this many times over its limit is not drained: the connection is cut instead.
+const DRAIN_FACTOR = 8
+
+/**
+ * `maxBytes` is raised only by routes that carry images. Over the limit it rejects with 413 at
+ * once but keeps reading (and dropping) the rest, so the answer goes out on a healthy connection:
+ * leaving a `for await` early destroys the request and its socket mid-upload, and the client's
+ * next request on that keep-alive connection hung (seen on Linux CI).
+ */
+export function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    let over = false
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (over) {
+        if (size > maxBytes * DRAIN_FACTOR) req.destroy()
+        return
+      }
+      if (size > maxBytes) {
+        over = true
+        chunks.length = 0
+        reject(new HttpError(413, 'Request body too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('error', (error) => { if (!over) reject(error) })
+    req.on('end', () => {
+      if (over) return
+      if (chunks.length === 0) { resolve({}); return }
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+      } catch {
+        reject(new HttpError(400, 'Body is not valid JSON'))
+      }
+    })
+  })
 }
 
 export function parseBody<T>(schema: z.ZodType<T>, value: unknown): T {

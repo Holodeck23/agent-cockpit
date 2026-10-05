@@ -70,14 +70,37 @@ export function runningHelpers(events: readonly StoredEvent[]): string[] {
   return [...running]
 }
 
+// Anything that only the agent's process can produce: proof it is up, or that it failed.
+const PROVIDER_EVIDENCE = new Set([
+  'session', 'assistant_text', 'tool_use', 'tool_result', 'subagent', 'compaction', 'question', 'approval_request',
+  'image', 'user_taken', 'result', 'error', 'exit',
+])
+
+/**
+ * The agent process was launched (session_boundary) and has reported nothing since: no session,
+ * no output, no failure. Cockpit cannot see further into a CLI's startup than that.
+ */
+export function startingNow(events: readonly StoredEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const { event } = events[i]!
+    if (event.kind === 'session_boundary') return true
+    if (PROVIDER_EVIDENCE.has(event.kind) && !(event.kind === 'image' && event.from !== 'agent')) return false
+  }
+  return false
+}
+
+/** A turn is in flight: starting, at work, or held on your answer. */
+export const isBusy = (status: ThreadStatus): boolean => status === 'starting' || status === 'working' || status === 'needs_input'
+
 /**
  * Status comes from the event log alone, plus whether a turn is in flight.
  * Approvals from a process that has since exited are dead, so they only count
- * while a turn is running.
+ * while a turn is running. Starting lasts only while a turn runs, so a launch that
+ * fails or is stopped falls through to Error or Waiting like any other turn.
  */
 export function deriveStatus(events: readonly StoredEvent[], turnRunning: boolean): ThreadStatus {
   if (turnRunning && openApprovals(events).length > 0) return 'needs_input'
-  if (turnRunning) return 'working'
+  if (turnRunning) return startingNow(events) ? 'starting' : 'working'
   const last = [...events].reverse().find(({ event }) => event.kind === 'result' || event.kind === 'error' || event.kind === 'user_text')
   if (!last) return 'idle'
   if (last.event.kind === 'result') return last.event.ok ? 'done' : last.event.stopped ? 'idle' : 'error'

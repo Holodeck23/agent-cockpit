@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { buildClaudeArgs } from '../server/agents/claude/flags.ts'
 
@@ -62,10 +63,40 @@ describe('follow-up suggestions (J2)', () => {
 describe('effort levels per agent (C9)', async () => {
   const { effortsFor, effortForClaude } = await import('../server/agents/claude/flags.ts')
   it('offers Ultra for Codex only, and gives agents without it their highest level', () => {
-    expect(effortsFor('codex').at(-1)).toBe('ultra')
+    expect(effortsFor('codex', 'gpt-5.6-sol').at(-1)).toBe('ultra')
     expect(effortsFor('claude')).not.toContain('ultra')
     expect(effortForClaude('ultra')).toBe('max')
     expect(effortForClaude('high')).toBe('high')
     expect(() => buildClaudeArgs({ ...base, effort: 'ultra' as never })).toThrow()
+  })
+})
+
+describe('Codex effort levels per model (R7)', async () => {
+  const { effortsFor } = await import('../server/agents/claude/flags.ts')
+  const { codexEffort, CODEX_MODEL_EFFORTS } = await import('../server/agents/codex/efforts.ts')
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/codex-model-list-0.147.json', import.meta.url), 'utf8')) as
+    { data: { id: string; supportedReasoningEfforts: { reasoningEffort: string }[] }[] }
+
+  it('offers each model exactly the levels Codex advertises for it', () => {
+    for (const model of recorded.data) {
+      expect(effortsFor('codex', model.id), model.id).toEqual(model.supportedReasoningEfforts.map((e) => e.reasoningEffort))
+    }
+    expect(Object.keys(CODEX_MODEL_EFFORTS).sort()).toEqual(recorded.data.map((m) => m.id).sort())
+  })
+
+  it('offers no Ultra for a model it has no record of, or for the CLI default it cannot see', () => {
+    expect(effortsFor('codex', 'gpt-6-astra')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(effortsFor('codex', '')).not.toContain('ultra')
+    expect(effortsFor('codex')).not.toContain('ultra')
+  })
+
+  it('gives a model its highest level when a saved one is above what it has', () => {
+    expect(codexEffort('gpt-5.6-sol', 'ultra')).toBe('ultra')
+    expect(codexEffort('gpt-5.6-luna', 'ultra')).toBe('max')
+    expect(codexEffort('gpt-5.5', 'ultra')).toBe('xhigh')
+    expect(codexEffort('gpt-5.5', 'max')).toBe('xhigh')
+    expect(codexEffort(undefined, 'ultra')).toBe('max')
+    expect(codexEffort('gpt-5.5', 'low')).toBe('low')
+    expect(codexEffort('gpt-5.5', undefined)).toBeUndefined()
   })
 })

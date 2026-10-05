@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ThreadStatus } from '../api.ts'
-import { STATUS_LABEL } from '../conversation-meta.ts'
+import { isWorking, STATUS_LABEL } from '../conversation-meta.ts'
 import { elapsed } from '../transcript.ts'
 import { Bars } from './icons.tsx'
 
@@ -22,20 +22,20 @@ export function useNow(active: boolean): number {
   return now
 }
 
-/** "Working · 0:07" while a turn runs, "Error · 0:12" once one failed; other states are just the word. */
+/** "Starting · 0:02" / "Working · 0:07" while a turn runs, "Error · 0:12" once one failed; other states are just the word. */
 export function statusText(status: ThreadStatus, turn: StatusPillProps['turn'], now: number): string {
-  if (status === 'working' && turn && !turn.endedAt) return `${STATUS_LABEL.working} · ${elapsed(turn.startedAt, now)}`
+  if ((status === 'starting' || status === 'working') && turn && !turn.endedAt) return `${STATUS_LABEL[status]} · ${elapsed(turn.startedAt, now)}`
   if (status === 'error' && turn?.endedAt) return `${STATUS_LABEL.error} · ${elapsed(turn.startedAt, Date.parse(turn.endedAt))}`
   return STATUS_LABEL[status]
 }
 
 /** Status in the list and thread header. Idle threads show nothing: there is nothing to report. */
 export function StatusPill({ status, turn }: StatusPillProps) {
-  const now = useNow(status === 'working')
+  const now = useNow(isWorking(status))
   if (status === 'idle') return null
   return (
     <span className={`pill pill-${status}`}>
-      {status === 'working' ? <Bars live /> : null}
+      {status === 'working' ? <Bars live /> : status === 'starting' ? <span className="starting-dot" aria-hidden="true" /> : null}
       {statusText(status, turn, now)}
     </span>
   )

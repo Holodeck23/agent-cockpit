@@ -94,7 +94,8 @@ async function b1(): Promise<void> {
   const tabs = page.getByRole('tablist', { name: 'Projects' }).getByRole('tab')
   await page.getByRole('tab', { name: /Bakery website/ }).getByLabel('1 need you').waitFor({ timeout: 15_000 })
   const tabNames = await tabs.locator('.tab-name').allTextContents()
-  check('three pinned project tabs, alphabetical', tabNames.join(' | ') === 'Bakery website | Sprout | Studio portfolio', tabNames.join(' | '))
+  // Tabs keep the order projects were pinned in (wave 2, D3), no longer alphabetical.
+  check('three pinned project tabs, in pin order', tabNames.join(' | ') === 'Bakery website | Studio portfolio | Sprout', tabNames.join(' | '))
   check('Sprout is the active tab', (await page.getByRole('tab', { selected: true, name: /Sprout/ }).count()) === 1)
   check('Bakery tab shows 1 working + 1 needs you', (await page.getByRole('tab', { name: /Bakery website/ }).getByLabel('1 working').count()) === 1)
   check('Studio tab shows 1 working', (await page.getByRole('tab', { name: /Studio portfolio/ }).getByLabel('1 working').count()) === 1)
@@ -108,9 +109,11 @@ async function b1(): Promise<void> {
 
   await page.getByRole('button', { name: 'Projects' }).click()
   const menuItems = await page.getByRole('menu', { name: 'Projects' }).getByRole('menuitem').allTextContents()
-  check('Projects menu offers Open folder…, project settings and all three projects',
-    menuItems.length === 5 && menuItems[0]?.includes('Open folder') === true && menuItems[1]?.includes('settings') === true,
-    `${menuItems.length} items`)
+  // New project…, Open folder…, App settings…, Import conversations…, then the three projects.
+  check('Projects menu offers New project…, Open folder…, settings, import and all three projects',
+    menuItems.length === 7 && menuItems[0]?.includes('New project') === true && menuItems[1]?.includes('Open folder') === true
+      && menuItems[2]?.includes('settings') === true && menuItems.slice(4).length === 3,
+    `${menuItems.length} items: ${menuItems.join(' | ')}`)
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B1-projects-menu.png') })
   await page.keyboard.press('Escape')
 
@@ -185,7 +188,13 @@ async function b3(): Promise<void> {
   await startThread(page, bakery, READ)
   await waitUntil(page, 'the Read thread to finish', (all) => all.some((t) => t.meta.title.startsWith('Use the Read tool') && t.status === 'done'))
 
-  // Empty state in Sprout (the active project at setup).
+  // Empty state in Sprout (the active project at setup). A project with no conversations first
+  // offers to explore it (first-run director); Start fresh is the plain empty state.
+  const startFresh = async (): Promise<void> => {
+    const fresh = page.getByRole('button', { name: 'Start fresh' })
+    if (await fresh.isVisible().catch(() => false)) await fresh.click()
+  }
+  await startFresh()
   check('empty state asks what you are working on', await page.getByRole('heading', { name: 'What are you working on?' }).isVisible())
   check('three suggestion cards', (await page.locator('.suggestion').count()) === 3)
   check('composer placeholder for a new conversation', (await messageBox(page).getAttribute('placeholder')) === 'Describe what you want…')
@@ -214,7 +223,9 @@ async function b3(): Promise<void> {
   await page.locator('.bubble.streaming').waitFor({ timeout: 30_000 })
   const shown = (await page.locator('.bubble.streaming').textContent()) ?? ''
   const serverStart = await page.evaluate(async (id) => ((await (await fetch(`/api/threads/${id}/events`)).json()) as { data: { streaming: string } }).data.streaming.slice(0, 40), essayId)
-  check('opening mid-turn shows the whole message so far, not a fragment', shown.length > 40 && shown.startsWith(serverStart), shown.slice(0, 40))
+  // The streaming bubble renders Markdown (wave 3), so compare letters and digits only.
+  const plain = (text: string): string => text.replace(/[^\p{L}\p{N}]/gu, '')
+  check('opening mid-turn shows the whole message so far, not a fragment', shown.length > 40 && plain(shown).startsWith(plain(serverStart)), `${shown.slice(0, 40)} | server: ${serverStart}`)
   check('follow-up placeholder while running', (await messageBox(page).getAttribute('placeholder')) === 'Add to the current turn…')
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const locked = page.getByRole('dialog', { name: 'Agent settings' })
@@ -248,6 +259,7 @@ async function b3(): Promise<void> {
 
   // A suggestion only fills the message box (a stray click must never start a run); Enter sends it.
   await page.getByRole('tab', { name: /Sprout/ }).click()
+  await startFresh()
   await page.locator('.suggestion').first().click()
   const message = messageBox(page)
   // The prefill lands on the next render; wait for it rather than reading once.

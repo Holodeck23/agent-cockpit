@@ -108,4 +108,16 @@ describe('latestTurn and the status timer (A11)', async () => {
     expect(statusText('working', turn, Date.parse(at(28, { kind: 'thread_deleted' }).ts))).toBe('Working · 0:07')
     expect(statusText('done', turn, 0)).toBe('Ready')
   })
+  it('Starting counts up from your message too, then hands over to Working (Day 10)', async () => {
+    const { deriveStatus } = await import('../server/threads/status.ts')
+    const launched = [at(0, { kind: 'session_boundary' }), at(0, { kind: 'user_text', text: 'a' })]
+    expect(deriveStatus(launched, true)).toBe('starting')
+    expect(statusText('starting', latestTurn(launched), Date.parse(at(3, { kind: 'thread_deleted' }).ts))).toBe('Starting · 0:03')
+    expect(deriveStatus([...launched, at(4, { kind: 'session', sessionId: 's' })], true)).toBe('working')
+    // Your own image is not the agent reporting in; the agent's is.
+    expect(deriveStatus([...launched, at(1, { kind: 'image', file: 'a.png', mediaType: 'image/png', from: 'you' })], true)).toBe('starting')
+    expect(deriveStatus([...launched, at(1, { kind: 'image', file: 'b.png', mediaType: 'image/png', from: 'agent' })], true)).toBe('working')
+    // No turn in flight, no Starting: a launch that never reported back reads as Waiting after a restart.
+    expect(deriveStatus(launched, false)).toBe('idle')
+  })
 })

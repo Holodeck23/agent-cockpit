@@ -1,0 +1,12 @@
+#!/bin/sh
+# Stand-in `claude` for proof:wave-6.5: the wave 5 stand-in (every message it knows), plus a
+# startup it can hold or fail (Day 10, Starting). A `.fixture-start` file in the project folder
+# chooses: "slow" reports in only after 4 s; "fail" exits before reporting in, the way a CLI that
+# is not signed in does. The --help/--version capability probes are never held.
+here="$(cd "$(dirname "$0")" && pwd)"
+case "$1" in --help|--version) exec "$here/../wave5-agent/claude" "$@" ;; esac
+case "$(cat .fixture-start 2>/dev/null)" in
+  slow) sleep 4 ;;
+  fail) echo "Not logged in. Run claude and sign in." >&2; exit 1 ;;
+esac
+exec "$here/../wave5-agent/claude" "$@"

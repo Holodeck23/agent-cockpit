@@ -81,7 +81,7 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
   </div>
 }
 
-function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread }: {
+export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread }: {
   workflow?: Workflow; projectPath: string; busy: boolean
   onSave: (input: WorkflowInput, intent: Intent) => Promise<void>
   onPause: () => Promise<void>; onArchive: () => Promise<void>; onOpenThread: (id: string) => void
@@ -94,14 +94,19 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
   const [choice, setChoice] = useState<AgentChoice>({ agent: workflow?.settings.agent ?? 'claude', model: workflow?.settings.model ?? '',
     effort: workflow?.settings.effort ?? '', permissionMode: workflow?.settings.permissionMode ?? 'manual' })
   const form = useRef<HTMLFormElement>(null)
+  // ⌘S in the document hands over its text; the form submits in the same tick, before the state
+  // update lands, so the submit reads it from here instead of from `prompt`.
+  const flushed = useRef<string | undefined>(undefined)
   const [missing, setMissing] = useState(false)
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    const text = flushed.current ?? prompt
+    flushed.current = undefined
     // The document editor is not a form field, so the form cannot require it.
-    if (!prompt.trim()) { setMissing(true); return }
+    if (!text.trim()) { setMissing(true); return }
     setMissing(false)
     const intent = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value as Intent | undefined
-    void onSave({ name, title, collection, prompt, projectPath, ...repeatInput(repeat),
+    void onSave({ name, title, collection, prompt: text, projectPath, ...repeatInput(repeat),
       settings: settingsFromChoice(choice, workflow?.settings) }, intent ?? 'save')
   }
   return <main className="workflow-editor">
@@ -116,7 +121,7 @@ function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchiv
         : <>Lowercase words with hyphens. Mention it as <code>@workflow:{name || 'daily-review'}</code>.</>}</small>
       <label>Collection<input maxLength={40} value={collection} onChange={(e) => setCollection(e.target.value)} placeholder="Optional, e.g. Quality" /></label>
       <WorkflowInstructions projectPath={projectPath} value={prompt} onChange={setPrompt} autoFocus={!workflow} disabled={busy}
-        onSave={() => form.current?.requestSubmit()} />
+        onSave={(latest) => { flushed.current = latest; form.current?.requestSubmit(); flushed.current = undefined }} />
       {missing ? <p className="workflow-notice" role="alert">Write the instructions first.</p> : null}
       <small>Include another workflow with <code>@workflow:name</code>. Its instructions join this run; it does not launch another agent.</small>
       <div className="workflow-config"><div><span className="workflow-label">Agent and permissions</span><AgentPicker value={choice} onChange={setChoice} /></div>

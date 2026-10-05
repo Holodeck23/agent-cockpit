@@ -10,6 +10,7 @@ import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema, type StoredEvent, type ThreadMeta } from '../threads/types.ts'
 import { HttpError } from '../http/json.ts'
+import { isBusy } from '../threads/status.ts'
 
 export interface RecoveryChoice {
   readonly key: string
@@ -65,7 +66,7 @@ export function createRecovery(deps: { store: ThreadStore; manager: ThreadManage
   const available = async () => (await agents()).filter((a) => a.installation.installed && a.id !== 'antigravity').map((a) => a.id)
   const imported = (projectPath: string) => listSessions(importHome, projectPath, 12)
   const known = (projectPath: string) => store.list().filter((m) => sameProjectPath(m.projectPath, projectPath))
-  const busy = (id: string) => ['working', 'needs_input'].includes(manager.status(id))
+  const busy = (id: string) => isBusy(manager.status(id))
   function cleanOffers() {
     for (const [id, offer] of offers) if (Date.now() - offer.at > 10 * 60_000) offers.delete(id)
     while (offers.size >= 100) offers.delete(offers.keys().next().value!)

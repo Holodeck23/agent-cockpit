@@ -6,7 +6,7 @@ import { ContextPicker } from './ContextPicker.tsx'
 import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
 import { ArrowUpIcon } from './icons.tsx'
-import { useComposerAttach } from '../useComposerAttach.ts'
+import { chipToSend, useComposerAttach } from '../useComposerAttach.ts'
 import type { MessageImage } from '../api.ts'
 
 interface ComposerProps {
@@ -16,7 +16,7 @@ interface ComposerProps {
   onDraftLoaded?: () => void
   /** Replaces the draft and focuses the box, e.g. from a starter suggestion. A new object each time. */
   /** Fills the message box; with `reference`, adds that token to what is already typed instead. */
-  prefill?: { readonly text: string; readonly reference?: boolean; readonly restore?: boolean }
+  prefill?: { readonly text: string; readonly reference?: boolean; readonly restore?: boolean; readonly images?: readonly { file: string; name?: string }[] }
   projectPath?: string
   /** Set in a conversation (not on New conversation). */
   threadId?: string
@@ -83,6 +83,8 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     const next = prefill.reference ? addReference(current, prefill.text) : prefill.restore && current.trim() ? `${prefill.text}\n${current}` : prefill.text
     setText(next)
     saveDraft(draftKey, next)
+    // A taken-back message's images come back as chips (R8).
+    if (prefill.images?.length && threadId) attach.restore(threadId, prefill.images)
     const el = box.current
     if (el) { el.focus(); requestAnimationFrame(() => el.setSelectionRange(next.length, next.length)) }
     // Only a new prefill applies; draftKey is read at that moment.
@@ -125,7 +127,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     setSending(true)
     setSubmitError(undefined)
     try {
-      await onSubmit(trimmed, attach.images.map(({ data, name }) => ({ data, name })))
+      await onSubmit(trimmed, attach.images.map(chipToSend))
       // Whatever you typed while it was sending stays; only the sent text leaves the box.
       update(draftAfterSend(box.current?.value ?? '', trimmed))
       attach.clear()

@@ -17,7 +17,7 @@ interface ThreadMenuProps {
   /** Absent on the phone, where conversations can't be deleted. */
   onMarkUnread?: () => void
   onDelete?: () => Promise<void>
-  /** A turn is running; deleting stops the agent first. */
+  /** A turn is running: deleting stops the agent first, and it cannot be marked complete yet. */
   running?: boolean
   /** Revision the running session started with (and its text), and the project's current one. */
   instructions?: { readonly session?: number; readonly current?: number; readonly sessionText?: string }
@@ -90,6 +90,9 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
             type="button"
             role="menuitem"
             className="menu-item"
+            // J11: nothing to complete while the agent is still at it; Reopen is always there.
+            disabled={running && !completed}
+            title={running && !completed ? 'Available when the turn ends' : undefined}
             onClick={() => {
               onToggleCompleted()
               setOpen(false)

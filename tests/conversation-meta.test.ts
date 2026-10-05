@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadSummary } from '../server/threads/types.ts'
-import { dayLabel, filterConversations, needsYou, STATUS_LABEL, tagFor, toneFor, TAG_TONES } from '../web/src/conversation-meta.ts'
+import { dayLabel, filterConversations, isWorking, needsYou, STATUS_LABEL, tagFor, toneFor, TAG_TONES } from '../web/src/conversation-meta.ts'
 
 function thread(id: string, patch: { title?: string; status?: ThreadSummary['status']; completed?: boolean; preview?: string }): ThreadSummary {
   return {
@@ -117,5 +117,18 @@ describe('an empty conversation list says why (A10)', () => {
     expect(emptyListState('working', { total: 3, query: '' })).toMatchObject({ title: 'Nothing working', back: true, done: false })
     expect(emptyListState('working', { total: 3, query: 'zebra' })).toEqual({ title: 'No matches', detail: 'No conversation here mentions “zebra”.', back: false, done: false })
     expect(emptyListState('all', { total: 3, query: '' })).toMatchObject({ title: 'Nothing here', back: false })
+  })
+})
+
+describe('Starting (Day 10)', () => {
+  it('reads Starting, counts as working in the tab, and never as Needs you', () => {
+    expect(STATUS_LABEL.starting).toBe('Starting')
+    expect(isWorking('starting')).toBe(true)
+    expect(isWorking('needs_input')).toBe(false)
+    const starting = { ...thread('s', { status: 'starting' }), awaiting: 'question' as const }
+    expect(needsYou(starting)).toBe(false)
+    const { counts, rows } = filterConversations({ threads: [starting, thread('d', { status: 'done' })], query: '', showCompleted: false, isUnread: () => false }, 'working')
+    expect(counts.working).toBe(1)
+    expect(rows.map((t) => t.meta.id)).toEqual(['s'])
   })
 })

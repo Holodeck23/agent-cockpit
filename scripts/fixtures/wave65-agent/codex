@@ -1,0 +1,55 @@
+#!/usr/bin/perl
+# Stand-in `codex app-server` for proof:wave-6.5 (no provider usage). R1: it keeps the switch
+# handoff Cockpit starts the thread with and answers every turn with what that handoff says about
+# the conversation: the answer you gave a question card (Blue), the questions you dismissed,
+# a message you took back (marked WITHDRAWN-R1) and how many images you attached. R7: it also
+# says which reasoning effort the turn asked for.
+use strict; use warnings;
+use JSON::PP;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "codex-cli 0.0.0 (Cockpit wave 6.5 fixture)\n"; exit 0 }
+my $json = JSON::PP->new->canonical;
+my $thread = 'w65-codex-thread'; my $handoff = ''; my $turn = 0; my $flaked = 0;
+sub reply { print $json->encode($_[0]), "\n" }
+while (my $line = <STDIN>) {
+  my $message = eval { $json->decode($line) } or next;
+  my ($method, $id) = ($message->{method}, $message->{id});
+  next unless defined $method && defined $id;
+  if ($method eq 'initialize') { reply({ id => $id, result => { userAgent => 'fixture' } }) }
+  elsif ($method eq 'thread/start' || $method eq 'thread/resume') {
+    $handoff = $message->{params}{developerInstructions} // '';
+    reply({ id => $id, result => { thread => { id => $thread } } });
+    reply({ method => 'thread/started', params => { thread => { id => $thread } } });
+  }
+  elsif ($method eq 'turn/start') {
+    $turn++;
+    my $yes = sub { index($handoff, $_[0]) >= 0 ? 'yes' : 'no' };
+    my $images = () = $handoff =~ /user attached an image/g;
+    my $effort = $message->{params}{effort} // 'none';
+    my @input = @{ $message->{params}{input} // [] };
+    my $pictures = grep { ($_->{type} // '') eq 'localImage' && -s $_->{path} } @input;
+    my ($said) = map { $_->{text} } grep { ($_->{type} // '') eq 'text' } @input;
+    # R8: the first "R8-flaky" turn fails, as a usage limit does; a Retry then reports its images.
+    if (($said // '') =~ /R8-flaky/ && !$flaked++) {
+      reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
+      reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+      reply({ method => 'error', params => { error => { message => 'Rate limit reached, try again shortly.' }, willRetry => JSON::PP::false, threadId => $thread } });
+      reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'failed' } } });
+      next;
+    }
+    if (($said // '') =~ /R8-flaky/) {
+      reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
+      reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+      reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => "Retried with $pictures image(s)." } } });
+      reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'completed' } } });
+      next;
+    }
+    my $text = sprintf('Handoff: answered Blue %s; dismissed %s; withdrawn %s; attached images %d. Effort %s.',
+      $yes->('USER ANSWERED: Blue'), $yes->('USER DISMISSED'), $yes->('WITHDRAWN-R1'), $images, $effort);
+    reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
+    reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+    reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => $text } } });
+    reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'completed' } } });
+  }
+  else { reply({ id => $id, result => {} }) }
+}

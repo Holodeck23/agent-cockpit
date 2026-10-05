@@ -315,3 +315,20 @@ describe('images of a message you took back (wave 6)', () => {
     expect(items[0]).not.toHaveProperty('images')
   })
 })
+
+describe('Retry carries the images of the failed message (R8)', () => {
+  it('gives the failure card the text and the images you sent with it', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'What is in this picture?' }),
+      at(1, { kind: 'image', file: `${'a'.repeat(64)}.png`, mediaType: 'image/png', from: 'you', name: 'shot.png' }),
+      at(2, { kind: 'image', file: `${'b'.repeat(64)}.png`, mediaType: 'image/png', from: 'agent' }),
+      at(3, { kind: 'result', ok: false, text: 'boom' }),
+    ], 'claude')
+    expect(items.find((i) => i.type === 'failure')).toMatchObject({ retryText: 'What is in this picture?', retryImages: [{ file: `${'a'.repeat(64)}.png`, name: 'shot.png' }] })
+  })
+
+  it('a message without images retries without any', () => {
+    const items = buildTranscript([at(0, { kind: 'user_text', text: 'hi' }), at(1, { kind: 'result', ok: false })], 'claude')
+    expect(items.find((i) => i.type === 'failure')).toMatchObject({ retryText: 'hi', retryImages: [] })
+  })
+})

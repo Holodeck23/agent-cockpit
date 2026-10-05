@@ -202,11 +202,12 @@ try {
   check('narrow: a long title ellipsizes and the pane fits the window', fits)
   // C9: Codex offers an effort above Max; Claude does not.
   await page.getByRole('button', { name: 'New conversation' }).click()
-  await chooseAgent(page, { agent: 'codex' })
+  // Per model since wave 6.5 (R7): gpt-5.6-sol is one Codex 0.147 advertises Ultra for.
+  await chooseAgent(page, { agent: 'codex', model: 'gpt-5.6-sol' })
   await page.getByRole('button', { name: /^Effort:/ }).click()
   check('C9 Codex offers Ultra after Max', (await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio').allTextContents()).slice(-2).join('|') === 'Max|Ultra')
   await page.keyboard.press('Escape')
-  await chooseAgent(page, { agent: 'claude' })
+  await chooseAgent(page, { agent: 'claude', model: '' })
   await page.getByRole('button', { name: /^Effort:/ }).click()
   check('C9 Claude stops at Max', (await page.getByRole('menu', { name: 'Effort' }).getByRole('menuitemradio').allTextContents()).at(-1) === 'Max')
   await page.keyboard.press('Escape')

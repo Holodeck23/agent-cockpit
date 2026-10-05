@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron } from 'playwright-core'
 import { createWorkflowStore } from '../server/workflows/store.ts'
-import { ROOT, LAUNCHD_PATH, PROOF_DIR } from './lib/launch-app.ts'
+import { EXECUTABLE, ROOT, LAUNCHD_PATH, PROOF_DIR } from './lib/launch-app.ts'
 import { openProject, chooseAgent } from './lib/ui.ts'
 
 const state = mkdtempSync(join(tmpdir(), 'cockpit-workflow-proof-'))
 const project = join(state, 'sample-project'); mkdirSync(project)
-const app = await electron.launch({ executablePath: join(ROOT, 'release/mac-arm64/Cockpit.app/Contents/MacOS/Cockpit'),
+const app = await electron.launch({ executablePath: EXECUTABLE,
   env: { ...process.env, COCKPIT_HOME: state, PATH: LAUNCHD_PATH } })
 try {
   const page = await app.firstWindow(); page.setDefaultTimeout(15_000)

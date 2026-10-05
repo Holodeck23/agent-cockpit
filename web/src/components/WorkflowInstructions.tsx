@@ -18,8 +18,8 @@ interface Props {
   projectPath: string
   value: string
   onChange: (value: string) => void
-  /** ⌘S: save the workflow. */
-  onSave: () => void
+  /** ⌘S: save the workflow; `latest` is the document's text at that moment, when the document has it. */
+  onSave: (latest?: string) => void
   autoFocus: boolean
   disabled: boolean
 }
@@ -38,7 +38,7 @@ export function WorkflowInstructions({ projectPath, value, onChange, onSave, aut
   const showing: View = declined ? 'source' : view
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
-    if (!(event.metaKey || event.ctrlKey)) return
+    if (!(event.metaKey || event.ctrlKey) || event.defaultPrevented) return
     if (event.key.toLowerCase() === 's') { event.preventDefault(); onSave() }
     else if ((event.key.toLowerCase() === 'f' || event.code === 'KeyF') && showing === 'document') { event.preventDefault(); setFind(event.altKey ? 'replace' : 'find') }
   }
@@ -56,7 +56,7 @@ export function WorkflowInstructions({ projectPath, value, onChange, onSave, aut
       {showing === 'document' ? (
         <div className="doc-host workflow-doc" aria-labelledby="instructions-label">
           <Suspense fallback={<p role="status">Loading editor…</p>}>
-            <DocumentView draft={value} readOnly={disabled} onChange={onChange} onSave={(latest) => { onChange(latest); onSave() }}
+            <DocumentView draft={value} readOnly={disabled} onChange={onChange} onSave={(latest) => { onChange(latest); onSave(latest) }}
               onUnavailable={(reason) => setDeclined(reason)} find={find} onCloseFind={() => setFind(undefined)}
               mentions={{ projectPath, attached, filesFull }} autoFocus={autoFocus} />
           </Suspense>

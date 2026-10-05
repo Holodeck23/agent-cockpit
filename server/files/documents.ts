@@ -47,6 +47,7 @@ export function documentsFolder(root: string, projectPath: string): { folder: st
 /**
  * Keeps this project's documents in `folder` from now on (null: back to Cockpit's own folder).
  * The documents are copied there, never over a file there; the previous folder is left as it was.
+ * If any document cannot be copied, nothing changes and the error names those files.
  */
 export function setDocumentsFolder(root: string, projectPath: string, folder: string | null): { folder: string; copied: string[] } {
   if (folder !== null) {
@@ -60,7 +61,12 @@ export function setDocumentsFolder(root: string, projectPath: string, folder: st
   mkdirSync(to, { recursive: true, mode: 0o700 })
   const sources = readdirSync(from, { withFileTypes: true })
     .filter((e) => e.isFile() && !e.name.startsWith('.') && !HIDDEN.has(e.name)).map((e) => join(from, e.name))
-  const copied = realpathSync(from) === realpathSync(to) ? [] : copyInto(to, '', sources).copied
+  const { copied, skipped } = realpathSync(from) === realpathSync(to) ? { copied: [], skipped: [] } : copyInto(to, '', sources)
+  // A folder that would not take every document is not where they live: stay put and say why.
+  // The documents are all still in the current folder; copies that did land are left as they are.
+  if (skipped.length > 0) {
+    throw new Error(`Not moved: ${to} would not take ${skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}. Your documents stay where they are.`)
+  }
   if (folder === null) rmSync(pointerFile(root, projectPath), { force: true })
   else writeFileSync(pointerFile(root, projectPath), `${folder}\n`, { mode: 0o600 })
   return { folder: to, copied }

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink } from '../server/agents/types.ts'
-import { createThreadManager, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
+import { createThreadManager, ThreadBusyError, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { openApprovals } from '../server/threads/status.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
@@ -70,9 +70,11 @@ describe('thread manager', () => {
     expect(agent.requests[1]).toMatchObject({ resume: meta.sessionId })
   })
 
-  it('walks the statuses working → needs_input → working → done', () => {
+  it('walks the statuses starting → working → needs_input → working → done', () => {
     const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'write a file' })
+    expect(manager.status(meta.id)).toBe('starting')
+    agent.emit({ kind: 'session', sessionId: meta.sessionId })
     expect(manager.status(meta.id)).toBe('working')
     const input = { file_path: '/tmp/a.txt', content: 'hi' }
     agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'Write', input, suggestions: [] })
@@ -146,9 +148,60 @@ describe('thread manager', () => {
     const queuedId = agent.sent[1]?.queuedId
     expect(queuedId).toMatch(/^[0-9a-f-]{36}$/)
     expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'user_text', text: 'second', queuedId })
-    await expect(manager.unqueue(meta.id, queuedId!)).resolves.toBe('second')
+    await expect(manager.unqueue(meta.id, queuedId!)).resolves.toEqual({ text: 'second', images: [] })
     expect(store.events(meta.id).at(-1)?.event).toEqual({ kind: 'user_unqueued', id: queuedId })
     await expect(manager.unqueue(meta.id, queuedId!)).rejects.toThrow(/already taken/)
+  })
+
+  it('refuses Mark as complete while the agent works, and always allows Reopen (R4)', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    expect(() => manager.setCompleted(meta.id, true)).toThrow(ThreadBusyError)
+    expect(store.get(meta.id)?.completed).toBe(false)
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.setCompleted(meta.id, true).completed).toBe(true)
+    // Sending again reopens it and starts a turn; Reopen while working is fine.
+    manager.send(meta.id, 'again')
+    expect(manager.setCompleted(meta.id, false).completed).toBe(false)
+  })
+
+  it('taking back the last waiting message after the turn ended leaves the conversation done (R3)', async () => {
+    const { manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    const queuedId = agent.sent[1]!.queuedId!
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('working')
+    const statuses: string[] = []
+    manager.subscribe((update) => { if (update.event.kind === 'user_unqueued') statuses.push(update.status) })
+    await expect(manager.unqueue(meta.id, queuedId)).resolves.toEqual({ text: 'second', images: [] })
+    expect(manager.status(meta.id)).toBe('done')
+    expect(statuses).toEqual(['done'])
+    expect(manager.canControl(meta.id)).toBe(false)
+    expect(() => manager.switchAgent(meta.id, { ...settings, agent: 'codex' })).not.toThrow()
+  })
+
+  it('taking back one of two waiting messages after the turn keeps it working for the other (R3)', async () => {
+    const { manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    manager.send(meta.id, 'second')
+    manager.send(meta.id, 'third')
+    agent.emit({ kind: 'result', ok: true })
+    await manager.unqueue(meta.id, agent.sent[1]!.queuedId!)
+    expect(manager.status(meta.id)).toBe('working')
+  })
+
+  it('taking back a waiting message mid-turn keeps the turn working (R3)', async () => {
+    const { manager, agent, settings } = setup()
+    agent.cancel = true
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    agent.emit({ kind: 'session', sessionId: meta.sessionId })
+    manager.send(meta.id, 'second')
+    await manager.unqueue(meta.id, agent.sent[1]!.queuedId!)
+    expect(manager.status(meta.id)).toBe('working')
+    expect(manager.canControl(meta.id)).toBe(true)
   })
 
   it('runs a waiting message after the turn, and says when the agent already took it (J1)', async () => {
@@ -213,10 +266,68 @@ describe('thread manager', () => {
     const { manager, agent, settings } = setup()
     const seen: string[] = []
     manager.subscribe((u) => seen.push(`${u.event.kind}:${u.status}`))
-    manager.create({ projectPath: '/tmp', settings, text: 'x' })
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'x' })
+    agent.emit({ kind: 'session', sessionId: meta.sessionId })
     agent.emit({ kind: 'result', ok: true })
-    expect(seen).toContain('user_text:working')
+    expect(seen).toContain('user_text:starting')
+    expect(seen).toContain('session:working')
     expect(seen).toContain('result:done')
+  })
+})
+
+describe('starting (Day 10: session state legible)', () => {
+  it('stays starting until the provider reports in, then works; a resumed process starts again', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hello' })
+    expect(manager.status(meta.id)).toBe('starting')
+    agent.emit({ kind: 'session', sessionId: meta.sessionId })
+    expect(manager.status(meta.id)).toBe('working')
+    agent.emit({ kind: 'result', ok: true })
+    expect(manager.status(meta.id)).toBe('done')
+    // Same process, next turn: it is already up, so straight to working.
+    manager.send(meta.id, 'again')
+    expect(manager.status(meta.id)).toBe('working')
+    agent.emit({ kind: 'result', ok: true })
+    agent.emit({ kind: 'exit', code: 0 })
+    manager.send(meta.id, 'after the process closed')
+    expect(manager.status(meta.id)).toBe('starting')
+  })
+
+  it('ends on the first output even when the agent never names a session', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hello' })
+    agent.emit({ kind: 'assistant_text', messageId: 'm1', text: 'Hi' })
+    expect(manager.status(meta.id)).toBe('working')
+  })
+
+  it('a launch that fails or exits before reporting in shows Error, never a stuck Starting', () => {
+    const failed = setup()
+    const a = failed.manager.create({ projectPath: '/tmp', settings: failed.settings, text: 'hello' })
+    failed.agent.emit({ kind: 'error', message: 'Codex failed to start: not signed in' })
+    failed.agent.emit({ kind: 'result', ok: false })
+    expect(failed.manager.status(a.id)).toBe('error')
+    const exited = setup()
+    const b = exited.manager.create({ projectPath: '/tmp', settings: exited.settings, text: 'hello' })
+    exited.agent.emit({ kind: 'exit', code: 1 })
+    expect(exited.manager.status(b.id)).toBe('error')
+    expect(exited.manager.canControl(b.id)).toBe(false)
+  })
+
+  it('Stop while starting ends the turn as stopped, not as an error', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hello' })
+    manager.interrupt(meta.id)
+    expect(manager.canControl(meta.id)).toBe(false)
+    // What an adapter reports when Stop lands before its process is up (codex-stop-starting.test.ts).
+    agent.emit({ kind: 'result', ok: false })
+    expect(manager.status(meta.id)).toBe('idle')
+  })
+
+  it('an approval asked during startup reads as Needs you', () => {
+    const { manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'hello' })
+    agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'Write', input: {}, suggestions: [] })
+    expect(manager.status(meta.id)).toBe('needs_input')
   })
 })
 
@@ -348,7 +459,7 @@ describe('session lifecycle regressions', () => {
     manager.switchAgent(meta.id, { ...settings, agent: 'codex' })
     manager.send(meta.id, 'next')
     oldEmit({ kind: 'exit', code: 0 })
-    expect(manager.status(meta.id)).toBe('working')
+    expect(manager.status(meta.id)).toBe('starting')
     await manager.shutdown()
     expect(manager.status(meta.id)).toBe('idle')
   })
@@ -361,7 +472,7 @@ describe('session lifecycle regressions', () => {
     const oldId = openApprovals(store.events(meta.id))[0]!
     agent.emit({ kind: 'exit', code: 0 })
     manager.send(meta.id, 'next')
-    expect(manager.status(meta.id)).toBe('working')
+    expect(manager.status(meta.id)).toBe('starting')
     expect(() => manager.approve(meta.id, oldId, 'allow')).toThrow(/expired/)
     agent.emit({ ...request, input: { command: 'second' } })
     const nextId = openApprovals(store.events(meta.id))[0]!
@@ -388,15 +499,16 @@ describe('session lifecycle regressions', () => {
     const launcher = fakeLauncher().launcher
     const restarted = createThreadManager(store, { launchers: { claude: launcher, codex: launcher } })
     restarted.send(meta.id, 'after restart')
-    expect(restarted.status(meta.id)).toBe('working')
+    expect(restarted.status(meta.id)).toBe('starting')
     expect(openApprovals(store.events(meta.id))).toEqual([])
     await restarted.shutdown()
     await manager.shutdown()
   })
 
   it('broadcasts completion, reopening, and automatic reopening on a new message', async () => {
-    const { store, manager, settings } = setup()
+    const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'first' })
+    agent.emit({ kind: 'result', ok: true })
     const seen: boolean[] = []
     manager.subscribe(({ event }) => { if (event.kind === 'completion_changed') seen.push(event.completed) })
     manager.setCompleted(meta.id, true)

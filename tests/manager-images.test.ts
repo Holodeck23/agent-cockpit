@@ -105,3 +105,20 @@ describe('images you send (I2)', () => {
     expect(requests[0]?.imagesDir).toBe(join(root, 'attachments', meta.id))
   })
 })
+
+describe('a message taken back keeps its images (R8)', () => {
+  it('returns the images sent with the waiting message, for the composer to restore', async () => {
+    const { store, manager, settings } = setup()
+    const queueing = createThreadManager(store, { launchers: { claude: (_request, onEvent) => ({
+      agent: 'claude', send: () => undefined, queues: () => true, cancelQueued: async () => true,
+      respondApproval: () => undefined, interrupt: () => undefined, alive: () => true,
+      close: () => { onEvent({ kind: 'exit', code: 0 }); return Promise.resolve() } }) } })
+    void manager
+    const meta = queueing.create({ projectPath: '/tmp', settings, text: 'first' })
+    queueing.send(meta.id, 'look at this', undefined, undefined, undefined, [{ bytes: PNG, name: 'shot.png' }])
+    const queuedId = store.events(meta.id).map((e) => e.event).find((e) => e.kind === 'user_text' && e.queuedId)
+    const taken = await queueing.unqueue(meta.id, (queuedId as { queuedId: string }).queuedId)
+    expect(taken.text).toBe('look at this')
+    expect(taken.images).toEqual([{ file: expect.stringMatching(/^[0-9a-f]{64}\.png$/), name: 'shot.png' }])
+  })
+})

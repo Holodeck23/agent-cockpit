@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
-import { compactingNow, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
+import { compactingNow, isBusy, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
-import { api, type ProcessInfo, type ThreadDetail } from '../api.ts'
-import { STATUS_LABEL } from '../conversation-meta.ts'
+import { api, type ProcessInfo, type StoredImage, type ThreadDetail } from '../api.ts'
+import { isWorking, STATUS_LABEL } from '../conversation-meta.ts'
 import { buildTranscript, followUpSuggestions } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
@@ -37,14 +37,14 @@ interface ThreadViewProps {
 
 export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
-  const running = status === 'working' || status === 'needs_input'
+  const running = isBusy(status)
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
   const shown = !running && awaitingOf(events) ? 'needs_input' : status
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const helpers = useMemo(() => (running ? runningHelpers(events).length : 0), [events, running])
   const compacting = useMemo(() => running && compactingNow(events), [events, running])
   const turn = useMemo(() => latestTurn(events), [events])
-  const now = useNow(shown === 'working')
+  const now = useNow(isWorking(shown))
   const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
   // J2: a click puts the text in the box to edit; sending uses whatever the picker says then.
   const followUps = useMemo(() => followUpSuggestions(events), [events])
@@ -62,7 +62,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const { open: activityOpen, setOpen: setActivityOpen } = prefs
   const [finding, setFinding] = useState(false)
   // A message taken back from the agent's queue returns to the draft (J1).
-  const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true }>()
+  const [restore, setRestore] = useState<{ readonly text: string; readonly restore?: true; readonly images?: readonly StoredImage[] }>()
   useEffect(() => { setFinding(false); setRestore(undefined) }, [meta.id])
   useEffect(() => {
     if (phone) return
@@ -107,7 +107,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           <h1>{meta.title}</h1>
           <div className="thread-status">
             <span className={`status-text status-${shown}`}>
-              {shown === 'working' ? <Bars live /> : null}
+              {shown === 'working' ? <Bars live /> : shown === 'starting' ? <span className="starting-dot" aria-hidden="true" /> : null}
               {compacting ? 'Compacting' : statusText(shown, turn, now)}
             </span>
             {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
@@ -173,9 +173,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
           onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
-          onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text }) => setRestore({ text, restore: true })))}
+          onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text, images }) => setRestore({ text, restore: true, images })))}
           onSendNow={() => guard(api.interrupt(meta.id))}
-          onRetry={(text) => guard(api.send(meta.id, text))}
+          onRetry={(text, images) => guard(api.send(meta.id, text, images.map(({ file, name }) => ({ stored: file, ...(name ? { name } : {}) }))))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
         />
         {meta.completed && !running ? (

@@ -5,6 +5,7 @@ import { startErrorMessage } from '../start-error.ts'
 import { stopChild } from '../stop.ts'
 import type { AgentQuestion, AgentSession, ApprovalBehavior, EventSink, OutgoingImage, PendingApproval } from '../types.ts'
 import { codexInput } from '../image-input.ts'
+import { codexEffort } from './efforts.ts'
 import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
 
@@ -102,6 +103,9 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   let exited = false
   let threadId: string | undefined
   let currentTurnId: string | undefined
+  // Stop pressed after turn/start went out but before Codex named the turn: interrupt it on arrival.
+  let interruptOnStart = false
+  let turnStarting = false
   const stream = createCodexStreamState()
   // Helper threads' running turns, so Stop stops the helpers too (J7).
   const childTurns = new Map<string, string>()
@@ -116,7 +120,12 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       const p = params as { threadId?: unknown; turn?: { id?: string } } | undefined
       const helper = typeof p?.threadId === 'string' && threadId !== undefined && p.threadId !== threadId ? p.threadId : undefined
       if (method === 'turn/started') {
-        if (helper) { if (p?.turn?.id) childTurns.set(helper, p.turn.id) } else currentTurnId = p?.turn?.id
+        if (helper) { if (p?.turn?.id) childTurns.set(helper, p.turn.id) } else {
+          currentTurnId = p?.turn?.id
+          turnStarting = false
+          if (interruptOnStart && threadId && currentTurnId) rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
+          interruptOnStart = false
+        }
       }
       if (method === 'turn/completed') {
         if (helper) childTurns.delete(helper)
@@ -153,8 +162,13 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       return
     }
     const input = codexInput(text, images)
+    // A level the model does not have (a saved Ultra on a model without it) becomes its highest (R7).
+    const effort = codexEffort(opts.model, opts.effort)
     const fail = (error: unknown): void => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) }
-    const start = (): Promise<unknown> => rpc.request('turn/start', { threadId, input, ...(opts.effort ? { effort: opts.effort } : {}) })
+    const start = (): Promise<unknown> => {
+      turnStarting = true
+      return rpc.request('turn/start', { threadId, input, ...(effort ? { effort } : {}) })
+    }
     // Mid-turn, steer the running turn (J1 spike: folded cleanly; a second turn/start left a
     // phantom turn). If that turn ended in the meantime, start a new one instead.
     const running = currentTurnId
@@ -233,7 +247,11 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     interrupt() {
       if (threadId && currentTurnId) {
         rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
-      }
+      } else if (queued.length > 0) {
+        // Still starting up: the messages never reach Codex, and the turn ends here as stopped.
+        queued.splice(0)
+        onEvent({ kind: 'result', ok: false, stopped: true })
+      } else if (turnStarting) interruptOnStart = true
       for (const [helper, turnId] of childTurns) {
         rpc.request('turn/interrupt', { threadId: helper, turnId }).catch(() => undefined)
       }

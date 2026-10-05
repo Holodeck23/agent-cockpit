@@ -7,6 +7,7 @@ import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
+import { takenBackPositions } from '../../server/threads/taken-back.ts'
 import { failureWords } from './agent-errors.ts'
 
 /** An image stored with the conversation; `file` names it under /api/threads/:id/images/. */
@@ -40,7 +41,7 @@ export type TranscriptItem =
   /** An image the agent showed (G4), or one of yours with no message to sit under. */
   | ({ type: 'image'; key: string; author: 'you' | AgentId; showAuthor: boolean } & ImageRef)
   /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
-  | { type: 'failure'; key: string; title: string; detail: string; raw: string; retryText?: string }
+  | { type: 'failure'; key: string; title: string; detail: string; raw: string; retryText?: string; retryImages?: readonly { file: string; name?: string }[] }
   /** The agent's questions with choices (J6); `answers` once you answered, `dismissed` once you closed them. */
   | { type: 'question'; key: string; requestId: string; agent: AgentId; questions: readonly AgentQuestion[]; answers?: Readonly<Record<string, string>>; dismissed?: boolean }
   /** The agent summarising earlier context to make room (J3); tokens as it reported them. */
@@ -214,15 +215,16 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const items: TranscriptItem[] = []
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
-  // A message you took back went to your draft; it is no longer part of the conversation.
-  const takenBack = new Set(events.flatMap((e) => (e.event.kind === 'user_unqueued' ? [e.event.id] : [])))
+  // A message you took back went to your draft; it, and the images sent with it, are no longer
+  // part of the conversation (the switch handoff uses the same rule).
+  const takenBack = takenBackPositions(events)
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
   const helpers = new Map<string, number>()
   let compacting: number | undefined
   let lastUserText: string | undefined
-  /** Images sent with a message you took back went with it. */
-  let skipYourImages = false
+  /** The images sent with that message; Retry sends them again (R8). */
+  let lastUserImages: { file: string; name?: string }[] = []
   /** A failure card already stands for the current turn, so its failed result adds nothing. */
   let failedThisTurn = false
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
@@ -246,13 +248,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   events.forEach(({ ts, event }, index) => {
     const key = `${ts}-${index}`
     const last = items.at(-1)
-    if (event.kind === 'image' && event.from === 'you' && skipYourImages) return
-    skipYourImages = false
+    if (takenBack.has(index)) return
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
-        if (event.kind === 'user_text' && event.queuedId && takenBack.has(event.queuedId)) { skipYourImages = true; return }
-        if (event.kind === 'user_text') { lastUserText = event.text; failedThisTurn = false }
+        if (event.kind === 'user_text') { lastUserText = event.text; lastUserImages = []; failedThisTurn = false }
         const author = event.kind === 'user_text' ? 'you' : agent
         const showAuthor = !((last?.type === 'message' || last?.type === 'image') && last.author === author)
         if (event.kind === 'user_text') {
@@ -277,6 +277,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       }
       case 'image': {
         const ref: ImageRef = { file: event.file, ...(event.name ? { name: event.name } : {}) }
+        if (event.from === 'you') lastUserImages = [...lastUserImages, ref]
         if (event.from === 'you' && last?.type === 'message' && last.author === 'you') {
           replace(items.length - 1, { ...last, images: [...(last.images ?? []), ref] })
         } else {
@@ -382,7 +383,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const failed = !event.ok && !event.stopped
         if (failed && !failedThisTurn) {
           const words = failureWords(event.text)
-          items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText } : {}) })
+          items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
         } else if (!failed) {
           items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: 'plain' })
         }
@@ -391,7 +392,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       }
       case 'error':
         failedThisTurn = true
-        items.push({ type: 'failure', key, ...failureWords(event.message), raw: event.message, ...(lastUserText ? { retryText: lastUserText } : {}) })
+        items.push({ type: 'failure', key, ...failureWords(event.message), raw: event.message, ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
         return
       default:
         return
