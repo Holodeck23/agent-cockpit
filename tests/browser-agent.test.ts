@@ -18,14 +18,15 @@ function harness(start = 'http://localhost:5173/') {
   const asked: Array<{ tool: string; input: Record<string, unknown>; label?: string }> = []
   const answers: Array<ApprovalBehavior | Error> = []
   let run: string | undefined = 'r1'
+  let changed: string | undefined
   const host: BrowserHost = {
     info: (key) => (key === 'thread:t1' ? page() : undefined),
     ensure: async () => page(),
     goto: async (_key, next) => { url = next; revision++; return page() },
     historyUrl: () => 'https://back.test/',
     history: async () => page(),
-    read: async () => ({ page: page(), text: 'hello', elements: [], scroll: { x: 0, y: 0 }, truncated: false }),
-    capture: async () => ({ data: 'png', mimeType: 'image/png', width: 800, height: 600, page: page() }),
+    read: async () => { if (changed) throw new Error(changed); return { page: page(), text: 'hello', elements: [], scroll: { x: 0, y: 0 }, truncated: false } },
+    capture: async () => { if (changed) throw new Error(changed); return { data: 'png', mimeType: 'image/png', width: 800, height: 600, page: page() } },
     act: async (_key, input, expect): Promise<ActOutcome> => { acts.push({ input, expect }); return { outcome: 'done', detail: 'ok', page: page() } },
   }
   const leases = createBrowserLeases()
@@ -47,6 +48,7 @@ function harness(start = 'http://localhost:5173/') {
     call: (op: string, body: unknown = {}) => agent.handle(grant, op, body, signal),
     setRun: (next: string | undefined) => { run = next },
     setUrl: (next: string) => { url = next; revision++ },
+    pageChanges: (message: string | undefined) => { changed = message },
     revision: () => revision,
   }
 }
@@ -80,6 +82,16 @@ describe('browser scope comes from the session, not the request (W9-08, SEC-03)'
     expect(await status(h.call('read'))).toBe(409)
     expect(await status(h.call('click', { revision: 7, x: 1, y: 1 }))).toBe(409)
     expect(h.asked).toEqual([])
+  })
+})
+
+describe('a page that changes while it is read (W9-07)', () => {
+  it('answers 409 with the host’s words and returns nothing', async () => {
+    const h = harness()
+    h.pageChanges('The page changed while it was being read')
+    for (const op of ['read', 'screenshot']) {
+      await expect(h.call(op)).rejects.toMatchObject({ status: 409, message: expect.stringContaining('changed while it was being read') })
+    }
   })
 })
 

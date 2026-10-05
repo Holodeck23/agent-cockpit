@@ -87,7 +87,7 @@ function UseMyChrome({ checked, readiness, onChange }: { checked: boolean; readi
   const state = !readiness ? 'Checking Claude Code and the Chrome extension…'
     : unsupported ? 'Not available: this Claude Code has no --chrome option. Update it first.'
     : readiness.extension ? 'Ready: the Claude extension’s helper is installed. Chrome is checked on first use.'
-    : 'Not set up: the Claude extension’s helper is missing. Install the extension in Chrome first.'
+    : 'Not set up on this Mac: the Claude extension’s helper is missing. Install the extension in Chrome first.'
   return (
     <div className="use-chrome">
       <label className="check">

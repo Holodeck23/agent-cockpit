@@ -62,7 +62,9 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
     const seen = stateEvents.current
     void browser.state(pageKey).then((existing) => {
       if (cancelled) return
-      if (existing) { if (stateEvents.current === seen) setState(existing) }
+      // An event since the call means the page exists now (an agent opened it): keep that page.
+      if (stateEvents.current !== seen) return
+      if (existing) setState(existing)
       else open(layoutRef.current.url)
     })
     return () => { cancelled = true }
@@ -152,8 +154,9 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
         </div>
         <form className="browser-address" onSubmit={go}>
           {label ? <span className={`browser-origin${label === 'Local' ? ' local' : ''}`}>{label}</span> : null}
+          {/* The select waits a frame; by then a fast Enter may have left the field, and select() would focus it again. */}
           <input ref={address} aria-label="Address" spellCheck={false} value={draft ?? shown}
-            onFocus={(e) => { setDraft(shown); requestAnimationFrame(() => e.target.select()) }}
+            onFocus={(e) => { setDraft(shown); const input = e.target; requestAnimationFrame(() => { if (document.activeElement === input) input.select() }) }}
             onBlur={() => setDraft(undefined)}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') { setDraft(undefined); e.currentTarget.blur() } }} />

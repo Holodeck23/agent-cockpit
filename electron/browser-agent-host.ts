@@ -1,7 +1,7 @@
 import type { WebContents } from 'electron'
 import type { ActOutcome, AgentInput, AgentPageInfo, BrowserHost, Capture, PageRead } from '../server/browser/agent.ts'
 import { originOf } from '../server/browser/agent-policy.ts'
-import { dragPath, insideViewport, KEY_EVENTS, refParts } from './browser-policy.ts'
+import { dragPath, insideViewport, KEY_EVENTS, refParts, samePage } from './browser-policy.ts'
 import type { BrowserService } from './browser-service.ts'
 import { withinTime } from './one-at-a-time.ts'
 
@@ -18,6 +18,7 @@ const LOAD_WAIT_MS = 15_000
 const SCRIPT_MS = 5_000
 const CAPTURE_MS = 10_000
 const SETTLE_MS = 150
+const CHANGED = 'The page changed while it was being read (a navigation or another site). Nothing was returned: read it again.'
 const SCROLL_SETTLE_MS = 450
 const MAX_ELEMENTS = 150
 const MAX_TEXT = 6000
@@ -232,22 +233,25 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
       const contents = contentsOf(key)
       const page = info(key) ?? gone(key)
       const read = await run<Omit<PageRead, 'page'>>(contents, readScript(page.revision))
+      // The script ran in whichever document was there by then: never hand over one page's
+      // content under another page's address and revision.
+      if (!samePage(page, info(key))) throw new Error(CHANGED)
       return { page, ...read }
     },
     async capture(key): Promise<Capture> {
       const contents = contentsOf(key)
       // A page that changes while it is captured is captured again, once, so the image and the
-      // revision it reports belong together.
+      // revision it reports belong together. If it changes again, nothing is returned.
       for (let attempt = 0; ; attempt++) {
         const before = info(key) ?? gone(key)
         const image = await withinTime(contents.capturePage(undefined, { stayHidden: true }), CAPTURE_MS, `The page could not be captured within ${CAPTURE_MS / 1000} s`)
-        const after = info(key)
-        if (after?.revision === before.revision || attempt >= 1) {
+        if (samePage(before, info(key))) {
           const { width, height } = before.viewport
           const sized = image.isEmpty() || width < 1 ? image : image.resize({ width, height, quality: 'best' })
           const size = sized.getSize()
-          return { data: sized.toPNG().toString('base64'), mimeType: 'image/png', width: size.width, height: size.height, page: after ?? before }
+          return { data: sized.toPNG().toString('base64'), mimeType: 'image/png', width: size.width, height: size.height, page: before }
         }
+        if (attempt >= 1) throw new Error(CHANGED)
       }
     },
     act: (key, input, expect) => serial(key, () => act(key, input, expect)),

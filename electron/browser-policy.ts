@@ -65,6 +65,12 @@ export function partitionFor(workspacePath: string): string {
 
 // ---------- agent input (H3): pure pieces of electron/browser-agent-host.ts ----------
 
+/** True when a read or capture still describes the page it was asked of: same revision, same site.
+ *  A navigation in between bumps the revision, so content and metadata could belong to two pages. */
+export function samePage(before: { revision: number; origin: string }, after: { revision: number; origin: string } | undefined): boolean {
+  return after !== undefined && after.revision === before.revision && after.origin === before.origin
+}
+
 /** The revision an element ref belongs to ("e12-3" → 12), or undefined for anything else. */
 export function refParts(ref: string): { revision: number; index: number } | undefined {
   const match = /^e(\d{1,12})-(\d{1,4})$/.exec(ref)

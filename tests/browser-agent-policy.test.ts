@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { browserInputs, createBrowserLeases, KEYS, originClass, redactBrowserEvent } from '../server/browser/agent-policy.ts'
-import { dragPath, insideViewport, KEY_EVENTS, refParts } from '../electron/browser-policy.ts'
+import { dragPath, insideViewport, KEY_EVENTS, refParts, samePage } from '../electron/browser-policy.ts'
 
 // H3 policy pieces (wave 9 order 11): which addresses count as local, how grants are scoped and
 // revoked, what the tool inputs accept, and that typed text never reaches the log.
@@ -121,5 +121,13 @@ describe('host input geometry', () => {
   it('moves a drag in even steps that end exactly at the target, at most 20', () => {
     expect(dragPath({ x: 0, y: 0 }, { x: 100, y: 50 }, 4)).toEqual([{ x: 25, y: 13 }, { x: 50, y: 25 }, { x: 75, y: 38 }, { x: 100, y: 50 }])
     expect(dragPath({ x: 0, y: 0 }, { x: 10, y: 0 }, 99)).toHaveLength(20)
+  })
+
+  it('hands over a read or capture only when the page is still the one it was asked of', () => {
+    const before = { revision: 4, origin: 'http://localhost:5173' }
+    expect(samePage(before, { revision: 4, origin: 'http://localhost:5173' })).toBe(true)
+    expect(samePage(before, { revision: 5, origin: 'http://localhost:5173' })).toBe(false)
+    expect(samePage(before, { revision: 4, origin: 'https://bank.test' })).toBe(false)
+    expect(samePage(before, undefined)).toBe(false)
   })
 })

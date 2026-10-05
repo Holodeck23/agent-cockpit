@@ -167,7 +167,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     if (operation === 'read' || operation === 'screenshot') {
       const page = await ensure(host, key, grant.projectPath)
       if (!seeable(grant, runId, page.url)) await permit(grant, runId, operation, page.origin, { url: page.url }, signal)
-      const result = operation === 'read' ? await host.read(key) : await host.capture(key)
+      const result = operation === 'read' ? await conflict(host.read(key)) : await conflict(host.capture(key))
       // The page moved to another site while it was being read: that site needs its own grant.
       const after = result.page.url
       if (after !== page.url && !seeable(grant, runId, after) && originOf(after) !== page.origin) {
@@ -207,8 +207,12 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
 export type BrowserAgent = ReturnType<typeof createBrowserAgent>
 
 async function ensure(host: BrowserHost, key: string, projectPath: string): Promise<AgentPageInfo> {
+  return conflict(host.ensure(key, projectPath))
+}
+/** A host refusal (the page is gone, full, or changed while it was read) is a 409 with its own words. */
+async function conflict<T>(call: Promise<T>): Promise<T> {
   try {
-    return await host.ensure(key, projectPath)
+    return await call
   } catch (error) {
     throw new HttpError(409, error instanceof Error ? error.message : String(error))
   }
