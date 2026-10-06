@@ -40,10 +40,27 @@ export function isTrustedRequest(req: IncomingMessage, allowedPorts: readonly nu
 // electron/window-key.ts), so the page itself never sees it and an agent's shell cannot send it.
 export const WINDOW_KEY_HEADER = 'x-cockpit-window'
 
+// A WebKit shell cannot add headers on the way out (and EventSource cannot send them at all), so
+// there the key travels as an HttpOnly cookie instead, set once by window-entry.ts. The page's
+// script still never sees it. Same key, same check; the header wins when both are present.
+export const WINDOW_KEY_COOKIE = 'cockpit_window'
+
 export function hasWindowKey(req: IncomingMessage, key: string): boolean {
-  const sent = req.headers[WINDOW_KEY_HEADER]
-  if (typeof sent !== 'string') return false
+  const header = req.headers[WINDOW_KEY_HEADER]
+  const sent = typeof header === 'string' ? header : cookieValue(req.headers.cookie, WINDOW_KEY_COOKIE)
+  return sent !== undefined && sameSecret(sent, key)
+}
+
+export function sameSecret(sent: string, expected: string): boolean {
   const a = Buffer.from(sent)
-  const b = Buffer.from(key)
+  const b = Buffer.from(expected)
   return a.length === b.length && timingSafeEqual(a, b)
+}
+
+function cookieValue(header: string | undefined, name: string): string | undefined {
+  for (const part of (header ?? '').split(';')) {
+    const at = part.indexOf('=')
+    if (at !== -1 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim()
+  }
+  return undefined
 }

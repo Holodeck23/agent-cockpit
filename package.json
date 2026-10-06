@@ -20,6 +20,8 @@
     "smoke:updates": "tsx scripts/smoke-updates.ts",
     "smoke:mcp": "npm run build:electron && tsx scripts/smoke-mcp.ts",
     "build:electron": "tsx scripts/build-electron.ts",
+    "build:webkit-host": "tsx scripts/build-tauri-host.ts",
+    "package:webkit": "npm run build && npm run build:webkit-host && tauri build --bundles app",
     "icon": "tsx scripts/make-icon.ts",
     "dmg-background": "tsx scripts/make-dmg-background.ts",
     "app": "npm run build && npm run build:electron && electron .",
@@ -85,6 +87,8 @@
   "devDependencies": {
     "@milkdown/kit": "7.22.2",
     "@modelcontextprotocol/sdk": "^1.31.0",
+    "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/cli": "^2.12.1",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",

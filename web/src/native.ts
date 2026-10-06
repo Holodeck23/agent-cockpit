@@ -2,6 +2,7 @@ import type { NewProject } from '../../electron/new-project.ts'
 import type { ReleaseNotes } from '../../electron/updates.ts'
 import type { PreviewOpen } from '../../server/preview/types.ts'
 import type { CapacityRefusal, NavAction, PageState } from '../../electron/browser-service.ts'
+import { webkitBridge } from './native-webkit.ts'
 
 export type BrowserPageState = PageState
 export type BrowserCapacity = CapacityRefusal['capacity']
@@ -47,4 +48,7 @@ export interface CockpitBridge {
 }
 
 // No window at all where the page's modules load under Node (tests that render to a string).
-export const native: CockpitBridge | undefined = typeof window === 'undefined' ? undefined : (window as { cockpit?: CockpitBridge }).cockpit
+// Electron's preload sets window.cockpit; the WebKit shell (src-tauri) injects __TAURI_INTERNALS__.
+export const native: CockpitBridge | undefined = typeof window === 'undefined'
+  ? undefined
+  : (window as { cockpit?: CockpitBridge }).cockpit ?? ('__TAURI_INTERNALS__' in window ? webkitBridge() : undefined)

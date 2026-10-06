@@ -17,5 +17,5 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["server", "electron", "web/src", "tests", "scripts", "vite.config.ts", "vitest.config.ts"]
+  "include": ["server", "electron", "src-tauri/host", "web/src", "tests", "scripts", "vite.config.ts", "vitest.config.ts"]
 }

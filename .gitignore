@@ -5,3 +5,4 @@ dist/
 dist-electron/
 release/
 build/icon-1024.png
+dist-tauri/

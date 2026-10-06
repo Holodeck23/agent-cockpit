@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process'
 import { createWorkflowStore } from './workflows/store.ts'
 import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
+import { createWindowEntry } from './http/window-entry.ts'
 import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
@@ -67,6 +68,11 @@ export interface StartOptions {
    * Without it, any local process can use the API, which only `npm start` should allow.
    */
   readonly windowKey?: string
+  /**
+   * A WebKit shell's one-time entry token (http/window-entry.ts): redeemed once by its window for
+   * the window key as an HttpOnly cookie. Only meaningful together with windowKey.
+   */
+  readonly windowEntry?: string
   /** The in-app browser's pages (desktop app only), read when an agent calls a browser tool. */
   readonly browserHost?: () => BrowserHost | undefined
 }
@@ -278,7 +284,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])], ...(browser ? { browser } : {}) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)
+  const entry = options.windowKey && options.windowEntry
+    ? createWindowEntry(options.windowKey, options.windowEntry, () => [port, ...(options.trustedPorts ?? [])])
+    : undefined
   server.on('request', (req, res) => {
+    if (entry?.(req, res)) return
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)
     })
