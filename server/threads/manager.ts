@@ -68,6 +68,12 @@ export const instructionsFor = (req: LaunchRequest): string | undefined =>
     req.seed,
   ].filter(Boolean).join('\n\n') || undefined
 
+/**
+ * Claude Code's own background updater stays off in sessions Cockpit starts (launch-scoped, no
+ * settings write), so Cockpit's idle-only update decides when the executable changes (W10-07).
+ */
+export const claudeLaunchEnv = (env: Readonly<Record<string, string>> | undefined): Record<string, string> => ({ ...env, DISABLE_AUTOUPDATER: '1' })
+
 export const defaultLaunchers: Record<AgentId, Launcher> = {
   claude: (req, onEvent) => {
     const mcp = req.cockpit ? claudeMcpOptions(req.cockpit) : undefined
@@ -85,7 +91,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         ...(mcp ? { mcpConfig: mcp.mcpConfig, allowedTools: mcp.allowedTools } : {}),
       },
       onEvent,
-      mcp ? { env: mcp.env } : {},
+      { env: claudeLaunchEnv(mcp?.env) },
     )
   },
   codex: (req, onEvent) =>
@@ -161,6 +167,16 @@ export interface ManagerOptions {
   readonly capabilities?: CapabilityService
   /** P3: Antigravity gets Cockpit's tools only where the project opted in. */
   readonly antigravityMcp?: AntigravityMcpPrepare
+  /** Why a new session on an agent must not start now (its CLI is being updated or installed). */
+  readonly launchGate?: (agent: AgentId) => string | undefined
+}
+
+/** A session that never starts: the reason is shown and the turn ends at once. */
+function refusedSession(agent: AgentId, reason: string, onEvent: EventSink): AgentSession {
+  onEvent({ kind: 'error', message: reason })
+  onEvent({ kind: 'result', ok: false })
+  onEvent({ kind: 'exit', code: null })
+  return { agent, send: () => undefined, respondApproval: () => undefined, interrupt: () => undefined, close: () => Promise.resolve(), alive: () => false }
 }
 
 interface Live {
@@ -240,6 +256,10 @@ export interface ThreadManager {
   /** The agent message currently being streamed, or '' between messages. */
   partialText(threadId: string): string
   subscribe(listener: UpdateListener): () => void
+  /** Live sessions on one agent CLI, in every project: working (a turn or helpers) and idle (W10-07). */
+  agentActivity(agent: AgentId): { busy: number; idle: number }
+  /** Gracefully ends that agent's idle sessions, so its executable can be replaced; working ones are left alone. */
+  closeIdleSessions(agent: AgentId): Promise<void>
   /** Stops every live agent session; resolves once all have exited. */
   shutdown(): Promise<void>
 }
@@ -463,7 +483,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         record(meta.id, event)
       }
     }
-    const session = launchers[meta.settings.agent](
+    const blocked = options.launchGate?.(meta.settings.agent)
+    const launcher: Launcher = blocked ? (_req, onEvent) => refusedSession(meta.settings.agent, blocked, onEvent) : launchers[meta.settings.agent]
+    const session = launcher(
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
         cwd: meta.projectPath,
@@ -709,6 +731,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
+    },
+    agentActivity(agent) {
+      let working = 0
+      let idle = 0
+      for (const entry of live.values()) {
+        if (entry.session.agent !== agent || !entry.session.alive()) continue
+        if (busy(entry)) working++
+        else idle++
+      }
+      return { busy: working, idle }
+    },
+    async closeIdleSessions(agent) {
+      const idle = [...live.values()].filter((entry) => entry.session.agent === agent && entry.session.alive() && !busy(entry))
+      await Promise.all(idle.map(closeEntry))
     },
     async shutdown() {
       hostActions.cancel()

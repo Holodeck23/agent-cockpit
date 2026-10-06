@@ -2,7 +2,7 @@
 // time; each is an explicit action with a fixed plan, a bounded helper, a redacted log kept on
 // disk, and an outcome read back from the CLI itself, never assumed from an exit code.
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { CapabilityService } from '../capabilities/service.ts'
@@ -15,6 +15,10 @@ import { runHelper, type HelperExit, type HelperRun } from './runner.ts'
 export type OperationKind = 'install' | 'update' | 'signin'
 export type OperationState =
   | 'installing' | 'updating' | 'waiting_for_user'
+  /** An update waits for every conversation using the executable to finish; new sessions wait too. */
+  | 'waiting_for_idle'
+  /** An update that was waiting when Cockpit quit: it never resumes by itself (W10-08). */
+  | 'pending_confirmation'
   | 'installed' | 'auth_needed' | 'updated' | 'incompatible' | 'verified' | 'unknown' | 'cancelled' | 'error'
 
 export interface OperationView {
@@ -43,13 +47,21 @@ export interface LifecycleOptions {
   readonly download?: (url: string) => Promise<Buffer>
   readonly installers?: Readonly<Partial<Record<AgentId, InstallerSpec>>>
   readonly timeoutMs?: Partial<Record<OperationKind, number>>
+  /** The agent sessions Cockpit runs: an update replaces the executable only when none is working. */
+  readonly sessions?: {
+    activity(agent: AgentId): { readonly busy: number }
+    /** Gracefully ends idle sessions on that agent before its file is replaced. */
+    closeIdle(agent: AgentId): Promise<void>
+  }
 }
 
 export class OperationBusyError extends Error {}
 
 const SYSTEM_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 const TIMEOUTS: Record<OperationKind, number> = { install: 20 * 60_000, update: 20 * 60_000, signin: 10 * 60_000 }
-const RUNNING = new Set<OperationState>(['installing', 'updating', 'waiting_for_user'])
+const RUNNING = new Set<OperationState>(['installing', 'updating', 'waiting_for_user', 'waiting_for_idle'])
+
+interface PendingUpdate { readonly id: string; readonly agent: AgentId; readonly requestedAt: string }
 
 async function fetchInstaller(url: string): Promise<Buffer> {
   const response = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: 'follow' })
@@ -82,6 +94,21 @@ export function createLifecycle(options: LifecycleOptions) {
   const dir = join(options.stateRoot, 'agent-operations')
   const ops = new Map<string, { view: OperationView; run?: HelperRun }>()
   const listeners = new Set<(view: OperationView) => void>()
+  const pendingFile = join(dir, 'pending-updates.json')
+  const prefsFile = join(dir, 'preferences.json')
+  const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(readFileSync(file, 'utf8')) as T } catch { return fallback } }
+  const writeJson = (file: string, value: unknown): void => {
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    writeFileSync(`${file}.tmp`, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+    renameSync(`${file}.tmp`, file)
+  }
+  const pending = (): PendingUpdate[] => readJson<PendingUpdate[]>(pendingFile, []).filter((p) => typeof p?.id === 'string' && typeof p.agent === 'string')
+  const clearPending = (id: string): void => { if (pending().some((p) => p.id === id)) writeJson(pendingFile, pending().filter((p) => p.id !== id)) }
+  // Updates that were waiting when Cockpit quit come back as questions, not as work.
+  for (const p of pending()) {
+    ops.set(p.id, { view: { id: p.id, agent: p.agent, kind: 'update', state: 'pending_confirmation', startedAt: p.requestedAt, lines: [], logFile: join(dir, `${p.id}.log`),
+      message: `An update to ${AGENT_LABEL[p.agent] ?? p.agent} was waiting when Cockpit closed. Resume it, or cancel it.` } })
+  }
 
   const update = (id: string, patch: Partial<OperationView>): void => {
     const entry = ops.get(id)
@@ -131,7 +158,30 @@ export function createLifecycle(options: LifecycleOptions) {
   const finish = (id: string, state: OperationState, patch: Partial<OperationView> = {}): void => {
     const entry = ops.get(id)
     if (entry) entry.run = undefined
+    if (entry?.view.kind === 'update') clearPending(id)
     update(id, { state, endedAt: new Date().toISOString(), ...patch })
+  }
+
+  /** Runs a waiting update once nothing uses its executable: close idle sessions, recheck, update. */
+  const advance = (id: string): void => {
+    const entry = ops.get(id)
+    if (!entry || entry.view.state !== 'waiting_for_idle') return
+    const { agent } = entry.view
+    const label = AGENT_LABEL[agent]
+    const busy = options.sessions?.activity(agent).busy ?? 0
+    if (busy > 0) {
+      update(id, { message: `Waiting for ${busy} conversation${busy === 1 ? '' : 's'} using ${label} to finish. New ${label} sessions wait until the update is done.` })
+      return
+    }
+    update(id, { state: 'updating', message: `Closing idle ${label} sessions, then updating.` })
+    void (async () => {
+      await options.sessions?.closeIdle(agent)
+      // Revalidate: what is installed now is what gets updated, by the manager that owns it now.
+      const before = await options.capabilities.get(agent, { refresh: true })
+      const p = updatePlanFor(before, { brew: resolveExecutable('brew', pathEnv())?.path })
+      if (!p.available) { finish(id, 'error', { message: `Nothing was updated: ${p.reason}`, ...(p.manual ? { manual: p.manual } : {}) }); return }
+      await updateCli(id, agent, before, p)
+    })().catch((error: unknown) => finish(id, 'error', { message: `Cockpit could not finish: ${error instanceof Error ? error.message : String(error)}` }))
   }
 
   const run = (id: string, executable: string, args: readonly string[], env: Record<string, string>, kind: OperationKind, input = false): Promise<HelperExit> => {
@@ -216,8 +266,13 @@ export function createLifecycle(options: LifecycleOptions) {
       const before = kind === 'update' ? await options.capabilities.get(agent, { refresh: true }) : await options.capabilities.get(agent)
       const p = kind === 'install' ? installPlanFor(agent, before, home) : kind === 'update' ? updatePlanFor(before, { brew: resolveExecutable('brew', pathEnv())?.path }) : signinPlanFor(before)
       if (!p.available) throw new Error(p.manual ? `${p.reason} Run it yourself: ${p.manual}` : p.reason)
-      const id = begin(agent, kind, kind === 'install' ? 'installing' : kind === 'update' ? 'updating' : 'waiting_for_user')
-      const work = kind === 'install' ? install(id, agent) : kind === 'update' ? updateCli(id, agent, before, p) : signin(id, agent, p)
+      const id = begin(agent, kind, kind === 'install' ? 'installing' : kind === 'update' ? 'waiting_for_idle' : 'waiting_for_user')
+      if (kind === 'update') {
+        writeJson(pendingFile, [...pending(), { id, agent, requestedAt: ops.get(id)!.view.startedAt }])
+        advance(id)
+        return ops.get(id)!.view
+      }
+      const work = kind === 'install' ? install(id, agent) : signin(id, agent, p)
       work.catch((error: unknown) => finish(id, 'error', { message: `Cockpit could not finish: ${error instanceof Error ? error.message : String(error)}` }))
       return ops.get(id)!.view
     },
@@ -228,8 +283,42 @@ export function createLifecycle(options: LifecycleOptions) {
       const entry = ops.get(id)
       if (entry?.view.state === 'waiting_for_user') entry.run?.write(text)
     },
+    /** Explicit confirmation of an update that was pending when Cockpit quit. */
+    resume(id: string): boolean {
+      const entry = ops.get(id)
+      if (entry?.view.state !== 'pending_confirmation') return false
+      update(id, { state: 'waiting_for_idle', message: undefined })
+      advance(id)
+      return true
+    },
+    /** Call when any agent session starts or finishes work. */
+    activityChanged(): void {
+      for (const { view } of [...ops.values()]) if (view.state === 'waiting_for_idle') advance(view.id)
+    },
+    /** Why a new session on this agent must not start now, if it must not. */
+    launchBlock(agent: AgentId): string | undefined {
+      for (const { view } of ops.values()) {
+        if (view.agent !== agent || view.endedAt) continue
+        const label = AGENT_LABEL[agent]
+        if (view.state === 'waiting_for_idle') return `${label} is waiting to update, so new ${label} sessions start after it finishes. Your message is in the conversation but was not sent; send it again then, or cancel the update in the agent picker.`
+        if (view.state === 'updating' || view.state === 'installing') return `${label} is being ${view.state === 'updating' ? 'updated' : 'installed'}. Your message is in the conversation but was not sent; send it again when that finishes.`
+      }
+      return undefined
+    },
+    skip(agent: AgentId, version: string): void {
+      const prefs = readJson<{ skipped?: Partial<Record<AgentId, string>> }>(prefsFile, {})
+      writeJson(prefsFile, { ...prefs, skipped: { ...prefs.skipped, [agent]: version } })
+    },
+    skipped(agent: AgentId): string | undefined {
+      const value = readJson<{ skipped?: Partial<Record<AgentId, unknown>> }>(prefsFile, {}).skipped?.[agent]
+      return typeof value === 'string' ? value : undefined
+    },
     cancel(id: string): boolean {
       const entry = ops.get(id)
+      if (entry && (entry.view.state === 'waiting_for_idle' || entry.view.state === 'pending_confirmation')) {
+        finish(id, 'cancelled', { message: 'Update cancelled. Nothing was changed.' })
+        return true
+      }
       if (!entry || !RUNNING.has(entry.view.state) || !entry.run) return false
       entry.run.cancel()
       return true
