@@ -43,18 +43,18 @@ describe('loginShellPath', () => {
 describe('resolveAppPath', () => {
   it('searches COCKPIT_AGENT_PATH before the login shell PATH', () => {
     const env = { PATH: '/usr/bin', COCKPIT_AGENT_PATH: '/tmp/agents::/opt/agents' }
-    expect(resolveAppPath(env, () => '/opt/homebrew/bin:/usr/bin', '/Users/u')).toEqual({
-      path: '/tmp/agents:/opt/agents:/opt/homebrew/bin:/usr/bin:/Users/u/.local/bin',
+    expect(resolveAppPath(env, () => '/opt/homebrew/bin:/usr/bin', '/Users/someone')).toEqual({
+      path: '/tmp/agents:/opt/agents:/opt/homebrew/bin:/usr/bin:/Users/someone/.local/bin',
       source: 'shell',
     })
   })
 
   it('keeps the shell order when no agent path is set', () => {
-    expect(resolveAppPath({ PATH: '/usr/bin' }, () => '/opt/homebrew/bin', '/Users/u').path).toBe('/opt/homebrew/bin:/Users/u/.local/bin:/usr/bin')
+    expect(resolveAppPath({ PATH: '/usr/bin' }, () => '/opt/homebrew/bin', '/Users/someone').path).toBe('/opt/homebrew/bin:/Users/someone/.local/bin:/usr/bin')
   })
 
   it('keeps ~/.local/bin where the shell already put it', () => {
-    expect(resolveAppPath({ PATH: '/usr/bin' }, () => '/Users/u/.local/bin:/opt/homebrew/bin', '/Users/u').path).toBe('/Users/u/.local/bin:/opt/homebrew/bin:/usr/bin')
+    expect(resolveAppPath({ PATH: '/usr/bin' }, () => '/Users/someone/.local/bin:/opt/homebrew/bin', '/Users/someone').path).toBe('/Users/someone/.local/bin:/opt/homebrew/bin:/usr/bin')
   })
 
   it('puts the agent path ahead of the fallback folders when the shell cannot be asked', () => {
