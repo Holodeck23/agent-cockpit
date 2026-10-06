@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createOutputBuffer, detectLocalUrl, stripAnsi } from '../server/processes/output.ts'
-import { createProcessRunner, type ProcessInfo, type ProcessRunner } from '../server/processes/runner.ts'
+import { createProcessRunner, projectProcessEnvironment, type ProcessInfo, type ProcessRunner } from '../server/processes/runner.ts'
 
 const project = (): string => mkdtempSync(join(tmpdir(), 'cockpit-proc-'))
 
@@ -96,6 +96,30 @@ describe('process runner', () => {
   afterEach(async () => {
     await runner?.shutdown()
     runner = undefined
+  })
+
+  it('passes shell basics without leaking the Cockpit or provider environment', async () => {
+    const source = {
+      PATH: process.env.PATH, HOME: '/tmp/cockpit-test-home', USER: 'tester', LANG: 'en_US.UTF-8',
+      NODE_OPTIONS: '--require /tmp/not-real.js', ELECTRON_RUN_AS_NODE: '1',
+      COCKPIT_WINDOW_KEY: 'window-secret', ANTHROPIC_API_KEY: 'provider-secret',
+    }
+    expect(projectProcessEnvironment(source)).toEqual({
+      PATH: process.env.PATH, HOME: '/tmp/cockpit-test-home', USER: 'tester', LANG: 'en_US.UTF-8',
+      BROWSER: 'none', FORCE_COLOR: '0', NO_COLOR: '1',
+    })
+
+    runner = createProcessRunner({ env: source })
+    const dir = project()
+    const command = script(dir, 'env.js', `console.log(JSON.stringify({
+      home: process.env.HOME, browser: process.env.BROWSER, color: process.env.FORCE_COLOR,
+      node: process.env.NODE_OPTIONS, electron: process.env.ELECTRON_RUN_AS_NODE,
+      cockpit: process.env.COCKPIT_WINDOW_KEY, provider: process.env.ANTHROPIC_API_KEY,
+    }))`)
+    const started = runner.start({ projectPath: dir, command }).process
+    await until(() => runner?.get(started.id)?.status === 'exited' || undefined)
+    const line = runner.read(started.id).lines.find((item) => item.stream === 'stdout')?.text
+    expect(JSON.parse(line ?? '{}')).toEqual({ home: '/tmp/cockpit-test-home', browser: 'none', color: '0' })
   })
 
   it('captures stdout and stderr, records the URL and the exit code', async () => {

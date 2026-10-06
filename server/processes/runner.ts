@@ -91,6 +91,24 @@ export interface RunnerOptions {
   readonly keepExited?: number
   /** Where running processes are recorded, so a crash can be reported on the next start. */
   readonly ledgerFile?: string
+  /** Source environment; injectable so the boundary can be tested without changing process.env. */
+  readonly env?: NodeJS.ProcessEnv
+}
+
+const PROJECT_ENV = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TERM'] as const
+
+/**
+ * Long-running project commands get normal shell basics, not Cockpit's credentials,
+ * Electron controls, debug hooks, or agent-provider tokens. Projects can still load
+ * their own .env files or name variables explicitly in the command the user approves.
+ */
+export function projectProcessEnvironment(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const env: Record<string, string> = { BROWSER: 'none', FORCE_COLOR: '0', NO_COLOR: '1' }
+  for (const name of PROJECT_ENV) {
+    const value = source[name]
+    if (value !== undefined) env[name] = value
+  }
+  return env
 }
 
 interface Entry {
@@ -207,7 +225,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
         // BROWSER=none: dev servers must not pop a browser; open_preview does that on request.
-        env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0' },
+        env: projectProcessEnvironment(options.env),
       })
       const output = createOutputBuffer(options.maxOutputBytes ?? DEFAULT_OUTPUT_BYTES)
       const info: ProcessInfo = {
