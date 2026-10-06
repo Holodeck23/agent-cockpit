@@ -2,6 +2,7 @@
 // context and the same executable file (path + realpath + size/mtime/inode), and for at most a
 // minute. A replaced file, a PATH change or Refresh probes again; a failed probe reports its
 // failure and never falls back to what another executable or account said.
+import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import type { AgentId } from '../types.ts'
 import { detectManager } from './manager.ts'
@@ -10,6 +11,7 @@ import { resolveExecutable, type ResolvedExecutable } from './resolve.ts'
 import { AGENT_COMMANDS, type AgentCapabilities, type ExecutableIdentity } from './types.ts'
 
 export const CAPABILITY_CACHE_MS = 60_000
+const realHome = (home: string): string => { try { return realpathSync(home) } catch { return home } }
 const PROBE_TIMEOUT_MS = 10_000
 
 export interface CapabilityServiceOptions {
@@ -47,7 +49,8 @@ interface Entry {
 export function createCapabilityService(options: CapabilityServiceOptions = {}): CapabilityService {
   const pathEnv = options.pathEnv ?? (() => process.env.PATH ?? '')
   const now = options.now ?? Date.now
-  const home = options.home ?? homedir()
+  // Resolved, as executable paths are: /var/folders is /private/var/folders on macOS.
+  const home = realHome(options.home ?? homedir())
   const timeoutMs = options.timeoutMs ?? PROBE_TIMEOUT_MS
   const run = options.run ?? runCommand
   const cache = new Map<string, Entry>()

@@ -58,13 +58,18 @@ export function agentPathDirs(env: NodeJS.ProcessEnv): string[] {
   return (env.COCKPIT_AGENT_PATH ?? '').split(':').filter((entry) => entry.length > 0)
 }
 
-/** Returns the PATH the app should use, and whether it came from the login shell. */
+/**
+ * Returns the PATH the app should use, and whether it came from the login shell. ~/.local/bin is
+ * always on it, after the shell's own entries: the official installers put CLIs there without
+ * editing a shell profile when Cockpit installs them (G-LIFECYCLE), so the shell may not list it.
+ */
 export function resolveAppPath(
   env: NodeJS.ProcessEnv = process.env,
   shellPath: () => string | undefined = () => loginShellPath(defaultShell()),
+  home: string = homedir(),
 ): { path: string; source: 'shell' | 'fallback' } {
   const first = agentPathDirs(env)
   const fromShell = shellPath()
-  if (fromShell) return { path: mergePath(env.PATH, [...first, ...fromShell.split(':')]), source: 'shell' }
+  if (fromShell) return { path: mergePath(env.PATH, [...first, ...fromShell.split(':'), join(home, '.local/bin')]), source: 'shell' }
   return { path: mergePath(env.PATH, [...first, ...fallbackDirs()]), source: 'fallback' }
 }
