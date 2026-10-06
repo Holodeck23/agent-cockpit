@@ -8,6 +8,7 @@ import { launchClaude } from '../server/agents/claude/launch.ts'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 
 const help = readFileSync('scripts/fixtures/claude-help.txt', 'utf8')
+const installedHelp = readFileSync('tests/fixtures/claude-2.1.291-help.txt', 'utf8')
 // macOS scans a freshly written executable on its first run (measured 0.7-1.6 s), so the
 // stand-in's first --help can outlast expect.poll's 1 s default. The probe itself allows 5 s.
 const FIRST_RUN = { timeout: 5000 }
@@ -57,6 +58,23 @@ describe('Use my Chrome (W9-12)', () => {
 })
 
 describe('Claude compatibility', () => {
+  it('accepts the effort levels declared by real Claude 2.1.291 help', () => {
+    const capabilities = parseClaudeHelp(installedHelp)
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      validateClaudeArgs(buildClaudeArgs({ cwd: '/p', effort }, capabilities), capabilities)
+    }
+  })
+  it('still refuses missing effort levels, unknown formats and choices borrowed from another option', () => {
+    const args = buildClaudeArgs({ cwd: '/p', effort: 'high' })
+    for (const listing of ['(low, medium, max)', 'See documentation', '(default: high)']) {
+      const changed = installedHelp.replace('(low, medium, high, xhigh, max)', listing)
+      expect(() => validateClaudeArgs(args, parseClaudeHelp(changed))).toThrow(/--effort high/)
+    }
+    const moved = installedHelp.replace('(low, medium, high, xhigh, max)', '') + '\n  --other <value> (low, medium, high, xhigh, max)\n'
+    expect(() => validateClaudeArgs(args, parseClaudeHelp(moved))).toThrow(/--effort high/)
+    const permissions = installedHelp.replace('(choices: "acceptEdits", "auto",', '("acceptEdits", "auto",')
+    expect(() => validateClaudeArgs(args, parseClaudeHelp(permissions))).toThrow(/--permission-mode manual/)
+  })
   it('keeps host/stdin approvals and changes only the optional flag for legacy CLIs', () => {
     const modern = buildClaudeArgs({ cwd: '/p' }, parseClaudeHelp(help))
     const legacy = buildClaudeArgs({ cwd: '/p' }, parseClaudeHelp(legacyHelp))
@@ -117,13 +135,15 @@ describe('Claude compatibility', () => {
       expect(launched[launched.indexOf('--append-system-prompt') + 1]).toBe('short guidance')
     } finally { await session.close() }
   }, 15_000)
-  it.each([help, legacyHelp])('probes the chosen executable, then delivers the queued message', async (text) => {
+  it.each([help, legacyHelp, installedHelp])('probes the chosen executable, then delivers the queued message', async (text) => {
     const f = fixture(text), events: NormalizedEvent[] = []
-    const session = launchClaude({ cwd: f.cwd }, (event) => events.push(event), { executable: f.executable })
+    const session = launchClaude({ cwd: f.cwd, effort: 'high' }, (event) => events.push(event), { executable: f.executable })
     try {
       session.send('hello')
       await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok), FIRST_RUN).toBe(true)
-      expect(readFileSync(join(f.cwd, 'launched'), 'utf8').includes('--permission-prompts')).toBe(text === help)
+      const args = readFileSync(join(f.cwd, 'launched'), 'utf8').split('\n')
+      expect(args.includes('--permission-prompts')).toBe(text !== legacyHelp)
+      expect(args[args.indexOf('--effort') + 1]).toBe('high')
     } finally { await session.close() }
   })
   it('fails closed, preserves no fake session, and re-probes on retry after CLI changes', async () => {
