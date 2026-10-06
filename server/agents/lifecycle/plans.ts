@@ -9,18 +9,24 @@ import type { AgentId } from '../types.ts'
 
 export interface InstallerSpec {
   readonly url: string
+  /** The vendor's own hosts: a redirect that ends anywhere else is refused. */
+  readonly hosts: readonly string[]
   /** The official script's bytes as reviewed (G-LIFECYCLE installers/SHA256SUMS, 2026-10-06). */
   readonly sha256: string
   readonly args: readonly string[]
   readonly env?: Readonly<Record<string, string>>
 }
 
-/** Changed bytes upstream mean a new review, not a silent run: until then the manual route is offered. */
+/**
+ * Changed bytes upstream are never run silently: Cockpit says the script changed since this release
+ * and runs it only after an approval bound to the new bytes' hash, or the user runs it themselves.
+ * `npm run check:installers` (part of the release runner) re-reviews these before every release.
+ */
 export const INSTALLERS: Readonly<Partial<Record<AgentId, InstallerSpec>>> = {
-  claude: { url: 'https://claude.ai/install.sh', sha256: '3a68d3406cf674e17bed1733a4dcf37805e2e47d87417700007d7e1aa766a944', args: [] },
+  claude: { url: 'https://claude.ai/install.sh', hosts: ['claude.ai', 'downloads.claude.ai'], sha256: '3a68d3406cf674e17bed1733a4dcf37805e2e47d87417700007d7e1aa766a944', args: [] },
   // Never offers to remove an existing Homebrew or npm copy.
-  codex: { url: 'https://chatgpt.com/codex/install.sh', sha256: '150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6', args: [], env: { CODEX_NON_INTERACTIVE: '1' } },
-  antigravity: { url: 'https://antigravity.google/cli/install.sh', sha256: '62966c07365423bd4dc209355060744058fb30d60f5323e2d360e39de64e5042', args: [] },
+  codex: { url: 'https://chatgpt.com/codex/install.sh', hosts: ['chatgpt.com', 'releases.openai.com'], sha256: '150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6', args: [], env: { CODEX_NON_INTERACTIVE: '1' } },
+  antigravity: { url: 'https://antigravity.google/cli/install.sh', hosts: ['antigravity.google'], sha256: '62966c07365423bd4dc209355060744058fb30d60f5323e2d360e39de64e5042', args: [] },
 }
 
 export const AGENT_LABEL: Record<AgentId, string> = { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity', opencode: 'OpenCode' }

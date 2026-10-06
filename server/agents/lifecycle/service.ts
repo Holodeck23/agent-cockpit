@@ -10,6 +10,7 @@ import { resolveExecutable } from '../capabilities/resolve.ts'
 import type { AgentCapabilities, AuthState } from '../capabilities/types.ts'
 import type { AgentId } from '../types.ts'
 import { AGENT_LABEL, INSTALLERS, installPlanFor, manualInstall, signinPlanFor, updatePlanFor, type InstallerSpec, type Plan } from './plans.ts'
+import { checkLatest, type LatestCheck } from './latest.ts'
 import { runHelper, type HelperExit, type HelperRun } from './runner.ts'
 
 export type OperationKind = 'install' | 'update' | 'signin'
@@ -35,6 +36,13 @@ export interface OperationView {
   readonly manual?: string
   readonly logFile: string
   readonly result?: { readonly path?: string; readonly version?: string; readonly previousVersion?: string; readonly auth?: AuthState }
+  /** The official installer's bytes differ from the ones this release reviewed: what an approval would run. */
+  readonly installerChanged?: { readonly url: string; readonly sha256: string; readonly reviewed: string }
+}
+
+export interface StartOptions {
+  /** Run a changed official installer: only if its bytes still hash to exactly this. */
+  readonly acceptInstaller?: string
 }
 
 export interface LifecycleOptions {
@@ -44,9 +52,11 @@ export interface LifecycleOptions {
   readonly capabilities: CapabilityService
   /** The PATH Cockpit uses for agents (with ~/.local/bin). */
   readonly pathEnv?: () => string
-  readonly download?: (url: string) => Promise<Buffer>
+  readonly download?: (url: string, hosts: readonly string[]) => Promise<Buffer>
   readonly installers?: Readonly<Partial<Record<AgentId, InstallerSpec>>>
   readonly timeoutMs?: Partial<Record<OperationKind, number>>
+  /** The version feed reader; a fake in tests. */
+  readonly fetchJson?: (url: string) => Promise<unknown>
   /** The agent sessions Cockpit runs: an update replaces the executable only when none is working. */
   readonly sessions?: {
     activity(agent: AgentId): { readonly busy: number }
@@ -63,10 +73,17 @@ const RUNNING = new Set<OperationState>(['installing', 'updating', 'waiting_for_
 
 interface PendingUpdate { readonly id: string; readonly agent: AgentId; readonly requestedAt: string }
 
-async function fetchInstaller(url: string): Promise<Buffer> {
+const MAX_INSTALLER_BYTES = 1024 * 1024
+
+/** The official script over HTTPS, ending on one of the vendor's own hosts. */
+export async function fetchInstaller(url: string, hosts: readonly string[]): Promise<Buffer> {
   const response = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: 'follow' })
+  const final = new URL(response.url || url)
+  if (final.protocol !== 'https:' || !hosts.includes(final.hostname)) throw new Error(`it was served from ${final.host}, which is not the vendor's own address`)
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return Buffer.from(await response.arrayBuffer())
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (bytes.length > MAX_INSTALLER_BYTES) throw new Error('it is larger than an install script')
+  return bytes
 }
 
 /** What there is now, in words: the report after every operation reads the CLI again. */
@@ -141,11 +158,14 @@ export function createLifecycle(options: LifecycleOptions) {
     return { ...env, ...extra }
   }
 
+  /** What each action would do, from the cached record: showing it never runs agy (start rechecks). */
   async function plan(agent: AgentId, kind: OperationKind): Promise<Plan> {
-    if (kind === 'install') return installPlanFor(agent, await options.capabilities.get(agent), home)
-    if (kind === 'update') return updatePlanFor(await options.capabilities.get(agent, { refresh: true }), { brew: resolveExecutable('brew', pathEnv())?.path })
-    return signinPlanFor(await options.capabilities.get(agent))
+    const caps = await options.capabilities.get(agent)
+    if (kind === 'install') return installPlanFor(agent, caps, home)
+    if (kind === 'update') return updatePlanFor(caps, { brew: resolveExecutable('brew', pathEnv())?.path })
+    return signinPlanFor(caps)
   }
+  const latest = new Map<AgentId, LatestCheck>()
 
   function begin(agent: AgentId, kind: OperationKind, state: OperationState): string {
     for (const { view } of ops.values()) if (view.agent === agent && !view.endedAt) throw new OperationBusyError(`${AGENT_LABEL[agent]} already has an operation running`)
@@ -195,20 +215,28 @@ export function createLifecycle(options: LifecycleOptions) {
   const exitText = (exit: HelperExit, what: string): string =>
     exit.error ? `${what} could not start (${exit.error})` : exit.timedOut ? `${what} was stopped after running too long` : `${what} exited with ${exit.code ?? exit.signal}`
 
-  async function install(id: string, agent: AgentId): Promise<void> {
+  async function install(id: string, agent: AgentId, accept?: string): Promise<void> {
     const spec = installers[agent]!
     const manual = manualInstall(agent)
     let bytes: Buffer
     log(id, `Downloading ${spec.url}`)
-    try { bytes = await download(spec.url) } catch (error) {
+    try { bytes = await download(spec.url, spec.hosts) } catch (error) {
       finish(id, 'error', { message: `Could not download the official installer (${error instanceof Error ? error.message : String(error)}). Nothing was installed.`, manual })
       return
     }
     const sha = createHash('sha256').update(bytes).digest('hex')
     log(id, `sha256 ${sha}`)
-    if (sha !== spec.sha256) {
-      finish(id, 'error', { message: `The official installer has changed since this version of Cockpit reviewed it, so Cockpit did not run it. Run it yourself in Terminal if you trust it, then Recheck.`, manual })
+    if (!bytes.subarray(0, 2).equals(Buffer.from('#!'))) {
+      finish(id, 'error', { message: 'What the vendor address returned is not an install script (a captive portal or an error page?). Nothing was run.', manual })
       return
+    }
+    if (sha !== spec.sha256) {
+      if (accept !== sha) {
+        finish(id, 'error', { installerChanged: { url: spec.url, sha256: sha, reviewed: spec.sha256 }, manual,
+          message: `The official installer at ${spec.url} has changed since this version of Cockpit was released, so Cockpit has not run it. It still comes from the vendor's own address. Install anyway runs exactly this new version (sha256 ${sha.slice(0, 12)}…), or run the command yourself.` })
+        return
+      }
+      log(id, `approved changed installer sha256 ${sha} (reviewed ${spec.sha256})`)
     }
     const script = join(dir, `${id}-installer.sh`)
     writeFileSync(script, bytes, { mode: 0o700 })
@@ -262,7 +290,7 @@ export function createLifecycle(options: LifecycleOptions) {
   return {
     plan,
     /** The explicit action. Throws when the plan is not available (the plan says why). */
-    async start(agent: AgentId, kind: OperationKind): Promise<OperationView> {
+    async start(agent: AgentId, kind: OperationKind, start: StartOptions = {}): Promise<OperationView> {
       const before = kind === 'update' ? await options.capabilities.get(agent, { refresh: true }) : await options.capabilities.get(agent)
       const p = kind === 'install' ? installPlanFor(agent, before, home) : kind === 'update' ? updatePlanFor(before, { brew: resolveExecutable('brew', pathEnv())?.path }) : signinPlanFor(before)
       if (!p.available) throw new Error(p.manual ? `${p.reason} Run it yourself: ${p.manual}` : p.reason)
@@ -272,7 +300,7 @@ export function createLifecycle(options: LifecycleOptions) {
         advance(id)
         return ops.get(id)!.view
       }
-      const work = kind === 'install' ? install(id, agent) : signin(id, agent, p)
+      const work = kind === 'install' ? install(id, agent, start.acceptInstaller) : signin(id, agent, p)
       work.catch((error: unknown) => finish(id, 'error', { message: `Cockpit could not finish: ${error instanceof Error ? error.message : String(error)}` }))
       return ops.get(id)!.view
     },
@@ -305,9 +333,26 @@ export function createLifecycle(options: LifecycleOptions) {
       }
       return undefined
     },
+    /** Asks the version feed now (explicit only: Cockpit does not check in the background). */
+    async checkForUpdate(agent: AgentId): Promise<LatestCheck> {
+      const prefs = readJson<{ skipped?: Partial<Record<AgentId, string>> }>(prefsFile, {})
+      const skipped = prefs.skipped?.[agent]
+      const check = await checkLatest(await options.capabilities.get(agent), { ...(options.fetchJson ? { fetchJson: options.fetchJson } : {}), ...(skipped ? { skipped } : {}) })
+      latest.set(agent, check)
+      return check
+    },
+    lastCheck: (agent: AgentId): LatestCheck | undefined => latest.get(agent),
+    /** Quit: every helper Cockpit started ends with it (ID-06). */
+    shutdown(): Promise<unknown> {
+      const running = [...ops.values()].filter((e) => e.run)
+      for (const e of running) e.run!.cancel()
+      return Promise.all(running.map((e) => e.run?.done))
+    },
     skip(agent: AgentId, version: string): void {
       const prefs = readJson<{ skipped?: Partial<Record<AgentId, string>> }>(prefsFile, {})
       writeJson(prefsFile, { ...prefs, skipped: { ...prefs.skipped, [agent]: version } })
+      const shown = latest.get(agent)
+      if (shown && shown.state === 'available' && shown.latest === version) latest.set(agent, { ...shown, state: 'skipped' })
     },
     skipped(agent: AgentId): string | undefined {
       const value = readJson<{ skipped?: Partial<Record<AgentId, unknown>> }>(prefsFile, {}).skipped?.[agent]

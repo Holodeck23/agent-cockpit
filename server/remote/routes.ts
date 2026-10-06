@@ -52,6 +52,17 @@ export const ROUTES: readonly RouteClass[] = [
   // Agent capabilities name executable paths and sign-in state (W10.1): the Mac only.
   { method: 'GET', route: 'agents/:agent/capabilities', phone: false },
   { method: 'POST', route: 'agents/:agent/capabilities/refresh', phone: false },
+  // Install, update, sign-in (W10.2/W10.3): the Mac only, never MCP.
+  { method: 'GET', route: 'agents/:agent/lifecycle', phone: false },
+  { method: 'POST', route: 'agents/:agent/install', phone: false },
+  { method: 'POST', route: 'agents/:agent/update', phone: false },
+  { method: 'POST', route: 'agents/:agent/signin', phone: false },
+  { method: 'POST', route: 'agents/:agent/updates/check', phone: false },
+  { method: 'POST', route: 'agents/:agent/updates/skip', phone: false },
+  { method: 'GET', route: 'agent-operations/:id', phone: false },
+  { method: 'POST', route: 'agent-operations/:id/cancel', phone: false },
+  { method: 'POST', route: 'agent-operations/:id/resume', phone: false },
+  { method: 'POST', route: 'agent-operations/:id/input', phone: false },
   // P3: writes a plugin into the project folder (W10-04).
   { method: 'POST', route: 'projects/agy-mcp', phone: false },
 

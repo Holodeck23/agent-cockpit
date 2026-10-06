@@ -12,6 +12,7 @@ import { createApiHandler } from './http/router.ts'
 import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
+import { createLifecycle, type Lifecycle } from './agents/lifecycle/service.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
@@ -165,6 +166,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // Tests that fake the version check get a fixed record: no real CLI is run.
   const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
   const agyMcp = createAgyMcp(projects, options.mcp)
+  // Created after the manager it watches; the manager asks it before starting a session.
+  let lifecycle: Lifecycle | undefined
   const manager = createThreadManager(store, {
     workspaceFor: (projectPath) => {
       try {
@@ -181,6 +184,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     },
     capabilities,
     antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
+    launchGate: (agent) => lifecycle?.launchBlock(agent),
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
@@ -194,6 +198,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         }
       : {}),
   })
+  lifecycle = createLifecycle({ stateRoot: root, capabilities, sessions: { activity: (agent) => manager.agentActivity(agent), closeIdle: (agent) => manager.closeIdleSessions(agent) } })
+  const agentLifecycle = lifecycle
+  // A waiting update starts as soon as the last conversation on that CLI stops working.
+  manager.subscribe(() => agentLifecycle.activityChanged())
   const runs = createRunObservationStore(root)
   const runObserver = observeRuns(manager, runs)
   const resultStore = createResultStore(root)
@@ -258,7 +266,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, agyMcp, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, agyMcp, lifecycle: agentLifecycle, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
@@ -284,7 +292,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown(), agentLifecycle.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {

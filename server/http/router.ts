@@ -43,6 +43,8 @@ import type { AgentStatus } from '../agents/status.ts'
 import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { AGENT_IDS } from '../agents/capabilities/types.ts'
 import type { AgyMcp } from '../projects/agy-mcp.ts'
+import type { Lifecycle } from '../agents/lifecycle/service.ts'
+import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -123,6 +125,8 @@ export interface ApiDeps {
   readonly capabilities?: CapabilityService
   /** P3: per-project Antigravity access to Cockpit's tools; desktop only. */
   readonly agyMcp?: AgyMcp
+  /** Install, update and sign-in for agent CLIs (W10.2/W10.3); desktop only. */
+  readonly lifecycle?: Lifecycle
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -154,7 +158,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, agyMcp, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, agyMcp, lifecycle, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -231,6 +235,12 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       }
       if (parts[1] === 'agents' && parts.length === 2 && method === 'GET' && agents) {
         sendJson(res, 200, { data: await agents() })
+        return true
+      }
+      // Installers, updaters and sign-in helpers run on the Mac and are started from it only.
+      if (isAgentLifecycleRoute(parts) && lifecycle) {
+        if (viaPhone) throw new HttpError(403, 'Installing, updating and signing in to agents is only available on the Mac')
+        await handleAgentLifecycleRoute(req, res, parts, lifecycle)
         return true
       }
       // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).

@@ -39,7 +39,7 @@ function setup(installers: Record<string, string> = {}, extra: Partial<Lifecycle
   const lifecycle = createLifecycle({
     stateRoot: join(root, 'state'), home, capabilities, pathEnv,
     download: async (url) => { const bytes = scripts.get(url); if (!bytes) throw new Error('offline'); return bytes },
-    installers: { claude: { url: 'https://claude.ai/install.sh', sha256: table['https://claude.ai/install.sh'] ?? '0'.repeat(64), args: [] } },
+    installers: { claude: { url: 'https://claude.ai/install.sh', hosts: ['claude.ai'], sha256: table['https://claude.ai/install.sh'] ?? '0'.repeat(64), args: [] } },
     ...extra,
   })
   return { root, home, sys, lifecycle }
@@ -79,14 +79,30 @@ describe('install (W10-05)', () => {
     expect(readFileSync(op.logFile, 'utf8')).toContain('sha256 ')
   })
 
-  it('refuses an installer whose bytes differ from the reviewed ones, and gives the manual command', SLOW, async () => {
+  it('does not run a changed installer silently: it says so, and runs exactly those bytes only once approved', SLOW, async () => {
     const { lifecycle, home } = setup({ 'https://claude.ai/install.sh': INSTALLER }, {
-      installers: { claude: { url: 'https://claude.ai/install.sh', sha256: 'f'.repeat(64), args: [] } },
+      installers: { claude: { url: 'https://claude.ai/install.sh', hosts: ['claude.ai'], sha256: 'f'.repeat(64), args: [] } },
     })
     const op = await finished(lifecycle, (await lifecycle.start('claude', 'install')).id)
     expect(op.state).toBe('error')
     expect(op.manual).toBe('curl -fsSL https://claude.ai/install.sh | bash')
+    const changed = createHash('sha256').update(INSTALLER).digest('hex')
+    expect(op.installerChanged).toEqual({ url: 'https://claude.ai/install.sh', sha256: changed, reviewed: 'f'.repeat(64) })
     expect(existsSync(join(home, '.local', 'bin', 'claude'))).toBe(false)
+    // An approval for other bytes runs nothing.
+    const stale = await finished(lifecycle, (await lifecycle.start('claude', 'install', { acceptInstaller: 'e'.repeat(64) })).id)
+    expect(stale.state).toBe('error')
+    expect(existsSync(join(home, '.local', 'bin', 'claude'))).toBe(false)
+    const approved = await finished(lifecycle, (await lifecycle.start('claude', 'install', { acceptInstaller: changed })).id)
+    expect(approved.state).toBe('auth_needed')
+    expect(readFileSync(approved.logFile, 'utf8')).toContain(`approved changed installer sha256 ${changed}`)
+  })
+
+  it('refuses a download that is not a script', SLOW, async () => {
+    const { lifecycle } = setup({ 'https://claude.ai/install.sh': '<html>captive portal</html>' })
+    const op = await finished(lifecycle, (await lifecycle.start('claude', 'install')).id)
+    expect(op.state).toBe('error')
+    expect(op.message).toMatch(/not an install script/)
   })
 
   it('never installs a second copy beside an existing one, whatever installed it', SLOW, async () => {

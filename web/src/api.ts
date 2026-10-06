@@ -1,6 +1,18 @@
 import type { RecoveryView, resumeRecoveryBody } from '../../server/onboarding/recovery.ts'
 import type { Preset } from '../../server/presets/store.ts'
 import type { AgentCapabilities } from '../../server/agents/capabilities/types.ts'
+import type { OperationKind, OperationView } from '../../server/agents/lifecycle/service.ts'
+import type { LatestCheck } from '../../server/agents/lifecycle/latest.ts'
+import type { Plan } from '../../server/agents/lifecycle/plans.ts'
+
+export interface AgentLifecycleView {
+  readonly install: Plan
+  readonly update: Plan
+  readonly signin: Plan
+  readonly latest?: LatestCheck
+  readonly skipped?: string
+  readonly operations: readonly OperationView[]
+}
 import type { z } from 'zod'
 export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
@@ -23,7 +35,7 @@ import type { RemoteStatus } from '../../server/remote/service.ts'
 import type { AgentStatus } from '../../server/agents/status.ts'
 import type { GitState } from '../../server/git/branches.ts'
 
-export type { AgentCapabilities }
+export type { AgentCapabilities, LatestCheck, OperationKind, OperationView, Plan }
 export type { AgentStatus, ProcessInfo, ProcessRead, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
@@ -148,6 +160,14 @@ export const api = {
   agents: () => request<AgentStatus[]>('/api/agents'),
   agentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities`),
   refreshAgentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities/refresh`, { method: 'POST', body: {} }),
+  agentLifecycle: (agent: AgentId) => request<AgentLifecycleView>(`/api/agents/${agent}/lifecycle`),
+  startAgentOperation: (agent: AgentId, kind: OperationKind) => request<OperationView>(`/api/agents/${agent}/${kind}`, { method: 'POST', body: {} }),
+  agentOperation: (id: string) => request<OperationView>(`/api/agent-operations/${id}`),
+  cancelAgentOperation: (id: string) => request<{ cancelled: boolean }>(`/api/agent-operations/${id}/cancel`, { method: 'POST', body: {} }),
+  resumeAgentOperation: (id: string) => request<{ resumed: boolean }>(`/api/agent-operations/${id}/resume`, { method: 'POST', body: {} }),
+  sendAgentOperationInput: (id: string, text: string) => request<Record<string, never>>(`/api/agent-operations/${id}/input`, { method: 'POST', body: { text } }),
+  checkAgentUpdate: (agent: AgentId) => request<LatestCheck>(`/api/agents/${agent}/updates/check`, { method: 'POST', body: {} }),
+  skipAgentVersion: (agent: AgentId, version: string) => request<{ skipped: string }>(`/api/agents/${agent}/updates/skip`, { method: 'POST', body: { version } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
