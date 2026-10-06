@@ -60,7 +60,7 @@ function AgentState({ status, loading }: { status: AgentStatus | undefined; load
   return (
     <div className="agent-state" role="group" aria-label={`${agentName(status.id)} status`}>
       {installation.installed ? (
-        <p className="agent-state-line">Installed · {installation.version}</p>
+        <p className="agent-state-line">{installation.version !== undefined ? `Installed · ${installation.version}` : 'Installed · version not checked yet'}</p>
       ) : (
         <p className="agent-state-line agent-state-problem">{installation.problem}</p>
       )}

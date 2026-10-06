@@ -105,6 +105,24 @@ describe('startServer', () => {
     ] })
   })
 
+  it('serves one agent capability record and refreshes it on request (W10.1)', async () => {
+    const webDist = mkdtempSync(join(tmpdir(), 'cockpit-web-'))
+    const refreshes: string[] = []
+    running = await startServer({ port: 0, webDist, stateRoot: mkdtempSync(join(tmpdir(), 'cockpit-state-')),
+      capabilities: { get: async (agent, request) => {
+        if (request?.refresh) refreshes.push(agent)
+        return { agent, context: 'default', executable: { state: 'missing', reason: 'absent' }, models: { state: 'not_checked' }, settings: {}, auth: { state: 'not_checked' } }
+      } } })
+    const res = await get(running.port, '/api/agents/antigravity/capabilities')
+    expect(res.status).toBe(200)
+    expect(JSON.parse(res.body).data).toMatchObject({ agent: 'antigravity', executable: { state: 'missing' } })
+    expect(refreshes).toEqual([])
+    expect((await post(running.port, '/api/agents/antigravity/capabilities/refresh', {})).status).toBe(200)
+    expect(refreshes).toEqual(['antigravity'])
+    expect((await get(running.port, '/api/agents/gemini/capabilities')).status).toBe(404)
+    expect((await get(running.port, '/api/agents/claude/capabilities/refresh')).status).toBe(404)
+  })
+
   it('listens on a random loopback port and trusts that port', async () => {
     const server = await start()
     expect(server.port).toBeGreaterThan(0)

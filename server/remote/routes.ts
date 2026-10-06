@@ -49,6 +49,10 @@ export const ROUTES: readonly RouteClass[] = [
   { method: 'GET', route: 'git/base', phone: false },
   { method: 'GET', route: 'git/run', phone: false },
 
+  // Agent capabilities name executable paths and sign-in state (W10.1): the Mac only.
+  { method: 'GET', route: 'agents/:agent/capabilities', phone: false },
+  { method: 'POST', route: 'agents/:agent/capabilities/refresh', phone: false },
+
   // The agent's browser tools (H3, wave 9): agents' MCP calls on the Mac, never the phone.
   { method: 'POST', route: 'mcp/browser/:op', phone: false },
 ]

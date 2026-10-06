@@ -9,7 +9,8 @@ import { spawn } from 'node:child_process'
 import { createWorkflowStore } from './workflows/store.ts'
 import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
-import { createAgentStatus, type VersionProbe } from './agents/status.ts'
+import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
+import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
@@ -57,6 +58,8 @@ export interface StartOptions {
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
   /** How agent CLIs are checked for the picker; a fake in tests. */
   readonly agentProbe?: VersionProbe
+  /** The capability cache (W10.1); a fixture in tests. Defaults to probing the CLIs on PATH. */
+  readonly capabilities?: CapabilityService
   /**
    * The desktop app's per-launch key: every desktop /api request must carry it (guard.ts).
    * Without it, any local process can use the API, which only `npm start` should allow.
@@ -239,8 +242,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  // Tests that fake the version check fake Chrome readiness too: no real CLI is run.
-  const agents = createAgentStatus(store, options.agentProbe, undefined, options.agentProbe ? async () => ({ supported: false, extension: false }) : undefined)
+  // Tests that fake the version check get a fixed record: no real CLI is run.
+  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
+  const agents = createAgentStatus(store, capabilities, options.agentProbe ? () => join(store.root, 'no-chrome-helper.json') : undefined)
   const browserLeases = createBrowserLeases()
   const browser = options.browserHost ? createBrowserAgent({
     host: options.browserHost,
@@ -250,7 +254,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta

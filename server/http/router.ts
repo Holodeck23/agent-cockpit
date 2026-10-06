@@ -40,6 +40,8 @@ import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
 import type { AgentStatus } from '../agents/status.ts'
+import type { CapabilityService } from '../agents/capabilities/service.ts'
+import { AGENT_IDS } from '../agents/capabilities/types.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -116,6 +118,8 @@ export interface ApiDeps {
   readonly remote: RemoteAccess
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
+  /** Typed capability records per agent (W10.1); desktop only. */
+  readonly capabilities?: CapabilityService
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -147,7 +151,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -225,6 +229,21 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (parts[1] === 'agents' && parts.length === 2 && method === 'GET' && agents) {
         sendJson(res, 200, { data: await agents() })
         return true
+      }
+      // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).
+      if (parts[1] === 'agents' && parts[3] === 'capabilities' && capabilities) {
+        if (viaPhone) throw new HttpError(403, 'Agent capabilities are only available on the Mac')
+        const agent = AGENT_IDS.find((id) => id === parts[2])
+        if (!agent) throw new HttpError(404, 'Unknown agent')
+        if (parts.length === 4 && method === 'GET') {
+          sendJson(res, 200, { data: await capabilities.get(agent) })
+          return true
+        }
+        if (parts.length === 5 && parts[4] === 'refresh' && method === 'POST') {
+          sendJson(res, 200, { data: await capabilities.get(agent, { refresh: true }) })
+          return true
+        }
+        throw new HttpError(404, 'Not found')
       }
       if (parts[1] === 'files' && parts[2] === 'write' && method === 'PUT') {
         if (viaPhone) throw new HttpError(403, 'Editing files is only available on the Mac')
