@@ -31,22 +31,24 @@ export function stripAnsi(text: string): string {
 }
 
 // Dev servers announce themselves as e.g. "Local: http://localhost:5173/".
-// Match the candidate narrowly, then let URL validate details such as the port range.
-// 0.0.0.0 means "all interfaces"; a browser has to use a loopback name instead.
-const LOCAL_URL = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/[^\s'"<>)]*)?/i
+// Parse complete URL tokens before checking the host: prefix matching would turn a
+// remote name such as localhost.evil.example into a false http://localhost preview.
+const URL_CANDIDATE = /\bhttps?:\/\/[^\s'"<>)]*/ig
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]'])
 
 export function detectLocalUrl(line: string): string | undefined {
-  const match = LOCAL_URL.exec(line)
-  if (!match) return undefined
-  const candidate = match[0].replace(/[.,;:]+$/, '')
-  try {
-    const parsed = new URL(candidate)
-    if (parsed.port === '0') return undefined
-  } catch {
-    return undefined
+  for (const match of line.matchAll(URL_CANDIDATE)) {
+    const candidate = match[0].replace(/[.,;:]+$/, '')
+    try {
+      const parsed = new URL(candidate)
+      if (!LOCAL_HOSTS.has(parsed.hostname) || parsed.port === '0') continue
+    } catch {
+      continue
+    }
+    // Replace only the authority. A path containing "0.0.0.0" is data, not a host.
+    return candidate.replace(/^(https?:\/\/)0\.0\.0\.0(?=[:/]|$)/i, '$1localhost')
   }
-  // Replace only the authority. A path containing "0.0.0.0" is data, not a host.
-  return candidate.replace(/^(https?:\/\/)0\.0\.0\.0(?=[:/]|$)/i, '$1localhost')
+  return undefined
 }
 
 export interface OutputBuffer {
