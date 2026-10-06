@@ -207,6 +207,19 @@ describe('Antigravity probing (W10-01, W10-03)', () => {
     expect(calls(dir)).toHaveLength(2)
   })
 
+  it('checks agy for a launch: reuses a check under a minute old, otherwise runs it again', SLOW, async () => {
+    const { dir, service, advance } = setup()
+    agyBin(dir)
+    expect((await service.get('antigravity', { purpose: 'launch' })).models.state).toBe('supported')
+    expect(calls(dir)).toHaveLength(2)
+    await service.get('antigravity', { purpose: 'launch' })
+    expect(calls(dir)).toHaveLength(2)
+    advance(61_000)
+    const caps = await service.get('antigravity', { purpose: 'launch' })
+    expect(caps.stale).toBeUndefined()
+    expect(calls(dir)).toHaveLength(4)
+  })
+
   it('does not keep a result when agy replaced itself while being checked', SLOW, async () => {
     const { dir, service } = setup()
     // The stand-in "updates" itself during `models`, as agy's background updater does.

@@ -10,7 +10,8 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: 'Limit reached',
 }
 
-const WINDOW_LABEL: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly' }
+// last_turn: Antigravity's token counts for its latest turn (it reports no limit).
+const WINDOW_LABEL: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly', last_turn: 'Last turn' }
 
 export function windowLabel(limitType: string): string {
   return WINDOW_LABEL[limitType] ?? limitType.replace(/_/g, ' ')

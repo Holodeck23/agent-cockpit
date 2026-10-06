@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { launchAntigravity } from '../agents/antigravity/launch.ts'
+import type { AgentCapabilities } from '../agents/capabilities/types.ts'
+import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
@@ -99,16 +101,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       onEvent,
       req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit), env: req.cockpit.secretEnv } : {},
     ),
-  antigravity: (req, onEvent) =>
-    launchAntigravity({
-      cwd: req.cwd,
-      model: req.settings.model,
-      effort: effortForClaude(req.settings.effort),
-      permissionMode: req.settings.permissionMode,
-      resume: req.resume,
-      instructions: instructionsFor(req),
-      ...(req.imagesDir ? { imagesDir: req.imagesDir } : {}),
-    }, onEvent),
+  antigravity: antigravityLauncher(),
   opencode: (req, onEvent) =>
     launchOpencode(
       {
@@ -125,6 +118,20 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
     ),
 }
 
+/** With a capability check, agy is validated and resolved just before it starts (W10-01/02). */
+export function antigravityLauncher(check?: () => Promise<AgentCapabilities>): Launcher {
+  return (req, onEvent) =>
+    launchAntigravity({
+      cwd: req.cwd,
+      model: req.settings.model,
+      effort: effortForClaude(req.settings.effort),
+      permissionMode: req.settings.permissionMode,
+      resume: req.resume,
+      instructions: instructionsFor(req),
+      ...(req.imagesDir ? { imagesDir: req.imagesDir } : {}),
+    }, onEvent, check ? { check } : {})
+}
+
 /** Issues a session's cockpit MCP launch; `release` revokes its token when the session ends. */
 export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaunch; release(): void }
 
@@ -139,6 +146,8 @@ export interface ManagerOptions {
   readonly images?: ImageStore
   /** The opaque primary workspace for a project folder (G-IDENTITY); undefined when it cannot be resolved. */
   readonly workspaceFor?: (projectPath: string) => string | undefined
+  /** Capability records, checked just before an agent that needs it starts (W10.1). */
+  readonly capabilities?: CapabilityService
 }
 
 interface Live {
@@ -224,7 +233,12 @@ export interface ThreadManager {
 
 export function createThreadManager(store: ThreadStore, options: ManagerOptions = {}): ThreadManager {
   // Tests replace some launchers; any they leave out keep the real one.
-  const launchers: Record<AgentId, Launcher> = { ...defaultLaunchers, ...options.launchers }
+  const { capabilities } = options
+  const launchers: Record<AgentId, Launcher> = {
+    ...defaultLaunchers,
+    ...(capabilities ? { antigravity: antigravityLauncher(() => capabilities.get('antigravity', { purpose: 'launch' })) } : {}),
+    ...options.launchers,
+  }
   const live = new Map<string, Live>()
   const listeners = new Set<UpdateListener>()
   const generations = new Map<string, symbol>()

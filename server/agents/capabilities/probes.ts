@@ -18,10 +18,12 @@ export type Runner = (executable: string, args: readonly string[], timeoutMs: nu
 
 export const runCommand: Runner = (executable, args, timeoutMs) =>
   new Promise((resolve) => {
-    execFile(executable, [...args], { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 512 * 1024, encoding: 'utf8' }, (error, stdout, stderr) => {
+    const child = execFile(executable, [...args], { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 512 * 1024, encoding: 'utf8' }, (error, stdout, stderr) => {
       const errno = typeof (error as NodeJS.ErrnoException | null)?.code === 'string' ? (error as NodeJS.ErrnoException).code : undefined
       resolve({ ok: !error, stdout: String(stdout), stderr: String(stderr), timedOut: Boolean(error?.killed && !errno), ...(errno ? { errno } : {}) })
     })
+    // A check never answers a prompt: a CLI that waits for input sees end of input, not a hang.
+    child.stdin?.on('error', () => {}).end()
   })
 
 const firstLine = (text: string): string => text.trim().split('\n')[0]?.trim().slice(0, 200) ?? ''

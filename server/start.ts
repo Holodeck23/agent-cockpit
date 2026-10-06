@@ -161,6 +161,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const mcpCommand = options.mcp
   const agentWorkflowsAllowed = (projectPath: string): boolean =>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
+  // Tests that fake the version check get a fixed record: no real CLI is run.
+  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
   const manager = createThreadManager(store, {
     workspaceFor: (projectPath) => {
       try {
@@ -175,6 +177,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
     },
+    capabilities,
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
@@ -242,8 +245,6 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  // Tests that fake the version check get a fixed record: no real CLI is run.
-  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
   const agents = createAgentStatus(store, capabilities, options.agentProbe ? () => join(store.root, 'no-chrome-helper.json') : undefined)
   const browserLeases = createBrowserLeases()
   const browser = options.browserHost ? createBrowserAgent({

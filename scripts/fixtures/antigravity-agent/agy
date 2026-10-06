@@ -4,6 +4,8 @@
 use strict; use warnings;
 $| = 1;
 if (@ARGV && $ARGV[0] eq '--version') { print "1.2.14 (Cockpit Antigravity fixture)\n"; exit 0 }
+# `agy models` as the real CLI prints it: a progress line, then id<TAB>label.
+if (@ARGV && $ARGV[0] eq 'models') { print "Fetching available models...\ngemini-3.8-flash-low\tGemini 3.8 Flash (Low)\ngemini-3.1-pro-high\tGemini 3.1 Pro (High)\n"; exit 0 }
 my ($model, $effort, $session) = ('default', 'default', '055a398f-db14-4c5f-abbb-1bf03f8120a7');
 my ($auto, $plan) = (0, 0);
 for (my $i = 0; $i < @ARGV; $i++) {

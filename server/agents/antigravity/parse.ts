@@ -32,7 +32,25 @@ const resultSchema = z.looseObject({
   error: z.string().optional(),
   duration_seconds: z.number().optional(),
   num_turns: z.number().optional(),
+  usage: z.unknown().optional(),
 })
+
+// Token counts as agy reports them per turn (1.3.0). agy reports no quota or plan, so none is shown.
+const count = z.number().int().nonnegative().optional()
+const usageSchema = z.looseObject({ input_tokens: count, output_tokens: count, thinking_tokens: count, cache_read_tokens: count, total_tokens: count })
+const formatCount = (n: number): string => n.toLocaleString('en-US')
+
+/** Only the fields agy printed: a missing total is not computed, a zero part is left out. */
+function turnUsage(value: unknown): NormalizedEvent | undefined {
+  const parsed = usageSchema.safeParse(value)
+  if (!parsed.success) return undefined
+  const u = parsed.data
+  const parts = ([[u.input_tokens, 'in'], [u.output_tokens, 'out'], [u.thinking_tokens, 'thinking'], [u.cache_read_tokens, 'cached']] as const)
+    .filter(([n]) => n !== undefined && n > 0).map(([n, label]) => `${formatCount(n!)} ${label}`)
+  const total = u.total_tokens === undefined ? undefined : `${formatCount(u.total_tokens)} tokens`
+  const status = total ? (parts.length > 0 ? `${total} (${parts.join(', ')})` : total) : parts.join(', ')
+  return status ? { kind: 'usage', limitType: 'last_turn', status } : undefined
+}
 
 function stringify(value: unknown): string {
   if (typeof value === 'string') return value
@@ -102,6 +120,8 @@ export function parseAntigravityLine(line: string): NormalizedEvent[] {
   if (!result.success) return []
   const { data } = result
   const events: NormalizedEvent[] = []
+  const usage = turnUsage(data.usage)
+  if (usage) events.push(usage)
   if (data.response) {
     events.push({
       kind: 'assistant_text',

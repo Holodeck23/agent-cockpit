@@ -1,5 +1,6 @@
 import type { RecoveryView, resumeRecoveryBody } from '../../server/onboarding/recovery.ts'
 import type { Preset } from '../../server/presets/store.ts'
+import type { AgentCapabilities } from '../../server/agents/capabilities/types.ts'
 import type { z } from 'zod'
 export type { RecoveryView }
 import type { FileListing, FilePreview } from '../../server/files/browser.ts'
@@ -22,6 +23,7 @@ import type { RemoteStatus } from '../../server/remote/service.ts'
 import type { AgentStatus } from '../../server/agents/status.ts'
 import type { GitState } from '../../server/git/branches.ts'
 
+export type { AgentCapabilities }
 export type { AgentStatus, ProcessInfo, ProcessRead, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
@@ -144,6 +146,8 @@ export const api = {
   enableWorkflow: (id: string, enabled: boolean) => request<Workflow>(`/api/workflows/${id}/enabled`, { method: 'POST', body: { enabled } }),
   archiveWorkflow: (id: string) => request<Workflow>(`/api/workflows/${id}/archive`, { method: 'POST', body: {} }),
   agents: () => request<AgentStatus[]>('/api/agents'),
+  agentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities`),
+  refreshAgentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities/refresh`, { method: 'POST', body: {} }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),

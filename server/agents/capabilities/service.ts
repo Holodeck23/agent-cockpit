@@ -26,6 +26,11 @@ export interface CapabilityRequest {
   readonly refresh?: boolean
   /** The account/config context; `default` until account profiles exist (order 16). */
   readonly context?: string
+  /**
+   * `launch`: just before starting the agent (W10-01). A fresh record is reused; anything older
+   * or unchecked is probed, never served stale. `view` (default): what the picker shows.
+   */
+  readonly purpose?: 'view' | 'launch'
 }
 
 export interface CapabilityService {
@@ -103,9 +108,9 @@ export function createCapabilityService(options: CapabilityServiceOptions = {}):
       if (!request.refresh && same) {
         if (now() - cached.at <= CAPABILITY_CACHE_MS) return cached.caps
         // Not re-run on a view: shown as an older check until Refresh or launch.
-        if (agent === 'antigravity') return { ...cached.caps, stale: true }
+        if (agent === 'antigravity' && request.purpose !== 'launch') return { ...cached.caps, stale: true }
       }
-      if (!request.refresh && agent === 'antigravity') return unchecked(agent, context, found)
+      if (!request.refresh && agent === 'antigravity' && request.purpose !== 'launch') return unchecked(agent, context, found)
       const running = inflight.get(key)
       if (running) return running
       const next = probe(agent, context, key, found).finally(() => inflight.delete(key))

@@ -15,6 +15,11 @@ describe('per-agent settings memory', () => {
     expect(defaultPermission('claude')).toBe('manual')
   })
 
+  it('keeps an explicit Antigravity permission choice instead of the Bypass default (W10-03)', () => {
+    expect(recall({ antigravity: { model: 'gemini-3.1-pro-high', effort: '', permissionMode: 'manual' } }, 'antigravity')).toMatchObject({ model: 'gemini-3.1-pro-high', permissionMode: 'manual' })
+    expect(recall({ antigravity: { model: '', effort: '', permissionMode: 'plan' } }, 'antigravity').permissionMode).toBe('plan')
+  })
+
   it('a remembered mode the agent no longer offers falls back to its default', () => {
     expect(recall({ antigravity: { model: '', effort: '', permissionMode: 'acceptEdits' } }, 'antigravity').permissionMode).toBe('bypassPermissions')
   })
