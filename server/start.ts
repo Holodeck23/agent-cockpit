@@ -11,6 +11,7 @@ import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
 import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
+import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
@@ -163,6 +164,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
   // Tests that fake the version check get a fixed record: no real CLI is run.
   const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
+  const agyMcp = createAgyMcp(projects, options.mcp)
   const manager = createThreadManager(store, {
     workspaceFor: (projectPath) => {
       try {
@@ -178,6 +180,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
     },
     capabilities,
+    antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
@@ -255,7 +258,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, agyMcp, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta

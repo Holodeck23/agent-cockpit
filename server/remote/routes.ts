@@ -52,6 +52,8 @@ export const ROUTES: readonly RouteClass[] = [
   // Agent capabilities name executable paths and sign-in state (W10.1): the Mac only.
   { method: 'GET', route: 'agents/:agent/capabilities', phone: false },
   { method: 'POST', route: 'agents/:agent/capabilities/refresh', phone: false },
+  // P3: writes a plugin into the project folder (W10-04).
+  { method: 'POST', route: 'projects/agy-mcp', phone: false },
 
   // The agent's browser tools (H3, wave 9): agents' MCP calls on the Mac, never the phone.
   { method: 'POST', route: 'mcp/browser/:op', phone: false },

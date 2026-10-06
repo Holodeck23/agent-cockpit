@@ -118,18 +118,29 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
     ),
 }
 
-/** With a capability check, agy is validated and resolved just before it starts (W10-01/02). */
-export function antigravityLauncher(check?: () => Promise<AgentCapabilities>): Launcher {
-  return (req, onEvent) =>
-    launchAntigravity({
+/** Whether Antigravity may get Cockpit's tools in a folder (P3), checked as a session starts. */
+export type AntigravityMcpPrepare = (projectPath: string) => { readonly ready: boolean; readonly reason?: string }
+
+/**
+ * With a capability check, agy is validated and resolved just before it starts (W10-01/02).
+ * Cockpit's tools, their guidance and the session token reach agy only in a project that opted in
+ * (P3): the token through agy's environment, which the project's Cockpit plugin server inherits.
+ */
+export function antigravityLauncher(check?: () => Promise<AgentCapabilities>, prepareMcp?: AntigravityMcpPrepare): Launcher {
+  return (req, onEvent) => {
+    const mcp = req.cockpit && prepareMcp ? prepareMcp(req.cwd) : undefined
+    if (mcp?.reason) console.warn('[cockpit] Antigravity starts without Cockpit tools:', mcp.reason)
+    const cockpit = mcp?.ready ? req.cockpit : undefined
+    return launchAntigravity({
       cwd: req.cwd,
       model: req.settings.model,
       effort: effortForClaude(req.settings.effort),
       permissionMode: req.settings.permissionMode,
       resume: req.resume,
-      instructions: instructionsFor(req),
+      instructions: instructionsFor({ ...req, cockpit }),
       ...(req.imagesDir ? { imagesDir: req.imagesDir } : {}),
-    }, onEvent, check ? { check } : {})
+    }, onEvent, { ...(check ? { check } : {}), ...(cockpit ? { env: cockpit.secretEnv } : {}) })
+  }
 }
 
 /** Issues a session's cockpit MCP launch; `release` revokes its token when the session ends. */
@@ -148,6 +159,8 @@ export interface ManagerOptions {
   readonly workspaceFor?: (projectPath: string) => string | undefined
   /** Capability records, checked just before an agent that needs it starts (W10.1). */
   readonly capabilities?: CapabilityService
+  /** P3: Antigravity gets Cockpit's tools only where the project opted in. */
+  readonly antigravityMcp?: AntigravityMcpPrepare
 }
 
 interface Live {
@@ -236,7 +249,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const { capabilities } = options
   const launchers: Record<AgentId, Launcher> = {
     ...defaultLaunchers,
-    ...(capabilities ? { antigravity: antigravityLauncher(() => capabilities.get('antigravity', { purpose: 'launch' })) } : {}),
+    antigravity: antigravityLauncher(capabilities ? () => capabilities.get('antigravity', { purpose: 'launch' }) : undefined, options.antigravityMcp),
     ...options.launchers,
   }
   const live = new Map<string, Live>()

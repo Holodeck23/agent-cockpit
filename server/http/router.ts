@@ -42,6 +42,7 @@ import type { RemoteAccess } from '../remote/service.ts'
 import type { AgentStatus } from '../agents/status.ts'
 import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { AGENT_IDS } from '../agents/capabilities/types.ts'
+import type { AgyMcp } from '../projects/agy-mcp.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -120,6 +121,8 @@ export interface ApiDeps {
   readonly agents?: () => Promise<AgentStatus[]>
   /** Typed capability records per agent (W10.1); desktop only. */
   readonly capabilities?: CapabilityService
+  /** P3: per-project Antigravity access to Cockpit's tools; desktop only. */
+  readonly agyMcp?: AgyMcp
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -151,7 +154,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, agyMcp, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -466,6 +469,15 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         return true
       }
       // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
+      // P3: writes a plugin into the project folder, so the Mac only (W10-04).
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'agy-mcp' && method === 'POST' && agyMcp) {
+        if (viaPhone) throw new HttpError(403, "Cockpit's tools for Antigravity can only be changed on the Mac")
+        const body = parseBody(z.object({ path: z.string().min(1).max(1000), connected: z.boolean() }), await readJson(req))
+        const result = agyMcp.setConnected(body.path, body.connected)
+        if (!result.ok) throw new HttpError(result.code === 'unknown_project' ? 404 : result.code === 'unavailable' ? 503 : 409, result.message)
+        sendJson(res, 200, { data: { project: result.project, ...(result.message ? { message: result.message } : {}), ...(result.backup ? { backup: result.backup } : {}) } })
+        return true
+      }
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'remove' && method === 'POST') {
         const { path } = parseBody(z.object({ path: z.string().min(1).max(1000) }), await readJson(req))
         if (!projects.list().some((p) => p.path === path)) throw new HttpError(404, 'Unknown project')

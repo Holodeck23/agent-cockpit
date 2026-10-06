@@ -1,3 +1,4 @@
+import type { AgyMcpOwnership } from '../agents/antigravity/mcp-plugin.ts'
 import { existsSync, readFileSync } from 'node:fs'
 import { writeFileAtomic } from '../files/atomic.ts'
 import { basename, isAbsolute, join } from 'node:path'
@@ -33,6 +34,11 @@ const projectSchema = z.object({
   agentWorkflows: z.boolean().optional(),
   /** Project files pinned to the navigation, as paths relative to the folder, in pin order. */
   pinnedFiles: z.array(z.string().min(1).max(1000)).max(MAX_PINNED_FILES).optional(),
+  /** P3: Antigravity gets Cockpit's tools here, through the plugin Cockpit wrote (agents/antigravity/mcp-plugin.ts). */
+  antigravityMcp: z.object({
+    entryHash: z.string().regex(/^[a-f0-9]{64}$/),
+    created: z.array(z.enum(['.agents', '.agents/plugins'])).max(2).readonly(),
+  }).optional(),
 })
 export type Project = z.output<typeof projectSchema>
 
@@ -59,6 +65,8 @@ export interface ProjectStore {
   hide(path: string): Project
   /** Replaces the project's pinned files (relative paths, kept in order); doesn't count as opening it. */
   setPinnedFiles(path: string, files: readonly string[]): Project
+  /** Records or clears the Antigravity tools plugin Cockpit owns in this project; doesn't count as opening it. */
+  setAntigravityMcp(path: string, owned: AgyMcpOwnership | undefined): Project
 }
 
 /** A pinned file must be a plain path inside the project: no absolute paths, no "..". */
@@ -153,6 +161,14 @@ export function createProjectStore(root: string): ProjectStore {
       if (!existing) throw new Error('Unknown project')
       const unique = [...new Set(files.map(pinnablePath))].slice(0, MAX_PINNED_FILES)
       const next = projectSchema.parse({ ...existing, pinnedFiles: unique.length > 0 ? unique : undefined })
+      write(current.map((p) => (p.path === path ? next : p)))
+      return next
+    },
+    setAntigravityMcp(path, owned) {
+      const current = read()
+      const existing = current.find((p) => p.path === path && !p.hidden)
+      if (!existing) throw new Error('Unknown project')
+      const next = projectSchema.parse({ ...existing, antigravityMcp: owned })
       write(current.map((p) => (p.path === path ? next : p)))
       return next
     },
