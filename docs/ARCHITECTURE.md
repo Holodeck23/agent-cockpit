@@ -35,7 +35,7 @@ Cockpit is a local Node server that drives the agent CLIs, a React page that tal
 | `server/files/` | Bounded project file access and attachment expansion. |
 | `server/projects/` | `projects.json`: pinned projects, names and colours. |
 | `web/src/` | The React UI. `useCockpit.ts` holds page state fed by one SSE stream; `transcript.ts` turns raw events into what the thread view draws. |
-| `electron/` | Main process (window, menu, quit handling, update check, Dock activity), the window key (`window-key.ts`), the preload bridge and login-shell PATH. |
+| `electron/` | Main process (window, menu, quit handling, update check, Dock activity), the window key (`window-key.ts`), the preload bridge and deterministic CLI PATH discovery. |
 | `scripts/` | Build, smoke tests against real CLIs, and proof gates that drive the packaged app. |
 
 ## Decisions and why
@@ -80,4 +80,4 @@ Starting or stopping a process, `remember`, `save_workflow` and the conversation
 
 ## Setup independence
 
-State defaults to the current operating-system user's home directory; `COCKPIT_HOME` provides explicit isolation for tests. CLI discovery uses that user's login-shell PATH with standard installation fallbacks. Tailscale discovery follows the resolved PATH before standard Mac locations. Tailscale identity is read at runtime; every installation approves and stores its own phone pairing and generates its own Web Push signing keys. A blank model field delegates model selection to the selected CLI's configuration. `npm run doctor` checks local prerequisites without attempting sign-in or running agent turns.
+State defaults to the current operating-system user's home directory; `COCKPIT_HOME` provides explicit isolation for tests. CLI discovery reads macOS's system path list and checks standard Homebrew and user-level installation folders without executing shell startup files. `COCKPIT_AGENT_PATH` remains the explicit override used by proofs and unusual installations. Tailscale discovery follows the resolved PATH before standard Mac locations. Tailscale identity is read at runtime; every installation approves and stores its own phone pairing and generates its own Web Push signing keys. A blank model field delegates model selection to the selected CLI's configuration. `npm run doctor` checks local prerequisites without attempting sign-in or running agent turns.

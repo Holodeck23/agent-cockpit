@@ -71,6 +71,6 @@ agy --input-format stream-json --output-format stream-json --disable-slash-comma
 
 ## Electron
 
-- **A Finder or Dock launch gets launchd's bare PATH**, so `claude`, `codex`, `npm` and `node` aren't found. The app asks the login shell for its PATH once at startup (`$SHELL -ilc`) and merges it in, with Homebrew and npm fallbacks (`electron/shell-path.ts`).
+- **A Finder or Dock launch gets launchd's bare PATH**, so `claude`, `codex`, `npm` and `node` may not be found. The app reads macOS's system path list directly and merges Homebrew and common user-level install folders (`electron/shell-path.ts`); it never starts an interactive shell or sources `.zshrc`.
 - **The app binary doubles as Node.** With `ELECTRON_RUN_AS_NODE=1`, `Cockpit.app/Contents/MacOS/Cockpit script.cjs` runs a script as plain Node 24, including one inside `app.asar`. That is how the cockpit MCP server runs without Node installed.
 - npm 11 can block install scripts, and Electron 44 fetches its binary lazily: run `node node_modules/electron/install.js` once after `npm install`.

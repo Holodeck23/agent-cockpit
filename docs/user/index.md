@@ -26,7 +26,7 @@ Cockpit is currently not notarized by Apple. When you first open it, macOS Gatek
 
 ## Installing Agents
 
-Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions. Cockpit automatically resolves your login-shell `PATH` and checks fallback directories (like Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder.
+Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions. Cockpit checks macOS's system path plus common installation folders (including Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder. It does not execute your shell startup files.
 
 ### Claude Code
 Install globally using npm (requires Node.js):

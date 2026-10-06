@@ -1,25 +1,27 @@
 import { execFileSync } from 'node:child_process'
-import { homedir, userInfo } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 // An app launched from Finder or the Dock gets launchd's PATH (/usr/bin:/bin:...),
 // not the one from the user's shell profile, so `claude` and `codex` would not be
-// found. Ask the login shell for its PATH once at startup and merge it in.
+// found. Read macOS's system path list directly, then merge common user-level
+// install folders. Do not start the user's interactive shell or source .zshrc.
 
-const MARKER = '__COCKPIT_PATH__'
-
-/** Where CLIs usually live, used only if the login shell can't be asked. */
+/** Where supported CLIs and their runtimes are commonly installed. */
 export function fallbackDirs(home: string = homedir()): string[] {
-  return ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local/bin'), join(home, '.npm-global/bin'), join(home, '.bun/bin')]
+  return [
+    '/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin',
+    join(home, '.local/bin'), join(home, '.npm-global/bin'), join(home, '.bun/bin'),
+    join(home, '.volta/bin'), join(home, '.cargo/bin'), join(home, '.asdf/shims'),
+    join(home, '.local/share/mise/shims'), join(home, 'Library/pnpm'),
+  ]
 }
 
-/** Pulls the PATH out of shell output that may also contain profile banners. */
-export function extractMarkedPath(output: string): string | undefined {
-  const start = output.indexOf(MARKER)
-  const end = output.indexOf(MARKER, start + MARKER.length)
-  if (start === -1 || end === -1) return undefined
-  const path = output.slice(start + MARKER.length, end).trim()
-  return path.length > 0 ? path : undefined
+/** Pulls PATH from `/usr/libexec/path_helper -s` without evaluating its shell code. */
+export function extractPathHelper(output: string): string | undefined {
+  const match = /(?:^|\n)PATH="([^"]*)";\s*export PATH;/.exec(output)
+  const path = match?.[1]?.trim()
+  return path && path.length > 0 ? path : undefined
 }
 
 /** Shell entries first (the user's own order wins), then any current ones not already present. */
@@ -28,25 +30,16 @@ export function mergePath(current: string | undefined, preferred: readonly strin
   return [...new Set(entries)].join(':')
 }
 
-export function loginShellPath(shell: string, timeoutMs = 5000): string | undefined {
+export function systemPath(pathHelper = '/usr/libexec/path_helper', timeoutMs = 2000): string | undefined {
   try {
-    const output = execFileSync(shell, ['-ilc', `printf '${MARKER}%s${MARKER}' "$PATH"`], {
+    const output = execFileSync(pathHelper, ['-s'], {
       encoding: 'utf8',
       timeout: timeoutMs,
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-    return extractMarkedPath(output)
+    return extractPathHelper(output)
   } catch {
     return undefined
-  }
-}
-
-function defaultShell(): string {
-  if (process.env.SHELL) return process.env.SHELL
-  try {
-    return userInfo().shell ?? '/bin/zsh'
-  } catch {
-    return '/bin/zsh'
   }
 }
 
@@ -58,13 +51,14 @@ export function agentPathDirs(env: NodeJS.ProcessEnv): string[] {
   return (env.COCKPIT_AGENT_PATH ?? '').split(':').filter((entry) => entry.length > 0)
 }
 
-/** Returns the PATH the app should use, and whether it came from the login shell. */
+/** Returns the PATH the app should use, without executing user-controlled shell startup files. */
 export function resolveAppPath(
   env: NodeJS.ProcessEnv = process.env,
-  shellPath: () => string | undefined = () => loginShellPath(defaultShell()),
-): { path: string; source: 'shell' | 'fallback' } {
+  readSystemPath: () => string | undefined = () => systemPath(),
+): { path: string; source: 'system' | 'fallback' } {
   const first = agentPathDirs(env)
-  const fromShell = shellPath()
-  if (fromShell) return { path: mergePath(env.PATH, [...first, ...fromShell.split(':')]), source: 'shell' }
-  return { path: mergePath(env.PATH, [...first, ...fallbackDirs()]), source: 'fallback' }
+  const common = fallbackDirs(env.HOME ?? homedir())
+  const fromSystem = readSystemPath()
+  const preferred = [...first, ...common, ...(fromSystem ?? '').split(':')]
+  return { path: mergePath(env.PATH, preferred), source: fromSystem ? 'system' : 'fallback' }
 }

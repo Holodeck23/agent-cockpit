@@ -105,7 +105,7 @@ Phases 0–3 are built and proven in this repo (4 commits): the Claude adapter, 
   - macOS menu (About, Hide, Quit, Edit roles for copy/paste, View reload/devtools in dev);
   - graceful shutdown that closes agent sessions (`manager.shutdown()`).
 - `electron/preload.ts` → `contextBridge` exposes `cockpit.pickFolder()` (native `dialog.showOpenDialog`) and `cockpit.platform`. `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`.
-- PATH fix: a GUI-launched app doesn't inherit the shell PATH, so `claude` and `codex` wouldn't be found. At startup, resolve the login-shell PATH once (`$SHELL -ilc 'echo $PATH'`) and merge it into `process.env.PATH`.
+- PATH fix: a GUI-launched app doesn't inherit the shell PATH, so `claude` and `codex` may not be found. At startup, read macOS's system path list and merge known Homebrew and user-level installation folders into `process.env.PATH`; do not execute shell startup files.
 - Build: esbuild bundles `electron/main.ts` + `server/**` into `dist-electron/`, and Vite builds `dist/`. `electron-builder` produces `release/mac-arm64/Cockpit.app` and a `.dmg`. The build is unsigned and ad-hoc signed for personal use. Scripts: `npm run app` (dev: Vite + Electron), `npm run package`.
 - Icon: our own 3-bar mark (SVG → `.icns` via `iconutil`).
 - **Gate:** launch the packaged `Cockpit.app` through Playwright's `_electron` API, start a Haiku thread from the window, see it reach Done, and screenshot to `docs/proof/phase-A-app.png`. The app also has to find `claude` when launched from Finder with no terminal PATH; this is checked in the proof by launching with a minimal env.

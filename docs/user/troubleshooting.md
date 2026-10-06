@@ -10,7 +10,7 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 
 **Symptom:** "Claude Code isn't installed or isn't on PATH…" error message when starting a thread.
 *   **Likely Cause:** The agent CLI is installed in a directory that is not exposed to desktop applications. Apps launched from the macOS Finder do not inherit your terminal's custom PATH modifications (like `~/.nvm`, Homebrew, etc.).
-*   **Recovery:** Cockpit already resolves your login-shell PATH plus common installation folders. In Terminal, check `command -v claude` (or your agent executable), then verify the CLI itself works. Quit and reopen Cockpit after fixing the installation; do not relocate or reinstall a working CLI merely because detection failed.
+*   **Recovery:** Cockpit checks macOS's system path plus common installation folders without executing shell startup files. In Terminal, check `command -v claude` (or your agent executable), then verify the CLI itself works. If it is installed somewhere unusual, set `COCKPIT_AGENT_PATH` to that executable's folder before starting Cockpit. Quit and reopen Cockpit after fixing the installation; do not relocate or reinstall a working CLI merely because detection failed.
 
 **Symptom:** Agent starts but immediately fails with authentication errors.
 *   **Likely Cause:** You are not logged into the agent's provider, or your session expired.
