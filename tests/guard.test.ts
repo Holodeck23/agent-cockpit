@@ -18,6 +18,13 @@ describe('isTrustedRequest', () => {
     ).toBe(true)
   })
 
+  it('uses the same loopback spelling for an IPv6 Host and Origin', () => {
+    expect(isTrustedRequest(req('GET', { host: '[::1]:4317' }), ports)).toBe(true)
+    expect(isTrustedRequest(req('POST', {
+      host: '[::1]:4317', origin: 'http://[::1]:4317', 'content-type': 'application/json',
+    }), ports)).toBe(true)
+  })
+
   it('rejects DNS-rebinding hosts', () => {
     expect(isTrustedRequest(req('GET', { host: 'evil.example:4317' }), ports)).toBe(false)
   })
