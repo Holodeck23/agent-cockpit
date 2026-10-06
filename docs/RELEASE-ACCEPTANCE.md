@@ -1,5 +1,32 @@
 # Release acceptance
 
+## Unreleased since v0.1.4 — 2026-10-06
+
+Main carries parity waves 2–7, the wave 6.5 repairs, the composer scanner and wave 9, each accepted by its own packaged gate (three runs on one frozen package). None of it is released. The next release is one batched release after waves 10–12, combined acceptance (cumulative packaged suite three times on one package), an install by an independent person on another Apple-silicon Mac and a release-build core-flow check without the debugger. Until then the published v0.1.4 below is the build testers have.
+
+## v0.1.4 published prerelease — 2026-10-03
+
+Parity wave 1: reading and attention (stick-to-bottom with Jump to latest, copy message, ⌘F find, resizable list, calmer conversation bar, clips on sent messages, Mac notifications). First release built and published through `npm run release`.
+
+- Artifact: `Cockpit-0.1.4-arm64.dmg`, 133,467,547 bytes, arm64, ad-hoc signed, not notarized. SHA-256 `4827994e7cf1a7d1b1fb10b199294fe4abcc7bcba27c918443deb8571d0638ee`. Tag `v0.1.4` at `fb47c33`.
+- `npm run verify`: 422 tests. The DMG's app, copied to an isolated location, matched the packaged `app.asar` (`ae40bb0c…`), signature ok, and passed startup (missing/incompatible CLIs, no provider usage), recovery (6) and legacy recovery (6). Live update check: a 0.1.0 install was offered 0.1.4, the download resolved at the exact asset size, and 0.1.4 reported up to date.
+
+## v0.1.3 published prerelease — 2026-10-03
+
+Check for Updates (Cockpit menu): tells you when a newer Cockpit is published and opens the official download; installation stays manual.
+
+- Artifact: `Cockpit-0.1.3-arm64.dmg`, 133,451,174 bytes, SHA-256 `835ff7fbdb0286f8d037fde491d7f79a43d6955b8cd67bff0dd3b4f9743d410a`.
+- `npm run verify`: 391 tests. Installed-copy checks as above (`app.asar` `707f1b2b…` matched; startup, recovery 6, legacy recovery 6). `proof:updates` from 0.1.1 to 0.1.3 passed three times, including "offline is not worded as up to date".
+
+## v0.1.2 published prerelease — 2026-10-03
+
+Claude Code launch compatibility: Cockpit detects the installed Claude CLI's options and launches with the approval flag that version supports.
+
+- Artifact: `Cockpit-0.1.2-arm64.dmg`, 133,450,176 bytes, SHA-256 `8d2cb3cbe96e67a1b83e6834639714db67a84ad01a7a165668de56c70c264fd2`.
+- `npm run verify`: 367 tests. Installed-copy startup, recovery (6) and legacy recovery (6) passed. Same-Mac acceptance on a second account with Claude Code 2.1.220.
+
+For v0.1.2–v0.1.4 the evidence (logs, install verification, hosted landing checks) is kept in the maintainer's private release archive, as for v0.1.1. Still open for all of them: an independent person on their own Mac (the [tester checklist](user/tester-checklist.md)) and physical-phone push.
+
 ## v0.1.1 published tester build — 2026-10-02
 
 This prerelease includes Phase 9a setup, 9b recent-work recovery, MCP conversation controls and tester hardening. The historical Day 30 checklist below remains evidence for v0.1.0; it is not a claim that every historical gate was repeated for v0.1.1.
