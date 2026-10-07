@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink } from '../server/agents/types.ts'
 import { startServer } from '../server/start.ts'
+import { launchCodex } from '../server/agents/codex/launch.ts'
 import { buildHandoff, HANDOFF_BUDGET, previewHandoff } from '../server/threads/handoff.ts'
 import { createThreadManager, HandoffChangedError, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
@@ -47,6 +48,59 @@ describe('handoff preview (D13)', () => {
     const preview = previewHandoff(events, '/project')
     expect(preview.leftOut).toBeGreaterThan(0)
     expect(preview.text).toContain(`[${preview.leftOut} earlier messages left out to fit]`)
+  })
+})
+
+describe('handoff edge cases (D14)', () => {
+  it('short: a conversation with nothing said yet still hands over readable text', () => {
+    const preview = previewHandoff([], '/project')
+    expect(preview.text).toContain('(Nothing has been said in this conversation yet.)')
+    expect(preview.text).not.toMatch(/---\n---/)
+    expect(preview.leftOut).toBe(0)
+  })
+
+  it('short: a single request arrives whole, with nothing left out', () => {
+    const preview = previewHandoff([user('Rename the build script')], '/project')
+    expect(preview.text).toContain('USER: Rename the build script')
+    expect(preview.leftOut).toBe(0)
+  })
+
+  it('long: the preview names exactly what was left out, and keeps the opening request and the newest message', () => {
+    const events = [user('OPENING: port the parser'), ...Array.from({ length: 150 }, (_, i) => [user(`q${i}`), reply(`a${i} ${'y'.repeat(6_000)}`)]).flat()]
+    const preview = previewHandoff(events, '/project')
+    expect(preview.text.length).toBeLessThanOrEqual(HANDOFF_BUDGET + 2_000)
+    expect(preview.text).toContain('USER: OPENING: port the parser')
+    expect(preview.text).toContain('PREVIOUS AGENT: a149 ')
+    expect(preview.text).toContain(`[${preview.leftOut} earlier messages left out to fit]`)
+  })
+
+  it('unavailable CLI: the failure reads plainly, nothing is stuck, and switching back carries the whole conversation', async () => {
+    const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-handoff-missing-')))
+    const { launcher, requests, emit } = recordingLauncher()
+    // The real Codex launcher, pointed at a CLI that is not there: what a Mac without Codex does.
+    const missingCodex: Launcher = (request, onEvent) => launchCodex({ cwd: request.cwd }, onEvent, { executable: '/nonexistent/cockpit-d14/codex' })
+    const manager = createThreadManager(store, { launchers: { claude: launcher, codex: missingCodex } })
+    const settings = threadSettingsSchema.parse({})
+    const meta = manager.create({ projectPath: tmpdir(), settings, text: 'port the parser' })
+    emit({ kind: 'assistant_text', messageId: 'm1', text: 'Lexer done' })
+    emit({ kind: 'result', ok: true })
+    manager.switchAgent(meta.id, { ...settings, agent: 'codex' }, manager.handoffPreview(meta.id).digest)
+    manager.send(meta.id, 'carry on with the parser')
+    const failed = async (): Promise<boolean> => store.events(meta.id).some(({ event }) => event.kind === 'exit')
+    for (let i = 0; i < 100 && !(await failed()); i += 1) await new Promise((r) => setTimeout(r, 20))
+    const error = store.events(meta.id).map(({ event }) => event).find((event) => event.kind === 'error')
+    expect(error && 'message' in error ? error.message : '').toBe("Codex isn't installed or isn't on PATH. Install it from Agent settings, or switch this conversation to another agent.")
+    expect(manager.canControl(meta.id)).toBe(false)
+    // Back to Claude: allowed at once, and the handoff carries everything, including the message Codex never got.
+    const back = manager.handoffPreview(meta.id)
+    expect(back.text).toContain('USER: port the parser')
+    expect(back.text).toContain('PREVIOUS AGENT: Lexer done')
+    expect(back.text).toContain('USER: carry on with the parser')
+    expect(back.text).toContain('(switched from claude to codex)')
+    manager.switchAgent(meta.id, { ...settings, agent: 'claude' }, back.digest)
+    manager.send(meta.id, 'are you there?')
+    expect(requests.at(-1)?.settings.agent).toBe('claude')
+    expect(requests.at(-1)?.seed).toBe(back.text)
   })
 })
 
