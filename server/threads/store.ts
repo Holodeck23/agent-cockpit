@@ -62,7 +62,7 @@ export interface ThreadStore {
   get(id: string): ThreadMeta | undefined
   update(id: string, patch: Partial<Omit<ThreadMeta, 'id' | 'createdAt'>>): ThreadMeta
   /** `ts` keeps an imported event's original time; new events are stamped now. */
-  append(id: string, event: NormalizedEvent, ts?: string): StoredEvent
+  append(id: string, event: NormalizedEvent, ts?: string, workspaceId?: string): StoredEvent
   events(id: string): StoredEvent[]
   transcriptPath(id: string): string
   /** Deletes the conversation's folder: metadata, events and transcript. */
@@ -189,8 +189,8 @@ export function createThreadStore(root: string = defaultRoot(), cacheBudget = 64
       writeMeta(next)
       return next
     },
-    append(id, event, ts) {
-      const stored: StoredEvent = { ts: ts ?? new Date().toISOString(), event }
+    append(id, event, ts, workspaceId) {
+      const stored: StoredEvent = { ts: ts ?? new Date().toISOString(), event, ...(workspaceId ? { workspaceId } : {}) }
       const file = join(dirOf(id), 'events.jsonl')
       // Appending after half a line (a crash, a write cut short by a full disk) would join the new
       // event to it and lose both. Checked on every append: one byte, once per stored event.
