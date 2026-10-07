@@ -6,7 +6,7 @@ import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
 import { WorkflowEditor } from './Workflows.tsx'
-import { FolderIcon, PlusIcon, WorkflowIcon } from './icons.tsx'
+import { FolderIcon, PlusIcon, SidebarIcon, WorkflowIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
 
 interface NewConversationProps {
@@ -21,6 +21,8 @@ interface NewConversationProps {
   onOpenGallery?: () => void
   /** The project's workflow list. */
   onOpenWorkflows?: () => void
+  onToggleList?: () => void
+  listHidden?: boolean
 }
 
 /** Workflow cards shown above the message box; the rest are a click away. */
@@ -76,7 +78,7 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
@@ -141,8 +143,11 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
   return (
     <main className="thread new-conversation" ref={screen}>
       <header className="thread-head">
+        {onToggleList ? <button type="button" className="thread-list-toggle" aria-label={listHidden ? 'Show conversation list' : 'Hide conversation list'}
+          aria-pressed={!listHidden} title={listHidden ? 'Show conversation list' : 'Hide conversation list'} onClick={onToggleList}><SidebarIcon /></button> : null}
         <div className="thread-heading">
           <h1>New conversation</h1>
+          <div className="thread-breadcrumbs"><span>Conversations</span><span aria-hidden="true">›</span><span>New</span></div>
         </div>
       </header>
       {newWorkflow && project ? (
@@ -165,10 +170,13 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
                   <div className="workflow-card-grid">
                     {workflows.slice(0, WORKFLOW_CARDS).map((w) => (
                       // Like the starters, a card fills the message box; nothing runs until you send.
-                      <button key={w.id} type="button" className="workflow-card" disabled={starting} title={`Add @workflow:${w.name} to the message`}
+                      <button key={w.id} type="button" className={`workflow-card${prefill?.text === `@workflow:${w.name}` ? ' selected' : ''}`} disabled={starting} title={`Add @workflow:${w.name} to the message`}
                         onClick={() => setPrefill({ text: `@workflow:${w.name}`, reference: true })}>
                         <WorkflowIcon />
                         <span className="workflow-card-text"><strong>{displayTitle(w)}</strong><span>{firstLine(w.prompt)}</span></span>
+                        <small className={`start-workflow-status${w.lastError ? ' error' : w.enabled ? ' scheduled' : ''}`}>
+                          {w.lastError ? 'Needs attention' : w.enabled ? 'Scheduled' : w.calendar ? 'Paused' : 'Manual'}
+                        </small>
                       </button>
                     ))}
                   </div>
@@ -181,7 +189,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
               ) : null}
               <div className="suggestions">
                 {SUGGESTIONS.map((suggestion) => (
-                  <button key={suggestion} type="button" className="suggestion" disabled={starting} title="Put this in the message box" onClick={() => setPrefill({ text: suggestion })}>
+                  <button key={suggestion} type="button" className={`suggestion${prefill?.text === suggestion ? ' selected' : ''}`} disabled={starting} title="Put this in the message box" onClick={() => setPrefill({ text: suggestion })}>
                     <span>{suggestion}</span>
                     <span className="suggestion-go" aria-hidden>
                       <PlusIcon />

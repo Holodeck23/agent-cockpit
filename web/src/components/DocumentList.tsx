@@ -78,8 +78,8 @@ export function DocumentList({ project, selected, dirty, onOpen, onCreate, onRen
           : [{ label: doc.pinned ? 'Unpin from navigation' : 'Pin to navigation', run: mark(doc.path, { pinned: !doc.pinned }) }, { label: 'Archive', run: mark(doc.path, { archived: true }) }]
         return (
           <FileRow key={doc.path} projectPath={project.path} path={path} selected={selected === path} pinned={doc.pinned} dirty={dirty.has(path)}
-            extra={extra} onOpen={() => onOpen(path)} onError={onError}
-            detail={searching ? <span className="doc-match">{doc.archived ? <span className="doc-archived-tag">Archived</span> : null}{doc.excerpt ? <span className="doc-excerpt">{doc.excerpt}</span> : null}</span> : undefined}
+            extra={extra} status={doc.archived ? 'Archived' : undefined} onOpen={() => onOpen(path)} onError={onError}
+            detail={searching && doc.excerpt ? <span className="doc-match"><span className="doc-excerpt">{doc.excerpt}</span></span> : undefined}
             onRenamed={(to) => { onRenamed(path, to); reload() }} onTrashed={() => {
               const next = selected === path ? nextInFolder(shown.map((d) => inSpace('documents', d.path)), path) : undefined
               onTrashed(path)

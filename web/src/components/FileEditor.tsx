@@ -96,8 +96,9 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
       if ((event.metaKey || event.ctrlKey) && (event.key.toLowerCase() === 'f' || event.code === 'KeyF') && file) { event.preventDefault(); setFind(event.altKey ? 'replace' : 'find') }
     }}>
       <div className="file-tabs">
-        <button type="button" className="file-tabs-button file-explorer-toggle" aria-pressed={!explorer.hidden}
+        {!file ? <button type="button" className="file-tabs-button file-explorer-toggle" aria-pressed={!explorer.hidden}
           aria-label={explorer.hidden ? 'Show files' : 'Hide files'} title={explorer.hidden ? 'Show files' : 'Hide files'} onClick={explorer.toggle}><SidebarIcon /></button>
+          : null}
         <div className="file-tab-list" role="tablist" aria-label="Open files">
           {files.map((f) => (
             <div key={f.path} className={`file-tab${f.path === active ? ' active' : ''}`}>
@@ -116,9 +117,15 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
       {file ? (
         <>
           <header>
-            <div>
-              <h2>{inDocuments ? <><span className="file-space">Your documents /</span> {nameOf(file.path)}</> : visibleName(file.path)}</h2>
-              {file.eol === '\r\n' ? <span>Windows line endings</span> : null}
+            <button type="button" className="file-explorer-toggle" aria-pressed={!explorer.hidden}
+              aria-label={explorer.hidden ? 'Show files' : 'Hide files'} title={explorer.hidden ? 'Show files' : 'Hide files'} onClick={explorer.toggle}><SidebarIcon /></button>
+            <div className="file-heading">
+              <h2>{nameOf(file.path)}</h2>
+              <div className="file-breadcrumbs" aria-label="File location">
+                <span>Files</span><span aria-hidden="true">›</span><span>{inDocuments ? 'Your documents' : 'Project files'}</span>
+                {!inDocuments ? file.path.split('/').slice(0, -1).map((folder, index) => <span key={`${index}:${folder}`}>{visibleName(folder)}</span>) : null}
+                {file.eol === '\r\n' ? <span>Windows line endings</span> : null}
+              </div>
             </div>
             <div className="file-actions">
               {isMarkdown(file.path) ? (

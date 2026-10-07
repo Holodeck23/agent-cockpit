@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type Project, type Workflow, type WorkflowInput } from '../api.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
-import { WorkflowIcon } from './icons.tsx'
+import { SidebarIcon, WorkflowIcon } from './icons.tsx'
 import { RepeatPicker } from './RepeatPicker.tsx'
 import { WorkflowGallery } from './WorkflowGallery.tsx'
 import { WorkflowList } from './WorkflowList.tsx'
@@ -27,6 +27,7 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
   const [selected, setSelected] = useState<string>()
   const [creating, setCreating] = useState(false)
   const [gallery, setGallery] = useState(initialGallery)
+  const [listHidden, setListHidden] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const projectPath = project?.path
@@ -63,25 +64,27 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
     setSelected(saved.id); setCreating(false); setGallery(false)
   })
   if (!project) return <main className="workflow-empty"><WorkflowIcon /><h1>Workflows</h1><p>Open a project to save repeatable jobs.</p></main>
-  return <div className="workflows-layout">
-    <WorkflowList project={project} rows={rows} loaded={loaded} selected={selected} busy={busy}
+  const listToggle = { hidden: listHidden, toggle: () => setListHidden((hidden) => !hidden) }
+  return <div className={`workflows-layout${listHidden ? ' list-hidden' : ''}`}>
+    <WorkflowList project={project} rows={rows} loaded={loaded} selected={selected} busy={busy} hidden={listHidden}
       galleryOpen={gallery}
       onSelect={(id) => { setSelected(id); setCreating(false); setGallery(false) }}
       onCreate={() => { setSelected(undefined); setCreating(true); setGallery(false) }}
       onOpenGallery={() => setGallery(true)} />
     {gallery ? <WorkflowGallery projectName={project.name} taken={taken} busy={busy} onAdd={(entry) => void addFromGallery(entry)}
-      onClose={() => setGallery(false)} />
+      onClose={() => setGallery(false)} listToggle={listToggle} />
     : creating || current ? <WorkflowEditor key={current?.id ?? 'new'} workflow={current} projectPath={project.path} busy={busy} onSave={save}
       onPause={() => perform(async () => { if (current) await api.enableWorkflow(current.id, false); await refresh() })}
       onArchive={() => perform(async () => { if (current) await api.archiveWorkflow(current.id); setSelected(undefined); await refresh() })}
-      onOpenThread={onOpenThread} /> : <main className="workflow-empty"><WorkflowIcon /><h2>Make the repeatable work easy.</h2>
+      onOpenThread={onOpenThread} listToggle={listToggle} /> : <main className="workflow-empty"><button type="button" className="workflow-list-toggle" aria-label={listHidden ? 'Show workflows' : 'Hide workflows'}
+        aria-pressed={!listHidden} onClick={listToggle.toggle}><SidebarIcon /></button><WorkflowIcon /><h2>Make the repeatable work easy.</h2>
         <p>Choose a workflow to edit its instructions, run it, or set a schedule. Each run opens a conversation with your agent.</p>
         <div className="workflow-actions"><button type="button" className="button-primary" onClick={() => setCreating(true)}>Create a workflow</button>
           <button type="button" onClick={() => setGallery(true)}>Browse the gallery</button></div></main>}
   </div>
 }
 
-export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread, onCancel, saveOnly = false }: {
+export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread, onCancel, saveOnly = false, listToggle }: {
   workflow?: Workflow; projectPath: string; busy: boolean
   onSave: (input: WorkflowInput, intent: Intent) => Promise<void>
   onPause?: () => Promise<void>; onArchive?: () => Promise<void>; onOpenThread?: (id: string) => void
@@ -89,6 +92,7 @@ export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, o
   onCancel?: () => void
   /** Only Save: opened from another screen, saving must not also start or schedule a run (F16). */
   saveOnly?: boolean
+  listToggle?: { readonly hidden: boolean; readonly toggle: () => void }
 }) {
   const [name, setName] = useState(workflow?.name ?? '')
   const [title, setTitle] = useState(workflow?.title ?? '')
@@ -114,7 +118,12 @@ export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, o
       settings: settingsFromChoice(choice, workflow?.settings) }, intent ?? 'save')
   }
   return <main className="workflow-editor">
-    <header><span className="workflow-kicker">Reusable instructions</span><h1>{workflow ? displayTitle(workflow) : 'New workflow'}</h1>
+    <header><div className="workflow-detail-heading">
+      {listToggle ? <button type="button" className="workflow-list-toggle" aria-label={listToggle.hidden ? 'Show workflows' : 'Hide workflows'}
+        aria-pressed={!listToggle.hidden} onClick={listToggle.toggle}><SidebarIcon /></button> : null}
+      <div><span className="workflow-kicker">Reusable instructions</span><h1>{workflow ? displayTitle(workflow) : 'New workflow'}</h1>
+        {listToggle ? <div className="workflow-breadcrumbs"><span>Workflows</span><span aria-hidden="true">›</span><span>{workflow ? 'Saved workflow' : 'New workflow'}</span></div> : null}
+      </div></div>
       <p>{workflow?.enabled ? `Scheduled · ${workflow.calendar ? describeCalendar(workflow.calendar) : `Every ${workflow.intervalMinutes} min`} · Next run ${when(workflow.nextRunAt)}` : 'Run manually, or turn on a schedule when you’re ready.'}</p></header>
     {workflow?.lastError ? <div className="workflow-notice" role="alert"><strong>Schedule paused</strong><p>{workflow.lastError}</p></div> : null}
     <form ref={form} onSubmit={submit}><fieldset disabled={busy}>

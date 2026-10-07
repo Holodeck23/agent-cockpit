@@ -349,6 +349,9 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                 </button>
               ))}
             </div>
+            {current.agent === 'claude' ? (
+              <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
+            ) : null}
             <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
             <AgentCapabilityPanel caps={shownCaps} refreshing={refreshing} error={capsError} onRefresh={refresh} />
             {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
@@ -392,9 +395,6 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                 ))}
               </select>
             </label>
-            {current.agent === 'claude' ? (
-              <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
-            ) : null}
             {current.agent === 'antigravity' ? (
               <p className="picker-note">
                 {current.permissionMode === 'manual'

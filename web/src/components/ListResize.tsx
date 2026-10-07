@@ -7,7 +7,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 const KEY = 'cockpit:list-width'
 export const LIST_MIN = 260
 export const LIST_MAX = 520
-const DEFAULT = 312
+const DEFAULT = 415
 const STEP = 16
 
 export const clampListWidth = (width: number): number => Math.min(LIST_MAX, Math.max(LIST_MIN, Math.round(width)))

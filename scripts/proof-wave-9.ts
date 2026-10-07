@@ -245,7 +245,7 @@ try {
 
   // ---------- A4: hide the list; the Conversations tab opens it as a dropdown ----------
   await setTheme(page, 'Light')
-  await page.getByRole('button', { name: 'Hide list' }).click()
+  await page.getByRole('button', { name: 'Hide conversation list' }).click()
   const tab = page.locator('#section-conversations')
   check('A4 Hide list removes the column', await until('list gone', async () => await page.locator('.layout > .list').count() === 0))
   check('A4 focus moves to the Conversations tab', await until('tab focus', () => tab.evaluate((el) => el === document.activeElement)))
@@ -268,8 +268,8 @@ try {
   check('A4 switching through the dropdown keeps the draft (not sent, not cleared)', await until('draft', async () => await messageBox(page).inputValue() === 'B draft stays'))
   await messageBox(page).fill('')
   await tab.click()
-  await dropdown.getByRole('button', { name: 'Keep list open' }).click()
-  check('A4 Keep list open brings the column back', await until('list back', async () => await page.locator('.layout > .list').count() === 1))
+  await page.getByRole('button', { name: 'Show conversation list' }).click()
+  check('A4 title toggle brings the column back', await until('list back', async () => await page.locator('.layout > .list').count() === 1))
 
   // ---------- W9-04 website logins per workspace ----------
   await goTo(page, `${A}/set-cookie`)

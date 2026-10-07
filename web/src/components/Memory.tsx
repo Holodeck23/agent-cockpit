@@ -19,6 +19,7 @@ export function Memory({ project, threads, onError, onOpenThread }: MemoryProps)
   const [loadError, setLoadError] = useState('')
   const [entries, setEntries] = useState<MemoryEntry[]>()
   const [scope, setScope] = useState<'project' | 'everywhere'>('project')
+  const [view, setView] = useState<'all' | 'project' | 'everywhere'>('all')
   const [draft, setDraft] = useState('')
   const [editing, setEditing] = useState<{ id: string; text: string }>()
   const [confirmClear, setConfirmClear] = useState(false)
@@ -52,7 +53,7 @@ export function Memory({ project, threads, onError, onOpenThread }: MemoryProps)
         {entries && rows.length === 0 ? <p className="memory-empty">{empty}</p> : null}
         <ul>
           {rows.map((entry) => (
-            <li key={entry.id} className="memory-entry">
+            <li key={entry.id} className={`memory-entry${editing?.id === entry.id ? ' editing' : ''}`}>
               {editing?.id === entry.id ? (
                 <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api.updateMemory(entry.id, editing.text); setEditing(undefined) }) }}>
                   <textarea aria-label="Edit memory" maxLength={MAX} rows={2} value={editing.text} autoFocus onChange={(e) => setEditing({ id: entry.id, text: e.target.value })} />
@@ -63,7 +64,9 @@ export function Memory({ project, threads, onError, onOpenThread }: MemoryProps)
                 </form>
               ) : (
                 <>
-                  <p>{entry.text}</p>
+                  <div className="memory-entry-head"><p>{entry.text}</p>
+                    <span className="memory-scope-pill">{entry.scope === 'project' ? 'This project' : 'Everywhere'}</span>
+                  </div>
                   <div className="memory-meta">
                     <span>{day(entry.updatedAt)} · {entry.source.kind === 'conversation' && threads.some((t) => t.meta.id === (entry.source as { threadId: string }).threadId)
                       ? <button type="button" className="memory-link" onClick={() => onOpenThread((entry.source as { threadId: string }).threadId)}>{origin(entry)}</button>
@@ -100,8 +103,14 @@ export function Memory({ project, threads, onError, onOpenThread }: MemoryProps)
           <button type="submit" className="button-primary" disabled={!draft.trim()}>Remember</button>
         </div>
       </form>
-      {section('project', 'This project', 'Nothing remembered for this project yet.')}
-      {section('everywhere', 'Everywhere', 'No preferences yet. Notes kept everywhere reach every project.')}
+      <div className="memory-filters" role="tablist" aria-label="Filter memory">
+        {([['all', 'All', entries?.length ?? 0], ['project', 'This project', entries?.filter((e) => e.scope === 'project').length ?? 0],
+          ['everywhere', 'Everywhere', entries?.filter((e) => e.scope === 'everywhere').length ?? 0]] as const).map(([id, label, count]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}>{label} <span>{count}</span></button>
+        ))}
+      </div>
+      {view !== 'everywhere' ? section('project', 'This project', 'Nothing remembered for this project yet.') : null}
+      {view !== 'project' ? section('everywhere', 'Everywhere', 'No preferences yet. Notes kept everywhere reach every project.') : null}
       <footer className="memory-foot">
         {confirmClear ? (
           <span className="memory-confirm" role="alertdialog" aria-label="Clear this project's memory">

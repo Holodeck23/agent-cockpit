@@ -15,7 +15,7 @@ import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
 import { PhoneApps } from './PhoneApps.tsx'
-import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
+import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon, SidebarIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 import { statusText, useNow } from './StatusPill.tsx'
@@ -35,11 +35,14 @@ interface ThreadViewProps {
   /** Phone: reply, approve and stop only; a back button returns to the list. */
   phone?: boolean
   onBack?: () => void
+  /** Desktop list toggle beside the conversation title. */
+  onToggleList?: () => void
+  listHidden?: boolean
   /** Opens a file in Files at a line (desktop; Changes uses it for a right-side line). */
   onOpenFile?: (target: { path: string; line: number }) => void
 }
 
-export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onOpenFile }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onToggleList, listHidden = false, onOpenFile }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = isBusy(status)
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
@@ -115,6 +118,12 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             <ChevronLeftIcon />
           </button>
         ) : null}
+        {!phone && onToggleList ? (
+          <button type="button" className="thread-list-toggle" aria-label={listHidden ? 'Show conversation list' : 'Hide conversation list'}
+            aria-pressed={!listHidden} title={listHidden ? 'Show conversation list' : 'Hide conversation list'} onClick={onToggleList}>
+            <SidebarIcon />
+          </button>
+        ) : null}
         <div className="thread-heading">
           <h1>{meta.title}</h1>
           <div className="thread-status">
@@ -129,6 +138,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
                 Stop
               </button>
             ) : null}
+            {phone ? null : (
+              <span className="status-separator" aria-hidden="true">›</span>
+            )}
             {phone ? null : (
               <button
                 type="button"
