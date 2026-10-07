@@ -18,7 +18,7 @@ import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
-import { createWorkspaceStore } from './projects/workspaces.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './projects/workspaces.ts'
 import { createWorktreeService } from './projects/worktrees.ts'
 import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
@@ -103,6 +103,8 @@ export interface RunningServer {
   readonly phonePreviews: PhonePreviews
   /** Known project folders; the desktop shell checks these before opening one in Finder. */
   readonly projects: ProjectStore
+  /** Project and workspace identity; the desktop shell checks a worktree's folder against its registered records. */
+  readonly workspaces: WorkspaceStore
   /** Records each run's before/after workspace observations; tests settle it before reading. */
   readonly runObserver: RunObserver
   /** Durable result cards and finite host checks (pilot 10.1). */
@@ -368,5 +370,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, workspaces, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
 }

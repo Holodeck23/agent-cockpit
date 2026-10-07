@@ -7,6 +7,7 @@ import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
 import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts'
 import { copyInto } from '../server/files/copy-in.ts'
+import { isKnownFolder } from '../server/projects/folders.ts'
 import { launchReason, visibleName } from '../server/files/visible-name.ts'
 import { resolveAppPath } from './shell-path.ts'
 import { oneAtATime, withinTime } from './one-at-a-time.ts'
@@ -108,7 +109,9 @@ async function boot(): Promise<void> {
   nativeTheme.on('updated', () => dock?.setDark(nativeTheme.shouldUseDarkColors))
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate()))
   const isProject = (path: string): boolean => running?.projects.list().some((p) => p.path === path) ?? false
-  registerIpc(running.url, join(running.store.root, 'threads'), isProject)
+  // A project's folder, or the folder of one of its registered worktrees: where a page's files and website data live.
+  const isFolder = (path: string): boolean => (running ? isKnownFolder(running.projects, running.workspaces, path) : false)
+  registerIpc(running.url, join(running.store.root, 'threads'), isProject, isFolder)
   // The in-app browser (wave 9): pages live in this process, the window's page drives them.
   browser = createBrowserService({
     window: () => mainWindow,
@@ -131,7 +134,7 @@ async function boot(): Promise<void> {
   // A deleted conversation's page goes with it.
   const pages = browser
   running.manager.subscribe((update) => { if (update.event.kind === 'thread_deleted') pages.close(`thread:${update.threadId}`) })
-  registerBrowserIpc(new URL(running.url).origin, browser, isProject, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
+  registerBrowserIpc(new URL(running.url).origin, browser, isFolder, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
   mainWindow = createWindow(running.url)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
@@ -401,7 +404,7 @@ function showNotification(value: unknown): void {
   note.show()
 }
 
-function registerIpc(url: string, threadsDir: string, isProject: (path: string) => boolean): void {
+function registerIpc(url: string, threadsDir: string, isProject: (path: string) => boolean, isFolder: (path: string) => boolean): void {
   const origin = new URL(url).origin
   // Copy message: the system clipboard, which (unlike the web API) does not need window focus.
   ipcMain.on('cockpit:copy-text', (event, text: unknown) => {
@@ -426,10 +429,14 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.handle('cockpit:file-action', async (event, request: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || !running) return 'Not allowed'
     const { projectPath, space, path, action } = (request ?? {}) as Record<string, unknown>
-    if (typeof projectPath !== 'string' || typeof path !== 'string' || !isProject(projectPath)) return 'Unknown project'
+    if (typeof projectPath !== 'string' || typeof path !== 'string') return 'Unknown project'
+    const where = spaceSchema.safeParse(space ?? undefined)
+    if (!where.success) return 'Unknown project'
+    // Documents belong to the project itself; project files may be in one of its registered worktrees.
+    if (!(where.data === 'documents' ? isProject(projectPath) : isFolder(projectPath))) return 'Unknown project'
     if (action !== 'open' && action !== 'reveal' && action !== 'trash') return 'Unknown action'
     try {
-      const target = fileOnDisk(running.store.root, projectPath, spaceSchema.parse(space ?? undefined), path)
+      const target = fileOnDisk(running.store.root, projectPath, where.data, path)
       if (action === 'reveal') shell.showItemInFolder(target)
       else if (action === 'open') {
         // A repository can carry a script or app named to look like a document. Opening one runs it,
@@ -457,10 +464,12 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.handle('cockpit:copy-into', async (event, request: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin || !running) return { error: 'Not allowed' }
     const { projectPath, space, folder, sources } = (request ?? {}) as Record<string, unknown>
-    if (typeof projectPath !== 'string' || !isProject(projectPath)) return { error: 'Unknown project' }
+    if (typeof projectPath !== 'string') return { error: 'Unknown project' }
+    const where = spaceSchema.safeParse(space ?? undefined)
+    if (!where.success || !(where.data === 'documents' ? isProject(projectPath) : isFolder(projectPath))) return { error: 'Unknown project' }
     if (typeof folder !== 'string' || !Array.isArray(sources) || sources.length > 100 || !sources.every((s) => typeof s === 'string')) return { error: 'Nothing to copy' }
     try {
-      return copyInto(spaceRoot(running.store.root, projectPath, spaceSchema.parse(space ?? undefined)), folder, sources as string[])
+      return copyInto(spaceRoot(running.store.root, projectPath, where.data), folder, sources as string[])
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) }
     }
