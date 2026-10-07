@@ -1,5 +1,5 @@
 // Visual proof of each styled screen in a packaged app. All state lives in a disposable HOME.
-// Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:style-screens -- files|workflows|memory
+// Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:style-screens -- files|workflows|memory|start
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +10,7 @@ import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts
 import { apiPost, openProject, setTheme } from './lib/ui.ts'
 
 const screen = process.argv[2]
-if (screen !== 'files' && screen !== 'workflows' && screen !== 'memory') throw new Error(`Unknown style screen: ${screen ?? '(none)'}`)
+if (screen !== 'files' && screen !== 'workflows' && screen !== 'memory' && screen !== 'start') throw new Error(`Unknown style screen: ${screen ?? '(none)'}`)
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-style-screens-'))
 const home = join(root, 'home'), project = join(root, 'garden')
@@ -66,7 +66,7 @@ try {
     const scheduledActive = await page.locator('.workflow-views [aria-selected="true"]').getByText('Scheduled').count() === 1
     await page.getByRole('tab', { name: /All/ }).click()
     check('Workflows filters use an active filled pill', scheduledActive && await page.locator('.workflow-views [aria-selected="true"]').getByText('All').count() === 1)
-  } else {
+  } else if (screen === 'memory') {
     await page.getByRole('tab', { name: 'Memory', exact: true }).click()
     const memory = page.locator('main.memory')
     await memory.getByRole('textbox', { name: 'New memory' }).fill('Release notes need a plain-language summary.')
@@ -86,6 +86,20 @@ try {
     const editing = await memory.locator('.memory-entry.editing').count() === 1
     await memory.getByRole('button', { name: 'Cancel' }).click()
     check('the active memory row is filled while editing', editing && await memory.locator('.memory-entry.editing').count() === 0)
+  } else {
+    await page.getByRole('button', { name: 'Start fresh' }).click()
+    await page.getByRole('heading', { name: 'What are you working on?' }).waitFor()
+    await page.locator('.workflow-card').first().waitFor()
+    check('the start screen keeps its art, scanner, and workflow status pills',
+      await page.locator('.start-art').count() === 1
+      && await page.locator('.composer textarea').evaluate((node) => getComputedStyle(node).animationName === 'scanner-placeholder')
+      && await page.locator('.start-workflow-status').count() === 2)
+    check('the new-conversation title has breadcrumb pills',
+      await page.locator('.thread-breadcrumbs span:not([aria-hidden])').count() === 2)
+    await page.getByRole('button', { name: 'Hide conversation list' }).click()
+    const hidden = await page.locator('.layout.list-hidden').count() === 1
+    await page.getByRole('button', { name: 'Show conversation list' }).click()
+    check('the square beside the start title hides and restores the list', hidden && await page.locator('.layout.list-hidden').count() === 0)
   }
   check(`${screen} keeps the green project tint`, await page.locator('.app.tint-green').count() === 1)
   await setTheme(page, 'Light')
@@ -101,6 +115,14 @@ try {
         columnsFit: view.right <= innerWidth && view.left >= 0,
         toggleVisible: filters.scrollWidth <= filters.clientWidth }
     }
+    if (which === 'start') {
+      const thread = document.querySelector('.new-conversation')!.getBoundingClientRect()
+      const toggle = document.querySelector('.new-conversation .thread-list-toggle')!.getBoundingClientRect()
+      const composer = document.querySelector('.new-conversation .composer')!.getBoundingClientRect()
+      return { pageFits: document.documentElement.scrollWidth <= innerWidth,
+        columnsFit: thread.left >= 0 && thread.right <= innerWidth && composer.right <= innerWidth,
+        toggleVisible: toggle.left >= thread.left && toggle.right <= thread.right }
+    }
     const list = document.querySelector(which === 'files' ? '.file-list' : '.workflow-list')!.getBoundingClientRect()
     const detail = document.querySelector(which === 'files' ? '.file-preview' : '.workflow-editor')!.getBoundingClientRect()
     const toggle = document.querySelector(which === 'files' ? '.file-preview header .file-explorer-toggle' : '.workflow-editor header .workflow-list-toggle')!.getBoundingClientRect()
@@ -110,6 +132,12 @@ try {
   }, screen)
   check(`${screen} fits 980 × 640`, narrow.pageFits && narrow.columnsFit && narrow.toggleVisible, JSON.stringify(narrow))
   await shot(page, 'narrow-dark')
+  if (screen === 'start') {
+    await page.locator('.suggestion').first().click()
+    const selectedSuggestion = await page.locator('.suggestion.selected').count() === 1
+    await page.locator('.workflow-card').first().click()
+    check('suggestions and workflow cards fill when selected', selectedSuggestion && await page.locator('.workflow-card.selected').count() === 1)
+  }
 } catch (error) {
   check(`proof reached ${screen}`, false, error instanceof Error ? error.message.split('\n')[0] : String(error))
 } finally {

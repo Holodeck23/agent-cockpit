@@ -327,6 +327,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onOpenProject={projects.open}
               onOpenGallery={openGallery}
               onOpenWorkflows={() => setSection('workflows')}
+              onToggleList={() => setHidden(!hideList)}
+              listHidden={hideList}
               onError={cockpit.reportError}
               onCreated={(meta) => {
                 cockpit.refresh()
