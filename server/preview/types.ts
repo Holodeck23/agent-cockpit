@@ -2,6 +2,9 @@
 export interface PreviewOpen {
   readonly url: string
   readonly projectPath: string
+  /** The workspace folder the conversation works in (a worktree's own folder); absent means the project folder. */
+  readonly cwd?: string
+  readonly workspaceId?: string
   readonly threadId?: string
   /** The desktop host already loaded it in the conversation's own page (W9-11): show it, do not load it again. */
   readonly loaded?: boolean

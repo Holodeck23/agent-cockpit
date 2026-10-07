@@ -3,7 +3,7 @@ import type { ProcessInfo } from '../server/processes/runner.ts'
 import { forgetPreview, previewKey, previewUrl, processPreview, rememberPreview } from '../web/src/preview-owner.ts'
 
 const process = (id: string, projectPath: string, threadId: string, url: string): ProcessInfo => ({
-  id, projectPath, command: 'npm run dev', name: 'site', status: 'running', pid: 1, exitCode: null, signal: null,
+  id, projectPath, cwd: projectPath, command: 'npm run dev', name: 'site', status: 'running', pid: 1, exitCode: null, signal: null,
   startedAt: '2026-10-05T10:00:00.000Z', url, owner: { kind: 'conversation', threadId, title: threadId },
 })
 

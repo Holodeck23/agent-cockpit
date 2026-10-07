@@ -2,9 +2,11 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { z } from 'zod'
 import { observe, type Observation } from '../git/observe.ts'
+import { isRefusal, workspaceFolder, type WorkspaceLookup } from '../projects/resolve.ts'
 import { StoreReadError } from '../state/read-error.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import { isBusy } from '../threads/status.ts'
+import type { ThreadMeta } from '../threads/types.ts'
 
 // Before/after workspace observations of each run (W7-05), one file per run under runs/. The
 // "before" is taken when the run starts (a queued message: when the agent takes it), the "after"
@@ -81,27 +83,34 @@ export interface RunObserver {
 }
 
 /** Watches the manager's events and records each run's before/after observations. */
-export function observeRuns(manager: ThreadManager, store: RunObservationStore, look: (path: string) => Promise<Observation> = observe): RunObserver {
+export function observeRuns(manager: ThreadManager, store: RunObservationStore, look: (path: string) => Promise<Observation> = observe, workspace?: WorkspaceLookup): RunObserver {
   const queued = new Map<string, string>() // queued id -> run id
-  interface Pending { threadId: string; projectPath: string; before: Promise<Observation | undefined>; read: { done: boolean }; late: boolean; concurrent: Set<string> }
+  interface Pending { threadId: string; projectPath: string; folder: string | undefined; before: Promise<Observation | undefined>; read: { done: boolean }; late: boolean; concurrent: Set<string> }
   const pending = new Map<string, Pending>()
   const current = new Map<string, string>() // thread id -> run id in progress
   const work = new Set<Promise<void>>()
   const finishing = new Set<string>()
   const track = (promise: Promise<void>): void => { work.add(promise); void promise.finally(() => work.delete(promise)) }
   const metaOf = (threadId: string) => manager.summaries().find((s) => s.meta.id === threadId)?.meta
-  const othersWorking = (threadId: string, projectPath: string): string[] =>
-    manager.summaries().filter((s) => s.meta.id !== threadId && s.meta.projectPath === projectPath && isBusy(s.status)).map((s) => s.meta.title)
+  /** The folder the conversation works in now; undefined once its workspace is gone (never the primary in its place). */
+  const folderOf = (meta: ThreadMeta): string | undefined => {
+    const folder = workspaceFolder(workspace, meta.projectPath, meta.workspaceId)
+    return isRefusal(folder) ? undefined : folder.cwd
+  }
+  // "Concurrent" means the same workspace: two conversations in different worktrees do not disturb each other.
+  const othersWorking = (threadId: string, projectPath: string, folder: string | undefined): string[] =>
+    manager.summaries().filter((s) => s.meta.id !== threadId && s.meta.projectPath === projectPath && folderOf(s.meta) === folder && isBusy(s.status)).map((s) => s.meta.title)
 
   const begin = (threadId: string, runId: string): void => {
     const meta = metaOf(threadId)
     if (!meta) return
     const read = { done: false }
-    const before = look(meta.projectPath).then((o) => o, (error: unknown) => {
+    const folder = folderOf(meta)
+    const before = (folder ? look(folder) : Promise.resolve(undefined)).then((o) => o, (error: unknown) => {
       console.warn('[cockpit] a run’s before-observation failed:', error instanceof Error ? error.message : error)
       return undefined
     }).finally(() => { read.done = true })
-    const entry: Pending = { threadId, projectPath: meta.projectPath, before, read, late: false, concurrent: new Set(othersWorking(threadId, meta.projectPath)) }
+    const entry: Pending = { threadId, projectPath: meta.projectPath, folder, before, read, late: false, concurrent: new Set(othersWorking(threadId, meta.projectPath, folder)) }
     pending.set(runId, entry)
     current.set(threadId, runId)
     track(before.then((observation) => {
@@ -114,12 +123,12 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
     pending.delete(runId)
     if (current.get(threadId) === runId) current.delete(threadId)
     if (!entry) return
-    for (const title of othersWorking(threadId, entry.projectPath)) entry.concurrent.add(title)
+    for (const title of othersWorking(threadId, entry.projectPath, entry.folder)) entry.concurrent.add(title)
     finishing.add(runId)
     track((async () => {
       const before = await entry.before
       let after: Observation | undefined
-      try { after = await look(entry.projectPath) } catch (error) {
+      try { after = entry.folder ? await look(entry.folder) : undefined } catch (error) {
         console.warn('[cockpit] a run’s after-observation failed:', error instanceof Error ? error.message : error)
       }
       store.put({
@@ -134,7 +143,7 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
     if (event.kind === 'tool_use' || event.kind === 'assistant_text' || event.kind === 'text_delta' || event.kind === 'user_text') {
       // Another conversation acting in the same folder during a run.
       const meta = metaOf(threadId)
-      for (const entry of pending.values()) if (meta && entry.threadId !== threadId && entry.projectPath === meta.projectPath) entry.concurrent.add(meta.title)
+      for (const entry of pending.values()) if (meta && entry.threadId !== threadId && entry.projectPath === meta.projectPath && entry.folder === folderOf(meta)) entry.concurrent.add(meta.title)
     }
     switch (event.kind) {
       case 'user_text':

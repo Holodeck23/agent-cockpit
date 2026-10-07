@@ -4,6 +4,7 @@ import { CheckConflictError, checkDefinitionSchema, type CheckRunner } from '../
 import { UnknownRunError, type ResultService } from '../results/service.ts'
 import type { ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
+import { isRefusal, workspaceFolder, type WorkspaceLookup } from '../projects/resolve.ts'
 import { isBusy } from '../threads/status.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 import { assertLocalUrl } from './mcp-routes.ts'
@@ -26,6 +27,7 @@ export interface ResultRouteDeps {
   readonly results: ResultService
   readonly checks: CheckRunner
   readonly isOpen: (projectPath: string) => boolean
+  readonly workspace?: WorkspaceLookup
 }
 
 export async function handleResultRoute(req: IncomingMessage, res: ServerResponse, url: URL, parts: readonly string[], deps: ResultRouteDeps, viaPhone: boolean): Promise<void> {
@@ -70,7 +72,10 @@ export async function handleResultRoute(req: IncomingMessage, res: ServerRespons
       // The run must be this conversation's, and finished: a check describes a result.
       const view = await deps.results.view(meta, deps.store.events(meta.id), runId, isBusy(status))
       if (view.provider.state === 'working') throw new HttpError(409, 'Wait until this run has ended')
-      const record = await deps.checks.start({ runId, threadId: meta.id, projectPath: meta.projectPath, ...(view.identity.workspaceId ? { workspaceId: view.identity.workspaceId } : {}), operationId: body.operationId, definition: body.definition })
+      // Where the run happened, not where the person is looking now; a removed workspace is refused, never swapped for the primary.
+      const folder = workspaceFolder(deps.workspace, meta.projectPath, view.identity.workspaceId)
+      if (isRefusal(folder)) throw new HttpError(409, folder.refusal)
+      const record = await deps.checks.start({ runId, threadId: meta.id, projectPath: meta.projectPath, ...(view.identity.workspaceId ? { workspaceId: view.identity.workspaceId } : {}), cwd: folder.cwd, operationId: body.operationId, definition: body.definition })
       sendJson(res, 202, { data: record })
       return
     }

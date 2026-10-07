@@ -159,7 +159,7 @@ describe('preview upstream (SEC-05, SEC-06)', () => {
     let groups: number[] = [4242]
     let t = 0
     const resolver = createUpstreamResolver(async () => groups, () => t)
-    const proc = { id: 'p1', name: 'dev', command: 'npm run dev', projectPath: '/p', status: 'running', pid: 4242, startedAt: '', exitCode: null, signal: null,
+    const proc = { id: 'p1', name: 'dev', command: 'npm run dev', projectPath: '/p', cwd: '/p', status: 'running', pid: 4242, startedAt: '', exitCode: null, signal: null,
       url: 'http://localhost:5173/', owner: { kind: 'user' } } as const
     expect((await resolver.resolve(proc))?.generation).toBe('p1')
     groups = [9999]

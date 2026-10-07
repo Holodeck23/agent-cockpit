@@ -206,7 +206,7 @@ async function showPreview(preview: PreviewOpen): Promise<void> {
   const url = assertLocalUrl(preview.url)
   if (preview.threadId && browser && browserHost) {
     const key = `thread:${preview.threadId}`
-    const page = await browserHost.ensure(key, preview.projectPath)
+    const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
     if (page.url !== url) {
       const refused = browser.load(key, url)
       if (refused) throw new Error(refused)
@@ -226,7 +226,7 @@ async function inspectPreview(preview: PreviewOpen): Promise<PreviewCapture> {
   const url = assertLocalUrl(preview.url)
   if (!preview.threadId || !browserHost) return capturePreview(url)
   const key = `thread:${preview.threadId}`
-  const page = await browserHost.ensure(key, preview.projectPath)
+  const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
   if (page.origin !== new URL(url).origin) await browserHost.goto(key, url)
   const shot = await browserHost.capture(key)
   if (originClass(shot.page.url, cockpitPorts()) !== 'local') {

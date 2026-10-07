@@ -472,7 +472,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       }
       if ((parts[1] === 'runs' || parts[1] === 'checks') && results && checks) {
         await handleResultRoute(req, res, url, parts, {
-          manager, store, results, checks,
+          manager, store, results, checks, ...(workspaces ? { workspace: (id: string) => workspaces.get(id) } : {}),
           isOpen: (projectPath) => projects.list({ includeHidden: true }).some((project) => project.path === projectPath),
         }, viaPhone)
         return true

@@ -254,11 +254,12 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // A waiting update starts as soon as the last conversation on that CLI stops working.
   manager.subscribe(() => agentLifecycle.activityChanged())
   const runs = createRunObservationStore(root)
-  const runObserver = observeRuns(manager, runs)
+  const workspaceLookup = (workspaceId: string) => workspaces.get(workspaceId)
+  const runObserver = observeRuns(manager, runs, undefined, workspaceLookup)
   const resultStore = createResultStore(root)
   const checks = createCheckRunner(resultStore)
   const results = createResultService({
-    store: resultStore, checks, runs, observing: runObserver.observing,
+    store: resultStore, checks, runs, observing: runObserver.observing, workspace: workspaceLookup,
     ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}),
   })
   const workflowStore = createWorkflowStore(root)

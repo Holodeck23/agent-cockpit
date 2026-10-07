@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { observe, type Observation } from '../git/observe.ts'
+import { isRefusal, workspaceFolder, type WorkspaceLookup } from '../projects/resolve.ts'
 import type { RunObservationStore } from '../runs/observations.ts'
 import { runChanges, type RunChanges } from '../runs/run-changes.ts'
 import { StoreReadError } from '../state/read-error.ts'
@@ -62,6 +63,8 @@ export interface ResultDeps {
   readonly runs?: RunObservationStore
   readonly observing?: (runId: string) => boolean
   readonly look?: (path: string) => Promise<Observation>
+  /** Resolves a workspace to its folder; without it every run is read in the project folder. */
+  readonly workspace?: WorkspaceLookup
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
 }
 
@@ -90,6 +93,11 @@ function bindingAt(meta: ThreadMeta, events: readonly StoredEvent[], index: numb
 
 export function createResultService(deps: ResultDeps) {
   const look = deps.look ?? observe
+  /** The folder of a conversation's workspace; undefined once it is gone: never the primary in its place. */
+  const folderOf = (meta: ThreadMeta, workspaceId: string | undefined): string | undefined => {
+    const folder = workspaceFolder(deps.workspace, meta.projectPath, workspaceId)
+    return isRefusal(folder) ? undefined : folder.cwd
+  }
 
   /** A stored check left non-terminal by an earlier launch: interrupted, and its PID never signalled. */
   const recover = (file: ResultFile): ResultFile => {
@@ -131,13 +139,15 @@ export function createResultService(deps: ResultDeps) {
     // Freshness: every finished check against the workspace as it is now. One observation, each check's own inputs.
     const records = [...(file?.checks ?? [])].sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))
     let current: Observation | undefined
-    if (records.some((c) => c.subject)) {
-      try { current = await look(meta.projectPath) } catch { current = undefined }
+    const runWorkspace = requestEvent?.binding?.workspaceId ?? meta.workspaceId
+    const folder = folderOf(meta, runWorkspace)
+    if (folder && records.some((c) => c.subject)) {
+      try { current = await look(folder) } catch { current = undefined }
     }
     const checks: CheckView[] = records.map((c) => {
       if (!c.subject || c.phase !== 'terminal') return c
       if (!current) return { ...c, freshness: { state: 'unknown', reasons: ['The workspace could not be read now.'] } }
-      return { ...c, freshness: freshness(c.subject, fingerprintOf(meta.projectPath, current, c.definition.inputs)) }
+      return { ...c, freshness: freshness(c.subject, fingerprintOf(folder!, current, c.definition.inputs)) }
     })
 
     const previews: PreviewView[] = (file?.evidence ?? []).filter((e) => e.kind === 'preview').map((e) => ({
@@ -177,7 +187,7 @@ export function createResultService(deps: ResultDeps) {
     return {
       version: RESULT_VERSION, runId, threadId: meta.id,
       identity: {
-        projectPath: meta.projectPath, ...(requestEvent?.binding?.workspaceId ?? meta.workspaceId ? { workspaceId: requestEvent?.binding?.workspaceId ?? meta.workspaceId } : {}),
+        projectPath: meta.projectPath, ...(runWorkspace ? { workspaceId: runWorkspace } : {}),
         bindingId: bindingAt(meta, events, run.index), agent: agentAt(meta, events, run.index),
         ...(meta.settings.model ? { model: meta.settings.model } : {}), account: 'default', profile: 'standard',
       },
@@ -201,8 +211,10 @@ export function createResultService(deps: ResultDeps) {
       let subjectDigest: string | undefined
       let head: string | null | undefined
       try {
-        const now = await look(meta.projectPath)
-        subjectDigest = fingerprintOf(meta.projectPath, now, []).digest
+        const folder = folderOf(meta, meta.workspaceId)
+        if (!folder) throw new Error('This workspace no longer exists')
+        const now = await look(folder)
+        subjectDigest = fingerprintOf(folder, now, []).digest
         head = now.head
       } catch { /* recorded without a subject */ }
       const id = `ev-${randomUUID()}`

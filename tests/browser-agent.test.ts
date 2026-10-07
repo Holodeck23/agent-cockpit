@@ -7,7 +7,7 @@ import { HttpError } from '../server/http/json.ts'
 // The browser agent's decisions (W9-06–W9-09, SEC-03): scope derived from the session grant,
 // approvals for remote sites and every input, run+origin grants and what revokes them.
 
-const grant = { threadId: 't1', projectPath: '/work/one' }
+const grant = { threadId: 't1', projectPath: '/work/one', cwd: '/work/one' }
 const signal = new AbortController().signal
 
 function harness(start = 'http://localhost:5173/') {

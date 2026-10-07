@@ -17,6 +17,9 @@ import { createOutputBuffer, detectLocalUrl, DEFAULT_OUTPUT_BYTES, type OutputBu
 
 export const startProcessSchema = z.object({
   projectPath: z.string().min(1).max(1000),
+  /** The folder it runs in: the workspace's folder. Defaults to the project folder (a primary workspace). */
+  cwd: z.string().min(1).max(1000).optional(),
+  workspaceId: z.string().min(1).max(100).optional(),
   command: z.string().trim().min(1).max(2000),
   /** Defaults to the command; a second start with the same name reuses the running one. */
   name: z.string().trim().min(1).max(60).optional(),
@@ -40,7 +43,12 @@ export interface ProcessInfo {
   readonly id: string
   readonly name: string
   readonly command: string
+  /** The project it belongs to: grouping and list filters. */
   readonly projectPath: string
+  /** The workspace it was started in, when it was started in one. */
+  readonly workspaceId?: string
+  /** The folder it runs in (a worktree's own folder, otherwise the project folder). */
+  readonly cwd: string
   readonly status: ProcessStatus
   readonly pid?: number
   readonly startedAt: string
@@ -71,7 +79,8 @@ export interface ProcessRunner {
   /** Stops it if needed and starts the same command again under the same name; returns the new process. */
   restart(id: string): Promise<ProcessInfo>
   get(id: string): ProcessInfo | undefined
-  list(projectPath?: string): ProcessInfo[]
+  /** `cwd` narrows to one workspace's folder (a project's worktrees are separate lists). */
+  list(projectPath?: string, cwd?: string): ProcessInfo[]
   read(id: string, options?: { since?: number; tail?: number }): ProcessRead
   subscribe(listener: ProcessListener): () => void
   /** Running or stopping processes this conversation owns. */
@@ -79,7 +88,7 @@ export interface ProcessRunner {
   /** Its conversation is being deleted: stop what it owns, or keep it as project processes. Never another conversation's. */
   release(threadId: string, how: 'stop' | 'keep'): Promise<ProcessInfo[]>
   /** Drops finished rows from the history kept for this folder. Never stops anything. */
-  clearFinished(projectPath: string): number
+  clearFinished(projectPath: string, cwd?: string): number
   /** Stops every process group this runner started; resolves once they are gone. */
   shutdown(): Promise<void>
 }
@@ -103,7 +112,7 @@ interface Entry {
 const ledgerSchema = z.object({
   version: z.literal(1),
   processes: z.array(z.object({
-    id: z.string(), name: z.string(), command: z.string(), projectPath: z.string(), pid: z.number().optional(),
+    id: z.string(), name: z.string(), command: z.string(), projectPath: z.string(), cwd: z.string().optional(), workspaceId: z.string().optional(), pid: z.number().optional(),
     startedAt: z.string(), owner: z.any().optional(), sharedWith: z.array(z.object({ threadId: z.string(), title: z.string() })).optional(),
   })),
 })
@@ -123,7 +132,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
   const writeLedger = (): void => {
     if (!ledgerFile || !ledgerWritable) return
     const live = [...entries.values()].filter((e) => e.child && e.info.status !== 'exited').map(({ info }) => ({
-      id: info.id, name: info.name, command: info.command, projectPath: info.projectPath, ...(info.pid ? { pid: info.pid } : {}),
+      id: info.id, name: info.name, command: info.command, projectPath: info.projectPath, cwd: info.cwd, ...(info.workspaceId ? { workspaceId: info.workspaceId } : {}), ...(info.pid ? { pid: info.pid } : {}),
       startedAt: info.startedAt, owner: info.owner, ...(info.sharedWith ? { sharedWith: info.sharedWith } : {}),
     }))
     try {
@@ -184,11 +193,12 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
 
   const runner: ProcessRunner = {
     start(input, owner = { kind: 'project' }) {
-      const { projectPath, command, name: givenName } = startProcessSchema.parse(input)
-      if (!isDirectory(projectPath)) throw new Error(`Not a folder on this computer: ${projectPath}`)
+      const { projectPath, command, name: givenName, workspaceId, cwd: givenCwd } = startProcessSchema.parse(input)
+      const cwd = givenCwd ?? projectPath
+      if (!isDirectory(cwd)) throw new Error(`Not a folder on this computer: ${cwd}`)
       const name = givenName ?? command
-      // Within one folder (a worktree is its own folder), a running same-name process is reused only for the same command.
-      const same = [...entries.values()].find((entry) => entry.child && entry.info.projectPath === projectPath && entry.info.name === name && entry.info.status !== 'exited')
+      // Within one workspace folder (a worktree is its own folder), a running same-name process is reused only for the same command.
+      const same = [...entries.values()].find((entry) => entry.child && entry.info.projectPath === projectPath && entry.info.cwd === cwd && entry.info.name === name && entry.info.status !== 'exited')
       if (same) {
         if (same.info.command !== command) {
           throw new ProcessConflictError(`“${name}” is already running here with a different command (${same.info.command}). Stop it first, or use another name.`)
@@ -202,7 +212,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
 
       const id = `proc-${launch}-${++counter}`
       const child = spawn('/bin/sh', ['-c', command], {
-        cwd: projectPath,
+        cwd,
         // Own process group, so stop() can take down everything the command forks.
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -215,6 +225,8 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
         name,
         command,
         projectPath,
+        ...(workspaceId ? { workspaceId } : {}),
+        cwd,
         status: 'running',
         ...(child.pid ? { pid: child.pid } : {}),
         startedAt: new Date().toISOString(),
@@ -244,19 +256,19 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
 
     // Same folder, name, command and owner; a new process ID.
     async restart(id) {
-      const { projectPath, command, name, owner, sharedWith } = entryOf(id).info
+      const { projectPath, cwd, workspaceId, command, name, owner, sharedWith } = entryOf(id).info
       await stop(id)
-      const { process } = runner.start({ projectPath, command, name }, owner)
+      const { process } = runner.start({ projectPath, cwd, ...(workspaceId ? { workspaceId } : {}), command, name }, owner)
       if (sharedWith?.length) update(process.id, { sharedWith })
       return entryOf(process.id).info
     },
 
     get: (id) => entries.get(id)?.info,
 
-    list(projectPath) {
+    list(projectPath, cwd) {
       return [...entries.values()]
         .map((entry) => entry.info)
-        .filter((info) => projectPath === undefined || info.projectPath === projectPath)
+        .filter((info) => (projectPath === undefined || info.projectPath === projectPath) && (cwd === undefined || info.cwd === cwd))
         .sort(byStartDesc)
     },
 
@@ -283,8 +295,8 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
       return owned.map((info) => entryOf(info.id).info)
     },
 
-    clearFinished(projectPath) {
-      const finished = [...entries.values()].filter((e) => e.info.projectPath === projectPath && e.info.status === 'exited')
+    clearFinished(projectPath, cwd) {
+      const finished = [...entries.values()].filter((e) => e.info.projectPath === projectPath && (cwd === undefined || e.info.cwd === cwd) && e.info.status === 'exited')
       for (const entry of finished) {
         entries.delete(entry.info.id)
         for (const listener of listeners) listener({ ...entry.info, cleared: true })
@@ -306,7 +318,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
         const output = createOutputBuffer(options.maxOutputBytes ?? DEFAULT_OUTPUT_BYTES)
         output.push('stderr', `[cockpit] Cockpit quit unexpectedly while this ran${p.pid ? ` as process ${p.pid}` : ''}. It may still be running; Cockpit does not stop it, because that number may now belong to another program.\n`)
         const owner = (p.owner && typeof p.owner === 'object' && 'kind' in p.owner ? p.owner : { kind: 'project' }) as ProcessOwner
-        entries.set(p.id, { info: { id: p.id, name: p.name, command: p.command, projectPath: p.projectPath, status: 'exited', ...(p.pid ? { pid: p.pid } : {}),
+        entries.set(p.id, { info: { id: p.id, name: p.name, command: p.command, projectPath: p.projectPath, cwd: p.cwd ?? p.projectPath, ...(p.workspaceId ? { workspaceId: p.workspaceId } : {}), status: 'exited', ...(p.pid ? { pid: p.pid } : {}),
           startedAt: p.startedAt, endedAt, exitCode: null, signal: null, owner, ...(p.sharedWith ? { sharedWith: p.sharedWith } : {}), interrupted: true }, output })
       }
       writeLedger()

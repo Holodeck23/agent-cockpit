@@ -165,7 +165,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     const ports = deps.cockpitPorts()
 
     if (operation === 'read' || operation === 'screenshot') {
-      const page = await ensure(host, key, grant.projectPath)
+      const page = await ensure(host, key, grant.cwd)
       if (!seeable(grant, runId, page.url)) await permit(grant, runId, operation, page.origin, { url: page.url }, signal)
       const result = operation === 'read' ? await conflict(host.read(key)) : await conflict(host.capture(key))
       // The page moved to another site while it was being read: that site needs its own grant.
@@ -177,7 +177,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     }
 
     if (operation === 'navigate') {
-      await ensure(host, key, grant.projectPath)
+      await ensure(host, key, grant.cwd)
       const { url, action } = input as { url?: string; action?: 'back' | 'forward' | 'reload' }
       const target = url ?? (action === 'reload' ? host.info(key)?.url : host.historyUrl(key, action as 'back' | 'forward'))
       if (!target) throw new HttpError(409, `There is no page to go ${action} to.`)
@@ -206,8 +206,8 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
 }
 export type BrowserAgent = ReturnType<typeof createBrowserAgent>
 
-async function ensure(host: BrowserHost, key: string, projectPath: string): Promise<AgentPageInfo> {
-  return conflict(host.ensure(key, projectPath))
+async function ensure(host: BrowserHost, key: string, folder: string): Promise<AgentPageInfo> {
+  return conflict(host.ensure(key, folder))
 }
 /** A host refusal (the page is gone, full, or changed while it was read) is a 409 with its own words. */
 async function conflict<T>(call: Promise<T>): Promise<T> {

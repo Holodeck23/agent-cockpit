@@ -90,6 +90,10 @@ async function approved<T>(deps: McpRouteDeps, grant: McpGrant, res: ServerRespo
   return action()
 }
 
+/** What a preview needs to know about the workspace: nothing for a primary one, the folder for a worktree. */
+const workspaceOf = (grant: McpGrant): { cwd?: string; workspaceId?: string } =>
+  ({ ...(grant.cwd !== grant.projectPath ? { cwd: grant.cwd } : {}), ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) })
+
 export async function handleMcpRoute(
   req: IncomingMessage,
   res: ServerResponse,
@@ -179,7 +183,7 @@ export async function handleMcpRoute(
   if (parts[2] === 'preview' && parts[3] === 'screenshot' && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
     if (deps.inspectPreview) {
-      const shot = await deps.inspectPreview({ url: target, threadId: grant.threadId, projectPath: grant.projectPath })
+      const shot = await deps.inspectPreview({ url: target, threadId: grant.threadId, projectPath: grant.projectPath, ...workspaceOf(grant) })
         .catch((error: unknown) => { throw new HttpError(409, error instanceof Error ? error.message : String(error)) })
       return sendJson(res, 200, { data: { inspected: shot.page?.url ?? target, ...shot } })
     }
@@ -188,7 +192,7 @@ export async function handleMcpRoute(
   }
   if (parts[2] === 'preview' && parts.length === 3 && method === 'POST') {
     const target = assertLocalUrl(parseBody(previewBody, await readJson(req)).url, deps.cockpitPorts?.() ?? [])
-    await openUrl({ url: target, threadId: grant.threadId, projectPath: grant.projectPath })
+    await openUrl({ url: target, threadId: grant.threadId, projectPath: grant.projectPath, ...workspaceOf(grant) })
     sendJson(res, 200, { data: { opened: target } })
     return
   }
@@ -196,14 +200,14 @@ export async function handleMcpRoute(
 
   const id = parts[3]
   if (!id) {
-    if (method === 'GET') return sendJson(res, 200, { data: processes.list(projectPath) })
+    if (method === 'GET') return sendJson(res, 200, { data: processes.list(projectPath, grant.cwd) })
     if (method === 'POST') {
       const body = parseBody(startBody, await readJson(req))
       const owner: ProcessOwner = processOwner?.(grant.threadId) ?? { kind: 'project' }
       const started = await approved(deps, grant, res, 'start_process', { command: body.command, ...(body.name ? { name: body.name } : {}) },
         { description: 'Run this command in the project, as a process Cockpit keeps running.', sessionKey: 'processes' },
         () => {
-          try { return processes.start({ projectPath, ...body }, owner) } catch (error) {
+          try { return processes.start({ projectPath, cwd: grant.cwd, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}), ...body }, owner) } catch (error) {
             if (error instanceof ProcessConflictError) throw new HttpError(409, error.message)
             throw error
           }
@@ -212,8 +216,9 @@ export async function handleMcpRoute(
     }
     throw new HttpError(404, 'Not found')
   }
-  // A process from another project does not exist as far as this session is concerned.
-  if (processes.get(id)?.projectPath !== projectPath) throw new HttpError(404, `No process ${id} in this project`)
+  // A process from another project, or another workspace of this one, does not exist as far as this session is concerned.
+  const known = processes.get(id)
+  if (known?.projectPath !== projectPath || known.cwd !== grant.cwd) throw new HttpError(404, `No process ${id} in this project`)
   const action = parts[4]
   if (method === 'GET' && action === 'output') {
     const since = readCursor(url.searchParams.get('since'), Number.MAX_SAFE_INTEGER)

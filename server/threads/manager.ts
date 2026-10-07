@@ -13,6 +13,7 @@ import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { handoffDigest, previewHandoff, workspaceContext, type HandoffPreview } from './handoff.ts'
 import type { Workspace } from '../projects/workspaces.ts'
+import { isRefusal, workspaceFolder } from '../projects/resolve.ts'
 import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
@@ -255,7 +256,7 @@ export interface ThreadManager {
   /** A Cockpit-side action an agent asked for (conversation control, processes, memory, workflows), approved by the user here. */
   requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options?: HostActionOptions): Promise<Exclude<ApprovalBehavior, 'deny'>>
   canControl(threadId: string): boolean
-  create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
+  create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[]; /** An active workspace of this project to start in; refused (never replaced by the primary) when it is not. */ workspaceId?: string }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
   /** `operationId` makes a repeat of the same request a no-op that answers with the first run. */
   /** `workspaceId` names where it runs; required once the conversation has run in more than one workspace. */
@@ -479,10 +480,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     !workspace ? 'a workspace that no longer exists' : workspace.kind === 'primary' ? 'the main checkout' : `${workspace.name ?? 'a worktree'}${workspace.branch ? ` (${workspace.branch})` : ''}`
   /** The folder a workspace's agent runs in; undefined once it is gone: never the primary in its place (INTERFACES §5). */
   const cwdOf = (meta: ThreadMeta, workspaceId: string | undefined): string | undefined => {
-    if (!workspaceId || !options.workspace) return meta.projectPath
-    const workspace = options.workspace(workspaceId)
-    if (!workspace || workspace.lifecycle !== 'active') return undefined
-    return workspace.kind === 'primary' ? meta.projectPath : workspace.cwd
+    const folder = workspaceFolder(options.workspace, meta.projectPath, workspaceId)
+    return isRefusal(folder) ? undefined : folder.cwd
   }
 
   /** Where the conversation works now, for what an agent is told about its folder. */
@@ -571,7 +570,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       ...(account ? { accountId: account.accountId, accountGeneration: account.generation } : {}) })
     record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta), ...(account ? { account: { id: account.accountId, generation: account.generation } } : {}),
       ...(workspaceId ? { workspaceId } : {}) })
-    const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
+    const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
     let launching = true
@@ -703,8 +702,15 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!live.get(threadId)?.turnRunning || live.get(threadId)?.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
       return hostActions.request(threadId, toolName, input, signal, options)
     },
-    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth, images: attached }) {
+    create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth, images: attached, workspaceId: startIn }) {
       const now = new Date().toISOString()
+      const primary = options.workspaceFor?.(projectPath)
+      if (startIn && startIn !== primary) {
+        const into = options.workspace?.(startIn)
+        const projectId = primary ? options.workspace?.(primary)?.projectId : undefined
+        if (!into || !projectId || into.projectId !== projectId) throw new WorkspaceUnavailableError("That workspace is not part of this project")
+        if (into.lifecycle !== 'active') throw new WorkspaceUnavailableError('That workspace is no longer available')
+      }
       const meta = store.create({
         id: randomUUID(),
         workflowId, workflowTrigger,
@@ -714,7 +720,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         settings,
         sessionId: randomUUID(),
         bindingId: randomUUID(),
-        ...(options.workspaceFor?.(projectPath) ? { workspaceId: options.workspaceFor(projectPath) } : {}),
+        ...((startIn ?? primary) ? { workspaceId: startIn ?? primary } : {}),
         sessionStarted: false,
         completed: false,
         createdAt: now,
