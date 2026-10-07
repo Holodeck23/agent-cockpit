@@ -115,7 +115,7 @@ async function signIn(ctx: Ctx, processId: string, serve = true) {
   const boot = await call(gw, '/__cockpit/bootstrap', { method: 'POST', body: `ticket=${ticket}`,
     headers: viaPreview({ origin: CONTROL, cookie: ctx.device, 'content-type': 'application/x-www-form-urlencoded' }) })
   expect(boot.status).toBe(303)
-  const headers = viaPreview({ cookie: `${ctx.device}; ${String(boot.headers['set-cookie']?.[0]).split(';')[0]}` })
+  const headers: Record<string, string> = viaPreview({ cookie: `${ctx.device}; ${String(boot.headers['set-cookie']?.[0]).split(';')[0]}` })
   return { gw, headers, serviceId: status.services[0].id as string }
 }
 
@@ -246,7 +246,8 @@ describe('phone preview access ends (14c revocation)', () => {
     await ctx.local(`/api/remote/devices/${device.id}/revoke`, {})
     await settle()
     expect(stream.ended()).toBe(true)
-    expect((await call(a.gw, '/', { headers: a.headers })).status).toBe(401)
+    const gone = await call(a.gw, '/', { headers: a.headers })
+    expect([gone.status, gone.headers['x-cockpit-preview']]).toEqual([401, 'revoked'])
     expect((await ctx.phone('/api/phone/preview-tickets', { processId: id })).status).toBe(401)
   }, 30_000)
 

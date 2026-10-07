@@ -69,10 +69,11 @@ export function previewLogin(req: IncomingMessage, policy: GatewayPolicy, servic
   return login && policy.allowedLogins.some((allowed) => allowed.toLowerCase() === login.toLowerCase()) ? login : undefined
 }
 
-type State = 'denied' | 'expired' | 'stopped' | 'invalid-ticket' | 'unavailable' | 'too-large' | 'slow' | 'unreachable'
+type State = 'denied' | 'revoked' | 'expired' | 'stopped' | 'invalid-ticket' | 'unavailable' | 'too-large' | 'slow' | 'unreachable'
 
 const STATE_TEXT: Record<State, { status: number; title: string; body: string }> = {
   denied: { status: 403, title: 'Not available', body: 'This address only works from a paired phone on your tailnet.' },
+  revoked: { status: 401, title: 'This phone is signed out of Cockpit', body: 'Its access was removed on your Mac, or this browser lost its sign-in. Pair it again from Cockpit; nothing here changes your Mac.' },
   expired: { status: 401, title: 'Preview access ended', body: 'It expired, the app restarted, or this phone’s access was removed. Open the app again from Cockpit.' },
   stopped: { status: 503, title: 'The app is not running', body: 'Its dev server stopped, or its port now belongs to another program. Start it again from Cockpit; this page never starts it.' },
   'invalid-ticket': { status: 403, title: 'This link is no longer valid', body: 'Preview links work once, for 30 seconds. Open the app again from Cockpit.' },
@@ -153,8 +154,9 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
     if (!policy || !login) return { state: 'denied', ...(policy ? { policy } : {}) }
     const target = await deps.upstream(service)
     const deviceId = deps.device(req, login)
-    const session = deviceId ? deps.access.session(cookieValues(req, previewCookie(service)).length === 1 ? cookieValues(req, previewCookie(service))[0] : undefined,
-      { serviceId: service.id, login, generation: target?.generation }) : undefined
+    if (!deviceId) return { state: 'revoked', policy }
+    const session = deps.access.session(cookieValues(req, previewCookie(service)).length === 1 ? cookieValues(req, previewCookie(service))[0] : undefined,
+      { serviceId: service.id, login, generation: target?.generation })
     if (!session || session.deviceId !== deviceId) return { state: target ? 'expired' : 'stopped', policy }
     if (!target) return { state: 'stopped', policy }
     return { session, target }
