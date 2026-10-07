@@ -28,11 +28,14 @@ import { notificationText, useNotifySettings } from './mac-notifications.ts'
 import { Mark, SlidersIcon } from './components/icons.tsx'
 import { native } from './native.ts'
 import { isWorking, needsYou } from './conversation-meta.ts'
-import type { PageMode } from './api.ts'
+import type { PageMode, ThreadMeta } from './api.ts'
 import { PairingRequests, PhonePanel } from './components/PhonePanel.tsx'
 import { PhoneNotify } from './components/PhoneNotify.tsx'
 import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
+import { useWorkspaces } from './useWorkspaces.ts'
+import { WorkspaceSelector } from './components/WorkspaceSelector.tsx'
+import { currentWorkspaceOf, folderOf, isActiveWorktree, isUsable, labelOf, saveSelected, sendTarget, threadsIn, type ThreadWorkspace } from './workspaces.ts'
 import { PreviewPane } from './components/PreviewPane.tsx'
 import { BrowserPane } from './components/BrowserPane.tsx'
 import { loadLayouts, openPage, saveLayouts, updatePage, type LayoutMap, type PaneLayout } from './browser-layout.ts'
@@ -54,6 +57,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const phone = !local
   const cockpit = useCockpit(local)
   const projects = useProjects(cockpit.threads, cockpit.reportError)
+  const workspaces = useWorkspaces(phone ? undefined : projects.active, local)
+  const { selection } = workspaces
   const theme = useTheme()
   const { appearance, update: updateAppearance } = useAppearance()
   const { sounds, setSounds } = useSoundSettings()
@@ -136,24 +141,26 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const openFileFromReply = useCallback((target: FileTarget) => { setReveal({ target, nonce: Date.now() }); setSection('files') }, [setSection])
   const pinnedDocuments = usePinnedDocuments(phone ? undefined : projects.active?.path, !phone)
   const replyProject = phone ? undefined : cockpit.detail?.meta.projectPath
+  // A conversation that works in a worktree reads its files and commits there.
+  const replyWorkspace = phone ? undefined : workspaces.worktrees.find((w) => w.id === cockpit.detail?.meta.workspaceId)?.id
   // A commit in a reply opens its page on the repository's host; without one the hash is copied.
   const openCommitFromReply = useCallback(async (hash: string): Promise<CommitOutcome> => {
     if (!replyProject) return 'missing'
-    const commit = await api.gitCommit(replyProject, hash).catch(() => undefined)
+    const commit = await api.gitCommit(replyProject, hash, replyWorkspace).catch(() => undefined)
     if (!commit) return 'missing'
     if (commit.url) { window.open(commit.url, '_blank', 'noopener'); return 'opened' }
     if (native) native.copyText(commit.hash.slice(0, 12))
     else await navigator.clipboard?.writeText(commit.hash.slice(0, 12)).catch(() => undefined)
     return 'copied'
-  }, [replyProject])
+  }, [replyProject, replyWorkspace])
   const replyThread = phone ? undefined : cockpit.detail?.meta.id
   // G5: a web link in a reply opens beside the chat, in that conversation's own page.
   const openWebFromReply = useCallback((url: string) => {
     if (replyProject && replyThread) showPage({ url, projectPath: replyProject, threadId: replyThread })
   }, [replyProject, replyThread, showPage])
-  const replyContext = useMemo(() => ({ projectPath: replyProject, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply,
+  const replyContext = useMemo(() => ({ projectPath: replyProject, workspaceId: replyWorkspace, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply,
     ...(inAppBrowser ? { onOpenWeb: openWebFromReply } : {}) }),
-    [replyProject, openFileFromReply, openCommitFromReply, inAppBrowser, openWebFromReply])
+    [replyProject, replyWorkspace, openFileFromReply, openCommitFromReply, inAppBrowser, openWebFromReply])
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
@@ -161,15 +168,23 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   // A clicked Mac notification opens its conversation, in whichever project it belongs to.
   const threadsRef = useRef(cockpit.threads)
   threadsRef.current = cockpit.threads
+  const projectsRef = useRef(projects.all)
+  projectsRef.current = projects.all
+  // Opening a conversation from elsewhere shows the workspace it works in, so a reply does not move it.
+  const focusWorkspaceOf = useCallback((meta: ThreadMeta): void => {
+    const primary = projectsRef.current.find((p) => p.path === meta.projectPath)?.workspaceId
+    saveSelected(meta.projectPath, meta.workspaceId && meta.workspaceId !== primary ? meta.workspaceId : undefined)
+  }, [])
   const { select: selectProject } = projects
   const { select: selectThread } = cockpit
   useEffect(() => local ? native?.onOpenThread((id) => {
     const thread = threadsRef.current.find((t) => t.meta.id === id)
     if (!thread) return
+    focusWorkspaceOf(thread.meta)
     selectProject(thread.meta.projectPath)
     setSection('conversations')
     selectThread(id)
-  }) : undefined, [local, selectProject, selectThread, setSection])
+  }) : undefined, [local, selectProject, selectThread, setSection, focusWorkspaceOf])
 
   // ⌘1–9 project tabs, ⌥⌘1–5 sections (shortcuts.ts). The same moves as clicking the tab or section.
   const tabsRef = useRef(projects.tabs)
@@ -192,7 +207,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }, [phone, selectProject, selectThread, setSection])
 
   const activePath = projects.active?.path
-  const visible = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  const projectThreads = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  // Once the project has a worktree the list follows the selected workspace; a conversation that ran in several shows under each.
+  const primaryId = projects.active?.workspaceId
+  const filtering = !phone && (workspaces.worktrees.length > 0 || selection.kind !== 'primary')
+  const visible = filtering ? threadsIn(projectThreads, selection.id, primaryId) : projectThreads
   // A tapped notification opens /?thread=<id>: select it once, then tidy the address.
   const { select } = cockpit
   useEffect(() => {
@@ -205,8 +224,14 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
   const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
   const hideList = listHidden && !phone
+  // A page's website data lives with its folder: a conversation's own workspace, else the selected one.
+  const previewThread = section === 'conversations' && selectedId ? cockpit.threads.find((t) => t.meta.id === selectedId) : undefined
+  const previewFolder = !projects.active ? undefined
+    : previewThread ? folderOf(workspaces.list, projects.active, previewThread.meta.workspaceId)
+    : selection.kind === 'worktree' ? selection.folder : projects.active.path
   const previewTarget = activePath ? {
     projectPath: activePath,
+    ...(previewFolder && previewFolder !== activePath ? { cwd: previewFolder } : {}),
     ...(section === 'conversations' && selectedId ? { threadId: selectedId } : {}),
   } : undefined
   const activePreviewUrl = previewUrl(previews, previewTarget)
@@ -219,6 +244,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const openProcessSite = (preview: PreviewOpen): void => {
     showPage(preview)
     if (preview.threadId) {
+      const meta = cockpit.threads.find((t) => t.meta.id === preview.threadId)?.meta
+      if (meta) focusWorkspaceOf(meta)
       selectProject(preview.projectPath)
       selectThread(preview.threadId)
       setSection('conversations')
@@ -232,6 +259,30 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     cockpit.select(meta.id)
     setDirector(false)
   }} />
+
+  // The selector sits under the conversation list title; Files and Processes say which workspace they show.
+  const workspaceSlot = !phone && projects.active?.projectId ? (
+    <WorkspaceSelector project={projects.active} workspaces={workspaces} threads={projectThreads}
+      onSelect={(id) => { workspaces.select(id); cockpit.select(undefined) }} onError={cockpit.reportError} />
+  ) : undefined
+  const workspaceLabel = workspaces.hasWorktrees ? selection.label : undefined
+  const workspaceFor = (meta?: ThreadMeta): ThreadWorkspace | undefined => {
+    const project = projects.active
+    if (phone || !project) return undefined
+    const explicit = workspaces.hasWorktrees || Object.keys(meta?.bindings ?? {}).length > 0
+    const target = sendTarget(selection, workspaces.hasWorktrees, meta)
+    const currentId = meta ? currentWorkspaceOf(meta, primaryId) : selection.id
+    const currentLabel = meta ? labelOf(workspaces.list, project, currentId) : selection.label
+    const moves = meta && target.ok && explicit && currentId && selection.id && currentId !== selection.id ? { to: selection.label, from: currentLabel } : undefined
+    return { scope: selection.scope, folder: selection.folder, target, currentLabel, showLabel: explicit, ...(moves ? { moves } : {}) }
+  }
+  const workspaceGone = (title: string): React.ReactNode => (
+    <main className="workflow-empty" role="status">
+      <h1>{title}</h1>
+      <p>{selection.kind === 'loading' ? 'Loading workspaces…' : `${selection.label.replace(/ \(missing\)$/, '')} no longer exists. Nothing is shown from another checkout in its place.`}</p>
+      {selection.kind === 'missing' ? <button type="button" className="button-soft" onClick={() => workspaces.select(undefined)}>Use the main checkout</button> : null}
+    </main>
+  )
 
   return (
     <div className={`app${projects.active ? ` tint-${projects.active.color}` : ''}`}>
@@ -288,7 +339,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           {phone || hideList ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
           {hideList ? null : (
             <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
-              {...(phone ? { projectName, canCreate: false } : {})} />
+              workspaceSlot={workspaceSlot} {...(phone ? { projectName, canCreate: false } : {})} />
           )}
           {hideList && listOpen ? (
             <div className="list-dropdown" role="dialog" aria-label="Conversations list"
@@ -296,7 +347,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               <div className="list-dropdown-actions">
                 <button type="button" className="button-soft" onClick={() => setHidden(false)}>Keep list open</button>
               </div>
-              <ConversationList key={`list-drop:${activePath ?? ''}`} threads={visible} selectedId={selectedId} rowShows={appearance.rows}
+              <ConversationList key={`list-drop:${activePath ?? ''}`} threads={visible} selectedId={selectedId} rowShows={appearance.rows} workspaceSlot={workspaceSlot}
                 onSelect={(id) => { cockpit.select(id); setListOpen(false) }} />
             </div>
           ) : null}
@@ -315,6 +366,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onToggleList={() => setHidden(!hideList)}
               listHidden={hideList}
               onOpenFile={openFileFromReply}
+              workspace={workspaceFor(cockpit.detail.meta)}
             />
           ) : (
             <main className="thread" role="status">Loading conversation…</main>
@@ -322,8 +374,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
             <main className="thread thread-pick">Pick a conversation to follow it here.</main>
           ) : (
             <NewConversation
-              key={`new:${activePath ?? ''}`}
+              key={`new:${activePath ?? ''}${selection.scope ? `@${selection.scope}` : ''}`}
               project={projects.active}
+              workspace={workspaceFor()}
               initialDraft={fileDraft && !fileDraft.threadId && fileDraft.projectPath === activePath ? fileDraft.text : undefined}
               onDraftLoaded={clearFileDraft}
               onBrowseFiles={() => setSection('files')}
@@ -342,7 +395,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           )}
         </div>
       ) : section === 'files' ? (
-        <Files key={activePath ?? 'no-project'} project={projects.active} reveal={reveal}
+        !isUsable(selection) ? workspaceGone('Files') : <Files key={`${activePath ?? 'no-project'}${selection.scope ? `@${selection.scope}` : ''}`} project={projects.active} reveal={reveal}
+          workspace={{ ...(selection.scope ? { scope: selection.scope } : {}), folder: selection.folder }} workspaceLabel={workspaceLabel} guard={workspaces.guard}
           onPins={(pins) => { if (projects.active) void projects.setPinnedFiles(projects.active, pins) }} onAttach={(reference) => {
           if (!activePath) return
           setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
@@ -352,14 +406,16 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         <Memory key={activePath ?? 'no-project'} project={projects.active} threads={cockpit.threads} onError={cockpit.reportError}
           onOpenThread={(id) => { cockpit.select(id); setSection('conversations') }} />
       ) : section === 'processes' ? (
-        <Processes key={activePath ?? 'no-project'} project={projects.active} processes={cockpit.processes} onError={cockpit.reportError} onOpenSite={openProcessSite} />
+        !isUsable(selection) ? workspaceGone('Processes') : <Processes key={`${activePath ?? 'no-project'}${selection.scope ? `@${selection.scope}` : ''}`} project={projects.active}
+          workspace={{ id: selection.id, folder: selection.folder, scope: selection.scope, ...(workspaceLabel ? { label: workspaceLabel } : {}), ...(workspaces.hasWorktrees && selection.id ? { clearId: selection.id } : {}) }}
+          processes={cockpit.processes} onError={cockpit.reportError} onOpenSite={openProcessSite} />
       ) : (
         <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError} initialGallery={galleryFirst}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />
       )}
         </div>
         {browserOpen && activeLayout && activePageKey && previewTarget ? (
-          <BrowserPane key={activePageKey} pageKey={activePageKey} projectPath={previewTarget.projectPath} layout={activeLayout} openNonce={openNonce}
+          <BrowserPane key={activePageKey} pageKey={activePageKey} projectPath={previewTarget.cwd ?? previewTarget.projectPath} layout={activeLayout} openNonce={openNonce}
             onLayout={changeLayout} onClose={() => changeLayout({ visible: false })} />
         ) : null}
         {!inAppBrowser && local && activePreviewUrl && previewTarget ? <PreviewPane url={activePreviewUrl}

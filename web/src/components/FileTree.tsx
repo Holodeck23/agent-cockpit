@@ -7,9 +7,12 @@ import { FileRow } from './FileRow.tsx'
 import { back, canGoBack, canGoForward, currentFolder, forward, parentOf, startHistory, visit } from '../folder-history.ts'
 import { ArrowUpLeftIcon, ChevronLeftIcon, ChevronRightIcon, FolderIcon, HomeIcon } from './icons.tsx'
 import { NewFileMenu } from './NewFileMenu.tsx'
+import { nativeFolder, type WorkspaceRef } from '../workspaces.ts'
 
 interface FileTreeProps {
   project: Project
+  /** The selected worktree; absent for the main checkout. */
+  workspace?: WorkspaceRef
   selected?: string
   /** Open files with unsaved changes. */
   dirty: ReadonlySet<string>
@@ -24,7 +27,7 @@ interface FileTreeProps {
   onPins: (pins: readonly string[]) => void
 }
 
-export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed, onTrashed, onError, pins, onPins }: FileTreeProps) {
+export function FileTree({ project, workspace, selected, dirty, onOpen, onCreate, onRenamed, onTrashed, onError, pins, onPins }: FileTreeProps) {
   const [history, setHistory] = useState(startHistory)
   const folder = currentFolder(history)
   const setFolder = (next: string): void => setHistory((h) => visit(h, next))
@@ -37,16 +40,16 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
     let active = true
     setListing(undefined)
     setError('')
-    api.listFiles(project.path, folder).then(
+    api.listFiles(project.path, folder, workspace?.scope).then(
       (next) => { if (active) setListing(next) },
       (e: unknown) => { if (active) setError(e instanceof Error ? e.message : String(e)) },
     )
     return () => { active = false }
-  }, [project, folder, refresh])
+  }, [project, workspace?.scope, folder, refresh])
 
   // Files dropped here are copied into this folder (F8); the list then shows them.
   const [dropNote, setDropNote] = useState('')
-  const { dragging, dropProps } = useFileDrop({ projectPath: project.path, space: 'project', folder }, (result) => {
+  const { dragging, dropProps } = useFileDrop({ projectPath: nativeFolder(project.path, 'project', workspace), space: 'project', folder }, (result) => {
     setDropNote(result.note)
     reload()
     if (result.copied.length === 1) onOpen(result.copied[0]!)
@@ -74,7 +77,7 @@ export function FileTree({ project, selected, dirty, onOpen, onCreate, onRenamed
           <span>›</span>
         </button>
       ) : (
-        <FileRow key={entry.path} projectPath={project.path} path={entry.path} selected={selected === entry.path} dirty={dirty.has(entry.path)}
+        <FileRow key={entry.path} projectPath={project.path} workspace={workspace} path={entry.path} selected={selected === entry.path} dirty={dirty.has(entry.path)}
           pinned={pins.includes(entry.path)}
           extra={[{ label: pins.includes(entry.path) ? 'Unpin from navigation' : 'Pin to navigation', run: async () => onPins(togglePin(pins, entry.path)) }]}
           onOpen={() => onOpen(entry.path)} onError={onError}

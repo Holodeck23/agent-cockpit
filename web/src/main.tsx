@@ -41,6 +41,7 @@ void boot(root)
 import './styles/files.css'
 import './styles/picker.css'
 import './styles/git.css'
+import './styles/workspaces.css'
 import './styles/processes.css'
 import './styles/results.css'
 import './styles/conversation-actions.css'

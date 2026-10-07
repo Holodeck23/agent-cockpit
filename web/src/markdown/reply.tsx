@@ -15,6 +15,8 @@ const OUTCOME: Record<CommitOutcome, string> = { opened: '', copied: 'Copied (no
 /** Where a reply's `path:line` references point and what opening one does. */
 export const ReplyContext = createContext<{
   projectPath?: string
+  /** The conversation's worktree, when it works in one: files and commits are read there. */
+  workspaceId?: string
   onOpenFile?: (target: FileTarget) => void
   onOpenCommit?: (hash: string) => Promise<CommitOutcome>
   /** Opens a web link in the conversation's browser pane; absent where there is none. */

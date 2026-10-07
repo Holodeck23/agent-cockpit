@@ -37,7 +37,9 @@ import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
 import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo, ProcessRead } from '../../server/processes/runner.ts'
-import type { Project, ProjectPatch } from '../../server/projects/store.ts'
+import type { Project as StoredProject, ProjectPatch } from '../../server/projects/store.ts'
+import type { Workspace } from '../../server/projects/workspaces.ts'
+import type { PendingOperation, Preflight } from '../../server/projects/worktrees.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 import type { RemoteStatus } from '../../server/remote/service.ts'
@@ -47,7 +49,14 @@ import type { GitState } from '../../server/git/branches.ts'
 
 export type { AgentCapabilities, LatestCheck, OperationKind, OperationView, Plan }
 export type { PreviewsStatus }
-export type { AgentStatus, ProcessInfo, ProcessRead, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+export type { AgentStatus, ProcessInfo, ProcessRead, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
+
+/** A project as the list returns it: with the opaque IDs of the project and its primary workspace (absent if identity is unavailable). */
+export type Project = StoredProject & { readonly projectId?: string; readonly workspaceId?: string }
+export type { PendingOperation, Preflight, Workspace }
+
+/** A project's workspaces: the registered ones (primary first) and creates a crash left unfinished. */
+export interface WorkspaceList { readonly revision: number; readonly workspaces: readonly Workspace[]; readonly pending: readonly PendingOperation[] }
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
 export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean; notifications: boolean }
@@ -78,6 +87,9 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
   return payload.data
 }
 
+/** `{ workspaceId }` for a worktree (the route then works in its folder), nothing for the primary (the path alone means it). */
+const inWorkspace = (workspaceId?: string): { workspaceId?: string } => (workspaceId ? { workspaceId } : {})
+
 /** The project's branch state plus the conversations that would block a switch. */
 export type GitView = GitState & { readonly busy: readonly string[]; readonly pushedTo?: string }
 
@@ -103,17 +115,17 @@ export const api = {
     request<ThreadMeta>('/api/onboarding/start', { method: 'POST', body }),
   /** Conversations whose messages contain every word of `q`, with an excerpt (Mac only). */
   searchThreads: (q: string) => request<Array<{ id: string; excerpt: string }>>(`/api/threads/search?${new URLSearchParams({ q })}`),
-  gitState: (projectPath: string) => request<GitView>(`/api/git?${new URLSearchParams({ projectPath })}`),
-  switchBranch: (projectPath: string, branch: string, threadId?: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch, threadId } }),
-  createBranch: (projectPath: string, branch: string, threadId?: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch, threadId } }),
+  gitState: (projectPath: string, workspaceId?: string) => request<GitView>(`/api/git?${new URLSearchParams({ projectPath, ...inWorkspace(workspaceId) })}`),
+  switchBranch: (projectPath: string, branch: string, threadId?: string, workspaceId?: string) => request<GitView>('/api/git/switch', { method: 'POST', body: { projectPath, branch, threadId, ...inWorkspace(workspaceId) } }),
+  createBranch: (projectPath: string, branch: string, threadId?: string, workspaceId?: string) => request<GitView>('/api/git/create', { method: 'POST', body: { projectPath, branch, threadId, ...inWorkspace(workspaceId) } }),
   /** A commit named in a reply: its full hash and web page, or a 404 when it isn't a commit here. */
-  gitCommit: (projectPath: string, hash: string) => request<{ hash: string; url?: string }>(`/api/git/commit?${new URLSearchParams({ projectPath, hash })}`),
-  pushBranch: (projectPath: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath } }),
+  gitCommit: (projectPath: string, hash: string, workspaceId?: string) => request<{ hash: string; url?: string }>(`/api/git/commit?${new URLSearchParams({ projectPath, hash, ...inWorkspace(workspaceId) })}`),
+  pushBranch: (projectPath: string, workspaceId?: string) => request<GitView>('/api/git/push', { method: 'POST', body: { projectPath, ...inWorkspace(workspaceId) } }),
   /** J4: the workspace's uncommitted changes against HEAD (or an empty base), and one file's bounded diff. */
-  gitChanges: (projectPath: string) => request<Changes | NoRepository>(`/api/git/changes?${new URLSearchParams({ projectPath })}`),
-  gitDiff: (projectPath: string, path: string) => request<FileDiff>(`/api/git/diff?${new URLSearchParams({ projectPath, path })}`),
+  gitChanges: (projectPath: string, workspaceId?: string) => request<Changes | NoRepository>(`/api/git/changes?${new URLSearchParams({ projectPath, ...inWorkspace(workspaceId) })}`),
+  gitDiff: (projectPath: string, path: string, workspaceId?: string) => request<FileDiff>(`/api/git/diff?${new URLSearchParams({ projectPath, path, ...inWorkspace(workspaceId) })}`),
   /** The base revision's copy of a changed path: the read-only view of a left-side line. */
-  gitBase: (projectPath: string, path: string) => request<BaseFile>(`/api/git/base?${new URLSearchParams({ projectPath, path })}`),
+  gitBase: (projectPath: string, path: string, workspaceId?: string) => request<BaseFile>(`/api/git/base?${new URLSearchParams({ projectPath, path, ...inWorkspace(workspaceId) })}`),
   /** One run's before/after observations, compared (W7-05). */
   gitRun: (threadId: string, runId: string) => request<RunChanges>(`/api/git/run?${new URLSearchParams({ threadId, runId })}`),
   /** Host-observed result evidence for one finished provider turn (pilot 10.1). */
@@ -127,11 +139,11 @@ export const api = {
     request<Assessment>(`/api/runs/${encodeURIComponent(runId)}/assessments`, { method: 'POST', body: { threadId, evidenceId, verdict, note } }),
   resultEvidence: (threadId: string, runId: string, evidenceId: string) =>
     `/api/runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}?${new URLSearchParams({ threadId })}`,
-  listFiles: (projectPath: string, path = '') => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path })}`),
+  listFiles: (projectPath: string, path = '', workspaceId?: string) => request<FileListing>(`/api/files?${new URLSearchParams({ projectPath, path, ...inWorkspace(workspaceId) })}`),
   /** A "documents:" path reads from the project's documents; the result keeps the same naming. */
-  readFile: async (projectPath: string, tabPath: string) => {
+  readFile: async (projectPath: string, tabPath: string, workspaceId?: string) => {
     const { space, path } = spaceOf(tabPath)
-    const read = await request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path, space })}`)
+    const read = await request<FilePreview>(`/api/files/read?${new URLSearchParams({ projectPath, path, space, ...inWorkspace(workspaceId) })}`)
     return { ...read, path: inSpace(space, read.path) }
   },
   listMemory: (projectPath: string) => request<MemoryEntry[]>(`/api/memory?${new URLSearchParams({ projectPath })}`),
@@ -150,17 +162,17 @@ export const api = {
   markDocument: (projectPath: string, path: string, change: { pinned?: boolean; archived?: boolean }) =>
     request<DocumentEntry[]>('/api/documents/mark', { method: 'POST', body: { projectPath, path, ...change } }),
   /** Renames in place; resolves to the new tab path. */
-  renameFile: async (projectPath: string, tabPath: string, name: string) => {
+  renameFile: async (projectPath: string, tabPath: string, name: string, workspaceId?: string) => {
     const { space, path } = spaceOf(tabPath)
-    const renamed = await request<{ path: string }>('/api/files/rename', { method: 'POST', body: { projectPath, path, name, space } })
+    const renamed = await request<{ path: string }>('/api/files/rename', { method: 'POST', body: { projectPath, path, name, space, ...inWorkspace(workspaceId) } })
     return inSpace(space, renamed.path)
   },
-  searchFiles: (projectPath: string, q: string) => request<FileSearch>(`/api/files/search?${new URLSearchParams({ projectPath, q })}`),
-  checkReferences: (projectPath: string, text: string) => request<ReferenceCheck[]>('/api/references/check', { method: 'POST', body: { projectPath, text } }),
+  searchFiles: (projectPath: string, q: string, workspaceId?: string) => request<FileSearch>(`/api/files/search?${new URLSearchParams({ projectPath, q, ...inWorkspace(workspaceId) })}`),
+  checkReferences: (projectPath: string, text: string, workspaceId?: string) => request<ReferenceCheck[]>('/api/references/check', { method: 'POST', body: { projectPath, text, ...inWorkspace(workspaceId) } }),
   /** `expected` is the version the edit started from; null creates a new file. */
-  writeFile: async (projectPath: string, tabPath: string, text: string, expected: string | null) => {
+  writeFile: async (projectPath: string, tabPath: string, text: string, expected: string | null, workspaceId?: string) => {
     const { space, path } = spaceOf(tabPath)
-    const saved = await request<FileSaved>('/api/files/write', { method: 'PUT', body: { projectPath, path, text, expected, space } })
+    const saved = await request<FileSaved>('/api/files/write', { method: 'PUT', body: { projectPath, path, text, expected, space, ...inWorkspace(workspaceId) } })
     return { ...saved, path: inSpace(space, saved.path) }
   },
   listWorkflows: (projectPath: string) => request<Workflow[]>(`/api/workflows?projectPath=${encodeURIComponent(projectPath)}`),
@@ -200,12 +212,20 @@ export const api = {
   removeProject: (path: string) => request<{ project: Project; pausedSchedules: number }>('/api/projects/remove', { method: 'POST', body: { path } }),
   openProject: (path: string, patch: ProjectPatch = {}) =>
     request<Project>('/api/projects', { method: 'POST', body: { path, ...patch } }),
+  /** A project's workspaces (Mac only): registered ones, primary first, and interrupted creates. */
+  workspaces: (projectId: string) => request<WorkspaceList>(`/api/projects/${projectId}/workspaces`),
+  /** What a new worktree would start from, and how many uncommitted files in the main checkout it will not contain. */
+  workspacePreflight: (projectId: string) => request<Preflight>(`/api/projects/${projectId}/workspaces/preflight`),
+  createWorkspace: (projectId: string, body: { name: string; base?: string; branch?: string }) =>
+    request<{ workspace: Workspace }>(`/api/projects/${projectId}/workspaces`, { method: 'POST', body }),
+  recoverWorkspaceOperation: (id: string) => request<{ workspace: Workspace }>(`/api/workspace-operations/${id}/recover`, { method: 'POST', body: {} }),
+  dismissWorkspaceOperation: (id: string) => request<{ operation: PendingOperation }>(`/api/workspace-operations/${id}/dismiss`, { method: 'POST', body: {} }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
-  createThread: (body: { projectPath: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
+  createThread: (body: { projectPath: string; workspaceId?: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),
   /** One operation ID per call: a request the network repeats is answered once by the host (ID-05). */
-  send: (id: string, text: string, images?: readonly MessageImage[]) =>
-    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}), ...operationId() } }),
+  send: (id: string, text: string, images?: readonly MessageImage[], workspaceId?: string) =>
+    request<unknown>(`/api/threads/${id}/messages`, { method: 'POST', body: { text, ...(images?.length ? { images } : {}), ...inWorkspace(workspaceId), ...operationId() } }),
   approve: (id: string, requestId: string, behavior: ApprovalBehavior) =>
     request<unknown>(`/api/threads/${id}/approvals/${requestId}`, { method: 'POST', body: { behavior } }),
   /** Takes a waiting message back; resolves to its text and images for the draft (J1, R8). */
@@ -232,7 +252,7 @@ export const api = {
   stopProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/stop`, { method: 'POST', body: {} }),
   restartProcess: (id: string) => request<ProcessInfo>(`/api/processes/${id}/restart`, { method: 'POST', body: {} }),
   /** Drops this folder's finished rows from the history; stops nothing. */
-  clearFinishedProcesses: (projectPath: string) => request<{ cleared: number }>(`/api/processes/clear-finished?${new URLSearchParams({ project: projectPath })}`, { method: 'POST', body: {} }),
+  clearFinishedProcesses: (projectPath: string, workspaceId?: string) => request<{ cleared: number }>(`/api/processes/clear-finished?${new URLSearchParams({ project: projectPath, ...inWorkspace(workspaceId) })}`, { method: 'POST', body: {} }),
   /** Output lines after `since`, or the last `tail` lines. */
   readProcess: (id: string, options: { since?: number; tail?: number }) =>
     request<ProcessRead>(`/api/processes/${id}/output?${new URLSearchParams(Object.entries(options).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),

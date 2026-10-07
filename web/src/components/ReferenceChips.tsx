@@ -8,7 +8,7 @@ import { FileIcon, WorkflowIcon } from './icons.tsx'
  * What the draft will attach, one chip per reference. A reference that would fail if sent
  * now (missing file, unknown workflow) turns red before sending; duplicates are marked.
  */
-export function ReferenceChips({ projectPath, text, onRemove }: { projectPath?: string; text: string; onRemove: (token: string) => void }) {
+export function ReferenceChips({ projectPath, workspaceId, text, onRemove }: { projectPath?: string; workspaceId?: string; text: string; onRemove: (token: string) => void }) {
   const references = referencesIn(text)
   const [checks, setChecks] = useState<ReferenceCheck[]>([])
   const signature = references.map((r) => tokenFor(r.kind, r.reference)).join(' ')
@@ -16,13 +16,13 @@ export function ReferenceChips({ projectPath, text, onRemove }: { projectPath?: 
     if (!projectPath || !signature) { setChecks([]); return }
     let live = true
     const check = (): void => {
-      api.checkReferences(projectPath, signature).then((rows) => { if (live) setChecks(rows) }, () => { if (live) setChecks([]) })
+      api.checkReferences(projectPath, signature, workspaceId).then((rows) => { if (live) setChecks(rows) }, () => { if (live) setChecks([]) })
     }
     const first = setTimeout(check, 250)
     // Files can disappear while the draft waits (the agent may delete one), so keep checking.
     const again = setInterval(check, 4000)
     return () => { live = false; clearTimeout(first); clearInterval(again) }
-  }, [projectPath, signature])
+  }, [projectPath, workspaceId, signature])
   if (references.length === 0) return null
   return (
     <ul className="reference-chips" aria-label="Attached to this message">

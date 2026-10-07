@@ -3,6 +3,7 @@ import type { SettingsPatch } from '../useProjects.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../api.ts'
 import { native } from '../native.ts'
+import { isActiveWorktree } from '../workspaces.ts'
 import { avatarDataUrl } from '../project-image.ts'
 import { AntigravityTools } from './AntigravityTools.tsx'
 import { AccountChoice } from './AccountChoice.tsx'
@@ -118,7 +119,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           <AntigravityTools project={project} />
           <ProjectAccounts projectPath={project.path} />
           <DocumentsFolder projectPath={project.path} />
-          {native?.browser ? <WebsiteData projectPath={project.path} projectName={project.name} /> : null}
+          {native?.browser ? <WebsiteData projectPath={project.path} projectId={project.projectId} projectName={project.name} /> : null}
           <div className="field">
             <span>Folder</span>
             <div className="project-folder">
@@ -162,12 +163,26 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
  * The in-app browser's website data for this project (W9.2): logins and storage of the sites
  * opened in its conversations. Separate from agent sign-ins, which this never touches.
  */
-function WebsiteData({ projectPath, projectName }: { projectPath: string; projectName: string }) {
+function WebsiteData({ projectPath, projectId, projectName }: { projectPath: string; projectId?: string; projectName: string }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // A worktree's pages keep their data with its folder: clearing the project's data clears theirs too.
+  const [worktrees, setWorktrees] = useState<readonly string[]>([])
+  useEffect(() => {
+    if (!projectId) return
+    let live = true
+    api.workspaces(projectId).then((answer) => { if (live) setWorktrees(answer.workspaces.filter(isActiveWorktree).map((w) => w.cwd)) }, () => undefined)
+    return () => { live = false }
+  }, [projectId])
   const clear = (): void => {
     setBusy(true)
-    void native?.browser?.clearData(projectPath).then((error) => setNote(error ?? `Cleared website data for ${projectName}.`)).finally(() => setBusy(false))
+    const browser = native?.browser
+    void Promise.all([projectPath, ...worktrees].map((folder) => browser?.clearData(folder)))
+      .then((errors) => {
+        const error = errors.find((e) => e)
+        setNote(error ?? `Cleared website data for ${projectName}${worktrees.length ? ` and ${worktrees.length === 1 ? 'its worktree' : `its ${worktrees.length} worktrees`}` : ''}.`)
+      })
+      .finally(() => setBusy(false))
   }
   return (
     <div className="field">

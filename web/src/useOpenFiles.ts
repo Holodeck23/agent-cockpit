@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api.ts'
-import { copyPath, draftKey, forDisk, inSpace, isDirty, NEW_FILE_KINDS, newFilePath, openFile, tabsKey, withExtension, type FileSpace, type NewFileKind, type OpenFile } from './file-text.ts'
+import type { SelectionGuard } from './workspaces.ts'
+import { copyPath, draftKey, forDisk, inSpace, isDirty, NEW_FILE_KINDS, newFilePath, openFile, spaceOf, tabsKey, withExtension, type FileSpace, type NewFileKind, type OpenFile } from './file-text.ts'
 
 // The Files panel's open files. Drafts and the open tabs live in localStorage per
 // project, so leaving the panel, switching project or restarting loses nothing.
@@ -27,7 +28,15 @@ function parse<T>(raw: string | null): T | undefined {
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-export function useOpenFiles(projectPath: string | undefined) {
+/**
+ * `scope` is a worktree's workspace ID (absent: the main checkout). Tabs and drafts are kept per
+ * workspace, the main checkout's under exactly the keys they always had. `guard` drops an answer
+ * that arrives after the person chose another workspace.
+ */
+export function useOpenFiles(projectPath: string | undefined, scope?: string, guard?: SelectionGuard) {
+  const tabsFor = projectPath && scope ? `${projectPath}@${scope}` : projectPath
+  // Your documents belong to the project, not to a workspace: their drafts keep the project's key.
+  const draftFor = (path: string): string | undefined => (spaceOf(path).space === 'documents' ? projectPath : tabsFor)
   const [files, setFiles] = useState<readonly OpenFile[]>([])
   const [active, setActive] = useState<string>()
   const [error, setError] = useState('')
@@ -47,22 +56,24 @@ export function useOpenFiles(projectPath: string | undefined) {
     if (!quiet) { setError(''); requested.current = path }
     const existing = current.current.find((f) => f.path === path)
     if (existing && isDirty(existing)) { if (!quiet || !requested.current) setActive(path); return }
+    const stillCurrent = guard?.begin()
     try {
-      const read = await api.readFile(projectPath, path)
-      const stored = existing ? undefined : parse<StoredDraft>(storage.get(draftKey(projectPath, read.path)))
+      const read = await api.readFile(projectPath, path, scope)
+      if (stillCurrent && !stillCurrent()) return
+      const stored = existing ? undefined : parse<StoredDraft>(storage.get(draftKey(draftFor(read.path) ?? projectPath, read.path)))
       const next = { ...openFile(read.path, read.text, read.version, stored?.draft), conflict: stored !== undefined && stored.version !== read.version }
       setFiles((all) => (all.some((f) => f.path === read.path) ? all.map((f) => (f.path === read.path ? next : f)) : [...all, next]))
       if (!quiet || !requested.current) setActive(read.path)
     } catch (e) {
       if (!quiet) setError(messageOf(e))
     }
-  }, [projectPath])
+  }, [projectPath, scope, guard])
 
   // Reopen last visit's files (their drafts come back from storage).
   useEffect(() => {
     if (!projectPath) return
     let cancelled = false
-    const saved = parse<StoredTabs>(storage.get(tabsKey(projectPath)))
+    const saved = parse<StoredTabs>(storage.get(tabsKey(tabsFor ?? projectPath)))
     void (async () => {
       for (const path of saved?.paths ?? []) {
         if (cancelled) return
@@ -74,16 +85,16 @@ export function useOpenFiles(projectPath: string | undefined) {
       restored.current = true
     })()
     return () => { cancelled = true }
-  }, [projectPath, open])
+  }, [projectPath, tabsFor, open])
 
   // Persist the open tabs and every unsaved draft (with the version it started from).
   useEffect(() => {
     if (!projectPath || !restored.current) return
-    storage.set(tabsKey(projectPath), JSON.stringify({ paths: files.map((f) => f.path), active } satisfies StoredTabs))
+    storage.set(tabsKey(tabsFor ?? projectPath), JSON.stringify({ paths: files.map((f) => f.path), active } satisfies StoredTabs))
     for (const file of files) {
-      storage.set(draftKey(projectPath, file.path), isDirty(file) ? JSON.stringify({ draft: file.draft, version: file.version } satisfies StoredDraft) : undefined)
+      storage.set(draftKey(draftFor(file.path) ?? projectPath, file.path), isDirty(file) ? JSON.stringify({ draft: file.draft, version: file.version } satisfies StoredDraft) : undefined)
     }
-  }, [projectPath, files, active])
+  }, [projectPath, tabsFor, files, active])
 
   const edit = (path: string, draft: string): void => replace(path, (f) => ({ ...f, draft }))
 
@@ -94,7 +105,7 @@ export function useOpenFiles(projectPath: string | undefined) {
     const text = forDisk(options.draft ?? file.draft, file.eol)
     setError('')
     try {
-      const saved = await api.writeFile(projectPath, path, text, options.expected ?? file.version)
+      const saved = await api.writeFile(projectPath, path, text, options.expected ?? file.version, scope)
       // Keep anything typed while the save was in flight.
       replace(path, (f) => ({ ...f, text, version: saved.version, conflict: false }))
     } catch (e) {
@@ -106,7 +117,7 @@ export function useOpenFiles(projectPath: string | undefined) {
   /** Keeps the editor's text over what changed on disk. */
   const overwrite = async (path: string): Promise<void> => {
     if (!projectPath) return
-    try { await save(path, { expected: (await api.readFile(projectPath, path)).version }) } catch (e) { setError(messageOf(e)) }
+    try { await save(path, { expected: (await api.readFile(projectPath, path, scope)).version }) } catch (e) { setError(messageOf(e)) }
   }
 
   /** Keeps both versions: the draft goes to a new "(copy)" file, the original shows what is on disk. */
@@ -116,7 +127,7 @@ export function useOpenFiles(projectPath: string | undefined) {
     setError('')
     for (let attempt = 1; attempt <= 20; attempt += 1) {
       try {
-        const saved = await api.writeFile(projectPath, copyPath(path, attempt), forDisk(file.draft, file.eol), null)
+        const saved = await api.writeFile(projectPath, copyPath(path, attempt), forDisk(file.draft, file.eol), null, scope)
         await reload(path)
         await open(saved.path)
         return
@@ -131,13 +142,15 @@ export function useOpenFiles(projectPath: string | undefined) {
   const reload = async (path: string): Promise<void> => {
     if (!projectPath) return
     try {
-      const read = await api.readFile(projectPath, path)
+      const stillCurrent = guard?.begin()
+      const read = await api.readFile(projectPath, path, scope)
+      if (stillCurrent && !stillCurrent()) return
       replace(path, () => openFile(read.path, read.text, read.version))
     } catch (e) { setError(messageOf(e)) }
   }
 
   const close = (path: string): void => {
-    if (projectPath) storage.set(draftKey(projectPath, path), undefined)
+    if (projectPath) storage.set(draftKey(draftFor(path) ?? projectPath, path), undefined)
     const index = current.current.findIndex((f) => f.path === path)
     const rest = current.current.filter((f) => f.path !== path)
     setFiles(rest)
@@ -150,7 +163,7 @@ export function useOpenFiles(projectPath: string | undefined) {
    */
   const closeMany = (keep?: string): number => {
     const stays = current.current.filter((f) => f.path === keep || isDirty(f))
-    for (const f of current.current) if (!stays.includes(f) && projectPath) storage.set(draftKey(projectPath, f.path), undefined)
+    for (const f of current.current) if (!stays.includes(f) && projectPath) storage.set(draftKey(draftFor(f.path) ?? projectPath, f.path), undefined)
     setFiles(stays)
     if (!stays.some((f) => f.path === active)) setActive(stays[0]?.path)
     return stays.filter((f) => f.path !== keep).length
@@ -158,7 +171,7 @@ export function useOpenFiles(projectPath: string | undefined) {
 
   /** After a rename on disk: the open tab follows the file (refused upstream while it has unsaved changes). */
   const renamed = (from: string, to: string): void => {
-    if (projectPath) storage.set(draftKey(projectPath, from), undefined)
+    if (projectPath) storage.set(draftKey(draftFor(from) ?? projectPath, from), undefined)
     setFiles((all) => all.map((f) => (f.path === from ? { ...f, path: to } : f)))
     if (active === from) setActive(to)
   }
@@ -173,7 +186,7 @@ export function useOpenFiles(projectPath: string | undefined) {
     if (!plain) { setError('Use a plain file name, without folders or a leading dot'); return false }
     const path = inSpace(space, plain)
     try {
-      const saved = await api.writeFile(projectPath, path, NEW_FILE_KINDS.find((k) => k.id === kind)?.starter ?? '', null)
+      const saved = await api.writeFile(projectPath, path, NEW_FILE_KINDS.find((k) => k.id === kind)?.starter ?? '', null, scope)
       await open(saved.path)
       return true
     } catch (e) {

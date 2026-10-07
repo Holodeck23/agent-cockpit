@@ -5,6 +5,8 @@ import { BranchIcon, ChevronDownIcon, PlusIcon } from './icons.tsx'
 
 interface BranchPickerProps {
   projectPath: string
+  /** A worktree's ID: the pill then shows and changes that worktree's branch. Absent: the main checkout. */
+  workspaceId?: string
   /** The conversation the pill belongs to, named in the note other conversations get. */
   threadId?: string
   /** Changes when the branch may have moved under us, e.g. a turn finished. */
@@ -17,7 +19,7 @@ const label = (git: GitView): string => git.branch ?? (git.head ? `detached at $
  * The composer's branch pill: the project's current Git branch, with search, switch,
  * create-and-switch and push. Hidden when the folder is not a repository.
  */
-export function BranchPicker({ projectPath, threadId, refreshKey }: BranchPickerProps) {
+export function BranchPicker({ projectPath, workspaceId, threadId, refreshKey }: BranchPickerProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   const [git, setGit] = useState<GitView>()
   const [query, setQuery] = useState('')
@@ -28,9 +30,9 @@ export function BranchPicker({ projectPath, threadId, refreshKey }: BranchPicker
 
   const refresh = useCallback(() => {
     let live = true
-    api.gitState(projectPath).then((state) => { if (live) setGit(state) }, () => { if (live) setGit(undefined) })
+    api.gitState(projectPath, workspaceId).then((state) => { if (live) setGit(state) }, () => { if (live) setGit(undefined) })
     return () => { live = false }
-  }, [projectPath])
+  }, [projectPath, workspaceId])
 
   useEffect(() => refresh(), [refresh, refreshKey])
   useEffect(() => {
@@ -61,9 +63,9 @@ export function BranchPicker({ projectPath, threadId, refreshKey }: BranchPicker
       setPending('')
     }
   }
-  const switchTo = (branch: string): Promise<void> => act(branch, () => api.switchBranch(projectPath, branch, threadId), (s) => `Switched to ${s.branch ?? branch}.`)
-  const create = (branch: string): Promise<void> => act(branch, () => api.createBranch(projectPath, branch, threadId), (s) => `Created and switched to ${s.branch ?? branch}.`)
-  const push = (): Promise<void> => act('push', () => api.pushBranch(projectPath), (s) => `Pushed to ${s.pushedTo ?? 'the remote'}.`)
+  const switchTo = (branch: string): Promise<void> => act(branch, () => api.switchBranch(projectPath, branch, threadId, workspaceId), (s) => `Switched to ${s.branch ?? branch}.`)
+  const create = (branch: string): Promise<void> => act(branch, () => api.createBranch(projectPath, branch, threadId, workspaceId), (s) => `Created and switched to ${s.branch ?? branch}.`)
+  const push = (): Promise<void> => act('push', () => api.pushBranch(projectPath, workspaceId), (s) => `Pushed to ${s.pushedTo ?? 'the remote'}.`)
 
   const wanted = query.trim()
   const matches = git.branches.filter((b) => b.toLowerCase().includes(wanted.toLowerCase())).slice(0, 50)
@@ -80,7 +82,7 @@ export function BranchPicker({ projectPath, threadId, refreshKey }: BranchPicker
 
   return (
     <div className="picker branch-picker" ref={ref}>
-      <button type="button" className="branch-button" aria-label="Branch" aria-expanded={open} title="Git branch for every conversation in this project"
+      <button type="button" className="branch-button" aria-label="Branch" aria-expanded={open} title={workspaceId ? 'Git branch of this worktree' : 'Git branch for every conversation in this project'}
         onClick={() => setOpen(!open)}>
         <BranchIcon />
         <span className="branch-name">{label(git)}</span>
@@ -91,7 +93,7 @@ export function BranchPicker({ projectPath, threadId, refreshKey }: BranchPicker
         <div className="picker-panel branch-panel" role="dialog" aria-label="Branches">
           <input ref={input} aria-label="Find or name a branch" placeholder="Find a branch, or name a new one…" value={query}
             onChange={(e) => { setQuery(e.target.value); setError('') }} onKeyDown={onKeyDown} />
-          <p className="picker-note">Applies to every conversation in this project.</p>
+          <p className="picker-note">{workspaceId ? 'Applies to conversations working in this worktree.' : 'Applies to every conversation in this project.'}</p>
           {busy ? <p className="picker-note branch-warn">Switching waits until {git.busy.join(', ')} {git.busy.length === 1 ? 'finishes' : 'finish'}.</p> : null}
           {git.changeCount > 0 ? (
             <p className="picker-note" title={git.changes.join('\n')}>

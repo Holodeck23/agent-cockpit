@@ -17,6 +17,8 @@ interface ConversationListProps {
   canCreate?: boolean
   /** What each row shows besides the title (Appearance). */
   rowShows?: RowShows
+  /** The workspace selector, between the title and the search (desktop, once a project has a worktree or is asked). */
+  workspaceSlot?: ReactNode
 }
 
 const SHOW_COMPLETED_KEY = 'cockpit:show-completed'
@@ -29,7 +31,7 @@ function loadShowCompleted(): boolean {
   }
 }
 
-export function ConversationList({ threads, selectedId, onSelect, projectName, canCreate = true, rowShows }: ConversationListProps) {
+export function ConversationList({ threads, selectedId, onSelect, projectName, canCreate = true, rowShows, workspaceSlot }: ConversationListProps) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ListFilter>('all')
   const [showCompleted, setShowCompleted] = useState(loadShowCompleted)
@@ -75,7 +77,7 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
   )
 
   return (
-    <nav className="list" aria-label="Conversations">
+    <nav className={`list${workspaceSlot ? ' has-workspaces' : ''}`} aria-label="Conversations">
       <header className="list-head">
         <ConversationsArt className="list-art" />
         <h1>Conversations</h1>
@@ -85,6 +87,7 @@ export function ConversationList({ threads, selectedId, onSelect, projectName, c
           </button>
         ) : null}
       </header>
+      {workspaceSlot}
       <label className="search">
         <SearchIcon />
         <input type="search" placeholder="Search conversations…" aria-label="Search conversations" value={query} onChange={(e) => setQuery(e.target.value)} />

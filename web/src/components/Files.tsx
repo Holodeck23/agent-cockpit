@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Project } from '../api.ts'
+import type { SelectionGuard, WorkspaceRef } from '../workspaces.ts'
 import { fileReferenceToken } from '../../../server/files/references.ts'
 import { isDirty, spaceOf } from '../file-text.ts'
 import { useOpenFiles } from '../useOpenFiles.ts'
@@ -15,10 +16,10 @@ const EXPLORER_KEY = 'cockpit:files-explorer-hidden'
 const loadHidden = (): boolean => { try { return localStorage.getItem(EXPLORER_KEY) === '1' } catch { return false } }
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
-export function Files({ project, onAttach, reveal, onPins }: {
-  project?: Project; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
+export function Files({ project, workspace, workspaceLabel, guard, onAttach, reveal, onPins }: {
+  project?: Project; workspace?: WorkspaceRef; workspaceLabel?: string; guard?: SelectionGuard; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
 }) {
-  const open = useOpenFiles(project?.path)
+  const open = useOpenFiles(project?.path, workspace?.scope, guard)
   const [space, setSpace] = useState<Space>(loadSpace)
   const [jump, setJump] = useState<Jump>()
   const [hidden, setHidden] = useState(loadHidden)
@@ -41,14 +42,14 @@ export function Files({ project, onAttach, reveal, onPins }: {
   }
   if (!project) return <main className="workflow-empty"><FolderIcon /><h1>Files</h1><p>Open a project to browse its files.</p></main>
   const shared = {
-    project, selected: open.active, dirty, onOpen: (path: string) => void open.open(path),
+    project, workspace, selected: open.active, dirty, onOpen: (path: string) => void open.open(path),
     onRenamed: open.renamed, onTrashed: open.removed, onError: open.setError,
   }
   return (
     <div className={`files-layout${hidden ? ' explorer-hidden' : ''}`}>
       <nav className="file-list" hidden={hidden} aria-label={space === 'project' ? 'Project files' : 'Your documents'}>
         <header>
-          <span className="workflow-kicker">{project.name}</span>
+          <span className="workflow-kicker">{project.name}{workspaceLabel ? ` · ${workspaceLabel}` : ''}</span>
           <h1>Files</h1>
           <div className="file-spaces" role="tablist" aria-label="Where">
             <button type="button" role="tab" aria-selected={space === 'project'} onClick={() => choose('project')}>Project files</button>

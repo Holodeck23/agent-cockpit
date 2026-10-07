@@ -12,8 +12,9 @@ type State =
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
-export function DiffPane({ projectPath, file, onOpenFile, onRefresh }: {
+export function DiffPane({ projectPath, workspaceId, file, onOpenFile, onRefresh }: {
   projectPath: string
+  workspaceId?: string
   file: ChangedFile
   onOpenFile: (target: { path: string; line: number }) => void
   onRefresh: () => void
@@ -24,9 +25,9 @@ export function DiffPane({ projectPath, file, onOpenFile, onRefresh }: {
   const [history, setHistory] = useState<{ file: BaseFile; line: number }>()
   useEffect(() => {
     let live = true
-    api.gitDiff(projectPath, file.path).then((diff) => { if (live) setState({ kind: 'ready', diff }) }, (e: unknown) => { if (live) setState({ kind: 'error', message: message(e) }) })
+    api.gitDiff(projectPath, file.path, workspaceId).then((diff) => { if (live) setState({ kind: 'ready', diff }) }, (e: unknown) => { if (live) setState({ kind: 'error', message: message(e) }) })
     return () => { live = false }
-  }, [projectPath, file.path])
+  }, [projectPath, workspaceId, file.path])
 
   if (state.kind === 'loading') return <div className="diff-pane"><p className="changes-note">Reading the diff…</p></div>
   if (state.kind === 'error') {
@@ -46,11 +47,11 @@ export function DiffPane({ projectPath, file, onOpenFile, onRefresh }: {
     const target = line ? lineTarget(diff, line) : undefined
     if (!target) return
     if (target.kind === 'historical') {
-      try { setHistory({ file: await api.gitBase(projectPath, target.path), line: target.line }) } catch (e) { setState({ kind: 'error', message: message(e) }) }
+      try { setHistory({ file: await api.gitBase(projectPath, target.path, workspaceId), line: target.line }) } catch (e) { setState({ kind: 'error', message: message(e) }) }
       return
     }
     // Verified against the file as it is now, so the editor never lands on an unrelated line.
-    const read = await api.readFile(projectPath, target.path).catch(() => undefined)
+    const read = await api.readFile(projectPath, target.path, workspaceId).catch(() => undefined)
     if (!read || !lineStillMatches(read.text, target.line, target.text)) { setStale(true); return }
     onOpenFile({ path: target.path, line: target.line })
   }

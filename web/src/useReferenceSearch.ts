@@ -18,7 +18,7 @@ export interface ReferenceSearch {
  * This project's files and workflows matching `query`, for the composer's "+" picker and its
  * inline @ list. Searches only while `active`; workflows are read once each time it turns on.
  */
-export function useReferenceSearch(projectPath: string, query: string, active: boolean): ReferenceSearch {
+export function useReferenceSearch(projectPath: string, query: string, active: boolean, workspaceId?: string): ReferenceSearch {
   // Results remember their query: Enter must never pick a row left over from earlier typing.
   const [files, setFiles] = useState<{ query: string; matches: FileMatch[]; truncated: boolean }>({ query: '', matches: [], truncated: false })
   const [workflows, setWorkflows] = useState<Workflow[]>([])
@@ -35,13 +35,13 @@ export function useReferenceSearch(projectPath: string, query: string, active: b
     if (!active) return
     let live = true
     const timer = setTimeout(() => {
-      api.searchFiles(projectPath, query).then(
+      api.searchFiles(projectPath, query, workspaceId).then(
         (result) => { if (live) { setFiles({ query, ...result }); setError('') } },
         (e: unknown) => { if (live) setError(e instanceof Error ? e.message : String(e)) },
       )
     }, 120)
     return () => { live = false; clearTimeout(timer) }
-  }, [active, projectPath, query])
+  }, [active, projectPath, workspaceId, query])
 
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   const settled = files.query === query

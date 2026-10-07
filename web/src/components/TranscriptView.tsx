@@ -126,7 +126,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                         // Peek at the file (or those lines) as it is now; Files is on the Mac only.
                         const project = replies.projectPath
                         return project ? (
-                          <Peek key={`file:${label}`} title={label} load={async () => peekText(linesOf((await api.readFile(project, path)).text, target))}
+                          <Peek key={`file:${label}`} title={label} load={async () => peekText(linesOf((await api.readFile(project, path, replies.workspaceId)).text, target))}
                             action={replies.onOpenFile ? { label: 'Open in Files', run: () => replies.onOpenFile?.(target) } : undefined}>
                             {chip}
                           </Peek>

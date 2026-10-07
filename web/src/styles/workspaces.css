@@ -1,0 +1,69 @@
+/* Workspaces (components/WorkspaceSelector.tsx, NewWorktreeDialog.tsx): the selector under the
+   project's conversation list title, the dialog that makes a worktree, and the notes that say
+   where a message goes. */
+.list.has-workspaces { grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; }
+.workspace-selector { display: grid; gap: 8px; padding: 0 14px 10px; min-width: 0; }
+.workspace-picker { position: relative; min-width: 0; }
+.workspace-button {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 36px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--content); color: var(--strong); font-size: 13px; text-align: left;
+}
+.workspace-button:hover, .workspace-button[aria-expanded='true'] { background: var(--field); }
+.workspace-button .icon { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.workspace-button .chevron { width: 13px; height: 13px; margin-left: auto; }
+.workspace-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; min-width: 0; }
+.workspace-branch { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; font: 12px var(--mono); color: var(--muted); }
+.workspace-button.missing { border-color: var(--needs-border); background: var(--needs-bg); color: var(--needs-ink); }
+.workspace-button.missing .icon { color: var(--needs-ink); }
+.workspace-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.workspace-dot.working { background: var(--working-ink); }
+.workspace-dot.needs { background: var(--blue); box-shadow: 0 0 0 3px var(--halo-soft); }
+
+.workspace-panel {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+}
+.workspace-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 8px 9px; border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--body); text-align: left;
+}
+.workspace-row:hover, .workspace-row:focus-visible { background: var(--field); outline: none; }
+.workspace-row .icon { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.workspace-row-text { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.workspace-row-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; color: var(--strong); }
+.workspace-row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--mono); color: var(--muted); }
+.workspace-row.missing .workspace-row-text small { font-family: inherit; font-size: 12px; line-height: 1.4; white-space: normal; color: var(--needs-ink); }
+.workspace-row .workspace-check { color: var(--link); }
+.workspace-new { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 var(--r-sm) var(--r-sm); padding-top: 10px; }
+.workspace-new .workspace-row-text strong { font-weight: 500; color: var(--link); }
+
+.workspace-missing, .workspace-note { margin: 0; font-size: 12.5px; line-height: 1.45; }
+.workspace-missing { padding: 8px 10px; border: 1px solid var(--needs-border); border-radius: var(--r-sm); background: var(--needs-bg); color: var(--needs-ink); }
+.workspace-note { margin: 0 0 6px; padding: 7px 12px; border-radius: var(--r-sm); background: var(--field); color: var(--secondary); }
+
+.workspace-pending { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.workspace-pending li { display: grid; gap: 6px; padding: 9px 10px; border: 1px solid var(--needs-border); border-radius: var(--r-md); background: var(--needs-bg); }
+.workspace-pending-text { display: grid; gap: 2px; min-width: 0; }
+.workspace-pending-text strong { font-size: 13px; font-weight: 600; color: var(--needs-ink); overflow-wrap: anywhere; }
+.workspace-pending-text small { font-size: 12px; line-height: 1.4; color: var(--needs-ink); overflow-wrap: anywhere; }
+.workspace-pending-actions { display: flex; gap: 6px; }
+.workspace-pending-actions .button-soft { padding: 4px 11px; font-size: 12.5px; }
+
+/* The conversation's own workspace, beside its status in the header. */
+.workspace-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--field); color: var(--secondary); font-size: 12px; white-space: nowrap;
+}
+.workspace-chip .icon { width: 12px; height: 12px; flex: none; color: var(--muted); }
+
+/* New worktree dialog. */
+.modal.new-worktree { width: min(480px, 100%); gap: 12px; }
+.new-worktree .field { display: grid; gap: 5px; font-size: 13px; font-weight: 550; color: var(--strong); }
+.new-worktree .field input {
+  padding: 8px 10px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-weight: 400;
+}
+.new-worktree .field small { font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--muted); }
+.worktree-uncommitted {
+  margin: 0; padding: 9px 12px; border: 1px solid var(--needs-border); border-radius: var(--r-sm); background: var(--needs-bg); color: var(--needs-ink);
+  font-size: 13px; line-height: 1.45;
+}

@@ -18,6 +18,14 @@ interface ComposerProps {
   /** Fills the message box; with `reference`, adds that token to what is already typed instead. */
   prefill?: { readonly text: string; readonly reference?: boolean; readonly restore?: boolean; readonly images?: readonly { file: string; name?: string }[] }
   projectPath?: string
+  /** The workspace the panels (@file search, references, branch pill) work in: a worktree's ID; absent for the main checkout. */
+  workspaceId?: string
+  /** Its folder, so a dropped file is named relative to the right checkout. */
+  workspaceFolder?: string
+  /** Why sending is blocked right now (a missing workspace); the draft is kept. */
+  blocked?: string
+  /** A line explaining where the next message goes. */
+  note?: string
   /** Set in a conversation (not on New conversation). */
   threadId?: string
   draftKey: string
@@ -60,7 +68,7 @@ export function draftAfterSend(current: string, sent: string): string {
   return current.trim() === sent ? '' : current
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
@@ -112,7 +120,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     saveDraft(draftKey, value)
   }
   const attach = useComposerAttach({
-    projectPath,
+    projectPath: workspaceFolder ?? projectPath,
     onInsert: (pieces) => {
       update(pieces.reduce((draft, piece) => addReference(draft, piece), box.current?.value ?? text))
       box.current?.focus()
@@ -125,7 +133,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
   const submit = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault()
     const trimmed = text.trim()
-    if (!trimmed || sending || disabled) return
+    if (!trimmed || sending || disabled || blocked) return
     setSending(true)
     setSubmitError(undefined)
     try {
@@ -145,7 +153,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
   const filesAttached = references.filter((r) => r.kind === 'file').reduce((n, r) => n + r.count, 0)
   const filesFull = filesAttached >= MAX_ATTACHED_FILES
   const mentions = useMentionMenu({
-    projectPath, text, caret, attached, filesFull,
+    projectPath, workspaceId, text, caret, attached, filesFull,
     onComplete: (next, at) => { pendingCaret.current = at; update(next) },
   })
 
@@ -158,6 +166,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     <form className="composer" onSubmit={(e) => void submit(e)}>
       {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
       {attach.note ? <p className="workflow-notice" role="status">{attach.note}</p> : null}
+      {blocked ? <p className="workflow-notice" role="alert">{blocked}</p> : note ? <p className="workspace-note" role="status">{note}</p> : null}
       <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}`} {...attach.dropProps}>
         {mentions.menu}
         {attach.images.length ? (
@@ -171,7 +180,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             ))}
           </ul>
         ) : null}
-        <ReferenceChips projectPath={projectPath} text={text} onRemove={(token) => { update(removeReference(text, token)); box.current?.focus() }} />
+        <ReferenceChips projectPath={projectPath} workspaceId={workspaceId} text={text} onRemove={(token) => { update(removeReference(text, token)); box.current?.focus() }} />
         <div className="composer-top">
           <textarea
             ref={box}
@@ -191,13 +200,13 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
         </div>
         <div className="composer-foot">
           {projectPath ? (
-            <ContextPicker projectPath={projectPath} attached={attached} filesFull={filesFull}
+            <ContextPicker projectPath={projectPath} workspaceId={workspaceId} attached={attached} filesFull={filesFull}
               onBrowseFiles={onBrowseFiles} onPick={(token) => { update(addReference(text, token)); box.current?.focus() }} />
           ) : null}
           {picker}
-          {projectPath ? <BranchPicker projectPath={projectPath} threadId={threadId} refreshKey={branchRefreshKey} /> : null}
+          {projectPath ? <BranchPicker key={workspaceId ?? 'main'} projectPath={projectPath} workspaceId={workspaceId} threadId={threadId} refreshKey={branchRefreshKey} /> : null}
           <span className="composer-spacer" />
-          <button type="submit" className="send" aria-label="Send" disabled={disabled || sending || !text.trim()}>
+          <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || sending || !text.trim()}>
             <ArrowUpIcon />
           </button>
         </div>
