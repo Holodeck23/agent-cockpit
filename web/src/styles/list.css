@@ -115,7 +115,8 @@
 /* A4: list hidden; the Conversations tab opens it as a dropdown under the sub-nav. */
 .layout.list-hidden { grid-template-columns: minmax(0, 1fr); }
 .list-dropdown {
-  position: absolute; z-index: 20; top: 6px; left: 10px; bottom: 10px; width: min(340px, calc(100vw - 40px)); display: grid; min-height: 0;
+  position: absolute; z-index: 20; top: 6px; left: 10px; bottom: 10px; width: min(340px, calc(100vw - 40px)); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0;
   border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; box-shadow: 0 18px 44px -18px rgb(0 0 0 / 0.45);
 }
 .list-dropdown > .list { border-right: 0; }
+.list-dropdown-actions { display: flex; justify-content: flex-end; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--canvas-app); }

@@ -293,6 +293,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           {hideList && listOpen ? (
             <div className="list-dropdown" role="dialog" aria-label="Conversations list"
               onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeList() } }}>
+              <div className="list-dropdown-actions">
+                <button type="button" className="button-soft" onClick={() => setHidden(false)}>Keep list open</button>
+              </div>
               <ConversationList key={`list-drop:${activePath ?? ''}`} threads={visible} selectedId={selectedId} rowShows={appearance.rows}
                 onSelect={(id) => { cockpit.select(id); setListOpen(false) }} />
             </div>
