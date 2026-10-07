@@ -1,58 +1,77 @@
 # Installation and Updating Guide
 
-> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.5 prerelease (2026-10-07).** This is the newest download. A few things on `main` are not in it yet. They are marked "in the next release" in these docs. See the [tester checklist](tester-checklist.md).
 
-*(Documented for v0.1.4)*
+New here? Read this page, then the [quick start](quickstart.md). The other pages are the [user guide](guide.md), [agent compatibility](compatibility.md), [troubleshooting](troubleshooting.md) and the [developer guide](developer.md).
 
-## System Requirements
+## System requirements
 
-Agent Cockpit is built exclusively for macOS running on Apple Silicon. Other platforms and Intel Macs are not officially supported. The packaged app includes its runtime. Install any runtime required by your chosen agent separately.
+Cockpit is built for macOS on Apple silicon. Intel Macs and other systems are not supported. The app includes its own runtime, so you do not need Node.js. Each agent you want to use needs its own CLI, which you can install from Cockpit (see below).
 
 ## Installation
 
-1. Download the latest `Cockpit-0.1.4-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+1. Download `Cockpit-0.1.5-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 2. Open the `.dmg` file.
 3. Drag **Cockpit.app** to your **Applications** folder.
 
-### Bypassing Gatekeeper
+### First launch and Gatekeeper
 
-Cockpit is currently not notarized by Apple. When you first open it, macOS Gatekeeper will block it with a message saying "**Cockpit** Not Opened".
+Cockpit is not notarized by Apple. The first time you open it, macOS blocks it with "**Cockpit** Not Opened".
 
-*   **Do not click "Move to Trash"**. Click **Done**.
-*   Open your Mac's **System Settings** and go to **Privacy & Security**.
-*   Scroll down and look for a message about Cockpit being blocked. Click **Open Anyway**.
-*   **Alternative:** Open the Terminal and run this exact command to remove the quarantine flag:
-    `xattr -dr com.apple.quarantine /Applications/Cockpit.app`
+*   Do not click **Move to Trash**. Click **Done**.
+*   Open **System Settings → Privacy & Security**.
+*   Scroll down to the message about Cockpit and click **Open Anyway**.
+*   Or, in Terminal, remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/Cockpit.app`
 
-## Installing Agents
+## Agent CLIs
 
-Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions. Cockpit automatically resolves your login-shell `PATH` and checks fallback directories (like Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder.
+Cockpit runs the agent CLIs already on your Mac, with your own accounts and subscriptions. It never holds your provider keys. It finds each CLI on your login shell's `PATH`, plus the usual folders (Homebrew, `~/.local/bin`, `~/.npm-global/bin`, `~/.bun/bin`), so it works when you open it from Finder.
 
-### Claude Code
-Install globally using npm (requires Node.js):
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-Sign in with your Anthropic account to use your Claude subscription limit.
+You can check, install, update and sign in from Cockpit itself:
 
-### Codex
-Follow the official documentation (e.g., via `npm` or official binary) to install the `codex` executable. Cockpit automatically invokes it in its `app-server` mode. Requires a valid Codex API or subscription setup.
+1. Open the agent picker (the button beside the message box that shows the agent and model).
+2. Choose the agent. The panel shows whether it is installed, its version, where it lives, how it was installed, whether it is signed in, and when Cockpit last checked.
+3. **Refresh** checks again now. Cockpit never checks in the background.
 
-### Google Antigravity
-Install the Antigravity `agy` CLI according to Google's official setup instructions. You must have valid subscription credentials configured for the CLI.
+What Cockpit can do for each CLI:
 
-### OpenCode (OpenRouter)
-Install OpenCode via standard `npm` or binary. OpenRouter is accessed through OpenCode, which will require setting up your OpenRouter API keys in its configuration.
+| Agent | Install from Cockpit | Update from Cockpit | Sign in from Cockpit |
+| :--- | :--- | :--- | :--- |
+| Claude Code | Yes, with the official installer | Yes, when installed by its native installer, npm or Homebrew | Yes, opens your browser |
+| Codex | Yes, with the official installer | Yes, for installs Cockpit recognises | Yes, opens your browser |
+| Google Antigravity | Yes, with the official installer | Yes, when installed by its native installer | No. Run `agy` once in Terminal |
+| OpenCode | No. Install it yourself (see below) | No. Run `opencode upgrade` | No. Run `opencode auth login` |
 
-## Identifying Your App Version
+How these work:
 
-To verify which copy you are launching (especially if you have older copies in your Downloads folder), right-click the Cockpit app icon in Finder, choose **Get Info**, and check the version and path. A path of `/Applications/Cockpit.app` alone does not prove currency—it might be a stale installation. Remember that development builds or feature branches might share the same version number but have different features.
+*   **Every action asks first.** You see where it installs and what to expect, then you confirm. Nothing runs on its own.
+*   **Installs** download the vendor's own script from the vendor's own address and put the CLI in `~/.local/bin`. Cockpit does not use `sudo`. It does not install a second copy over one that exists.
+*   **A changed installer is never run silently.** If the vendor's script differs from the one this release of Cockpit reviewed, Cockpit says so and stops. **Install this version anyway** runs exactly the new version it showed you.
+*   **Updates wait.** An update waits until every conversation using that CLI is idle, and new sessions with it wait too. If you quit Cockpit while an update waits, it does not resume by itself. Choose **Resume update** or **Cancel**.
+*   **Manual steps are shown as exact commands** when Cockpit cannot do it safely, for example when Homebrew's folder is not writable by you. Run the command in Terminal, then choose **Refresh**.
+*   **Update checks** read the npm registry for Claude Code and Codex. If the check fails, Cockpit says so and never reports "up to date" by guessing. **Skip** hides one version, and never blocks **Update**.
+*   Install, update and sign in work on the Mac only, not from a phone.
+
+To install OpenCode yourself, run `curl -fsSL https://opencode.ai/install | bash` in Terminal, then choose **Refresh**.
+
+Detecting a CLI does not prove it is signed in or has quota. If an agent fails with an authentication error, sign in from the picker or in Terminal.
+
+## Identifying your app version
+
+Right-click the Cockpit icon in Finder, choose **Get Info**, and check the version and path. `/Applications/Cockpit.app` alone does not prove it is current. Cockpit's own **Cockpit → About Cockpit** shows the version too. A version number does not tell you which `main` commit a build came from, so check the release notes when you test a feature.
 
 ## Updating
 
-When a new version is released:
-1. Download the new `.dmg` file.
-2. Open it and drag the new **Cockpit.app** into your **Applications** folder.
+**Cockpit → Check for Updates…** (v0.1.3 and later) reads the public release list and shows the newest version with its notes. It only checks when you choose it. **Download Update** opens the official DMG in your browser. Then:
+
+1. Finish or stop running agents, then quit Cockpit.
+2. Open the new `.dmg` and drag **Cockpit.app** into **Applications**.
 3. Choose **Replace** when macOS asks.
 
-Quit Cockpit before replacing it, and back up its state first. Replacing the app bundle does not replace `~/.agent-cockpit/` (or the folder selected by `COCKPIT_HOME`). Conversation history, workflows and settings live there; project files stay in their original folders. Building from the source repository also does not automatically overwrite the app in your `/Applications` folder. The built app lives in `release/mac-arm64/Cockpit.app`.
+Nothing is installed or restarted for you. Replacing the app does not touch your data. Conversations, workflows and settings live in `~/.agent-cockpit/` (or the folder in `COCKPIT_HOME`), and project files stay in their own folders. Back that folder up first if you care about the history.
+
+Building from source does not touch `/Applications`. A local `npm run package` writes the app to `release/mac-arm64/Cockpit.app` and the installer to `release/Cockpit-<version>-arm64.dmg`. The scripted release build writes to `release/v<version>/` instead. See the [developer guide](developer.md#releasing).
+
+## Uninstalling
+
+Quit Cockpit and delete **Cockpit.app**. To remove your data too, copy `~/.agent-cockpit/` somewhere safe first, then delete it. The agent CLIs keep their own sign-in and session files elsewhere, and neither step removes them.

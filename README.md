@@ -3,6 +3,8 @@
 Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your existing subscriptions or provider setup. Supported agents include Claude Code, Codex, Google Antigravity, and OpenCode (OpenRouter is accessed through OpenCode).
 
 > **v0.1.5 prerelease · 2026-10-07:** Everything built since v0.1.4 in one release. The agent picker now shows what each CLI really supports, and can install, update and sign in to Claude Code, Codex and Antigravity for you, using each vendor's official installer. Updates wait until that agent's conversations are idle. Also new: a changes viewer, processes and previews that belong to their conversation, an in-app browser page per conversation that the agent can use with your approval, image attachments, richer replies and workflows. Not notarized; Apple-silicon Macs only.
+>
+> **Next release (already on `main`, not in the v0.1.5 download):** a handoff review before you switch agents, phone live preview of running apps, and a main-process error log so one unexpected error no longer freezes Cockpit. The docs mark these as "in the next release".
 
 ## Pick up where you left off
 
@@ -23,18 +25,21 @@ Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the 
 - [User Guide](docs/user/guide.md)
 - [Agent Compatibility and Limitations](docs/user/compatibility.md)
 - [Troubleshooting](docs/user/troubleshooting.md)
+- [First-tester checklist](docs/user/tester-checklist.md)
 - [Developer Guide](docs/user/developer.md)
+- [Architecture](docs/ARCHITECTURE.md) and [CLI protocol notes](docs/PROTOCOLS.md)
+- [Releases](https://github.com/Holodeck23/agent-cockpit/releases)
 
 ## Download
 
-Releases are provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.5-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.5/Cockpit-0.1.5-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+Releases are `.dmg` packages for Apple Silicon Macs. Get the latest, [`Cockpit-0.1.5-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.5/Cockpit-0.1.5-arm64.dmg), from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases). Open the DMG and drag **Cockpit.app** to Applications. Anything marked "next release" in these docs is on `main` but is not in that download.
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
 >
 > Alternatively, you can run `xattr -dr com.apple.quarantine /Applications/Cockpit.app` in your terminal to allow the app to launch.
 
-**Updating:** v0.1.3 and later include **Cockpit → Check for Updates…**. It shows the newest release and its notes, and **Download Update** opens the official DMG in your browser. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
+**Updating:** v0.1.3 and later include **Check for Updates…** in the Cockpit app menu. It shows the newest release and its notes, and **Download Update** opens the official DMG in your browser. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
 
 See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.5) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
 
@@ -54,15 +59,15 @@ Cockpit window (React) ──HTTP + SSE──►  local server (Node, 127.0.0.1,
 - **Adapters** turn each CLI's wire protocol into one event model, so threads, storage and UI never care which agent is talking.
 - **CLI settings are validated.** Agent tools and approved process commands can still execute shell commands with your account permissions.
 - **Local UI requests are checked.** Cockpit checks host, origin and JSON writes, and in the desktop app only the Cockpit window holds the per-launch key the API requires, so other programs on the Mac cannot drive it. MCP uses session tokens; optional phone access uses pairing and a separate authenticated listener.
-- **Cockpit itself approves what agents change through it.** Starting processes, saving memory or workflows and controlling other conversations ask on Cockpit's own card, however the agent calls them.
+- **Cockpit itself approves what agents change through it.** Starting or stopping processes, saving memory or workflows, controlling other conversations, and acting in a website through the in-app browser ask on Cockpit's own card, however the agent calls them.
 - **The desktop app is the same server** in Electron's main process, with a sandboxed page and no Node in the renderer.
 
 ## Screenshots
 
 - **Approval Prompts:**
   ![Approval Prompts](docs/proof/phase-4-approval.png)
-- **Local Previews:**
-  ![Previews](docs/proof/phase-7-preview.png)
+- **Switching agents** (in the next release, not in the v0.1.5 download): you read exactly what the new agent will receive before you start the handoff.
+  ![The handoff review before switching agents](docs/proof/handoff-preview-light.png)
 
 ## Licence
 

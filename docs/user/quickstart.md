@@ -1,35 +1,38 @@
 # First-Run Quick Start
 
-> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.5 prerelease (2026-10-07).** See the [tester checklist](tester-checklist.md). Features marked "in the next release" are on `main` but not in this download.
 
-Welcome to Agent Cockpit! This guide will take you from launching the app to seeing your first result.
+This page takes you from opening Cockpit to your first result.
 
-## The Welcome Screen
+## The welcome screen
 
-When you first launch Cockpit with no saved projects or conversations and without a saved Skip choice, you will see the **First-run director**. Here you have two main paths:
+The first time you open Cockpit with no saved projects or conversations, and you have not chosen **Skip for now**, you see the first-run screen. You have two paths.
 
-1.  **Open a project:** Choose a folder on your Mac. Cockpit finds recent conversations and shows the latest task, agent, time, current branch and changed files. Choose **Resume and show me the app** to continue the same session with safe defaults, start the documented server with approval, and open and inspect its preview. Use the conversation or agent selector for an alternative, or **Start fresh**. With no recent session, choose **Explore this project**. Selecting a folder does not launch an agent.
-2.  **Try a 90-second sample:** This starts a genuine local sample app (a dependency-free project) stored in Cockpit's own sample folder. It will guide you through a real conversation, an approval prompt, running a process, and opening a preview in Cockpit's preview pane. This uses a plain-language request and requires Claude Code, Codex, or OpenCode to be installed.
+1.  **Open a project.** Choose a folder on your Mac. Selecting a folder does not start an agent. Cockpit looks for recent Cockpit, Claude Code and Codex conversations in it and shows a **Recent work** card: the latest task, the agent, when it ran, the current branch and the changed files.
+    *   **Resume and show me the app** continues that session with the default model and manual permissions. It checks the current files, asks before it starts the project's server, and then opens and inspects the app in Cockpit's browser pane.
+    *   Use the **Conversation** and **Continue with** menus to pick another conversation or agent. Another agent gets the transcript as a handoff.
+    *   **Start fresh** skips recovery. **Refresh recent work** looks again. With nothing recent, choose **Explore this project** for a short read of the files and changes and one suggested next step.
+2.  **Try a 90-second sample.** Cockpit creates a small local app in its own sample folder and walks you through a real conversation, an approval, a running process and a preview. It needs Claude Code, Codex or OpenCode. Cockpit does not offer Antigravity for the sample or for **Resume and show me the app**. It can still explore a project (see [compatibility](compatibility.md#google-antigravity)).
 
-### Automatic Agent Defaults
+Cockpit picks an installed agent for you and leaves the model and effort at the CLI's defaults. Permissions start on manual, so you stay in control. If no agent is installed, open the agent picker once you are in a project (or **Skip for now**) and install one. See [Agent CLIs](index.md#agent-clis).
 
-During your first run, Cockpit automatically chooses an installed agent for you, leaving the model and effort settings at their CLI defaults. It uses manual permissions to ensure you are in control.
+**Skip for now** saves your choice and takes you to the normal workspace.
 
-### Skip For Now
+Calls to real providers use your own subscription allowance. Starting processes and drawing the screen are local.
 
-If you are an existing user or want to dive straight in, you can click **Skip for now**. This persists your choice, and you will enter the normal Cockpit workspace where your existing projects and conversations reside.
+## Your first conversation
 
-## Your First Conversation
+1. **Start.** In a project, type what you want in the message box and press Enter. Cockpit sends your message to the agent through that agent's own CLI adapter. Separately, Cockpit adds its own tools (processes, previews, memory and so on) to the agent over MCP. MCP does not carry your prompt.
+2. **Answer approvals.** When something needs your say, a card shows **Allow** and **Deny**, and sometimes **Allow for this session**. Which of the agent's own actions ask depends on the agent and the permission setting. Manual mode does not promise a card for every file edit. Cockpit's own tools (starting a process, saving memory or a workflow, controlling another conversation) always ask on Cockpit's card, and you have 45 seconds to answer. Google Antigravity cannot pause for approval, so it has no cards. See [compatibility](compatibility.md).
+3. **Watch it work.** The status next to the title goes Starting, Working, then Ready. **Needs you** means an approval or a question is waiting. **Stop** asks the agent to interrupt the current turn.
+4. **See the result.** The end of each turn has a result card with what changed in the folder and any checks you ran. **Changes** in the conversation header lists everything uncommitted in the folder. See [the guide](guide.md#changes-and-results).
 
-1. **Start a Conversation:** Once you are in a project (or the sample), type a request in the composer and press Enter. This sends your request through the selected agent's CLI adapter. MCP separately exposes Cockpit tools to compatible agents.
-2. **Understand Approvals:** Actions that require approval show **Allow** and **Deny**. Which native agent actions require approval depends on the provider and permission setting; manual mode does not promise a card for every file edit. Cockpit process and workflow mutations have their own approval gate. *(Note: Google Antigravity uses a different headless permission model without host approval cards—see the Agent Compatibility page for details.)*
-3. **See the Result:** After approving the necessary steps, the agent completes the work.
+## Servers and previews
 
-## Working with Processes and Previews
+When an agent needs a development server:
 
-When an agent needs to start a development server or run an app:
-1.  **Start an app:** The agent will use a tool (like `start_process`) to run a command. You must allow this.
-2.  **Inspect the preview:** Once running, the agent can use `open_preview` to open the local web page inside Cockpit's preview pane.
-3.  **Stop the process:** When finished, the agent can stop the process, or you can manually stop it from the conversation's process controls.
+1.  **It asks.** The agent calls Cockpit's `start_process` tool and a card shows the exact command. Choose **Allow**.
+2.  **It shows you.** Once the server prints a local address, the agent can call `open_preview`. The page opens in Cockpit's browser pane beside the conversation. `inspect_preview` gives the agent a screenshot.
+3.  **You stay in charge.** Stop the server from the conversation's process chip or from the **Processes** page. Stopping a conversation does not stop its servers.
 
-*Note: While the sample aims for a 90-second loop, actual completion times depend on the live provider's speed. Calls to live providers consume your agent subscription allowance. Running local processes and rendering the UI is entirely local.*
+The sample aims for about 90 seconds, but the time depends on your provider's speed.

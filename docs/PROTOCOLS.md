@@ -63,14 +63,28 @@ agy --input-format stream-json --output-format stream-json --disable-slash-comma
 - The CLI accepts only low, medium and high effort. Cockpit's shared xhigh/max choices clamp to high rather than sending an invalid flag.
 - **Headless approvals are policy-only.** The CLI cannot pause and send a permission request to the host. Its default policy permits workspace file operations and soft-denies shell actions that need review; auto-like Cockpit modes use `--dangerously-skip-permissions`, and Plan uses `--mode plan`. The picker states this limitation.
 - Authentication is cached by `agy`; the adapter never receives a key. The Gemini CLI personal tier returned `UNSUPPORTED_CLIENT`, while `agy` 1.2.14 reused the same user's subscription successfully.
-- Antigravity's global/workspace MCP configuration has no per-launch config flag. Cockpit does not mutate a user's global or project MCP files, so its session-scoped MCP tools are not attached to Antigravity yet.
+- Antigravity's MCP configuration has no per-launch config flag, and `agy mcp add` writes the global `~/.gemini` config, so Cockpit does not use it. `agy` does discover workspace plugins in `<project>/.agents/plugins/<name>/` and starts a plugin's stdio server itself with its own environment. So, only in a project where the person turns on **Give Antigravity Cockpit's tools**, Cockpit writes its own plugin there (`server/agents/antigravity/mcp-plugin.ts`). The plugin holds the command and nothing else, ignores itself in Git, and the session URL and token travel in `agy`'s launch environment, never in a file. Without the opt-in, an Antigravity session gets no Cockpit tools and no Cockpit guidance.
+- Models come from `agy models` (on Refresh) and usage from what `agy` reports.
+
+## OpenCode (`opencode acp`)
+
+Agent Client Protocol over stdio (`server/agents/acp/`).
+
+- **Handshake**: `initialize`, then `session/new` (or `session/load` to resume, whose replayed history Cockpit already has and does not show twice), then `session/prompt` per message. `session/cancel` interrupts, and a prompt's `stopReason` ends the turn.
+- **Permissions** arrive as `session/request_permission` and show as an approval card. Cockpit's modes map to OpenCode's per-tool `ask`, `allow` and `deny` for edit, bash and webfetch, passed in `OPENCODE_CONFIG_CONTENT`, the highest-priority config layer, so the person's own `opencode.json` is left alone. A model named `openrouter/<provider>/<model>` uses the key stored with `opencode auth login`.
+- **Images** go inline only when `initialize` says the agent accepts them. Otherwise the stored file's path is put in the text.
+- **MCP**: Cockpit's server is passed to `session/new` and `session/load` as a stdio server with its token in the environment.
 
 ## Switching agents
 
-`POST /api/threads/:id/agent` closes the current session, appends an `agent_switch` event, and gives the thread a fresh session id. The next message starts a new session seeded with the transcript so far (`server/threads/handoff.ts`): `--append-system-prompt` for Claude, `developerInstructions` for Codex. Provider-side history isn't transferred. The files on disk are the handoff.
+`GET /api/threads/:id/handoff` returns the exact text a switch would send, its sha256 and how many messages were left out to fit. The picker shows it first. `POST /api/threads/:id/agent` carries that digest back. If the conversation changed since, it is refused with a 409. Otherwise it closes the current session, appends an `agent_switch` event, and gives the thread a fresh session id. The next message starts a new session seeded with the transcript so far (`server/threads/handoff.ts`): `--append-system-prompt` for Claude, `developerInstructions` for Codex. Provider-side history isn't transferred. The files on disk are the handoff.
+
+- The transcript lists user messages, agent replies, a one-line note for each tool use, questions and answers, switches and named image files. A message that was taken back is left out.
+- The budget is 400,000 characters. Past it the opening request and the newest messages are kept whole, and the transcript says how many earlier messages were left out. An empty conversation hands over a single readable line.
+- A switch to a CLI that is not installed is allowed. The first message ends with `<Agent> isn't installed or isn't on PATH. Install it from Agent settings, or switch this conversation to another agent.` (`server/agents/start-error.ts`), and switching back carries the whole conversation, including the message that never reached the missing agent.
 
 ## Electron
 
-- **A Finder or Dock launch gets launchd's bare PATH**, so `claude`, `codex`, `npm` and `node` aren't found. The app asks the login shell for its PATH once at startup (`$SHELL -ilc`) and merges it in, with Homebrew and npm fallbacks (`electron/shell-path.ts`).
+- **A Finder or Dock launch gets launchd's bare PATH**, so `claude`, `codex`, `npm` and `node` aren't found. The app asks the login shell for its PATH once at startup (`$SHELL -ilc`, a 5 second limit) and merges it in. If the shell cannot be asked it uses Homebrew, `~/.local/bin`, npm and bun fallbacks. `~/.local/bin` is always on the path, because the official installers put CLIs there without editing a shell profile. `COCKPIT_AGENT_PATH` folders are searched first (`electron/shell-path.ts`).
 - **The app binary doubles as Node.** With `ELECTRON_RUN_AS_NODE=1`, `Cockpit.app/Contents/MacOS/Cockpit script.cjs` runs a script as plain Node 24, including one inside `app.asar`. That is how the cockpit MCP server runs without Node installed.
 - npm 11 can block install scripts, and Electron 44 fetches its binary lazily: run `node node_modules/electron/install.js` once after `npm install`.
