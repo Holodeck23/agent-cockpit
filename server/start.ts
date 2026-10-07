@@ -12,7 +12,7 @@ import { createApiHandler } from './http/router.ts'
 import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
-import { createLifecycle, type Lifecycle } from './agents/lifecycle/service.ts'
+import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
@@ -69,6 +69,8 @@ export interface StartOptions {
   readonly windowKey?: string
   /** The in-app browser's pages (desktop app only), read when an agent calls a browser tool. */
   readonly browserHost?: () => BrowserHost | undefined
+  /** Where official installers are read from; a proof build's local stand-ins (never a release build). */
+  readonly installerDownload?: LifecycleOptions['download']
 }
 
 function openWithSystem({ url }: PreviewOpen): Promise<void> {
@@ -198,7 +200,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         }
       : {}),
   })
-  lifecycle = createLifecycle({ stateRoot: root, capabilities, sessions: { activity: (agent) => manager.agentActivity(agent), closeIdle: (agent) => manager.closeIdleSessions(agent) } })
+  lifecycle = createLifecycle({ stateRoot: root, capabilities, ...(options.installerDownload ? { download: options.installerDownload } : {}), sessions: { activity: (agent) => manager.agentActivity(agent), closeIdle: (agent) => manager.closeIdleSessions(agent) } })
   const agentLifecycle = lifecycle
   // A waiting update starts as soon as the last conversation on that CLI stops working.
   manager.subscribe(() => agentLifecycle.activityChanged())

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
@@ -92,6 +92,7 @@ async function boot(): Promise<void> {
     windowKey,
     // Created just below, once the server's ports are known; agents call it only later.
     browserHost: () => browserHost,
+    ...proofInstallers(),
   })
   // Before the window loads, so its very first API call carries the key.
   installWindowKey(session.defaultSession, new URL(running.url).origin, windowKey, () => mainWindow)
@@ -144,6 +145,17 @@ function browserLimits(): { maxIdle: number; idleMs: number; maxTotal: number } 
     ...(Number.isFinite(idle) && idle >= 1000 ? { idleMs: idle } : {}),
     ...(Number.isInteger(max) && max >= 2 && max <= RESIDENCY.maxTotal ? { maxTotal: max } : {}),
   }
+}
+
+/**
+ * W10 gate. A proof build may read the official installers from local stand-ins
+ * (COCKPIT_PROOF_INSTALLERS/<vendor host>.sh), so the packaged proof can drive install without the
+ * network. The pinned sha256 check still applies to them; a release build ignores this.
+ */
+function proofInstallers(): { installerDownload?: (url: string) => Promise<Buffer> } {
+  const dir = process.env.COCKPIT_PROOF_INSTALLERS
+  if (IS_RELEASE_BUILD || !dir) return {}
+  return { installerDownload: async (url) => readFileSync(join(dir, `${new URL(url).hostname}.sh`)) }
 }
 
 // In memory only (no "persist:"), and cleared after every capture.

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stand-in login shell (SHELL for the proof app): reports a system-only PATH, so the real CLIs under
+# Homebrew are out of sight and only the stand-ins in the proof HOME's ~/.local/bin are found.
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+shift
+exec /bin/sh -c "$1"
