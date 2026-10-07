@@ -13,7 +13,8 @@ import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
 import { handoffDigest, previewHandoff, type HandoffPreview } from './handoff.ts'
 import { redactBrowserEvent } from '../browser/agent-policy.ts'
-import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
+import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
+import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
@@ -34,6 +35,8 @@ export interface LaunchRequest {
   readonly projectInstructions?: string
   /** Where this conversation's images are kept, for agents that read them as files. */
   readonly imagesDir?: string
+  /** Selects the account (W12.1): CLAUDE_CONFIG_DIR or CODEX_HOME for a profile, nothing for the CLI default. */
+  readonly accountEnv?: Readonly<Record<string, string>>
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
 
@@ -59,7 +62,7 @@ export function projectInstructionsBlock(text: string): string {
 
 /** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
 /** Events that inform without being activity: they never reorder the list or mark it unread. */
-const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion'])
+const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion', 'account_changed'])
 
 export const instructionsFor = (req: LaunchRequest): string | undefined =>
   [
@@ -91,7 +94,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         ...(mcp ? { mcpConfig: mcp.mcpConfig, allowedTools: mcp.allowedTools } : {}),
       },
       onEvent,
-      { env: claudeLaunchEnv(mcp?.env) },
+      { env: claudeLaunchEnv({ ...mcp?.env, ...req.accountEnv }) },
     )
   },
   codex: (req, onEvent) =>
@@ -105,7 +108,10 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         developerInstructions: instructionsFor(req),
       },
       onEvent,
-      req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit), env: req.cockpit.secretEnv } : {},
+      {
+        ...(req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit) } : {}),
+        ...(req.cockpit || req.accountEnv ? { env: { ...req.cockpit?.secretEnv, ...req.accountEnv } } : {}),
+      },
     ),
   antigravity: antigravityLauncher(),
   opencode: (req, onEvent) =>
@@ -169,6 +175,16 @@ export interface ManagerOptions {
   readonly antigravityMcp?: AntigravityMcpPrepare
   /** Why a new session on an agent must not start now (its CLI is being updated or installed). */
   readonly launchGate?: (agent: AgentId) => string | undefined
+  /** The account each launch runs under (W12.1); without it every session uses the CLI default. */
+  readonly accounts?: AccountBinding
+}
+
+/** What the thread manager needs from the account service. */
+export interface AccountBinding {
+  /** The project's current choice for the agent, read at every launch. */
+  resolve(projectPath: string, agent: AgentId): ResolvedAccount
+  /** How a recorded account is named in the conversation; undefined once it is gone. */
+  describe(accountId: string): AccountRef | undefined
 }
 
 /** A session that never starts: the reason is shown and the turn ends at once. */
@@ -273,6 +289,19 @@ export interface ThreadManager {
   agentActivity(agent: AgentId): { busy: number; idle: number }
   /** Gracefully ends that agent's idle sessions, so its executable can be replaced; working ones are left alone. */
   closeIdleSessions(agent: AgentId): Promise<void>
+  /** A project's conversations on one agent that are working or hold queued messages: an account change waits for them. */
+  accountActivity(projectPath: string, agent: AgentId): { busy: number; queued: number }
+  /** Conversations working under an account right now, in every project (idle sessions not counted). */
+  accountSessions(accountId: string): number
+  /** Gracefully ends the idle sessions running under an account, before its context is signed out. */
+  closeAccountSessions(accountId: string): Promise<void>
+  /**
+   * After a project's account changed: idle sessions on that agent close, and each conversation bound
+   * to another account records the change and continues on a fresh native session with a handoff.
+   */
+  rebindProject(projectPath: string, agent: AgentId, to: ResolvedAccount): Promise<void>
+  /** The identity behind an account changed outside Cockpit: idle conversations on it are told and rebound. */
+  identityChanged(accountId: string, to: ResolvedAccount, from?: AccountRef): Promise<void>
   /** Stops every live agent session; resolves once all have exited. */
   shutdown(): Promise<void>
 }
@@ -428,11 +457,46 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return entry ? closeEntry(entry) : Promise.resolve()
   }
 
-  const ensureSession = (meta: ThreadMeta): Live => {
+  /** The account a conversation's native session belongs to: before accounts, the CLI default. */
+  const accountOf = (meta: ThreadMeta): string => meta.accountId ?? defaultAccountId(meta.settings.agent)
+  // A conversation from before accounts ran on the CLI default as first identified: generation 1.
+  const boundTo = (meta: ThreadMeta, account: ResolvedAccount): boolean =>
+    accountOf(meta) === account.accountId && (meta.accountGeneration ?? 1) === account.generation
+  /** Has run on an account (or holds a native session): a change of account is worth telling it about. */
+  const hasAccount = (meta: ThreadMeta): boolean => meta.sessionStarted || meta.accountGeneration !== undefined
+
+  /**
+   * Moves an idle conversation to another account (or identity): the change is recorded where the
+   * user reads it, and the next message starts a new native session there with the conversation so
+   * far as a handoff. Provider resume across accounts is impossible for both CLIs (G-ACCOUNTS).
+   */
+  const rebind = (meta: ThreadMeta, to: ResolvedAccount, reason: 'selected' | 'identity_changed', previous?: AccountRef): ThreadMeta => {
+    // After an identity change the account's record already holds the new identity: the previous
+    // one is passed in, or (not known here) left out rather than shown as the new one.
+    const current = options.accounts?.describe(accountOf(meta))
+    const from = previous ?? (reason === 'identity_changed' && current ? { id: current.id, label: current.label } : current)
+    const target = options.accounts?.describe(to.accountId) ?? { id: to.accountId, label: to.label }
+    const started = meta.sessionStarted
+    // An agent switch's handoff that was never delivered still goes; otherwise the transcript.
+    const handoff = started ? previewHandoff(store.events(meta.id), meta.projectPath, images.dir(meta.id)).text : meta.handoff
+    record(meta.id, { kind: 'account_changed', agent: meta.settings.agent, ...(from ? { from } : {}), to: target, reason, handoff: handoff !== undefined })
+    return store.update(meta.id, {
+      ...(started ? { sessionId: randomUUID(), bindingId: randomUUID(), sessionStarted: false } : {}),
+      ...(handoff !== undefined ? { handoff } : {}),
+      accountId: to.accountId, accountGeneration: to.generation,
+    })
+  }
+
+  const ensureSession = (start: ThreadMeta): Live => {
+    let meta = start
     const existing = live.get(meta.id)
     if (existing?.session.alive()) return existing
     // A new session starts with nothing allowed for it, however the previous one ended.
     hostActions.forget(meta.id)
+    // Read at launch: the project's account now. A native session from another account (or an older
+    // identity of this one) is never resumed under it: the conversation is rebound first (W12-03).
+    const account = options.accounts?.resolve(meta.projectPath, meta.settings.agent)
+    if (account && hasAccount(meta) && !boundTo(meta, account)) meta = rebind(meta, account, accountOf(meta) === account.accountId ? 'identity_changed' : 'selected')
     const generation = Symbol()
     generations.set(meta.id, generation)
     const pending = new Map<string, PendingApproval>()
@@ -441,8 +505,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Persisted before the boundary, so every event after it belongs to this launch, even across a restart.
     const launchNumber = (meta.sessionGeneration ?? 0) + 1
     const workspaceId = meta.workspaceId ?? options.workspaceFor?.(meta.projectPath)
-    store.update(meta.id, { sessionGeneration: launchNumber, bindingId: bindingIdOf(meta), ...(workspaceId ? { workspaceId } : {}) })
-    record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta) })
+    store.update(meta.id, { sessionGeneration: launchNumber, bindingId: bindingIdOf(meta), ...(workspaceId ? { workspaceId } : {}),
+      ...(account ? { accountId: account.accountId, accountGeneration: account.generation } : {}) })
+    record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta), ...(account ? { account: { id: account.accountId, generation: account.generation } } : {}) })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
@@ -509,6 +574,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
         ...(mcp ? { cockpit: mcp.launch } : {}),
         imagesDir: images.dir(meta.id),
+        ...(account && Object.keys(account.env).length > 0 ? { accountEnv: account.env } : {}),
       },
       deliver,
     )
@@ -761,6 +827,43 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         else idle++
       }
       return { busy: working, idle }
+    },
+    accountActivity(projectPath, agent) {
+      let working = 0
+      let queued = 0
+      for (const [id, entry] of live) {
+        const meta = store.get(id)
+        if (!meta || meta.projectPath !== projectPath || meta.settings.agent !== agent || !entry.session.alive()) continue
+        if (busy(entry)) working++
+        if (entry.waiting.size > 0) queued++
+      }
+      return { busy: working, queued }
+    },
+    accountSessions(accountId) {
+      let count = 0
+      for (const [id, entry] of live) {
+        const meta = store.get(id)
+        if (meta && entry.session.alive() && busy(entry) && accountOf(meta) === accountId) count++
+      }
+      return count
+    },
+    async closeAccountSessions(accountId) {
+      const idle = [...live].filter(([id, entry]) => {
+        const meta = store.get(id)
+        return meta && entry.session.alive() && !busy(entry) && accountOf(meta) === accountId
+      }).map(([id]) => id)
+      await Promise.all(idle.map(retire))
+    },
+    async rebindProject(projectPath, agent, to) {
+      const affected = store.list().filter((meta) => meta.projectPath === projectPath && meta.settings.agent === agent && !deleted.has(meta.id))
+      if (affected.some((meta) => busy(live.get(meta.id)) || (live.get(meta.id)?.waiting.size ?? 0) > 0)) throw new ThreadBusyError('A conversation on this agent is still working in this project')
+      await Promise.all(affected.map((meta) => retire(meta.id)))
+      for (const meta of affected) if (!boundTo(meta, to) && hasAccount(meta)) rebind(store.get(meta.id) ?? meta, to, 'selected')
+    },
+    async identityChanged(accountId, to, from) {
+      const affected = store.list().filter((meta) => !deleted.has(meta.id) && accountOf(meta) === accountId && hasAccount(meta) && !busy(live.get(meta.id)) && !boundTo(meta, to))
+      await Promise.all(affected.map((meta) => retire(meta.id)))
+      for (const meta of affected) rebind(store.get(meta.id) ?? meta, to, 'identity_changed', from)
     },
     async closeIdleSessions(agent) {
       const idle = [...live.values()].filter((entry) => entry.session.agent === agent && entry.session.alive() && !busy(entry))

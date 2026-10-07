@@ -44,6 +44,10 @@ export interface ThreadMeta {
   readonly bindingId?: string
   /** Agent processes launched for this conversation so far; stamped on each session_boundary. */
   readonly sessionGeneration?: number
+  /** The account the current native session runs under (W12.1); absent before accounts: the CLI default. */
+  readonly accountId?: string
+  /** That account's identity generation when the session started; a different one never resumes it. */
+  readonly accountGeneration?: number
   readonly createdAt: string
   readonly updatedAt: string
 }

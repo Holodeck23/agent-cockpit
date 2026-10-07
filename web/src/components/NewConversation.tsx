@@ -225,7 +225,7 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
         placeholder="Describe what you want…"
         disabled={!project || starting}
         onSubmit={start}
-        picker={<AgentPicker value={choice} onChange={changeChoice} />}
+        picker={<AgentPicker value={choice} onChange={changeChoice} {...(project ? { projectPath: project.path } : {})} />}
       />
     </main>
   )

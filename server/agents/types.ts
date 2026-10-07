@@ -3,6 +3,14 @@
 
 export type AgentId = 'claude' | 'codex' | 'antigravity' | 'opencode'
 
+/** An account as a conversation records it: enough to say which, never a secret. */
+export interface AccountRef {
+  readonly id: string
+  readonly label: string
+  /** e.g. "d…@example.com · pro"; absent when the identity is unknown. */
+  readonly hint?: string
+}
+
 /** allow_session also applies the agent's own suggested rule for the rest of the session. */
 export type ApprovalBehavior = 'allow' | 'allow_session' | 'deny'
 
@@ -37,8 +45,14 @@ export interface QueueBinding {
 }
 
 export type NormalizedEvent =
-  /** A new agent process starts here: its launch number for this conversation and the binding it runs under. */
-  | { kind: 'session_boundary'; generation?: number; bindingId?: string }
+  /** A new agent process starts here: its launch number for this conversation, the binding and the account it runs under. */
+  | { kind: 'session_boundary'; generation?: number; bindingId?: string; account?: { id: string; generation: number } }
+  /**
+   * The conversation's account changed while it was idle (W12.1): you chose another, the CLI
+   * default's identity changed outside Cockpit, or the profile went away. The next message starts
+   * a new native session on `to`; with `handoff`, the conversation so far goes with it.
+   */
+  | { kind: 'account_changed'; agent: AgentId; from?: AccountRef; to: AccountRef; reason: 'selected' | 'identity_changed'; handoff: boolean }
   /** Something a replaced agent process sent after its replacement started; kept as a label, never acted on (ID-04). */
   | { kind: 'stale_event'; generation: number; eventKind: string }
   | { kind: 'delegation_started'; requestKey: string }

@@ -1,0 +1,71 @@
+#!/usr/bin/perl
+# Stand-in `codex` for order 16 (account profiles), no provider usage. Its account is the file
+# .fixture-identity in $CODEX_HOME (else ~/.codex): "<email> <used percent>". `login` prints the
+# localhost-callback link and waits for .fixture-callback in that folder (what a browser finishing
+# the sign-in would do): "ok:<email>" signs in, anything else fails. `logout` signs out. The
+# app-server answers account/read, starts threads, and answers each turn "Done as <email>", logging
+# each thread start/resume to $COCKPIT_PROOF_ACCOUNT_LOG. Perl, because /usr/bin always has it.
+use strict; use warnings;
+use JSON::PP;
+$| = 1;
+my $cmd = $ARGV[0] // '';
+if ($cmd eq '--version') { print "codex-cli 0.0.0 (Cockpit accounts fixture)\n"; exit 0 }
+my $dir = $ENV{CODEX_HOME} // "$ENV{HOME}/.codex";
+my $ctx = $ENV{CODEX_HOME} // 'default';
+my $identity = "$dir/.fixture-identity";
+my ($email, $used) = ('', 10);
+if (open(my $fh, '<', $identity)) { my $l = <$fh> // ''; chomp $l; ($email, $used) = split / /, $l; $used //= 10; close $fh }
+sub logline { my $out = $ENV{COCKPIT_PROOF_ACCOUNT_LOG} or return; open(my $fh, '>>', $out) or return; print $fh "@_\n"; close $fh }
+if ($cmd eq 'login') {
+  if (($ARGV[1] // '') eq 'status') { if ($email) { print "Logged in using ChatGPT\n"; exit 0 } print "Not logged in\n"; exit 1 }
+  system('mkdir', '-p', $dir);
+  open(my $b, '>', "$dir/.fixture-browser"); print $b ($ENV{BROWSER} // 'unset'), "\n"; close $b;
+  print "Starting local login server on http://localhost:1455.\n";
+  print "If your browser did not open, navigate to this URL to authenticate:\n\n";
+  print "https://auth.openai.com/oauth/authorize?response_type=code&fixture=accounts&state=$$\n";
+  my $callback = "$dir/.fixture-callback";
+  for (1 .. 600) {
+    if (-f $callback) {
+      open(my $c, '<', $callback); my $answer = <$c> // ''; close $c; unlink $callback; chomp $answer;
+      if ($answer =~ /^ok:(.+)$/) { open(my $i, '>', $identity); print $i "$1 34\n"; close $i; print "Successfully logged in\n"; exit 0 }
+      print STDERR "Login failed: the sign-in was not completed.\n"; exit 1;
+    }
+    select(undef, undef, undef, 0.1);
+  }
+  print STDERR "Login timed out\n"; exit 1;
+}
+if ($cmd eq 'logout') {
+  if (-f "$dir/.fixture-logout-fails") { print STDERR "Logout failed\n"; exit 1 }
+  unlink $identity; print "Successfully logged out\n"; exit 0;
+}
+exit 2 unless $cmd eq 'app-server';
+my $json = JSON::PP->new->canonical;
+my $turn = 0; my $thread = 'acct-codex-' . $$;
+sub reply { print $json->encode($_[0]), "\n" }
+while (my $line = <STDIN>) {
+  my $message = eval { $json->decode($line) } or next;
+  my ($method, $id) = ($message->{method}, $message->{id});
+  next unless defined $method && defined $id;
+  if ($method eq 'initialize') { reply({ id => $id, result => { userAgent => 'fixture' } }) }
+  elsif ($method eq 'account/read') {
+    reply({ id => $id, result => { account => ($email ? { type => 'chatgpt', email => $email, planType => 'plus' } : undef), requiresOpenaiAuth => JSON::PP::true } });
+  }
+  elsif ($method eq 'thread/start' || $method eq 'thread/resume') {
+    my $resume = $method eq 'thread/resume' ? $message->{params}{threadId} : '-';
+    $thread = $resume if $resume ne '-';
+    my $handoff = ($message->{params}{developerInstructions} // '') =~ /USER:/ ? 'yes' : 'no';
+    logline("codex ctx=$ctx account=" . ($email || 'none') . " session=$thread resume=$resume handoff=$handoff");
+    unless ($email) { print STDERR "not logged in\n"; reply({ id => $id, error => { code => -32000, message => 'Not logged in. Run codex login.' } }); next }
+    reply({ id => $id, result => { thread => { id => $thread } } });
+    reply({ method => 'thread/started', params => { thread => { id => $thread } } });
+  }
+  elsif ($method eq 'turn/start') {
+    $turn++;
+    reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
+    reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+    reply({ method => 'account/rateLimits/updated', params => { rateLimits => { primary => { usedPercent => $used + 0 } } } });
+    reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => "Done as $email" } } });
+    reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'completed' } } });
+  }
+  else { reply({ id => $id, result => {} }) }
+}

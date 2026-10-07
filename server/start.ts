@@ -13,6 +13,8 @@ import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agent
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
+import { createAccountService, type AccountService } from './agents/accounts/service.ts'
+import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
@@ -195,6 +197,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agyMcp = createAgyMcp(projects, options.mcp)
   // Created after the manager it watches; the manager asks it before starting a session.
   let lifecycle: Lifecycle | undefined
+  // Likewise: the manager resolves each launch's account through it (W12.1).
+  let accounts: AccountService | undefined
   const manager = createThreadManager(store, {
     workspaceFor: (projectPath) => {
       try {
@@ -212,6 +216,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     capabilities,
     antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
     launchGate: (agent) => lifecycle?.launchBlock(agent),
+    accounts: { resolve: (projectPath, agent) => accounts!.resolve(projectPath, agent), describe: (id) => accounts!.describe(id) },
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
@@ -227,6 +232,22 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   })
   lifecycle = createLifecycle({ stateRoot: root, capabilities, ...(options.installerDownload ? { download: options.installerDownload } : {}), sessions: { activity: (agent) => manager.agentActivity(agent), closeIdle: (agent) => manager.closeIdleSessions(agent) } })
   const agentLifecycle = lifecycle
+  accounts = createAccountService({
+    stateRoot: root,
+    // The CLI a launch would run: the resolved one when found, else its command on PATH.
+    executable: async (agent) => {
+      const caps = await capabilities.get(agent)
+      return caps.executable.state === 'missing' ? AGENT_COMMANDS[agent] : caps.executable.identity.path
+    },
+    sessions: {
+      activity: (projectPath, agent) => manager.accountActivity(projectPath, agent),
+      inUse: (accountId) => manager.accountSessions(accountId),
+      closeIdle: (accountId) => manager.closeAccountSessions(accountId),
+      rebindProject: (projectPath, agent, to) => manager.rebindProject(projectPath, agent, to),
+      identityChanged: (accountId, to, from) => manager.identityChanged(accountId, to, from),
+    },
+  })
+  const accountService = accounts
   // A waiting update starts as soon as the last conversation on that CLI stops working.
   manager.subscribe(() => agentLifecycle.activityChanged())
   const runs = createRunObservationStore(root)
@@ -295,7 +316,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  const agents = createAgentStatus(store, capabilities, options.agentProbe ? () => join(store.root, 'no-chrome-helper.json') : undefined)
+  const agents = createAgentStatus(store, capabilities, options.agentProbe ? () => join(store.root, 'no-chrome-helper.json') : undefined, (agent) => accountService.defaultUsageKey(agent))
   const browserLeases = createBrowserLeases()
   const browser = options.browserHost ? createBrowserAgent({
     host: options.browserHost,
@@ -305,7 +326,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
@@ -331,7 +352,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), phonePreviews.dispose(), checks.shutdown(), agentLifecycle.shutdown()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), phonePreviews.dispose(), checks.shutdown(), agentLifecycle.shutdown(), accountService.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {
