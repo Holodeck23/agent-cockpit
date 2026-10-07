@@ -18,6 +18,7 @@ import { HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
 import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
+import { installCrashGuard } from './crash-guard.ts'
 import type { PreviewCapture, PreviewOpen } from '../server/preview/types.ts'
 import { originClass } from '../server/browser/agent-policy.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
@@ -46,6 +47,10 @@ let browserHost: BrowserHost | undefined
 let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
 const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init) })
+
+// An uncaught error in the server must not freeze Cockpit behind Electron's modal error dialog:
+// it goes to <state>/logs/main-errors.log and Cockpit keeps running (electron/crash-guard.ts).
+installCrashGuard(process, join(defaultRoot(), 'logs', 'main-errors.log'))
 
 // A released app will not run under a debugger (electron/debug-flags.ts).
 if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
