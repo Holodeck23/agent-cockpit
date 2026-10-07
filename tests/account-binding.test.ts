@@ -169,14 +169,14 @@ describe('continuing after an account switch (W12-03)', () => {
     expect(store.events(meta.id).some((e) => e.event.kind === 'account_changed')).toBe(true)
   })
 
-  it('a conversation that never started has nothing to hand over and records nothing', async () => {
+  it('a conversation whose session never started is told, with nothing to hand over', async () => {
     const { manager, accounts, launches, settings, store, root } = setup()
     const meta = manager.create({ projectPath: '/p', settings, text: 'hello' })
     launches[0]!.emit({ kind: 'result', ok: false })
     const b = accounts.createManaged('claude', 'B', known('kb', 'b…'))
     accounts.select('/p', 'claude', b.id)
     await manager.rebindProject('/p', 'claude', bindingFor(accounts, root).resolve('/p', 'claude'))
-    expect(store.events(meta.id).some((e) => e.event.kind === 'account_changed')).toBe(false)
+    expect(store.events(meta.id).find((e) => e.event.kind === 'account_changed')?.event).toMatchObject({ handoff: false, to: { id: b.id } })
     manager.send(meta.id, 'again')
     expect(launches[1]!.request.accountEnv).toBeDefined()
   })
@@ -199,6 +199,26 @@ describe('the default identity changed outside Cockpit (W12-04)', () => {
     manager.send(idle.id, 'next')
     expect(launches[2]!.request.resume).toBeUndefined()
     expect(store.get(idle.id)).toMatchObject({ accountGeneration: 2 })
+  })
+})
+
+describe('a change of the default after a rebind (W12-04)', () => {
+  it('a conversation already waiting to start fresh on the default is still told the default is someone else now', async () => {
+    const { manager, accounts, launches, settings, store, root } = setup()
+    const id = defaultAccountId('claude')
+    accounts.observe(id, known('ka', 'a…'))
+    const b = accounts.createManaged('claude', 'B', known('kb', 'b…'))
+    accounts.select('/p', 'claude', b.id)
+    const meta = manager.create({ projectPath: '/p', settings, text: 'TASK: on B' })
+    finishTurn(launches[0]!, meta.sessionId)
+    accounts.select('/p', 'claude', id)
+    await manager.rebindProject('/p', 'claude', bindingFor(accounts, root).resolve('/p', 'claude'))
+    accounts.observe(id, known('kz', 'z…'))
+    await manager.identityChanged(id, bindingFor(accounts, root).resolve('/p', 'claude'))
+    const changes = store.events(meta.id).filter((e) => e.event.kind === 'account_changed').map((e) => e.event)
+    expect(changes).toMatchObject([{ reason: 'selected', to: { hint: 'a…' } }, { reason: 'identity_changed', handoff: true, to: { hint: 'z…' } }])
+    manager.send(meta.id, 'next')
+    expect(launches[1]!.request.seed).toContain('USER: TASK: on B')
   })
 })
 

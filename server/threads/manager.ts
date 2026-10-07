@@ -462,6 +462,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   // A conversation from before accounts ran on the CLI default as first identified: generation 1.
   const boundTo = (meta: ThreadMeta, account: ResolvedAccount): boolean =>
     accountOf(meta) === account.accountId && (meta.accountGeneration ?? 1) === account.generation
+  /** Has run on an account (or holds a native session): a change of account is worth telling it about. */
+  const hasAccount = (meta: ThreadMeta): boolean => meta.sessionStarted || meta.accountGeneration !== undefined
 
   /**
    * Moves an idle conversation to another account (or identity): the change is recorded where the
@@ -491,7 +493,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Read at launch: the project's account now. A native session from another account (or an older
     // identity of this one) is never resumed under it: the conversation is rebound first (W12-03).
     const account = options.accounts?.resolve(meta.projectPath, meta.settings.agent)
-    if (account && meta.sessionStarted && !boundTo(meta, account)) meta = rebind(meta, account, accountOf(meta) === account.accountId ? 'identity_changed' : 'selected')
+    if (account && hasAccount(meta) && !boundTo(meta, account)) meta = rebind(meta, account, accountOf(meta) === account.accountId ? 'identity_changed' : 'selected')
     const generation = Symbol()
     generations.set(meta.id, generation)
     const pending = new Map<string, PendingApproval>()
@@ -853,10 +855,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const affected = store.list().filter((meta) => meta.projectPath === projectPath && meta.settings.agent === agent && !deleted.has(meta.id))
       if (affected.some((meta) => busy(live.get(meta.id)) || (live.get(meta.id)?.waiting.size ?? 0) > 0)) throw new ThreadBusyError('A conversation on this agent is still working in this project')
       await Promise.all(affected.map((meta) => retire(meta.id)))
-      for (const meta of affected) if (!boundTo(meta, to) && meta.sessionStarted) rebind(meta, to, 'selected')
+      for (const meta of affected) if (!boundTo(meta, to) && hasAccount(meta)) rebind(store.get(meta.id) ?? meta, to, 'selected')
     },
     async identityChanged(accountId, to) {
-      const affected = store.list().filter((meta) => !deleted.has(meta.id) && accountOf(meta) === accountId && meta.sessionStarted && !busy(live.get(meta.id)) && !boundTo(meta, to))
+      const affected = store.list().filter((meta) => !deleted.has(meta.id) && accountOf(meta) === accountId && hasAccount(meta) && !busy(live.get(meta.id)) && !boundTo(meta, to))
       await Promise.all(affected.map((meta) => retire(meta.id)))
       for (const meta of affected) rebind(store.get(meta.id) ?? meta, to, 'identity_changed')
     },
