@@ -13,6 +13,7 @@
     "test": "vitest run",
     "smoke:claude": "tsx scripts/smoke-claude.ts",
     "check:paths": "tsx scripts/check-public-paths.ts",
+    "check:installers": "tsx scripts/check-installers.ts",
     "verify": "npm run check:paths && npm run typecheck && npm test && npm run build && npm run build:electron",
     "release": "tsx scripts/release.ts",
     "smoke:codex": "tsx scripts/smoke-codex.ts",

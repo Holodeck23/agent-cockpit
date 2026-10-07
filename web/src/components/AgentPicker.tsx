@@ -9,6 +9,7 @@ import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
 import { AgentCapabilityPanel } from './AgentCapabilityPanel.tsx'
+import { AgentLifecycle } from './AgentLifecycle.tsx'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { ChevronDownIcon } from './icons.tsx'
 
@@ -196,6 +197,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
       .finally(() => setRefreshing(false))
   }
   const shownCaps = caps?.agent === current.agent ? caps : undefined
+  // Install, update and sign-in run on this Mac only; the phone is refused them (W10.2).
+  const phone = typeof document !== 'undefined' && document.documentElement.classList.contains('phone')
   const listedModels = shownCaps?.models.state === 'supported' ? (shownCaps.models.value ?? []).map((m) => m.id) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
 
@@ -287,6 +290,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
             </div>
             <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
             <AgentCapabilityPanel caps={shownCaps} refreshing={refreshing} error={capsError} onRefresh={refresh} />
+            {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
             <label className="field">
               Model
               <input

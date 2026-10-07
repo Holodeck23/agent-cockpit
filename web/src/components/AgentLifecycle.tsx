@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentId } from '../../../server/agents/types.ts'
 import { api, type AgentCapabilities, type AgentLifecycleView, type OperationKind, type OperationView, type Plan } from '../api.ts'
 import { formatWhen } from '../usage.ts'
@@ -51,6 +51,12 @@ function Operation({ op, onChange }: { op: OperationView; onChange: (next: Opera
       <div className="lifecycle-actions">
         {op.state === 'pending_confirmation' ? <button type="button" className="button-soft" onClick={() => act(() => api.resumeAgentOperation(op.id))}>Resume update</button> : null}
         {running || op.state === 'pending_confirmation' ? <button type="button" className="button-soft" onClick={() => act(() => api.cancelAgentOperation(op.id))}>Cancel</button> : null}
+        {op.installerChanged && op.endedAt ? (
+          <button type="button" className="button-soft" onClick={() => {
+            setError('')
+            api.startAgentOperation(op.agent, 'install', { acceptInstaller: op.installerChanged!.sha256 }).then(onChange, (e: unknown) => setError(message(e)))
+          }}>Install this version anyway</button>
+        ) : null}
       </div>
       {error ? <p className="agent-state-note agent-state-problem" role="alert">{error}</p> : null}
     </div>
@@ -86,7 +92,12 @@ export function AgentLifecycle({ agent, caps, onChanged }: { agent: AgentId; cap
       setOp((shown) => next.operations.find((o) => !o.endedAt) ?? (shown?.agent === agent ? shown : undefined))
     }, (e: unknown) => setError(message(e)))
   }, [agent])
-  useEffect(() => { setOp(undefined); setError(''); load() }, [load, caps?.probedAt])
+  // A new agent starts clean; a re-check of the same agent keeps an ended operation's message.
+  useEffect(() => { setOp(undefined); setError('') }, [agent])
+  useEffect(() => { load() }, [load, caps?.probedAt])
+  // Held in a ref so a parent re-render does not restart the poll below.
+  const changed = useRef(onChanged)
+  useEffect(() => { changed.current = onChanged })
 
   // Follow a running operation; when it ends, the CLI is read again.
   const running = op !== undefined && (RUNNING.has(op.state) || op.state === 'pending_confirmation')
@@ -95,11 +106,11 @@ export function AgentLifecycle({ agent, caps, onChanged }: { agent: AgentId; cap
     const timer = setInterval(() => {
       api.agentOperation(op.id).then((next) => {
         setOp(next)
-        if (next.endedAt) { onChanged(); load() }
+        if (next.endedAt) { changed.current(); load() }
       }, () => undefined)
     }, 1000)
     return () => clearInterval(timer)
-  }, [op?.id, running, onChanged, load])
+  }, [op?.id, running, load])
 
   const start = (kind: OperationKind): void => {
     setError('')
@@ -115,7 +126,7 @@ export function AgentLifecycle({ agent, caps, onChanged }: { agent: AgentId; cap
   const needsSignin = caps.executable.state === 'found' && (caps.auth.state === 'signed_out' || caps.auth.state === 'unknown')
   return (
     <div className="agent-lifecycle" role="group" aria-label="Install and updates">
-      {op ? <Operation op={op} onChange={(next) => { setOp(next); if (next.endedAt) { onChanged(); load() } }} /> : null}
+      {op ? <Operation op={op} onChange={(next) => { setOp(next); if (next.endedAt) { changed.current(); load() } }} /> : null}
       {!running && missing ? (view.install.available ? <Action kind="install" plan={view.install} label="Install" onStart={start} /> : <Manual plan={view.install} />) : null}
       {!running && needsSignin ? (view.signin.available ? <Action kind="signin" plan={view.signin} label="Sign in" onStart={start} /> : <Manual plan={view.signin} />) : null}
       {!running && !missing ? (

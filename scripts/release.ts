@@ -115,6 +115,7 @@ async function build(): Promise<void> {
   requireCleanTree()
   requireTagAbsent()
   await run('verify.log', 'npm', ['run', 'verify'])
+  await run('check-installers.log', 'npm', ['run', 'check:installers'])
   await run('landing-render.log', 'node', ['landing/check-render.mjs', 'landing/index.html', '--width', '390,768,1280'])
   await run('landing-verify.log', 'node', ['landing/verify.mjs', join(EVIDENCE, 'landing-local')])
 

@@ -161,7 +161,7 @@ export const api = {
   agentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities`),
   refreshAgentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities/refresh`, { method: 'POST', body: {} }),
   agentLifecycle: (agent: AgentId) => request<AgentLifecycleView>(`/api/agents/${agent}/lifecycle`),
-  startAgentOperation: (agent: AgentId, kind: OperationKind) => request<OperationView>(`/api/agents/${agent}/${kind}`, { method: 'POST', body: {} }),
+  startAgentOperation: (agent: AgentId, kind: OperationKind, body: { acceptInstaller?: string } = {}) => request<OperationView>(`/api/agents/${agent}/${kind}`, { method: 'POST', body }),
   agentOperation: (id: string) => request<OperationView>(`/api/agent-operations/${id}`),
   cancelAgentOperation: (id: string) => request<{ cancelled: boolean }>(`/api/agent-operations/${id}/cancel`, { method: 'POST', body: {} }),
   resumeAgentOperation: (id: string) => request<{ resumed: boolean }>(`/api/agent-operations/${id}/resume`, { method: 'POST', body: {} }),
