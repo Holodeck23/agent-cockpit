@@ -74,6 +74,8 @@ export interface ThreadDetail {
   readonly transcriptPath: string
   /** The agent message being streamed right now, if any. */
   readonly streaming: string
+  /** Each workspace's live agent: whether it is working, its streamed text, its run (W12-15). */
+  readonly runs?: ReadonlyArray<{ readonly workspaceId: string; readonly working: boolean; readonly partial: string; readonly runId?: string }>
 }
 
 /** An API refusal; `status` 409 means a conflict the person should resolve. */
@@ -244,7 +246,8 @@ export const api = {
   /** No answers closes the agent's questions unanswered. */
   answerQuestion: (id: string, requestId: string, answers: Record<string, string> | undefined) =>
     request<unknown>(`/api/threads/${id}/questions/${requestId}`, { method: 'POST', body: answers ? { answers } : {} }),
-  interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
+  /** Stops one workspace's agent, or (without one) every agent in the conversation. */
+  interrupt: (id: string, workspaceId?: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: workspaceId ? { workspaceId } : {} }),
   /** The exact handoff a switch would send now (D13). */
   handoffPreview: (id: string) => request<HandoffPreview>(`/api/threads/${id}/handoff`),
   /** `handoff` is the digest of the preview the user read; the server refuses if it no longer matches. */

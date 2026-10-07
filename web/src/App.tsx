@@ -279,7 +279,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     // Mid-sentence the main checkout is "the main checkout", as in the transcript note.
     const inWords = (label: string): string => (label === MAIN_CHECKOUT ? 'the main checkout' : label)
     const moves = meta && target.ok && explicit && currentId && selection.id && currentId !== selection.id ? { to: inWords(selection.label), from: inWords(currentLabel) } : undefined
-    return { scope: selection.scope, folder: selection.folder, target, currentLabel, showLabel: explicit, ...(moves ? { moves } : {}) }
+    return { scope: selection.scope, folder: selection.folder, target, currentLabel, showLabel: explicit, ...(moves ? { moves } : {}),
+      ...(selection.id ? { selectedId: selection.id } : {}), nameOf: (id: string) => labelOf(workspaces.list, project, id) }
   }
   const workspaceGone = (title: string): React.ReactNode => (
     <main className="workflow-empty" role="status">
@@ -364,6 +365,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onBrowseFiles={() => setSection('files')}
               detail={cockpit.detail}
               streaming={cockpit.streaming}
+              streams={cockpit.streams}
               processes={cockpit.processes.filter((p) => p.projectPath === cockpit.detail?.meta.projectPath)}
               onError={cockpit.reportError}
               instructionsRevision={detailProject?.instructions ? detailProject.instructionsRevision : undefined}

@@ -4,7 +4,7 @@ import { buildActivity } from '../activity.ts'
 import { compactingNow, isBusy, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
 import { api, type MessageImage, type ProcessInfo, type StoredImage, type ThreadDetail } from '../api.ts'
-import { phoneWorkspaceId, type ThreadWorkspace } from '../workspaces.ts'
+import { phoneWorkspaceId, workingWorkspaces, type ThreadWorkspace } from '../workspaces.ts'
 import { isWorking, STATUS_LABEL } from '../conversation-meta.ts'
 import { buildTranscript, followUpSuggestions } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
@@ -43,11 +43,20 @@ interface ThreadViewProps {
   onOpenFile?: (target: { path: string; line: number }) => void
   /** The selected workspace and where a send goes (desktop). */
   workspace?: ThreadWorkspace
+  /** Text streaming per workspace (W12-15). */
+  streams?: Readonly<Record<string, string>>
 }
 
-export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onToggleList, listHidden = false, onOpenFile, workspace }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onToggleList, listHidden = false, onOpenFile, workspace, streams }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = isBusy(status)
+  // Which of the conversation's workspaces have an agent at work right now (W12-15).
+  const inSeveral = !phone && Object.keys(meta.bindings ?? {}).length > 0
+  const workingIn = inSeveral ? workingWorkspaces(events, running) : []
+  const twoRunning = workingIn.length > 1
+  const focused = workspace?.selectedId
+  const focusedWorking = focused !== undefined && workingIn.includes(focused)
+  const focusedRunning = inSeveral && focused !== undefined ? focusedWorking : running
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
   const shown = !running && awaitingOf(events) ? 'needs_input' : status
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
@@ -141,7 +150,21 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             </span>
             {!phone && workspace?.showLabel ? <span className="workspace-chip" title="The workspace this conversation works in now"><BranchIcon />{workspace.currentLabel}</span> : null}
             {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
-            {running ? (
+            {running && twoRunning && workspace ? (
+              // Two workspaces at work: Stop the one you are looking at, or Stop all (W12-15).
+              <>
+                {focusedWorking ? (
+                  <button type="button" className="head-action" aria-label={`Stop ${workspace.nameOf(focused!)}`} title={`Stop the turn in ${workspace.nameOf(focused!)}; the other keeps working`} onClick={() => guard(api.interrupt(meta.id, focused))}>
+                    <StopIcon />
+                    Stop {workspace.nameOf(focused!)}
+                  </button>
+                ) : null}
+                <button type="button" className="head-action" aria-label="Stop all" title="Stop every agent working in this conversation" onClick={() => guard(api.interrupt(meta.id))}>
+                  <StopIcon />
+                  Stop all
+                </button>
+              </>
+            ) : running ? (
               <button type="button" className="head-action" aria-label="Stop" title={helpers > 0 ? 'Stop the current turn and its helpers' : 'Stop the current turn'} onClick={() => guard(api.interrupt(meta.id))}>
                 <StopIcon />
                 Stop
@@ -217,7 +240,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
           onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
           onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text, images }) => setRestore({ text, restore: true, images })))}
-          onSendNow={() => guard(api.interrupt(meta.id))}
+          onSendNow={() => guard(api.interrupt(meta.id, twoRunning ? focused : undefined))}
+          workspaceName={inSeveral ? workspace?.nameOf : undefined}
+          streams={streams}
           onRetry={(text, images) => guard(send(text, images.map(({ file, name }) => ({ stored: file, ...(name ? { name } : {}) }))))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
           onOpenChanges={phone ? undefined : (runId) => setChangesFor({ runId })}
@@ -267,8 +292,9 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         draftKey={workspace?.scope ? `${meta.id}@${workspace.scope}` : meta.id}
         prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
-        placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
-        working={isWorking(status)}
+        // With two workspaces, the box speaks for the one you are looking at.
+        placeholder={focusedRunning ? 'Add to the current turn…' : 'Add a follow-up…'}
+        working={isWorking(status) && focusedRunning}
         onSubmit={(text, images) => send(text, images).then(() => undefined)}
         picker={phone ? (
           <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>

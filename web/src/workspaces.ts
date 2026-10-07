@@ -2,7 +2,9 @@
 // they are unit-tested: resolving the person's saved choice against what exists now, which
 // conversations ran where, where a send goes, and the guard that stops a slow answer for an old
 // choice from replacing the view of the current one.
-import type { ProcessInfo, RemovalCheck, ThreadMeta, ThreadSummary, Workspace, WorktreeHealth } from './api.ts'
+import type { ProcessInfo, RemovalCheck, StoredEvent, ThreadMeta, ThreadSummary, Workspace, WorktreeHealth } from './api.ts'
+import { latestTurn } from '../../server/threads/status.ts'
+import { partition } from '../../server/threads/workspace-events.ts'
 import { isWorking, needsYou } from './conversation-meta.ts'
 
 export const MAIN_CHECKOUT = 'Main checkout'
@@ -99,6 +101,10 @@ export interface ThreadWorkspace {
   readonly showLabel: boolean
   /** The next message continues the conversation in this workspace instead of the one it last worked in. */
   readonly moves?: { readonly to: string; readonly from: string }
+  /** The selected workspace's ID (the main checkout's too): what a focused Stop stops. */
+  readonly selectedId?: string
+  /** A workspace's name by ID, for labels on messages and Stop buttons. */
+  readonly nameOf: (workspaceId: string) => string
 }
 
 // ---- where a send goes ----
@@ -132,6 +138,14 @@ export function labelOf(list: readonly Workspace[] | undefined, project: Project
   if (!workspaceId || workspaceId === project.workspaceId) return MAIN_CHECKOUT
   const found = list?.find((w) => w.id === workspaceId)
   return found ? (isActiveWorktree(found) ? worktreeLabel(found) : `${worktreeLabel(found)} (missing)`) : 'Missing workspace'
+}
+
+// ---- two agents at once (W12-15) ----
+
+/** The workspaces whose turn is in flight, while the conversation is working: each gets its own Stop once there are two. */
+export function workingWorkspaces(events: readonly StoredEvent[], working: boolean): string[] {
+  if (!working) return []
+  return [...partition(events)].filter(([key, part]) => key !== '' && (() => { const turn = latestTurn(part); return Boolean(turn && !turn.endedAt) })()).map(([key]) => key)
 }
 
 // ---- the end of a worktree (W12.4) ----

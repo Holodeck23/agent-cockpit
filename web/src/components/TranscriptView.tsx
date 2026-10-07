@@ -36,6 +36,10 @@ interface TranscriptViewProps {
   onDismiss?: () => void
   /** Opens Changes for a finished run (desktop only). */
   onOpenChanges?: (runId: string) => void
+  /** Names a workspace, once the conversation has run in more than one (W12-15): messages and live text say where. */
+  workspaceName?: (workspaceId: string) => string
+  /** Text streaming per workspace, when two agents can reply at once. */
+  streams?: Readonly<Record<string, string>>
 }
 
 /** 34052 → "34k"; small counts stay exact. */
@@ -56,11 +60,12 @@ function useTick(active: boolean): number {
   return now
 }
 
-function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
+function Author({ author, ts, where }: { author: 'you' | AgentId; ts?: string; where?: string }) {
   return (
     <div className="author">
       <AgentGlyph author={author} />
       <span className="author-name">{author === 'you' ? 'You' : agentName(author)}</span>
+      {where ? <span className="author-where" title="The workspace this ran in">{where}</span> : null}
       {ts ? <time className="author-time">{time(ts)}</time> : null}
     </div>
   )
@@ -68,7 +73,7 @@ function Author({ author, ts }: { author: 'you' | AgentId; ts?: string }) {
 
 const lineCount = (text: string): number => text.split('\n').length
 
-export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss, onOpenChanges }: TranscriptViewProps) {
+export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss, onOpenChanges, workspaceName, streams }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
@@ -91,7 +96,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
               const [first = '', ...rest] = item.text.trim().split('\n')
               return (
                 <section key={item.key} className="message phase-update">
-                  {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
+                  {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} where={item.workspace && workspaceName ? workspaceName(item.workspace) : undefined} /> : null}
                   {rest.length ? (
                     <details className="update-line"><summary><span className="update-tag">Update</span>{first}</summary><div>{rest.join('\n')}</div></details>
                   ) : <div className="update-line"><span className="update-tag">Update</span>{first}</div>}
@@ -100,7 +105,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
             }
             return (
               <section key={item.key} className={`message${item.phase === 'acknowledgement' ? ' phase-ack' : ''}${item.conclusion ? ` conclusion-${item.conclusion}` : ''}${item.queuedId ? ' waiting' : ''}`}>
-                {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} /> : null}
+                {item.fromConversation ? <div className="author"><a className="author-name" href={`/?thread=${encodeURIComponent(item.fromConversation.id)}`}>From {item.fromConversation.title}</a><time className="author-time">{time(item.ts)}</time></div> : item.showAuthor ? <Author author={item.author} ts={item.ts} where={item.workspace && workspaceName ? workspaceName(item.workspace) : undefined} /> : null}
                 {item.conclusion ? (
                   <div className="conclusion-head">
                     <span className={`conclusion-tag ${item.conclusion}`}>{item.conclusion === 'question' ? 'Question for you' : 'Blocked'}</span>
@@ -287,7 +292,15 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
             return null
         }
       })}
-      {streaming ? (
+      {workspaceName && streams && Object.values(streams).some(Boolean) ? (
+        // Two agents can be typing at once: one live reply per workspace, each labelled.
+        Object.entries(streams).filter(([, text]) => text).map(([workspace, text]) => (
+          <section key={`streaming-${workspace}`} className="message">
+            <Author author={streamingAuthor} where={workspace ? workspaceName(workspace) : undefined} />
+            <div className="bubble agent reply streaming"><ReplyMarkdown text={text} /></div>
+          </section>
+        ))
+      ) : streaming ? (
         <section className="message">
           {streamingShowsAuthor ? <Author author={streamingAuthor} /> : null}
           <div className="bubble agent reply streaming"><ReplyMarkdown text={streaming} /></div>

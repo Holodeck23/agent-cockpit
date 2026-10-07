@@ -7,6 +7,7 @@ import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
+import { attribute, partition } from '../../server/threads/workspace-events.ts'
 import { takenBackPositions } from '../../server/threads/taken-back.ts'
 import { failureWords } from './agent-errors.ts'
 import { revealHidden } from '../../server/files/visible-name.ts'
@@ -26,6 +27,8 @@ export type TranscriptItem =
       conclusion?: 'question' | 'blocker'
       /** Sent mid-turn and not taken by the agent yet (J1): it can still be taken back. */
       queuedId?: string
+      /** The workspace it was sent in or came from, once the conversation has more than one (W12-15). */
+      workspace?: string
     }
   | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string }
   | {
@@ -289,6 +292,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let agent: AgentId = firstSwitch?.kind === 'agent_switch' ? firstSwitch.from : currentAgent
 
   const items: TranscriptItem[] = []
+  // Two workspaces' agents can reply in between each other: their messages say which is which.
+  const workspaceOf = partition(events).size > 1 ? attribute(events) : undefined
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
   // A message you took back went to your draft; it, and the images sent with it, are no longer
@@ -330,7 +335,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       case 'assistant_text': {
         if (event.kind === 'user_text') { lastUserText = event.text; lastUserImages = []; failedThisTurn = false }
         const author = event.kind === 'user_text' ? 'you' : agent
-        const showAuthor = !((last?.type === 'message' || last?.type === 'image') && last.author === author)
+        const workspace = workspaceOf?.[index]
+        const sameWorkspace = !workspaceOf || (last?.type === 'message' && last.workspace === workspace)
+        const showAuthor = !((last?.type === 'message' || last?.type === 'image') && last.author === author && sameWorkspace)
         if (event.kind === 'user_text') {
           // Attached files show as names; their contents went to the agent, not the transcript.
           const described = describeAttachments(event.text)
@@ -340,12 +347,12 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
             .replace(/(^|\s)@workflow:([a-z0-9]+(?:-[a-z0-9]+)*)[ \t]?/g, (match, lead: string, name: string) => (used.has(name) ? lead : match))
             .replace(/[ \t]+\n/g, '\n').trim()
           const { attachments } = described
-          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
+          items.push({ type: 'message', key, author, text, ts, showAuthor, ...(workspace ? { workspace } : {}), ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
             ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}) })
         } else {
           const role = roles.get(index)
           const parsed = role === 'conclusion' ? parseConclusion(event.text) : undefined
-          items.push({ type: 'message', key, author, text: parsed?.text ?? event.text, ts, showAuthor,
+          items.push({ type: 'message', key, author, text: parsed?.text ?? event.text, ts, showAuthor, ...(workspace ? { workspace } : {}),
             ...(role === 'acknowledgement' || role === 'update' ? { phase: role } : {}),
             ...(parsed && parsed.kind !== 'answer' ? { conclusion: parsed.kind } : {}) })
         }
