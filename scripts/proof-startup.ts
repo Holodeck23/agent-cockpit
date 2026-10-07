@@ -31,7 +31,8 @@ try {
     assert.equal(openApprovals(store.events(id)).length, 0)
     assert.equal(store.events(id).filter((e) => e.event.kind === 'result').length, 1)
     assert.equal(await page.locator('.approval.open').count(), 0)
-    assert.match(await page.locator('.transcript').innerText(), /Install it and sign in/)
+    // Antigravity is checked at launch (W10-01) and says so in its own words; the others keep the start error.
+    assert.match(await page.locator('.transcript').innerText(), agent === 'antigravity' ? /Antigravity is not installed: .*Install it, then retry/ : /Install it and sign in/)
     console.log(`PASS ${agent}: missing CLI terminates, no approval or invented session`)
   }
 

@@ -87,6 +87,21 @@ describe('thread manager', () => {
     expect(manager.status(meta.id)).toBe('done')
   })
 
+  it('does not ask twice for a Cockpit tool that Cockpit approves itself', () => {
+    const { store, manager, agent, settings } = setup()
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'start the server' })
+    agent.emit({ kind: 'session', sessionId: meta.sessionId })
+    const input = { command: 'node server.cjs', name: 'App' }
+    agent.emit({ kind: 'approval_request', requestId: 'r1', toolName: 'mcp__cockpit__start_process', input, suggestions: [] })
+    // The CLI's own prompt is answered here; the card the person sees is Cockpit's (host-actions.ts).
+    expect(agent.approvals).toEqual([{ requestId: 'r1', behavior: 'allow', input }])
+    expect(openApprovals(store.events(meta.id))).toEqual([])
+    expect(manager.status(meta.id)).toBe('working')
+    // Cockpit tools it does not always approve itself still ask through the CLI.
+    agent.emit({ kind: 'approval_request', requestId: 'r2', toolName: 'mcp__cockpit__save_workflow', input: {}, suggestions: [] })
+    expect(openApprovals(store.events(meta.id))).toHaveLength(1)
+  })
+
   it('holds the turn on an agent question until you answer it, and passes only the asked questions on (J6)', () => {
     const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'pick a colour' })

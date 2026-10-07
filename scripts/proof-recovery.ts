@@ -54,11 +54,25 @@ try {
   assert.equal(await page.evaluate(async () => (await (await fetch('/api/processes')).json()).data.length), 0)
   await page.screenshot({ path: join(PROOF_DIR, 'phase-9b-recovery-approval.png') })
   await approval.getByRole('button', { name: 'Allow', exact: true }).click()
-  await page.getByText(`Resumed ${CLAUDE_SESSION}.`, { exact: false }).waitFor()
+  // The reply, also announced to assistive tech: the first match is the visible bubble.
+  await page.getByText(`Resumed ${CLAUDE_SESSION}.`, { exact: false }).first().waitFor()
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
-  await page.frameLocator('.preview-pane iframe').getByRole('heading', { name: 'Your first flight.' }).waitFor()
-  await page.frameLocator('.preview-pane iframe').getByRole('button', { name: 'Count a launch' }).click()
-  await page.frameLocator('.preview-pane iframe').getByText('1 launch', { exact: true }).waitFor()
+  // The preview is the conversation's in-app browser page (wave 9), drawn by the host in its own
+  // view, so it is read and used from the main process.
+  const inPreview = (js: string): Promise<unknown> => app.evaluate(async ({ BrowserWindow }, js) => {
+    const contents = BrowserWindow.getAllWindows().flatMap((w) => w.contentView.children)
+      .map((v) => (v as unknown as { webContents?: Electron.WebContents }).webContents)
+      .find((c) => c && !c.isDestroyed() && /^http:\/\/127\.0\.0\.1:\d+\/?/.test(c.getURL()))
+    return contents ? await contents.executeJavaScript(js, true) : undefined
+  }, js)
+  const previewSays = async (text: string): Promise<boolean> => {
+    const end = Date.now() + 25_000
+    while (Date.now() < end) { if (String(await inPreview('document.body.innerText').catch(() => '')).includes(text)) return true; await new Promise((r) => setTimeout(r, 200)) }
+    return false
+  }
+  assert.ok(await previewSays('Your first flight.'), 'the preview shows the app')
+  await inPreview(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Count a launch').click()`)
+  assert.ok(await previewSays('1 launch'), 'the preview is interactive')
   const detail = await page.evaluate(async () => { const rows = (await (await fetch('/api/threads')).json()).data; return (await (await fetch(`/api/threads/${rows[0].meta.id}/events`)).json()).data })
   assert.equal(detail.events.filter((e: { event: { kind: string } }) => e.event.kind === 'approval_request').length, 1)
   assert.equal(await page.getByText('Added the toggle; it remembers the choice.', { exact: true }).count(), 1)

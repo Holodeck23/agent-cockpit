@@ -213,6 +213,12 @@ export class ThreadBusyError extends Error {}
 export class OperationConflictError extends Error {}
 
 /** A late event worth a label: what a replaced process tried to say, never deltas, usage or its own exit. */
+// Cockpit tools whose every call Cockpit approves itself, on the server (host-actions.ts), because
+// the CLI's own gate can be bypassed. The CLI's prompt for the same call would ask twice: it is
+// allowed here and only Cockpit's card is shown. save_workflow is not listed: Cockpit asks for it
+// only when the project has not allowed agent workflows, so the CLI's prompt may be the only one.
+const HOST_APPROVED_TOOLS = new Set(['start_process', 'stop_process', 'remember', 'start_conversation', 'send_to_conversation', 'stop_conversation']
+  .map((tool) => `mcp__cockpit__${tool}`))
 const STALE_LABELLED = new Set<NormalizedEvent['kind']>(['session', 'result', 'assistant_text', 'tool_use', 'approval_request', 'question', 'error', 'subagent'])
 
 export interface ThreadManager {
@@ -450,7 +456,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         if (STALE_LABELLED.has(event.kind)) record(meta.id, { kind: 'stale_event', generation: launchNumber, eventKind: event.kind })
         return
       }
-      if (event.kind === 'approval_request') {
+      if (event.kind === 'approval_request' && HOST_APPROVED_TOOLS.has(event.toolName)) {
+        session.respondApproval({ requestId: event.requestId, input: event.input, suggestions: event.suggestions }, 'allow')
+      } else if (event.kind === 'approval_request') {
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
         pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
