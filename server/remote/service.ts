@@ -6,6 +6,8 @@ import { checkRemote, cookieValue, isRemoteRoute, remoteAuthority } from './guar
 import type { DeviceView, RemoteStore } from './store.ts'
 import { pushSubscriptionBody, webPushSender, type PushSender, type PushStore } from './push.ts'
 import { TailscaleError, type Tailscale, type TailscaleSelf } from './tailscale.ts'
+import type { GatewayPolicy } from './preview/gateway.ts'
+import type { PhonePreviews } from './preview/control.ts'
 
 // Phone access: a second HTTP listener on a fixed 127.0.0.1 port that only
 // `tailscale serve` reaches. It serves the same page and a subset of the API,
@@ -42,9 +44,14 @@ export interface RemoteAccessOptions {
 const enabledBody = z.object({ enabled: z.boolean() })
 const decisionBody = z.object({ approve: z.boolean() })
 const pairBody = z.object({ name: z.string().max(80).default('Phone') })
+const ticketBody = z.object({ processId: z.string().min(1).max(200) })
+
+/** What phone access tells phone previews (preview/control.ts) about. */
+export type PreviewHooks = Pick<PhonePreviews, 'ticket' | 'started' | 'stopped' | 'deviceRevoked'>
 
 export function createRemoteAccess({ store, tailscale, serveStatic, port: portOverride, push, sendPush = webPushSender }: RemoteAccessOptions) {
   let api: ApiHandler | undefined
+  let previews: PreviewHooks | undefined
   let server: Server | undefined
   let self: TailscaleSelf | undefined
   let error: string | undefined
@@ -112,6 +119,12 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
         return sendJson(res, 200, { data: { status: result.status } })
       }
       if (!device) return sendJson(res, 401, { error: 'Pair this phone with Cockpit on your Mac first' })
+      // View app (W11.2): a one-use ticket for one running process, never a phone-supplied address.
+      if (url.pathname === '/api/phone/preview-tickets' && method === 'POST') {
+        if (!previews) return sendJson(res, 404, { error: 'Phone previews are not available' })
+        const result = await previews.ticket({ deviceId: device.id, login: check.login, processId: parseBody(ticketBody, await readJson(req)).processId })
+        return 'state' in result ? sendJson(res, 409, { error: result.error, state: result.state }) : sendJson(res, 201, { data: result })
+      }
       if (url.pathname === '/api/remote/push/key' && method === 'GET') return sendJson(res, 200, { data: { publicKey: push.publicKey() } })
       if (url.pathname === '/api/remote/push/subscribe' && method === 'POST') {
         push.subscribe(device.id, parseBody(pushSubscriptionBody, await readJson(req)).subscription)
@@ -151,6 +164,7 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
   async function stopListening(): Promise<void> {
     const current = server
     server = undefined
+    await previews?.stopped()
     if (!current) return
     await new Promise<void>((resolve) => {
       current.close(() => resolve())
@@ -173,6 +187,7 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
       if (!target) await tailscale.serve(port, httpsPort)
       store.update({ enabled: true })
       error = undefined
+      await previews?.started()
     } catch (err) {
       await stopListening()
       error = err instanceof Error ? err.message : String(err)
@@ -221,6 +236,7 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
       if (!store.revoke(parts[3])) throw new HttpError(404, 'Unknown phone')
       push.unsubscribe({ deviceId: parts[3] })
       endStreams(parts[3])
+      previews?.deviceRevoked(parts[3])
       changed()
       return sendJson(res, 200, { data: status() })
     }
@@ -235,6 +251,13 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
 
   return {
     attach(handler: ApiHandler) { api = handler },
+    attachPreviews(hooks: PreviewHooks) { previews = hooks },
+    /** The control origin's tailnet policy while phone access is running, for the preview listeners. */
+    previewPolicy(): GatewayPolicy | undefined {
+      if (!server?.listening || !self) return undefined
+      const p = policy()
+      return { hostname: p.hostname, allowedLogins: p.allowedLogins, controlOrigin: `https://${remoteAuthority(p)}` }
+    },
     status,
     handleLocal,
     /** Resumes phone access at launch if it was on. Failures show in the settings, never block startup. */

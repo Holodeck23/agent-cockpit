@@ -67,6 +67,14 @@ export const ROUTES: readonly RouteClass[] = [
   // P3: writes a plugin into the project folder (W10-04).
   { method: 'POST', route: 'projects/agy-mcp', phone: false },
 
+  // Phone previews (H5, wave 11). The phone asks for a ticket on its own listener (remote/service.ts);
+  // which apps get an origin, and the Tailscale entries for them, are decided on the Mac.
+  { method: 'POST', route: 'phone/preview-tickets', phone: true },
+  { method: 'GET', route: 'phone/previews', phone: false },
+  { method: 'POST', route: 'phone/previews', phone: false },
+  { method: 'POST', route: 'phone/previews/:id/serve', phone: false },
+  { method: 'POST', route: 'phone/previews/:id/unserve', phone: false },
+
   // The agent's browser tools (H3, wave 9): agents' MCP calls on the Mac, never the phone.
   { method: 'POST', route: 'mcp/browser/:op', phone: false },
 ]
