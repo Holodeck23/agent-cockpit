@@ -120,3 +120,5 @@
 }
 .list-dropdown > .list { border-right: 0; }
 .list-dropdown-actions { display: flex; justify-content: flex-end; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--canvas-app); }
+/* Keep the header toggle reachable while the list dropdown is open. */
+.layout.list-hidden .thread-list-toggle { position: relative; z-index: 21; }
