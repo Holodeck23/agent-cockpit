@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Project, type RemovalCheck, type ThreadSummary, type Workspace } from '../api.ts'
 import type { Workspaces } from '../useWorkspaces.ts'
 import { healthLabel, threadsIn, uniqueWork, worktreeLabel } from '../workspaces.ts'
+import { MergeBack } from './MergeBack.tsx'
 
 // Manage worktrees (W12.4): each worktree with its folder, branch, conversations and what Git says
 // about it. Remove only after a fresh check finds nothing unique (Git removes it; its branch is
@@ -10,8 +11,8 @@ import { healthLabel, threadsIn, uniqueWork, worktreeLabel } from '../workspaces
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
-function Row({ worktree, project, workspaces, threads }: {
-  worktree: Workspace; project: Project; workspaces: Workspaces; threads: readonly ThreadSummary[]
+function Row({ worktree, project, workspaces, threads, onShowFiles }: {
+  worktree: Workspace; project: Project; workspaces: Workspaces; threads: readonly ThreadSummary[]; onShowFiles?: () => void
 }) {
   const [check, setCheck] = useState<RemovalCheck>()
   const [busy, setBusy] = useState(false)
@@ -66,12 +67,15 @@ function Row({ worktree, project, workspaces, threads }: {
           </>
         )}
       </div>
+      {!archived && health?.state !== 'missing' ? <MergeBack workspaceId={worktree.id} {...(onShowFiles ? { onShowFiles } : {})} onDone={() => void workspaces.refresh()} /> : null}
     </li>
   )
 }
 
-export function ManageWorktreesDialog({ project, workspaces, threads, onClose }: {
+export function ManageWorktreesDialog({ project, workspaces, threads, onClose, onShowFiles }: {
   project: Project; workspaces: Workspaces; threads: readonly ThreadSummary[]; onClose: () => void
+  /** Shows the main checkout's Files (to resolve a merge conflict). */
+  onShowFiles?: () => void
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
@@ -92,7 +96,7 @@ export function ManageWorktreesDialog({ project, workspaces, threads, onClose }:
         <p className="modal-note">Removing never deletes work: a worktree with changes, untracked or ignored files, or commits on no other branch is kept or archived as it is.</p>
         {shown.length ? (
           <ul className="worktree-manage-list">
-            {shown.map((w) => <Row key={w.id} worktree={w} project={project} workspaces={workspaces} threads={threads} />)}
+            {shown.map((w) => <Row key={w.id} worktree={w} project={project} workspaces={workspaces} threads={threads} {...(onShowFiles ? { onShowFiles: () => { onClose(); onShowFiles() } } : {})} />)}
           </ul>
         ) : <p className="modal-note">This project has no worktrees.</p>}
       </section>

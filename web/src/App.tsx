@@ -264,7 +264,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   // The selector sits under the conversation list title; Files and Processes say which workspace they show.
   const workspaceSlot = !phone && projects.active?.projectId ? (
     <WorkspaceSelector project={projects.active} workspaces={workspaces} threads={projectThreads}
-      onSelect={workspaces.select} onError={cockpit.reportError} />
+      onSelect={workspaces.select} onError={cockpit.reportError} onShowFiles={() => { workspaces.select(undefined); setSection('files') }} />
   ) : undefined
   const workspaceLabel = workspaces.hasWorktrees ? selection.label : undefined
   // Files and Processes show one checkout, so they carry the picker too once there is more than one.

@@ -41,6 +41,7 @@ import type { Project as StoredProject, ProjectPatch } from '../../server/projec
 import type { Workspace } from '../../server/projects/workspaces.ts'
 import type { PendingOperation, Preflight, GitWorktree } from '../../server/projects/worktrees.ts'
 import type { RemovalCheck, WorktreeHealth } from '../../server/projects/worktree-lifecycle.ts'
+import type { MergeOperationView, MergePreflight } from '../../server/projects/merge.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 import type { RemoteStatus } from '../../server/remote/service.ts'
@@ -54,7 +55,7 @@ export type { AgentStatus, ProcessInfo, ProcessRead, ProjectPatch, RemoteStatus,
 
 /** A project as the list returns it: with the opaque IDs of the project and its primary workspace (absent if identity is unavailable). */
 export type Project = StoredProject & { readonly projectId?: string; readonly workspaceId?: string }
-export type { PendingOperation, Preflight, Workspace, RemovalCheck, WorktreeHealth, GitWorktree }
+export type { PendingOperation, Preflight, Workspace, RemovalCheck, WorktreeHealth, GitWorktree, MergeOperationView, MergePreflight }
 
 /** A project's workspaces: the registered ones (primary first) and creates a crash left unfinished. */
 export interface WorkspaceList {
@@ -232,6 +233,10 @@ export const api = {
   archiveWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/archive`, { method: 'POST', body: {} }),
   restoreWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/restore`, { method: 'POST', body: {} }),
   forgetWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/forget`, { method: 'POST', body: {} }),
+  mergePreview: (id: string) => request<MergePreflight>(`/api/workspaces/${id}/merge`),
+  mergeWorkspace: (id: string, fingerprint: string) => request<{ operation: MergeOperationView }>(`/api/workspaces/${id}/merge`, { method: 'POST', body: { fingerprint } }),
+  continueMerge: (operationId: string) => request<{ operation: MergeOperationView }>(`/api/merge-operations/${operationId}/continue`, { method: 'POST', body: {} }),
+  abortMerge: (operationId: string) => request<{ operation: MergeOperationView }>(`/api/merge-operations/${operationId}/abort`, { method: 'POST', body: {} }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
   createThread: (body: { projectPath: string; workspaceId?: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),

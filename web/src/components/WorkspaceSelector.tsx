@@ -20,7 +20,7 @@ function Dot({ activity }: { activity: WorkspaceActivity }) {
   return null
 }
 
-export function WorkspaceSelector({ project, workspaces, threads, onSelect, onError }: {
+export function WorkspaceSelector({ project, workspaces, threads, onSelect, onError, onShowFiles }: {
   project: Project
   workspaces: Workspaces
   /** This project's conversations, for the activity dots. */
@@ -28,6 +28,8 @@ export function WorkspaceSelector({ project, workspaces, threads, onSelect, onEr
   /** Chooses a worktree's ID, or undefined for the main checkout. */
   onSelect: (id: string | undefined) => void
   onError: (message: string) => void
+  /** Shows the main checkout's Files (a merge conflict is resolved there). */
+  onShowFiles?: () => void
 }) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   const [creating, setCreating] = useState(false)
@@ -117,7 +119,7 @@ export function WorkspaceSelector({ project, workspaces, threads, onSelect, onEr
           ))}
         </ul>
       ) : null}
-      {managing ? <ManageWorktreesDialog project={project} workspaces={workspaces} threads={threads} onClose={() => setManaging(false)} /> : null}
+      {managing ? <ManageWorktreesDialog project={project} workspaces={workspaces} threads={threads} onClose={() => setManaging(false)} {...(onShowFiles ? { onShowFiles } : {})} /> : null}
       {creating && project.projectId ? (
         <NewWorktreeDialog projectId={project.projectId} projectName={project.name}
           onCreate={async (body) => { const made = await workspaces.create(body); onSelect(made.id) }} onClose={() => setCreating(false)} />

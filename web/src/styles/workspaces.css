@@ -91,3 +91,13 @@
 
 /* A message's workspace, once a conversation has run in more than one (W12-15). */
 .author-where { padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--field); color: var(--secondary); font-size: 11.5px; white-space: nowrap; }
+
+/* Merge back (W12.3). */
+.merge-back { display: grid; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.merge-note, .merge-conflict, .merge-blocked { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--body); }
+.merge-conflict, .merge-blocked { padding: 7px 10px; border: 1px solid var(--needs-border); border-radius: var(--r-sm); background: var(--needs-bg); color: var(--needs-ink); }
+.merge-files { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.merge-files li { display: flex; gap: 8px; min-width: 0; }
+.merge-files code { font: 12px var(--mono); color: var(--secondary); overflow-wrap: anywhere; }
+.merge-status { width: 14px; flex: none; font: 12px var(--mono); color: var(--muted); }
+.merge-more { color: var(--muted); }
