@@ -33,7 +33,13 @@ export interface ChromeReadiness {
 export interface AgentStatus {
   readonly id: AgentId
   readonly installation: Installation
+  /** The CLI default account's latest report (its current identity generation, when accounts are known). */
   readonly usage?: AgentUsage
+  /**
+   * Latest report per account generation (`${accountId}#${generation}`, W12.1): one account's
+   * allowance is never shown as another's, nor an earlier identity's as the current one's.
+   */
+  readonly usageByAccount?: Readonly<Record<string, AgentUsage>>
   /** Claude only. */
   readonly chrome?: ChromeReadiness
 }
@@ -71,44 +77,62 @@ export function fixedCapabilities(probe: VersionProbe): CapabilityService {
   }
 }
 
+/** The usage key of a launch recorded before accounts: the CLI default as first identified. */
+export const legacyUsageKey = (agent: AgentId): string => `default-${agent}#1`
+
 /**
- * The latest usage report per agent, newest threads first. A thread's events are
- * attributed to whichever agent was running it at the time, so switches are followed.
+ * The latest usage report per agent and per account generation, newest threads first. A thread's
+ * events are attributed to whichever agent was running it at the time, so switches are followed,
+ * and to the account its latest session boundary names.
  */
-export function latestUsage(store: ThreadStore): Partial<Record<AgentId, AgentUsage>> {
-  const found: Partial<Record<AgentId, AgentUsage>> = {}
+export function latestUsageByAccount(store: ThreadStore): { byAgent: Partial<Record<AgentId, AgentUsage>>; byAccount: Partial<Record<AgentId, Record<string, AgentUsage>>> } {
+  const byAgent: Partial<Record<AgentId, AgentUsage>> = {}
+  const byAccount: Partial<Record<AgentId, Record<string, AgentUsage>>> = {}
   const threads = [...store.list()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, MAX_THREADS_SCANNED)
   for (const meta of threads) {
     const events = store.events(meta.id)
     const firstSwitch = events.find((e) => e.event.kind === 'agent_switch')?.event
     let agent: AgentId = firstSwitch?.kind === 'agent_switch' ? firstSwitch.from : meta.settings.agent
+    let account = legacyUsageKey(agent)
     for (const { ts, event } of events) {
-      if (event.kind === 'agent_switch') agent = event.to
+      if (event.kind === 'agent_switch') { agent = event.to; account = legacyUsageKey(agent) }
+      else if (event.kind === 'session_boundary') account = event.account ? `${event.account.id}#${event.account.generation}` : legacyUsageKey(agent)
       else if (event.kind === 'usage') {
-        const current = found[agent]
-        if (!current || current.observedAt < ts) {
-          const { kind: _kind, ...report } = event
-          found[agent] = { ...report, observedAt: ts }
-        }
+        const { kind: _kind, ...report } = event
+        const usage = { ...report, observedAt: ts }
+        if (!byAgent[agent] || byAgent[agent]!.observedAt < ts) byAgent[agent] = usage
+        const forAgent = byAccount[agent] ?? (byAccount[agent] = {})
+        if (!forAgent[account] || forAgent[account]!.observedAt < ts) forAgent[account] = usage
       }
     }
   }
-  return found
+  return { byAgent, byAccount }
 }
 
-/** Installation and Chrome readiness come from the capability cache (one probe policy); usage is always fresh. */
-export function createAgentStatus(store: ThreadStore, capabilities: CapabilityService, chromeManifest: () => string = chromeHostManifest) {
+/** The latest usage report per agent, whatever the account (kept for callers without accounts). */
+export const latestUsage = (store: ThreadStore): Partial<Record<AgentId, AgentUsage>> => latestUsageByAccount(store).byAgent
+
+/**
+ * Installation and Chrome readiness come from the capability cache (one probe policy); usage is always
+ * fresh. With `defaultUsageKey` (the CLI default's current generation), `usage` is that account's only.
+ */
+export function createAgentStatus(store: ThreadStore, capabilities: CapabilityService, chromeManifest: () => string = chromeHostManifest, defaultUsageKey?: (agent: AgentId) => string) {
   return async (): Promise<AgentStatus[]> => {
     const records = await Promise.all(AGENT_IDS.map((id) => capabilities.get(id)))
-    const usage = latestUsage(store)
-    return records.map((caps) => ({
+    const { byAgent, byAccount } = latestUsageByAccount(store)
+    return records.map((caps) => {
+      const accounts = byAccount[caps.agent]
+      const usage = defaultUsageKey ? accounts?.[defaultUsageKey(caps.agent)] : byAgent[caps.agent]
+      return {
       id: caps.agent,
       installation: installationOf(caps),
-      ...(usage[caps.agent] ? { usage: usage[caps.agent] } : {}),
+      ...(usage ? { usage } : {}),
+      ...(accounts ? { usageByAccount: accounts } : {}),
       ...(caps.agent === 'claude' ? { chrome: {
         supported: caps.settings.chrome?.state === 'supported',
         extension: caps.executable.state === 'found' && existsSync(chromeManifest()),
       } } : {}),
-    }))
+      }
+    })
   }
 }
