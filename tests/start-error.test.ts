@@ -16,19 +16,19 @@ function spawnError(code: string, message: string): NodeJS.ErrnoException {
 describe('startErrorMessage', () => {
   it('explains a missing Claude Code CLI', () => {
     expect(startErrorMessage('claude', spawnError('ENOENT', 'spawn claude ENOENT'))).toBe(
-      "Claude Code isn't installed or isn't on PATH. Install it and sign in, then restart Cockpit.",
+      "Claude Code isn't installed or isn't on PATH. Install it from Agent settings, or switch this conversation to another agent.",
     )
   })
 
   it('explains a missing Codex CLI', () => {
     expect(startErrorMessage('codex', spawnError('ENOENT', 'spawn codex ENOENT'))).toBe(
-      "Codex isn't installed or isn't on PATH. Install it and sign in, then restart Cockpit.",
+      "Codex isn't installed or isn't on PATH. Install it from Agent settings, or switch this conversation to another agent.",
     )
   })
 
   it('explains a missing Antigravity CLI', () => {
     expect(startErrorMessage('antigravity', spawnError('ENOENT', 'spawn agy ENOENT'))).toBe(
-      "Antigravity isn't installed or isn't on PATH. Install it and sign in, then restart Cockpit.",
+      "Antigravity isn't installed or isn't on PATH. Install it from Agent settings, or switch this conversation to another agent.",
     )
   })
 
@@ -50,7 +50,7 @@ describe('launchClaude with a missing executable', () => {
     }
     expect(events).toContainEqual({
       kind: 'error',
-      message: "Claude Code isn't installed or isn't on PATH. Install it and sign in, then restart Cockpit.",
+      message: "Claude Code isn't installed or isn't on PATH. Install it from Agent settings, or switch this conversation to another agent.",
     })
     await session.close()
   })

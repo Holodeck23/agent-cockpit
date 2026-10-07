@@ -151,13 +151,20 @@ function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disable
 }
 
 /** The handoff, read before it is sent (D13): the exact text, its size and anything left out to fit. */
-function HandoffReview({ agent, preview, error, starting, onBack, onStart }: {
+function HandoffReview({ agent, preview, error, starting, missing, onBack, onStart }: {
   agent: AgentChoice['agent']; preview: HandoffPreview | undefined; error: string | undefined; starting: boolean
+  /** The new agent's CLI was not found on this Mac (D14): the switch is allowed, its first reply is not. */
+  missing: boolean
   onBack: () => void; onStart: () => void
 }) {
   return (
     <div className="handoff-review" role="group" aria-label="Handoff">
       <p className="handoff-title">What {agentName(agent)} receives</p>
+      {missing ? (
+        <p className="picker-note agent-state-problem" role="note">
+          {agentName(agent)} isn't installed on this Mac. You can switch now, but it can't reply until it is installed (Agent settings shows how).
+        </p>
+      ) : null}
       {preview ? (
         <>
           <p className="picker-note handoff-size">
@@ -297,6 +304,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
           <div className="picker-panel" role="dialog" aria-label="Agent settings">
             {review ? (
               <HandoffReview agent={draft.agent} preview={review.preview} error={review.error} starting={review.starting === true}
+                missing={statuses?.find((s) => s.id === draft.agent)?.installation.installed === false}
                 onBack={() => setReview(undefined)} onStart={startHandoff} />
             ) : (<>
             <div className="presets" role="group" aria-label="Presets">

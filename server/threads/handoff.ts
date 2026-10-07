@@ -75,7 +75,8 @@ function composeHandoff(events: readonly StoredEvent[], projectPath: string, ima
         return []
     }
   })
-  const { transcript, leftOut } = fitToBudget(lines)
+  // A conversation with nothing in it yet still hands over something the new agent can read (D14).
+  const { transcript, leftOut } = lines.length ? fitToBudget(lines) : { transcript: '(Nothing has been said in this conversation yet.)', leftOut: 0 }
   const text = [
     'You are taking over a task another coding agent was working on in this project.',
     `Project folder: ${projectPath}. The files on disk reflect everything done so far.`,

@@ -77,6 +77,18 @@ try {
   // 2. Back returns to the settings without switching.
   await review(page).getByRole('button', { name: 'Back' }).click()
   check('2 Back returns to the settings', (await picker(page).getByRole('button', { name: 'Switch…', exact: true }).count()) === 1 && (await review(page).count()) === 0)
+
+  // D14. A CLI that is not installed (Antigravity has no stand-in here): the handoff says so before the
+  // switch, in plain words, and going back changes nothing.
+  await picker(page).getByRole('radio', { name: /^Antigravity/ }).click()
+  await picker(page).getByRole('button', { name: 'Switch…', exact: true }).click()
+  const missing = review(page).getByRole('note')
+  check('D14 switching to a CLI that is not installed says so before anything is sent',
+    await until('missing note', async () => /Antigravity isn't installed on this Mac\. You can switch now, but it can't reply until it is installed/.test((await missing.textContent()) ?? '')),
+    (await missing.textContent().catch(() => '')) ?? '')
+  await shot(page, 'missing-cli')
+  await review(page).getByRole('button', { name: 'Back' }).click()
+  check('D14 Back leaves the conversation on Claude Code', (await page.getByRole('button', { name: 'Agent settings' }).textContent())?.includes('Claude Code') === true)
   await page.keyboard.press('Escape')
 
   // 3. The conversation changes after the preview: the stale handoff is refused and the new one shown.
