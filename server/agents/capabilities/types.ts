@@ -33,7 +33,7 @@ export type ExecutableState =
   /** On PATH, but `--version` failed or timed out: present, not proven usable. */
   | { readonly state: 'unavailable'; readonly reason: string; readonly identity: ExecutableIdentity }
 
-export type InstallManagerKind = 'native' | 'npm' | 'homebrew' | 'standalone' | 'unknown'
+export type InstallManagerKind = 'native' | 'npm' | 'bun' | 'homebrew' | 'standalone' | 'unknown'
 
 export interface InstallManager {
   readonly kind: InstallManagerKind

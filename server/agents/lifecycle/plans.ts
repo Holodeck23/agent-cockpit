@@ -72,6 +72,12 @@ export function updatePlanFor(caps: AgentCapabilities, tools: { readonly brew?: 
     if (!tools.brew) return { available: false, reason: 'Homebrew is not on the PATH Cockpit uses.', manual }
     return { available: true, executable: tools.brew, args: ['upgrade', '--cask', cask[1]!], env: BREW_ENV, destination: realpath, interaction: UPDATE_INTERACTION }
   }
+  // A Bun install run through its Node launcher looks like npm's to the CLI's own updater, which then
+  // updates npm's copy and leaves this one old (first tester, v0.1.5): Bun's own command instead.
+  if (kind === 'bun') {
+    const pkg = agent === 'claude' ? '@anthropic-ai/claude-code' : agent === 'codex' ? '@openai/codex' : undefined
+    return { available: false, reason: `${AGENT_LABEL[agent]} at ${path} was installed with Bun, so Cockpit leaves its update to Bun.`, ...(pkg ? { manual: `bun add -g ${pkg}@latest` } : {}) }
+  }
   if (agent === 'claude' && kind === 'npm') {
     const pkg = realpath.slice(0, realpath.indexOf('/@anthropic-ai/claude-code/') + '/@anthropic-ai/claude-code'.length)
     if (!writable(dirname(pkg))) return { available: false, reason: `npm's global folder ${dirname(pkg)} is not writable by you; Cockpit does not use sudo.`, manual: 'npm install -g @anthropic-ai/claude-code@latest' }
