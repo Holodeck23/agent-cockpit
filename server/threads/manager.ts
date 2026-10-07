@@ -11,7 +11,8 @@ import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
-import { handoffDigest, previewHandoff, type HandoffPreview } from './handoff.ts'
+import { handoffDigest, previewHandoff, workspaceContext, type HandoffPreview } from './handoff.ts'
+import type { Workspace } from '../projects/workspaces.ts'
 import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
@@ -62,7 +63,7 @@ export function projectInstructionsBlock(text: string): string {
 
 /** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
 /** Events that inform without being activity: they never reorder the list or mark it unread. */
-const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion', 'account_changed'])
+const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion', 'account_changed', 'workspace_changed'])
 
 export const instructionsFor = (req: LaunchRequest): string | undefined =>
   [
@@ -177,6 +178,8 @@ export interface ManagerOptions {
   readonly launchGate?: (agent: AgentId) => string | undefined
   /** The account each launch runs under (W12.1); without it every session uses the CLI default. */
   readonly accounts?: AccountBinding
+  /** A registered workspace by ID (M1); without it every session runs in the conversation's project folder. */
+  readonly workspace?: (workspaceId: string) => Workspace | undefined
 }
 
 /** What the thread manager needs from the account service. */
@@ -229,6 +232,10 @@ export class ThreadBusyError extends Error {}
 export class OperationConflictError extends Error {}
 /** The handoff the user read is no longer what a switch would send (D13). */
 export class HandoffChangedError extends Error {}
+/** The conversation has run in more than one workspace and the request did not say which (HTTP 409). */
+export class ChooseWorkspaceError extends Error {}
+/** The workspace asked for is not this project's, or no longer exists (HTTP 409); never replaced by another. */
+export class WorkspaceUnavailableError extends Error {}
 
 // Cockpit tools whose every call Cockpit approves itself, on the server (host-actions.ts), because
 // the CLI's own gate can be bypassed. The CLI's prompt for the same call would ask twice: it is
@@ -251,7 +258,8 @@ export interface ThreadManager {
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[] }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
   /** `operationId` makes a repeat of the same request a no-op that answers with the first run. */
-  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, images?: readonly IncomingImage[], operationId?: string): { runId: string; replayed: boolean }
+  /** `workspaceId` names where it runs; required once the conversation has run in more than one workspace. */
+  send(threadId: string, text: string, agentText?: string, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, images?: readonly IncomingImage[], operationId?: string, workspaceId?: string): { runId: string; replayed: boolean }
   /** At startup: closes runs a crash left open as interrupted, and returns their conversations. Relaunches nothing (ID-07). */
   recoverInterrupted(): string[]
   approve(threadId: string, requestId: string, behavior: ApprovalBehavior): void
@@ -465,6 +473,59 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   /** Has run on an account (or holds a native session): a change of account is worth telling it about. */
   const hasAccount = (meta: ThreadMeta): boolean => meta.sessionStarted || meta.accountGeneration !== undefined
 
+  /** The workspace the conversation works in now; legacy conversations resolve to their project's primary. */
+  const currentWorkspace = (meta: ThreadMeta): string | undefined => meta.workspaceId ?? options.workspaceFor?.(meta.projectPath)
+  const labelOf = (workspace: Workspace | undefined): string =>
+    !workspace ? 'a workspace that no longer exists' : workspace.kind === 'primary' ? 'the main checkout' : `${workspace.name ?? 'a worktree'}${workspace.branch ? ` (${workspace.branch})` : ''}`
+  /** The folder a workspace's agent runs in; undefined once it is gone: never the primary in its place (INTERFACES §5). */
+  const cwdOf = (meta: ThreadMeta, workspaceId: string | undefined): string | undefined => {
+    if (!workspaceId || !options.workspace) return meta.projectPath
+    const workspace = options.workspace(workspaceId)
+    if (!workspace || workspace.lifecycle !== 'active') return undefined
+    return workspace.kind === 'primary' ? meta.projectPath : workspace.cwd
+  }
+
+  /** Where the conversation works now, for what an agent is told about its folder. */
+  const workingFolder = (meta: ThreadMeta): string => cwdOf(meta, currentWorkspace(meta)) ?? meta.projectPath
+
+  /**
+   * Moves an idle conversation to another workspace of its project (W12.2). Its current native
+   * session is kept as that workspace's binding. The target's own session resumes with what happened
+   * since it last ran, or a new one starts with the conversation so far. One transcript throughout.
+   */
+  const moveTo = (meta: ThreadMeta, target: string): ThreadMeta => {
+    const current = currentWorkspace(meta)
+    if (current === target) return meta
+    const into = options.workspace?.(target)
+    const home = options.workspaceFor?.(meta.projectPath)
+    const homeProject = home ? options.workspace?.(home)?.projectId : undefined
+    if (!into || !homeProject || into.projectId !== homeProject) throw new WorkspaceUnavailableError("That workspace is not part of this conversation's project")
+    if (into.lifecycle !== 'active') throw new WorkspaceUnavailableError('That workspace is no longer available')
+    const entry = live.get(meta.id)
+    if (busy(entry) || (entry?.waiting.size ?? 0) > 0) throw new ThreadBusyError('This conversation is still working. Stop it or wait until it is idle, then continue in another workspace.')
+    void retire(meta.id)
+    const events = store.events(meta.id)
+    const leaving = current ? { [current]: {
+      agent: meta.settings.agent, bindingId: bindingIdOf(meta), sessionId: meta.sessionId, sessionStarted: meta.sessionStarted,
+      ...(meta.accountId ? { accountId: meta.accountId } : {}), ...(meta.accountGeneration !== undefined ? { accountGeneration: meta.accountGeneration } : {}),
+      cursor: events.length,
+    } } : {}
+    const { [target]: back, ...others } = meta.bindings ?? {}
+    const where = into.kind === 'primary' ? meta.projectPath : into.cwd
+    const dir = images.dir(meta.id)
+    const resumes = back !== undefined && back.agent === meta.settings.agent && back.sessionStarted
+    const since = resumes ? events.slice(back.cursor) : events
+    const told = since.length > 0 ? workspaceContext(since, where, resumes ? 'catch-up' : 'handoff', dir) : undefined
+    record(meta.id, { kind: 'workspace_changed', from: current ?? '', to: target, ...(current ? { fromLabel: labelOf(options.workspace?.(current)) } : {}), toLabel: labelOf(into),
+      context: resumes ? 'resumed' : told ? 'handoff' : 'none' })
+    return store.update(meta.id, {
+      workspaceId: target, bindings: { ...others, ...leaving },
+      ...(resumes
+        ? { sessionId: back.sessionId, bindingId: back.bindingId, sessionStarted: true, accountId: back.accountId, accountGeneration: back.accountGeneration, handoff: undefined, catchUp: told }
+        : { sessionId: randomUUID(), bindingId: randomUUID(), sessionStarted: false, accountId: undefined, accountGeneration: undefined, handoff: told, catchUp: undefined }),
+    })
+  }
+
   /**
    * Moves an idle conversation to another account (or identity): the change is recorded where the
    * user reads it, and the next message starts a new native session there with the conversation so
@@ -478,7 +539,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const target = options.accounts?.describe(to.accountId) ?? { id: to.accountId, label: to.label }
     const started = meta.sessionStarted
     // An agent switch's handoff that was never delivered still goes; otherwise the transcript.
-    const handoff = started ? previewHandoff(store.events(meta.id), meta.projectPath, images.dir(meta.id)).text : meta.handoff
+    const handoff = started ? previewHandoff(store.events(meta.id), workingFolder(meta), images.dir(meta.id)).text : meta.handoff
     record(meta.id, { kind: 'account_changed', agent: meta.settings.agent, ...(from ? { from } : {}), to: target, reason, handoff: handoff !== undefined })
     return store.update(meta.id, {
       ...(started ? { sessionId: randomUUID(), bindingId: randomUUID(), sessionStarted: false } : {}),
@@ -504,10 +565,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const requestIds = new Map<string, string>()
     // Persisted before the boundary, so every event after it belongs to this launch, even across a restart.
     const launchNumber = (meta.sessionGeneration ?? 0) + 1
-    const workspaceId = meta.workspaceId ?? options.workspaceFor?.(meta.projectPath)
+    const workspaceId = currentWorkspace(meta)
+    const cwd = cwdOf(meta, workspaceId)
     store.update(meta.id, { sessionGeneration: launchNumber, bindingId: bindingIdOf(meta), ...(workspaceId ? { workspaceId } : {}),
       ...(account ? { accountId: account.accountId, accountGeneration: account.generation } : {}) })
-    record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta), ...(account ? { account: { id: account.accountId, generation: account.generation } } : {}) })
+    record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta), ...(account ? { account: { id: account.accountId, generation: account.generation } } : {}),
+      ...(workspaceId ? { workspaceId } : {}) })
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
@@ -563,12 +626,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         record(meta.id, event)
       }
     }
-    const blocked = options.launchGate?.(meta.settings.agent)
+    const blocked = cwd === undefined ? 'This workspace no longer exists. Continue the conversation in another workspace.' : options.launchGate?.(meta.settings.agent)
     const launcher: Launcher = blocked ? (_req, onEvent) => refusedSession(meta.settings.agent, blocked, onEvent) : launchers[meta.settings.agent]
     const session = launcher(
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
-        cwd: meta.projectPath,
+        cwd: cwd ?? meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
@@ -591,7 +654,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = [], operationId?: string): { runId: string; replayed: boolean } => {
+  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = [], operationId?: string, workspaceId?: string): { runId: string; replayed: boolean } => {
     if (deleted.has(threadId)) throw new Error('This conversation was deleted')
     const meta = requireMeta(threadId)
     const operation = operationId ? { id: operationId, inputHash: inputHash(text, attached) } : undefined
@@ -603,12 +666,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         return { runId: earlier.runId!, replayed: true }
       }
     }
+    // Once it has run in several workspaces, a request says which; it is never guessed (INTERFACES §5).
+    if (workspaceId) moveTo(meta, workspaceId)
+    else if (Object.keys(meta.bindings ?? {}).length > 0) throw new ChooseWorkspaceError('This conversation has run in more than one workspace. Choose the workspace to continue in.')
     hostActions.cancel(threadId)
     // Every image is checked and stored first, so a bad one sends nothing.
     const stored = attached.map((image) => ({ ...images.save(threadId, image.bytes), image }))
     const outgoing: OutgoingImage[] = stored.map(({ path, mediaType, image }) => ({ path, mediaType, data: image.bytes.toString('base64') }))
-    const entry = ensureSession(meta)
+    const entry = ensureSession(requireMeta(threadId))
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
+    // A resumed workspace session hears once what happened elsewhere since it last ran.
+    const launched = requireMeta(threadId)
+    const toAgent = launched.catchUp && launched.sessionStarted ? `${launched.catchUp}\n\n${agentText}` : agentText
+    if (launched.catchUp) store.update(threadId, { catchUp: undefined })
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
     const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
     const runId = randomUUID()
@@ -623,7 +693,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     } else store.update(threadId, {})
     record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}), runId, ...(operation ? { operation } : {}), ...(binding ? { binding } : {}) })
     for (const { file, mediaType, image } of stored) record(threadId, { kind: 'image', file, mediaType, from: 'you', ...(image.name ? { name: image.name } : {}) })
-    entry.session.send(agentText, queuedId, outgoing.length ? outgoing : undefined)
+    entry.session.send(toAgent, queuedId, outgoing.length ? outgoing : undefined)
     return { runId, replayed: false }
   }
 
@@ -745,13 +815,13 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     handoffPreview(threadId) {
       const meta = requireMeta(threadId)
-      return previewHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
+      return previewHandoff(store.events(threadId), workingFolder(meta), images.dir(threadId))
     },
     switchAgent(threadId, settings, shown) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
       if (busy(entry)) throw new Error('Stop the current turn before switching agents')
-      const { text: handoff } = previewHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
+      const { text: handoff } = previewHandoff(store.events(threadId), workingFolder(meta), images.dir(threadId))
       if (shown !== undefined && handoffDigest(handoff) !== shown) throw new HandoffChangedError('The conversation changed since you reviewed the handoff. Review it again before switching.')
       void retire(threadId)
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })

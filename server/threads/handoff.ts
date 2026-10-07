@@ -39,7 +39,41 @@ export function previewHandoff(events: readonly StoredEvent[], projectPath: stri
   return { text, digest: handoffDigest(text), leftOut, budget: HANDOFF_BUDGET }
 }
 
+/**
+ * What a workspace's agent is told when the conversation moves to it (M1, W12.2): where it works
+ * now, and either the conversation so far (a new native session) or only what happened elsewhere
+ * since it last ran (its own session, resumed). Files in one workspace never contain another's work.
+ */
+export function workspaceContext(events: readonly StoredEvent[], where: string, mode: 'handoff' | 'catch-up', imagesDir?: string): string {
+  const { transcript } = transcriptOf(events, imagesDir)
+  return [
+    mode === 'handoff'
+      ? 'You are continuing a conversation that started in another workspace of this project.'
+      : 'While you were idle, this conversation continued in another workspace of this project.',
+    `You work in ${where}. Its files hold only what was done in this workspace: changes made in other workspaces are not here unless they were merged.`,
+    mode === 'handoff' ? 'Conversation so far:' : 'What happened since you last ran:',
+    '---',
+    transcript,
+    '---',
+    mode === 'handoff' ? "Continue from here, in this workspace." : "The user's new message follows.",
+  ].join('\n')
+}
+
 function composeHandoff(events: readonly StoredEvent[], projectPath: string, imagesDir?: string): { text: string; leftOut: number } {
+  const { transcript, leftOut } = transcriptOf(events, imagesDir)
+  const text = [
+    'You are taking over a task another coding agent was working on in this project.',
+    `Project folder: ${projectPath}. The files on disk reflect everything done so far.`,
+    'Conversation so far:',
+    '---',
+    transcript,
+    '---',
+    "Continue from here. If the user's next message asks what has been done, answer from this transcript and the files.",
+  ].join('\n')
+  return { text, leftOut }
+}
+
+function transcriptOf(events: readonly StoredEvent[], imagesDir?: string): { transcript: string; leftOut: number } {
   // The conversation as it stands: a message you took back (and its images) never reached anyone.
   const skip = takenBackPositions(events)
   const questions = new Map<string, readonly AgentQuestion[]>()
@@ -76,17 +110,7 @@ function composeHandoff(events: readonly StoredEvent[], projectPath: string, ima
     }
   })
   // A conversation with nothing in it yet still hands over something the new agent can read (D14).
-  const { transcript, leftOut } = lines.length ? fitToBudget(lines) : { transcript: '(Nothing has been said in this conversation yet.)', leftOut: 0 }
-  const text = [
-    'You are taking over a task another coding agent was working on in this project.',
-    `Project folder: ${projectPath}. The files on disk reflect everything done so far.`,
-    'Conversation so far:',
-    '---',
-    transcript,
-    '---',
-    "Continue from here. If the user's next message asks what has been done, answer from this transcript and the files.",
-  ].join('\n')
-  return { text, leftOut }
+  return lines.length ? fitToBudget(lines) : { transcript: '(Nothing has been said in this conversation yet.)', leftOut: 0 }
 }
 
 function fitToBudget(lines: readonly string[]): { transcript: string; leftOut: number } {

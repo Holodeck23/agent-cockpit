@@ -475,6 +475,14 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         items.push({ type: 'note', key, text: `${what}${next}`, tone: 'plain' })
         return
       }
+      case 'workspace_changed': {
+        // W12.2: one transcript, with each move between workspaces said where it happened.
+        const next = event.context === 'resumed'
+          ? ' Its own session continues there and is told what happened since it last ran.'
+          : event.context === 'handoff' ? ' A new session starts there with the conversation so far. Files from other workspaces are not in it.' : ''
+        items.push({ type: 'note', key, text: `Now working in ${event.toLabel}.${next}`, tone: 'plain' })
+        return
+      }
       case 'agent_switch':
         endRunningHelpers(ts)
         agent = event.to

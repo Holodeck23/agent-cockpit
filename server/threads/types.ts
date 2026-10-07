@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { ALL_EFFORTS, PERMISSION_MODES } from '../agents/claude/flags.ts'
-import type { NormalizedEvent } from '../agents/types.ts'
+import type { AgentId, NormalizedEvent } from '../agents/types.ts'
 
 export const threadSettingsSchema = z.object({
   agent: z.enum(['claude', 'codex', 'antigravity', 'opencode']).default('claude'),
@@ -17,6 +17,18 @@ export const threadSettingsSchema = z.object({
   useChrome: z.boolean().optional(),
 })
 export type ThreadSettings = z.output<typeof threadSettingsSchema>
+
+/** A workspace's own native session within a conversation, kept while the conversation works elsewhere. */
+export interface WorkspaceBinding {
+  readonly agent: AgentId
+  readonly bindingId: string
+  readonly sessionId: string
+  readonly sessionStarted: boolean
+  readonly accountId?: string
+  readonly accountGeneration?: number
+  /** Stored events when this binding was last active: context after it is what it has not seen. */
+  readonly cursor: number
+}
 
 export interface ThreadMeta {
   readonly createdByThreadId?: string
@@ -44,6 +56,14 @@ export interface ThreadMeta {
   readonly bindingId?: string
   /** Agent processes launched for this conversation so far; stamped on each session_boundary. */
   readonly sessionGeneration?: number
+  /**
+   * Native-session bindings saved for the conversation's OTHER workspaces (M1, W12.2), keyed by
+   * workspace ID. The top-level session/binding/account fields are always the binding of
+   * `workspaceId`, the workspace the conversation works in now; switching swaps them.
+   */
+  readonly bindings?: Readonly<Record<string, WorkspaceBinding>>
+  /** What happened in other workspaces since this binding last ran; prepended once to its next message. */
+  readonly catchUp?: string
   /** The account the current native session runs under (W12.1); absent before accounts: the CLI default. */
   readonly accountId?: string
   /** That account's identity generation when the session started; a different one never resumes it. */

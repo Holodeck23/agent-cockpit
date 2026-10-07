@@ -18,7 +18,7 @@ import { workflowTitle } from '../workflows/title.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { HandoffChangedError, OperationConflictError, ThreadBusyError, type ThreadManager } from '../threads/manager.ts'
+import { ChooseWorkspaceError, HandoffChangedError, OperationConflictError, ThreadBusyError, WorkspaceUnavailableError, type ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
@@ -81,7 +81,7 @@ const createThreadBody = z.object({
   images: messageImages,
 })
 /** `operationId`: one per send attempt, so a repeated request is answered once (ID-05). */
-const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional() })
+const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional(), workspaceId: z.uuid().optional() })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
@@ -603,9 +603,9 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         })
         res.end(image.bytes)
       } else if (method === 'POST' && action === 'messages') {
-        const { text, images: attached, operationId } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
+        const { text, images: attached, operationId, workspaceId } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
         const expanded = expandedFor(text, store.get(threadId)!.projectPath)
-        const { runId, replayed } = manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes), operationId)
+        const { runId, replayed } = manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes), operationId, workspaceId)
         sendJson(res, 202, { data: { status: manager.status(threadId), runId, replayed } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
@@ -650,7 +650,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError || error instanceof HandoffChangedError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError || error instanceof HandoffChangedError || error instanceof ChooseWorkspaceError || error instanceof WorkspaceUnavailableError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

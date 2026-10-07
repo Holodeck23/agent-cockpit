@@ -202,6 +202,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // Likewise: the manager resolves each launch's account through it (W12.1).
   let accounts: AccountService | undefined
   const manager = createThreadManager(store, {
+    workspace: (workspaceId) => workspaces.get(workspaceId),
     workspaceFor: (projectPath) => {
       try {
         workspaces.ensure([projectPath])

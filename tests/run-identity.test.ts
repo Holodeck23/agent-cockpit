@@ -48,7 +48,7 @@ describe('binding and run identity', () => {
     expect(stored).toMatchObject({ workspaceId: 'ws-primary', sessionGeneration: 1 })
     expect(stored.bindingId).toMatch(/^[0-9a-f-]{36}$/)
     const boundary = kinds(store.events(meta.id)).find((e) => e.kind === 'session_boundary')
-    expect(boundary).toEqual({ kind: 'session_boundary', generation: 1, bindingId: stored.bindingId })
+    expect(boundary).toEqual({ kind: 'session_boundary', generation: 1, bindingId: stored.bindingId, workspaceId: 'ws-primary' })
     sessions[0]!.emit({ kind: 'result', ok: true })
     const [run] = runsOf(meta.id, store.events(meta.id))
     expect(run).toMatchObject({ ended: true, outcome: 'ok' })
