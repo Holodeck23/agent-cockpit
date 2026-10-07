@@ -1,0 +1,52 @@
+/* Demo-only readability: production structure, tokens and controls remain intact. */
+:root { font-size: 16px; }
+button, a, summary { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
+.app { height: 100dvh; }
+.bubble { font-size: 17px; line-height: 1.6; }
+.author-name, .approval, .composer textarea, .card-title { font-size: 16px; }
+.subnav-item, .button-primary, .button-soft, .tab-label { font-size: 15px; }
+.author-time, .card-meta, .thread-status, .filter, .composer-foot, .preview-heading strong, .preview-actions button, .preview-actions a { font-size: 13px; }
+.first-run-kicker, .first-run small, .recovery-card label, .recovery-card .recovery-meta, .recovery-card small, .recovery-git, .recovery-actions .button-plain, .first-run-path { font-size: 14px; }
+.recovery-card .recovery-task { font-size: 16px; }
+.first-run-body { width: min(1120px,100%); padding: 30px 40px; }
+.first-run-actions { padding: 24px; }
+.first-run-intro p { font-size: 20px; }
+.first-run-bar { padding-left: 24px; }
+.subnav-items { min-width: 0; overflow-x: auto; }
+.workspace.has-preview { grid-template-columns: minmax(0,1fr) minmax(360px,38%); }
+.preview-pane { width: 100%!important; max-width: none; min-width: 0; }
+.workspace.has-preview .layout { grid-template-columns: 270px minmax(0,1fr); }
+.workspace.has-preview .list-resize { display:none; }
+.workspace.has-preview .events, .workspace.has-preview .composer { padding-inline: 20px; }
+.files-layout { min-width: 0; }
+@media(max-width:1100px) and (min-width:761px) {
+  .workspace.has-preview .layout { grid-template-columns: minmax(0,1fr); }
+  .workspace.has-preview .list { display:none; }
+  .workspace.has-preview .back-button { display:grid; }
+}
+@media(max-width:760px) {
+  .app { grid-template-rows: 46px 54px minmax(0,1fr); min-width:0; width:100%; overflow:hidden; }
+  .subnav { gap:4px; padding-inline:6px; }
+  .subnav-item { font-size:14px; padding:8px 6px; flex:none; }
+  .subnav-items { flex:1; gap:0; }
+  .subnav-item .icon { display:none; }
+  .subnav-tools { gap:0; }
+  .phone-wrap, .subnav-tools>[aria-label="Settings"] { display:none; }
+  .subnav-tools .icon-button { width:30px; }
+  .workspace.has-preview { display:flex; flex-direction:column; overflow:hidden; }
+  .workspace.has-preview .workspace-main { flex:1; min-height:0; }
+  .workspace.has-preview:has(.layout) .workspace-main { display:none; }
+  .workspace.has-preview .preview-pane { flex:1; min-height:0; border:0; }
+  .workspace.has-preview:not(:has(.layout)) .preview-pane { display:none; }
+  .workspace.has-preview .layout { grid-template-columns: minmax(0,1fr); }
+  .workspace.has-preview .events, .workspace.has-preview .composer { padding-inline:12px; }
+  .first-run-body { padding:24px 16px; }
+  .first-run-actions { padding:20px; }
+  .first-run-intro { display:none; }
+  .first-run-bar { padding-inline:18px; }
+  .first-run small { font-size:14px; }
+  .workflow-layout { grid-template-columns:minmax(0,1fr); overflow:auto; }
+  .workflow-list { max-height:280px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; scroll-behavior:auto!important; } }

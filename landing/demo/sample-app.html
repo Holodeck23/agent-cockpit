@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garden Notes — Today</title>
+<style>
+  :root{font-family:ui-rounded,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1b3329;background:#f4f7f2}
+  *{box-sizing:border-box}body{margin:0;min-height:100vh}button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #235d42;outline-offset:3px}
+  .app{max-width:660px;margin:0 auto;padding:22px 20px 30px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:20px}.brand{font-size:16px;font-weight:800;letter-spacing:-.03em}.brand-mark{display:inline-grid;place-items:center;width:30px;height:30px;margin-right:8px;background:#265f45;color:#fff;border-radius:9px;font-size:17px;vertical-align:middle}.date{font-size:13px;color:#5b7466}
+  .hero{background:#25553e;color:#fff;border-radius:20px;padding:24px;position:relative;overflow:hidden}.hero:after{content:'✳';position:absolute;right:-6px;top:-55px;font-size:185px;line-height:1;color:#ffffff12;pointer-events:none}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#d6e9c7}.hero h1{position:relative;margin:12px 0 8px;font-size:clamp(30px,8vw,42px);line-height:1.05;letter-spacing:-.05em;max-width:350px}.hero p{position:relative;margin:0;color:#e0eddf;font-size:15px;line-height:1.5;max-width:360px}.progress{position:relative;display:flex;align-items:center;gap:11px;margin-top:22px;font-size:14px;font-weight:700}.bar{width:100px;height:8px;border-radius:50px;background:#ffffff42;overflow:hidden}.fill{display:block;width:0;height:100%;background:#d4f2a7;border-radius:50px;transition:width .2s ease}
+  .section-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:26px 0 14px}.section-head h2{font-size:22px;line-height:1.2;margin:0;letter-spacing:-.04em}.section-head span{font-size:13px;color:#607568}.filters{display:flex;gap:7px;margin-bottom:14px}.filters button{border:1px solid #d8e2d7;background:#fff;color:#345746;border-radius:99px;padding:7px 12px;font-size:13px;font-weight:700}.filters button[aria-pressed=true]{background:#e1edda;border-color:#b6d3ab;color:#214c32}
+  .plants{display:grid;gap:9px}.plant{display:flex;align-items:center;gap:14px;background:white;border:1px solid #dfe7dc;border-radius:14px;padding:13px 14px;box-shadow:0 3px 10px #1d482008}.plant.done{background:#f2f8ed;border-color:#b9d8ab}.plant[hidden]{display:none}.art{width:48px;height:48px;flex:none;display:grid;place-items:center;border-radius:12px;background:#e6f0dd;font-size:27px}.plant:nth-child(2) .art{background:#f5e8d9}.plant:nth-child(3) .art{background:#e2edec}.plant-copy{min-width:0;flex:1}.plant h3{font-size:16px;line-height:1.2;margin:0 0 4px}.plant p{font-size:13px;line-height:1.3;color:#6c7f72;margin:0}.plant button{flex:none;background:#edf5e6;color:#24573b;border:1px solid #c9dfbd;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:750}.plant.done button{background:#27563f;color:white;border-color:#27563f}.empty{padding:20px;border:1px dashed #b6d3ab;border-radius:12px;color:#426850;background:white;font-size:15px}.empty[hidden]{display:none}.foot{margin:18px 2px 0;color:#698073;font-size:12px;line-height:1.5}
+  @media(max-width:430px){.app{padding:16px 12px 24px}.hero{padding:20px}.date{font-size:12px}.plant{gap:10px;padding:11px}.art{width:42px;height:42px;font-size:24px}.plant button{font-size:12px;padding:8px}.plant p{font-size:12px}}
+  .date,.eyebrow,.section-head span,.filters button,.foot{font-size:14px}.hero p,.plant h3{font-size:16px}.plant p,.plant button{font-size:14px}
+  @media(max-width:430px){.date,.plant p,.plant button{font-size:14px}}
+  @media(prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+<main class="app">
+  <div class="top"><div class="brand"><span class="brand-mark" aria-hidden="true">✳</span> Garden Notes</div><span class="date">A little care, every day</span></div>
+  <section class="hero" aria-labelledby="garden-title"><span class="eyebrow">Your garden today</span><h1 id="garden-title">Small steps.<br>Happy plants.</h1><p>A clear home for the things that need a little attention today.</p><div class="progress" role="status" aria-live="polite"><span class="bar" aria-hidden="true"><span class="fill" id="progress-fill"></span></span><span id="progress-label">0 of 3 watered</span></div></section>
+  <div class="section-head"><h2>Today’s care</h2><span id="remaining">3 still to do</span></div>
+  <div class="filters" role="group" aria-label="Filter plants"><button type="button" data-filter="all" aria-pressed="true">All plants</button><button type="button" data-filter="pending" aria-pressed="false">Needs water</button></div>
+  <div class="plants" id="plants">
+    <article class="plant" data-plant="basil"><div class="art" aria-hidden="true">🌿</div><div class="plant-copy"><h3>Basil</h3><p>Sunny kitchen window</p></div><button type="button" aria-pressed="false">Mark watered</button></article>
+    <article class="plant" data-plant="fern"><div class="art" aria-hidden="true">🌱</div><div class="plant-copy"><h3>Fern</h3><p>Living room corner</p></div><button type="button" aria-pressed="false">Mark watered</button></article>
+    <article class="plant" data-plant="mint"><div class="art" aria-hidden="true">🪴</div><div class="plant-copy"><h3>Mint</h3><p>Balcony planter</p></div><button type="button" aria-pressed="false">Mark watered</button></article>
+  </div>
+  <p class="empty" id="empty" hidden>All caught up. Your plants are cared for today.</p>
+  <p class="foot">A sample project inside Cockpit’s interactive tour.</p>
+</main>
+<script>
+  const plants = [...document.querySelectorAll('.plant')];
+  let filter = 'all';
+  function render() {
+    const done = plants.filter(plant => plant.classList.contains('done')).length;
+    document.getElementById('progress-label').textContent = `${done} of ${plants.length} watered`;
+    document.getElementById('progress-fill').style.width = `${done / plants.length * 100}%`;
+    document.getElementById('remaining').textContent = done === plants.length ? 'All done' : `${plants.length - done} still to do`;
+    plants.forEach(plant => { plant.hidden = filter === 'pending' && plant.classList.contains('done'); });
+    document.getElementById('empty').hidden = filter !== 'pending' || done !== plants.length;
+  }
+  plants.forEach(plant => plant.querySelector('button').addEventListener('click', () => {
+    const done = plant.classList.toggle('done');
+    const button = plant.querySelector('button');
+    button.setAttribute('aria-pressed', String(done));
+    button.textContent = done ? 'Watered ✓' : 'Mark watered';
+    render();
+    if (done) window.parent.postMessage({ source: 'garden-notes-demo', kind: 'watered', plant: plant.querySelector('h3').textContent }, '*');
+  }));
+  document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {
+    filter = button.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach(option => option.setAttribute('aria-pressed', String(option === button)));
+    render();
+  }));
+</script>
+</body>
+</html>
