@@ -35,7 +35,7 @@ import { useCockpit } from './useCockpit.ts'
 import { useProjects } from './useProjects.ts'
 import { useWorkspaces } from './useWorkspaces.ts'
 import { WorkspaceSelector } from './components/WorkspaceSelector.tsx'
-import { currentWorkspaceOf, folderOf, isActiveWorktree, isUsable, labelOf, saveSelected, sendTarget, threadsIn, type ThreadWorkspace } from './workspaces.ts'
+import { currentWorkspaceOf, folderOf, isActiveWorktree, isUsable, labelOf, MAIN_CHECKOUT, saveSelected, sendTarget, threadsIn, type ThreadWorkspace } from './workspaces.ts'
 import { PreviewPane } from './components/PreviewPane.tsx'
 import { BrowserPane } from './components/BrowserPane.tsx'
 import { loadLayouts, openPage, saveLayouts, updatePage, type LayoutMap, type PaneLayout } from './browser-layout.ts'
@@ -273,7 +273,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     const target = sendTarget(selection, workspaces.hasWorktrees, meta)
     const currentId = meta ? currentWorkspaceOf(meta, primaryId) : selection.id
     const currentLabel = meta ? labelOf(workspaces.list, project, currentId) : selection.label
-    const moves = meta && target.ok && explicit && currentId && selection.id && currentId !== selection.id ? { to: selection.label, from: currentLabel } : undefined
+    // Mid-sentence the main checkout is "the main checkout", as in the transcript note.
+    const inWords = (label: string): string => (label === MAIN_CHECKOUT ? 'the main checkout' : label)
+    const moves = meta && target.ok && explicit && currentId && selection.id && currentId !== selection.id ? { to: inWords(selection.label), from: inWords(currentLabel) } : undefined
     return { scope: selection.scope, folder: selection.folder, target, currentLabel, showLabel: explicit, ...(moves ? { moves } : {}) }
   }
   const workspaceGone = (title: string): React.ReactNode => (
