@@ -315,6 +315,8 @@ try {
   await page.locator('.file-row').filter({ hasText: 'notes.txt' }).click()
   const fileText = page.getByLabel('File contents')
   await until('worktree notes', async () => (await fileText.inputValue()) === 'notes v1\n')
+  check('W12-08 Files carries the workspace picker, showing Rose bed', await page.locator('.panel-workspace').getByRole('button', { name: /^Workspace: Rose bed/ }).count() === 1)
+  await shot(page, '08-files-rose-bed')
   check('W12-08 Files in Rose bed reads the worktree\'s own file and says which workspace', (await fileText.inputValue()) === 'notes v1\n' && kicker === 'Garden · Rose bed', kicker)
   await page.getByRole('tab', { name: 'Your documents' }).click()
   const docNote = (await page.locator('.file-space-note').textContent()) ?? ''
@@ -336,10 +338,8 @@ try {
   await page.reload()
   await section(page, 'Files')
   await page.locator('.file-row').filter({ hasText: 'notes.txt' }).click()
-  // The workspace picker sits above the conversation list.
-  await section(page, 'Conversations')
+  // Switched from Files itself, before the slow answer lands.
   await choose(page, /Main checkout/)
-  await section(page, 'Files')
   await page.locator('.file-row').filter({ hasText: 'notes.txt' }).click()
   await until('main notes', async () => (await fileText.inputValue()) === NOTES_DIRTY)
   await new Promise((r) => setTimeout(r, 3500))
@@ -363,10 +363,11 @@ try {
   await page.locator('.process-row', { hasText: 'wt-sleeper' }).waitFor().catch(() => undefined)
   const inRose = await page.locator('.process-row', { hasText: 'wt-sleeper' }).count()
   const processKicker = (await page.locator('.workflow-kicker').first().textContent()) ?? ''
-  await section(page, 'Conversations')
+  await shot(page, '08-processes-rose-bed')
   await choose(page, /Main checkout/)
-  await section(page, 'Processes')
+  await page.locator('.process-row', { hasText: 'wt-sleeper' }).waitFor({ state: 'detached', timeout: 5000 }).catch(() => undefined)
   const inMain = await page.locator('.process-row', { hasText: 'wt-sleeper' }).count()
+  check('W12-08 Processes carries the workspace picker', await page.locator('.panel-workspace').count() === 1)
   check('W12-08 Processes lists it under Rose bed only', inRose === 1 && inMain === 0 && processKicker === 'Garden · Rose bed', `rose ${inRose}, main ${inMain}`)
 
   step('W12-08 a host check on the Rose bed run')
@@ -397,7 +398,6 @@ try {
     JSON.stringify(ipc))
 
   step('W12-08 a workflow run while Rose bed is selected')
-  await section(page, 'Conversations')
   await choose(page, /Rose bed/)
   const flow = await call<{ id: string }>(page, 'POST', '/api/workflows', { projectPath: garden, name: 'bed-check', prompt: 'workflow turn', settings: { agent: 'claude', permissionMode: 'manual', useHooks: false } })
   const ran = await call<Meta>(page, 'POST', `/api/workflows/${flow.data?.id}/run`, {})

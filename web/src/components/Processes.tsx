@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { OutputLine } from '../../../server/processes/output.ts'
 import { api, type ProcessInfo, type Project } from '../api.ts'
 import { SearchIcon, TerminalIcon } from './icons.tsx'
@@ -20,6 +20,8 @@ interface ProcessesProps {
   processes: ProcessInfo[]
   onError: (message: string) => void
   onOpenSite: (preview: PreviewOpen) => void
+  /** The workspace picker, once the project has worktrees: which checkout's processes are listed. */
+  workspacePicker?: ReactNode
 }
 
 const MAX_LINES = 2000
@@ -53,7 +55,7 @@ function useProcessLog(id: string | undefined): Log | undefined {
   return log?.id === id ? log : undefined
 }
 
-export function Processes({ project, workspace, processes, onError, onOpenSite }: ProcessesProps) {
+export function Processes({ project, workspace, processes, onError, onOpenSite, workspacePicker }: ProcessesProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string>()
   const [pending, setPending] = useState('')
@@ -98,6 +100,7 @@ export function Processes({ project, workspace, processes, onError, onOpenSite }
           <div><span className="workflow-kicker">{project.name}{workspace?.label ? ` · ${workspace.label}` : ''}</span><h1>Processes</h1></div>
           <span className="process-count">{running} running</span>
         </header>
+        {workspacePicker ? <div className="panel-workspace">{workspacePicker}</div> : null}
         <label className="workflow-search">
           <SearchIcon />
           <input type="search" aria-label="Search processes" placeholder="Search processes…" value={query} onChange={(e) => setQuery(e.target.value)} />

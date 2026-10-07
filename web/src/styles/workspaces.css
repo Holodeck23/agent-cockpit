@@ -68,3 +68,7 @@
   margin: 0; padding: 9px 12px; border: 1px solid var(--needs-border); border-radius: var(--r-sm); background: var(--needs-bg); color: var(--needs-ink);
   font-size: 13px; line-height: 1.45;
 }
+
+/* The same picker at the top of Files and Processes: those panels show one checkout. */
+.panel-workspace { margin: 0 0 10px; }
+.panel-workspace .workspace-selector { padding: 0; }

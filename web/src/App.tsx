@@ -267,6 +267,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       onSelect={workspaces.select} onError={cockpit.reportError} />
   ) : undefined
   const workspaceLabel = workspaces.hasWorktrees ? selection.label : undefined
+  // Files and Processes show one checkout, so they carry the picker too once there is more than one.
+  const panelPicker = workspaces.hasWorktrees || selection.kind !== 'primary' ? workspaceSlot : undefined
   const workspaceFor = (meta?: ThreadMeta): ThreadWorkspace | undefined => {
     const project = projects.active
     if (phone || !project) return undefined
@@ -282,6 +284,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const workspaceGone = (title: string): React.ReactNode => (
     <main className="workflow-empty" role="status">
       <h1>{title}</h1>
+      {panelPicker ? <div className="panel-workspace">{panelPicker}</div> : null}
       <p>{selection.kind === 'loading' ? 'Loading workspaces…' : `${selection.label.replace(/ \(missing\)$/, '')} no longer exists. Nothing is shown from another checkout in its place.`}</p>
       {selection.kind === 'missing' ? <button type="button" className="button-soft" onClick={() => workspaces.select(undefined)}>Use the main checkout</button> : null}
     </main>
@@ -399,7 +402,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
       ) : section === 'files' ? (
         !isUsable(selection) ? workspaceGone('Files') : <Files key={`${activePath ?? 'no-project'}${selection.scope ? `@${selection.scope}` : ''}`} project={projects.active} reveal={reveal}
-          workspace={{ ...(selection.scope ? { scope: selection.scope } : {}), folder: selection.folder }} workspaceLabel={workspaceLabel} guard={workspaces.guard}
+          workspace={{ ...(selection.scope ? { scope: selection.scope } : {}), folder: selection.folder }} workspaceLabel={workspaceLabel} guard={workspaces.guard} workspacePicker={panelPicker}
           onPins={(pins) => { if (projects.active) void projects.setPinnedFiles(projects.active, pins) }} onAttach={(reference) => {
           if (!activePath) return
           setFileDraft({ projectPath: activePath, text: reference, threadId: selectedId })
@@ -411,7 +414,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       ) : section === 'processes' ? (
         !isUsable(selection) ? workspaceGone('Processes') : <Processes key={`${activePath ?? 'no-project'}${selection.scope ? `@${selection.scope}` : ''}`} project={projects.active}
           workspace={{ id: selection.id, folder: selection.folder, scope: selection.scope, ...(workspaceLabel ? { label: workspaceLabel } : {}), ...(workspaces.hasWorktrees && selection.id ? { clearId: selection.id } : {}) }}
-          processes={cockpit.processes} onError={cockpit.reportError} onOpenSite={openProcessSite} />
+          processes={cockpit.processes} onError={cockpit.reportError} onOpenSite={openProcessSite} workspacePicker={panelPicker} />
       ) : (
         <Workflows key={activePath ?? 'no-project'} project={projects.active} onError={cockpit.reportError} initialGallery={galleryFirst}
           onOpenThread={(id) => { cockpit.refresh(); cockpit.select(id); setSection('conversations') }} />

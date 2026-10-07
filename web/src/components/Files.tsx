@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Project } from '../api.ts'
 import { MAIN_CHECKOUT, type SelectionGuard, type WorkspaceRef } from '../workspaces.ts'
 import { fileReferenceToken } from '../../../server/files/references.ts'
@@ -16,8 +16,10 @@ const EXPLORER_KEY = 'cockpit:files-explorer-hidden'
 const loadHidden = (): boolean => { try { return localStorage.getItem(EXPLORER_KEY) === '1' } catch { return false } }
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
-export function Files({ project, workspace, workspaceLabel, guard, onAttach, reveal, onPins }: {
+export function Files({ project, workspace, workspaceLabel, guard, onAttach, reveal, onPins, workspacePicker }: {
   project?: Project; workspace?: WorkspaceRef; workspaceLabel?: string; guard?: SelectionGuard; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
+  /** The workspace picker, once the project has worktrees: which checkout's files are shown. */
+  workspacePicker?: ReactNode
 }) {
   const open = useOpenFiles(project?.path, workspace?.scope, guard)
   const [space, setSpace] = useState<Space>(loadSpace)
@@ -51,6 +53,7 @@ export function Files({ project, workspace, workspaceLabel, guard, onAttach, rev
         <header>
           <span className="workflow-kicker">{project.name}{workspaceLabel ? ` · ${workspaceLabel}` : ''}</span>
           <h1>Files</h1>
+          {workspacePicker ? <div className="panel-workspace">{workspacePicker}</div> : null}
           <div className="file-spaces" role="tablist" aria-label="Where">
             <button type="button" role="tab" aria-selected={space === 'project'} onClick={() => choose('project')}>Project files</button>
             <button type="button" role="tab" aria-selected={space === 'documents'} onClick={() => choose('documents')}>Your documents</button>
