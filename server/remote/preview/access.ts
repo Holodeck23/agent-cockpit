@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import type { CookieJar } from './jar.ts'
 
 // Who may see a phone preview (W11.2), held in memory only. A paired phone asks the control origin
 // for a ticket for one service; the ticket is random, one-use, valid for 30 seconds and bound to
@@ -28,7 +29,7 @@ export interface Closable { destroy(): void }
 export interface PreviewSession extends Grant {
   readonly id: string
   /** The jar for this phone and service, shared by its sessions. */
-  readonly jar: Map<string, string>
+  readonly jar: CookieJar
 }
 
 export type TicketRefusal = 'unknown' | 'expired' | 'mismatch'
@@ -53,12 +54,12 @@ const token = (): string => randomBytes(32).toString('base64url')
 export function createPreviewAccess(now = Date.now): PreviewAccess {
   const tickets = new Map<string, Grant & { expires: number }>()
   const sessions = new Map<string, PreviewSession & { seen: number; held: Set<Closable> }>()
-  const jars = new Map<string, Map<string, string>>()
-  const jarFor = (deviceId: string, serviceId: string): Map<string, string> => {
+  const jars = new Map<string, CookieJar>()
+  const jarFor = (deviceId: string, serviceId: string): CookieJar => {
     const key = `${deviceId}\n${serviceId}`
     const existing = jars.get(key)
     if (existing) return existing
-    const jar = new Map<string, string>()
+    const jar: CookieJar = new Map()
     jars.set(key, jar)
     return jar
   }

@@ -96,21 +96,21 @@ describe('preview access (W11.2)', () => {
     const access = createPreviewAccess()
     const r = access.redeem(access.issue(grant), grant)
     if (!('session' in r)) throw new Error('no session')
-    r.session.jar.set('sid', 'signed-in')
+    r.session.jar.set('sid', { value: 'signed-in', path: '/' })
     let closed = 0
     access.hold(r.session.id, { destroy: () => { closed++ } })
     expect(access.retireGenerations('s1', 'g2')).toBe(1)
     expect(closed).toBe(1)
     expect(access.session(r.session.id, { serviceId: 's1', login: 'me@x', generation: 'g1' })).toBeUndefined()
     const next = access.redeem(access.issue({ ...grant, generation: 'g2' }), { ...grant, generation: 'g2' })
-    expect('session' in next && next.session.jar.get('sid')).toBe('signed-in')
+    expect('session' in next && next.session.jar.get('sid')?.value).toBe('signed-in')
   })
 
   it('revoking a phone ends its sessions, sockets, tickets and jars', () => {
     const access = createPreviewAccess()
     const r = access.redeem(access.issue(grant), grant)
     if (!('session' in r)) throw new Error('no session')
-    r.session.jar.set('sid', 'x')
+    r.session.jar.set('sid', { value: 'x', path: '/' })
     let closed = false
     access.hold(r.session.id, { destroy: () => { closed = true } })
     const pending = access.issue(grant)
@@ -126,5 +126,46 @@ describe('preview access (W11.2)', () => {
     let closed = false
     access.hold('gone', { destroy: () => { closed = true } })
     expect(closed).toBe(true)
+  })
+})
+
+describe('preview cookie jar (W11.2)', () => {
+  it('keeps path and expiry rules', async () => {
+    const { absorb, cookieHeader } = await import('../server/remote/preview/jar.ts')
+    const jar = new Map()
+    absorb(jar, ['sid=abc; Path=/; HttpOnly', 'admin=1; Path=/admin', 'short=1; Path=/; Max-Age=10', 'gone=1; Max-Age=0', 'rel=1'], '/account/login', 1_000)
+    expect(cookieHeader(jar, '/', 1_000)).toBe('sid=abc; short=1')
+    expect(cookieHeader(jar, '/admin/users', 1_000)).toBe('admin=1; sid=abc; short=1')
+    expect(cookieHeader(jar, '/administrator', 1_000)).toBe('sid=abc; short=1')
+    expect(cookieHeader(jar, '/account/x', 1_000)).toContain('rel=1')
+    expect(cookieHeader(jar, '/', 20_000)).toBe('sid=abc')
+    absorb(jar, 'sid=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/', '/', 20_000)
+    expect(cookieHeader(jar, '/', 20_000)).toBeUndefined()
+  })
+})
+
+describe('preview upstream (SEC-05, SEC-06)', () => {
+  it('forwards only to the loopback URL the process printed', async () => {
+    const { loopbackTarget } = await import('../server/remote/preview/upstream.ts')
+    expect(loopbackTarget('http://localhost:5173/')).toEqual({ hostname: 'localhost', port: 5173, host: 'localhost:5173' })
+    expect(loopbackTarget('http://[::1]:3000')).toEqual({ hostname: '::1', port: 3000, host: '[::1]:3000' })
+    for (const bad of ['http://192.168.1.5:3000', 'https://localhost:5173', 'http://user:pw@localhost:1', 'http://evil.com:80', 'file:///etc/passwd', 'not a url', undefined]) {
+      expect(loopbackTarget(bad)).toBeUndefined()
+    }
+  })
+
+  it('a process is live only while its own group holds the port', async () => {
+    const { createUpstreamResolver } = await import('../server/remote/preview/upstream.ts')
+    let groups: number[] = [4242]
+    let t = 0
+    const resolver = createUpstreamResolver(async () => groups, () => t)
+    const proc = { id: 'p1', name: 'dev', command: 'npm run dev', projectPath: '/p', status: 'running', pid: 4242, startedAt: '', exitCode: null, signal: null,
+      url: 'http://localhost:5173/', owner: { kind: 'user' } } as const
+    expect((await resolver.resolve(proc))?.generation).toBe('p1')
+    groups = [9999]
+    t += 1001
+    expect(await resolver.resolve(proc)).toBeUndefined()
+    expect(await resolver.resolve({ ...proc, status: 'exited' })).toBeUndefined()
+    expect(await resolver.resolve(undefined)).toBeUndefined()
   })
 })
