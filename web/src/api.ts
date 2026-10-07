@@ -4,6 +4,15 @@ import type { AgentCapabilities } from '../../server/agents/capabilities/types.t
 import type { OperationKind, OperationView } from '../../server/agents/lifecycle/service.ts'
 import type { LatestCheck } from '../../server/agents/lifecycle/latest.ts'
 import type { Plan } from '../../server/agents/lifecycle/plans.ts'
+import type { AccountView } from '../../server/agents/accounts/types.ts'
+import type { SigninView } from '../../server/agents/accounts/service.ts'
+
+export type { AccountView, SigninView }
+/** Account profiles (W12.1): the redacted list and which agents can have them. */
+export interface AccountsView {
+  readonly accounts: readonly AccountView[]
+  readonly support: Readonly<Record<string, { readonly profiles: boolean; readonly takesCode?: boolean; readonly reason?: string }>>
+}
 
 export interface AgentLifecycleView {
   readonly install: Plan
@@ -170,6 +179,18 @@ export const api = {
   sendAgentOperationInput: (id: string, text: string) => request<Record<string, never>>(`/api/agent-operations/${id}/input`, { method: 'POST', body: { text } }),
   checkAgentUpdate: (agent: AgentId) => request<LatestCheck>(`/api/agents/${agent}/updates/check`, { method: 'POST', body: {} }),
   skipAgentVersion: (agent: AgentId, version: string) => request<{ skipped: string }>(`/api/agents/${agent}/updates/skip`, { method: 'POST', body: { version } }),
+  /** `refresh` re-reads who the CLI defaults are signed in to (runs their status checks). */
+  accounts: (refresh = false) => request<AccountsView>(`/api/accounts${refresh ? '?refresh=1' : ''}`),
+  startAccountSignin: (agent: AgentId, label: string) => request<SigninView>('/api/accounts', { method: 'POST', body: { agent, label } }),
+  accountSignin: (id: string) => request<SigninView>(`/api/accounts/signins/${id}`),
+  /** The code Claude's sign-in page shows; passed straight to the waiting CLI. */
+  sendAccountCode: (id: string, text: string) => request<SigninView>(`/api/accounts/signins/${id}/input`, { method: 'POST', body: { text } }),
+  cancelAccountSignin: (id: string) => request<{ cancelled: boolean }>(`/api/accounts/signins/${id}/cancel`, { method: 'POST', body: {} }),
+  refreshAccount: (id: string) => request<{ account: AccountView; changed: boolean }>(`/api/accounts/${id}/refresh`, { method: 'POST', body: {} }),
+  removeAccount: (id: string, moveProjectsToDefault: boolean) => request<{ removed: true; message: string }>(`/api/accounts/${id}/remove`, { method: 'POST', body: { moveProjectsToDefault } }),
+  projectAccounts: (projectId: string) => request<{ selection: Record<AgentId, string> }>(`/api/projects/${projectId}/accounts`),
+  selectAccount: (projectId: string, agent: AgentId, accountId: string) =>
+    request<{ selection: Record<AgentId, string> }>(`/api/projects/${projectId}/accounts/${agent}`, { method: 'POST', body: { accountId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),

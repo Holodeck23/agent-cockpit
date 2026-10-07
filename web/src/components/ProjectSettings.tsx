@@ -5,6 +5,8 @@ import type { Project } from '../api.ts'
 import { native } from '../native.ts'
 import { avatarDataUrl } from '../project-image.ts'
 import { AntigravityTools } from './AntigravityTools.tsx'
+import { AccountChoice } from './AccountChoice.tsx'
+import { agentName } from '../transcript.ts'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 
 // Name, tab tint, picture, instructions and the folder, for one project.
@@ -114,6 +116,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             </span>
           </label>
           <AntigravityTools project={project} />
+          <ProjectAccounts projectPath={project.path} />
           <DocumentsFolder projectPath={project.path} />
           {native?.browser ? <WebsiteData projectPath={project.path} projectName={project.name} /> : null}
           <div className="field">
@@ -202,6 +205,24 @@ function DocumentsFolder({ projectPath }: { projectPath: string }) {
       </div>
       {note ? <small role="status">{note}</small> : null}
       {error ? <small role="alert" className="field-error">{error}</small> : null}
+    </div>
+  )
+}
+
+/**
+ * Which account each agent uses in this project (W12.1): the same choice the agent picker shows.
+ * It applies at once, unlike the fields that wait for Save.
+ */
+function ProjectAccounts({ projectPath }: { projectPath: string }) {
+  return (
+    <div className="field project-accounts">
+      <span>Accounts</span>
+      {(['claude', 'codex', 'antigravity', 'opencode'] as const).map((agent) => (
+        <div key={agent} className="project-account" role="group" aria-label={`${agentName(agent)} account`}>
+          <strong>{agentName(agent)}</strong>
+          <AccountChoice agent={agent} projectPath={projectPath} recheck={agent === 'claude'} />
+        </div>
+      ))}
     </div>
   )
 }

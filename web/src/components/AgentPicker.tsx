@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
-import { api, type AgentCapabilities, type AgentStatus, type HandoffPreview, type Preset, type ThreadSettings } from '../api.ts'
+import { api, type AccountView, type AgentCapabilities, type AgentStatus, type HandoffPreview, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
 import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
+import { AccountChoice } from './AccountChoice.tsx'
 import { AgentCapabilityPanel } from './AgentCapabilityPanel.tsx'
 import { AgentLifecycle } from './AgentLifecycle.tsx'
 import { AgentGlyph } from './AgentGlyph.tsx'
@@ -54,10 +55,14 @@ export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): 
   }
 }
 
-/** Installed state and the provider's last usage report for the selected agent. */
-function AgentState({ status, loading }: { status: AgentStatus | undefined; loading: boolean }) {
+/**
+ * Installed state and the provider's last usage report for the selected agent: for the project's
+ * account when it is known (W12.1), never another account's or an earlier identity's.
+ */
+function AgentState({ status, loading, account }: { status: AgentStatus | undefined; loading: boolean; account?: AccountView }) {
   if (!status) return <p className="agent-state-note">{loading ? 'Checking this agent…' : 'Status unavailable right now.'}</p>
-  const { installation, usage } = status
+  const { installation } = status
+  const usage = account ? status.usageByAccount?.[account.usageKey] : status.usage
   const percent = usage?.usedPercent
   return (
     <div className="agent-state" role="group" aria-label={`${agentName(status.id)} status`}>
@@ -77,7 +82,7 @@ function AgentState({ status, loading }: { status: AgentStatus | undefined; load
           <p className="agent-state-note">Reported by {agentName(status.id)} as of {formatWhen(Date.parse(usage.observedAt))}.</p>
         </>
       ) : (
-        <p className="agent-state-note">No usage reported yet; it appears after this agent's next turn.</p>
+        <p className="agent-state-note">{account && account.mode === 'managed' ? `No usage reported for ${account.label} yet; it appears after its next turn.` : "No usage reported yet; it appears after this agent's next turn."}</p>
       )}
     </div>
   )
@@ -120,6 +125,8 @@ interface AgentPickerProps {
   onApply?: (choice: AgentChoice) => void
   /** Why changing is unavailable right now, e.g. while a turn runs. */
   lockedReason?: string
+  /** The project the picker belongs to: its account per agent is chosen here too (W12.1). */
+  projectPath?: string
 }
 
 const CLOSE_KEY = 'cockpit:picker-close-after'
@@ -185,7 +192,7 @@ function HandoffReview({ agent, preview, error, starting, missing, onBack, onSta
   )
 }
 
-export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff, lockedReason }: AgentPickerProps) {
+export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff, lockedReason, projectPath }: AgentPickerProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
   const existing = onSwitch !== undefined || onApply !== undefined
   const [draft, setDraft] = useState<AgentChoice>(value)
@@ -203,6 +210,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const [refreshing, setRefreshing] = useState(false)
   const [capsError, setCapsError] = useState<string | undefined>(undefined)
   const [review, setReview] = useState<{ preview?: HandoffPreview; error?: string; starting?: boolean } | undefined>(undefined)
+  const [account, setAccount] = useState<AccountView | undefined>(undefined)
 
   // Checked each time the panel opens: cheap, and never polled in the background.
   useEffect(() => {
@@ -352,7 +360,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {current.agent === 'claude' ? (
               <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
             ) : null}
-            <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
+            {projectPath && !phone ? <AccountChoice agent={current.agent} projectPath={projectPath} onSelected={setAccount} /> : null}
+            <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} account={account?.agent === current.agent ? account : undefined} />
             <AgentCapabilityPanel caps={shownCaps} refreshing={refreshing} error={capsError} onRefresh={refresh} />
             {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
             <label className="field">

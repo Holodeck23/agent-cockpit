@@ -463,6 +463,18 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         endRunningHelpers(ts)
         if (compacting !== undefined) endCompaction(ts, 'failed')
         return
+      case 'account_changed': {
+        // W12-03/04: said where the conversation is read, before the message it applies to.
+        const named = (a: { label: string; hint?: string }): string => (a.hint ? `${a.label} (${a.hint})` : a.label)
+        const what = event.reason === 'identity_changed'
+          ? `${agentName(event.agent)}'s ${event.to.label === 'CLI default' ? 'default ' : ''}sign-in changed outside Cockpit${event.from?.hint ? ` (was ${event.from.hint})` : ''}; it is now ${event.to.hint ?? 'an account Cockpit could not confirm'}.`
+          : `Account changed${event.from ? ` from ${named(event.from)}` : ''} to ${named(event.to)}.`
+        const next = event.handoff
+          ? ` Your next message starts a new ${agentName(event.agent)} session on it; the conversation so far goes with it.`
+          : ` Your next message starts on it.`
+        items.push({ type: 'note', key, text: `${what}${next}`, tone: 'plain' })
+        return
+      }
       case 'agent_switch':
         endRunningHelpers(ts)
         agent = event.to

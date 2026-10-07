@@ -82,6 +82,7 @@ export function createAccountService(options: AccountServiceOptions) {
   const logDir = join(options.stateRoot, 'account-signins')
   const signins = new Map<string, { view: SigninView; run?: HelperRun }>()
   const listeners = new Set<(view: SigninView) => void>()
+  let refreshing: Promise<void> | undefined
 
   const dirFor = (account: Account): string | undefined => (account.mode === 'managed' ? store.profileDir(account.id) : undefined)
   const resolve = (account: Account): ResolvedAccount => resolved(account, dirFor(account))
@@ -212,11 +213,12 @@ export function createAccountService(options: AccountServiceOptions) {
       const result = await observe(account)
       return { account: viewOf(result.account), changed: result.changed }
     },
-    /** The Claude and Codex defaults, checked when the picker opens and at startup. */
-    async refreshDefaults(): Promise<void> {
-      await Promise.all(AGENT_IDS.filter(supportsProfiles).map((agent) => service.refresh(defaultAccountId(agent)).catch((error: unknown) => {
+    /** The Claude and Codex defaults, checked when the picker or project settings open. Overlapping calls share one check. */
+    refreshDefaults(): Promise<void> {
+      refreshing ??= Promise.all(AGENT_IDS.filter(supportsProfiles).map((agent) => service.refresh(defaultAccountId(agent)).catch((error: unknown) => {
         console.warn(`[cockpit] could not check the ${label(agent)} account:`, error instanceof Error ? error.message : error)
-      })))
+      }))).then(() => undefined).finally(() => { refreshing = undefined })
+      return refreshing
     },
 
     /** Starts the CLI's own sign-in in a new private context. */
