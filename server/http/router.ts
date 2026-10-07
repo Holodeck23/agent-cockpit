@@ -52,6 +52,7 @@ import { handleAccountRoute, isAccountRoute } from './account-routes.ts'
 import { handleWorkspaceRoute, isWorkspaceRoute } from './workspace-routes.ts'
 import type { AccountService } from '../agents/accounts/service.ts'
 import type { WorktreeService } from '../projects/worktrees.ts'
+import type { WorktreeLifecycle } from '../projects/worktree-lifecycle.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -146,6 +147,8 @@ export interface ApiDeps {
   readonly accounts?: AccountService
   /** Worktree workspaces (M1, W12.2); desktop only. */
   readonly worktrees?: WorktreeService
+  /** Remove, archive, restore and Git's view of registered worktrees (W12.4); desktop only. */
+  readonly worktreeLifecycle?: WorktreeLifecycle
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -177,7 +180,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   const scope = createWorkspaceScope(projects, workspaces)
@@ -279,7 +282,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         await handleWorkspaceRoute(req, res, parts, workspaces, worktrees, (projectId) => {
           const known = workspaces.list().projects.find((p) => p.id === projectId)?.path
           return known !== undefined && projects.list().some((p) => p.path === known)
-        })
+        }, worktreeLifecycle)
         return true
       }
       // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).

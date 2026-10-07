@@ -81,6 +81,11 @@ export const ROUTES: readonly RouteClass[] = [
   { method: 'POST', route: 'projects/:id/workspaces', phone: false },
   { method: 'POST', route: 'workspace-operations/:id/recover', phone: false },
   { method: 'POST', route: 'workspace-operations/:id/dismiss', phone: false },
+  { method: 'GET', route: 'workspaces/:id/removal', phone: false },
+  { method: 'POST', route: 'workspaces/:id/remove', phone: false },
+  { method: 'POST', route: 'workspaces/:id/archive', phone: false },
+  { method: 'POST', route: 'workspaces/:id/restore', phone: false },
+  { method: 'POST', route: 'workspaces/:id/forget', phone: false },
   // The agent's browser tools (H3, wave 9): agents' MCP calls on the Mac, never the phone.
   { method: 'POST', route: 'mcp/browser/:op', phone: false },
 ]
