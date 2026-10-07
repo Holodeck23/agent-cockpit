@@ -95,6 +95,16 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     if (hidden) focusSectionTab()
   }
   const closeList = (): void => { setListOpen(false); focusSectionTab() }
+  useEffect(() => {
+    if (phone || section !== 'conversations') return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.code !== 'Backslash' || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      event.preventDefault()
+      setHidden(!listHidden)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phone, section, listHidden])
   // The open dropdown takes focus (its search field) and closes on a click anywhere else.
   useEffect(() => {
     if (!listOpen) return
@@ -278,14 +288,13 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           {phone || hideList ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
           {hideList ? null : (
             <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
-              {...(phone ? { projectName, canCreate: false } : { listToggle: { label: 'Hide list', onClick: () => setHidden(true) } })} />
+              {...(phone ? { projectName, canCreate: false } : {})} />
           )}
           {hideList && listOpen ? (
             <div className="list-dropdown" role="dialog" aria-label="Conversations list"
               onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeList() } }}>
               <ConversationList key={`list-drop:${activePath ?? ''}`} threads={visible} selectedId={selectedId} rowShows={appearance.rows}
-                onSelect={(id) => { cockpit.select(id); setListOpen(false) }}
-                listToggle={{ label: 'Keep list open', onClick: () => setHidden(false) }} />
+                onSelect={(id) => { cockpit.select(id); setListOpen(false) }} />
             </div>
           ) : null}
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (

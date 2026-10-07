@@ -63,6 +63,11 @@ try {
   const hidden = await page.locator('.layout.list-hidden').count() === 1 && await page.getByRole('button', { name: 'Show conversation list' }).count() === 1
   await page.getByRole('button', { name: 'Show conversation list' }).click()
   check('the square title toggle hides and restores the list', hidden && await page.locator('.layout.list-hidden').count() === 0)
+  check('the list header has no duplicate toggle', await page.locator('.list-head .list-toggle').count() === 0)
+  await page.keyboard.press('Meta+Backslash')
+  const shortcutHidden = await page.locator('.layout.list-hidden').count() === 1
+  await page.keyboard.press('Meta+Backslash')
+  check('⌘\\ hides and restores the list', shortcutHidden && await page.locator('.layout.list-hidden').count() === 0)
   const selectedStyle = await page.locator('.card.selected').evaluate((el) => {
     const style = getComputedStyle(el)
     return { border: style.borderWidth, shadow: style.boxShadow, fill: style.backgroundColor }
@@ -81,12 +86,12 @@ try {
   const narrow = await page.evaluate(() => {
     const filters = document.querySelector('.filters')!
     const list = document.querySelector('.list')!.getBoundingClientRect()
-    const listToggle = document.querySelector('.list-toggle')!.getBoundingClientRect()
+    const listToggle = document.querySelector('.thread-list-toggle')!.getBoundingClientRect()
     const newButton = document.querySelector('.new-button')!.getBoundingClientRect()
     const thread = document.querySelector('.thread')!.getBoundingClientRect()
     const composer = document.querySelector('.composer-card')!.getBoundingClientRect()
     return { pageFits: document.documentElement.scrollWidth <= innerWidth,
-      listFits: list.right <= thread.left && listToggle.right <= list.right && newButton.right <= list.right,
+      listFits: list.right <= thread.left && listToggle.left >= thread.left && newButton.right <= list.right,
       filtersFit: filters.scrollWidth <= filters.clientWidth,
       composerVisible: composer.bottom <= innerHeight }
   })
