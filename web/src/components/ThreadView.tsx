@@ -263,7 +263,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         blocked={sendTo.ok ? undefined : sendTo.reason}
         note={workspace?.moves ? `Your next message continues this conversation in ${workspace.moves.to}. It last worked in ${workspace.moves.from}.` : undefined}
         threadId={meta.id}
-        draftKey={meta.id}
+        // Each workspace of a conversation keeps its own draft and image chips; the main checkout's stays the conversation's own key.
+        draftKey={workspace?.scope ? `${meta.id}@${workspace.scope}` : meta.id}
         prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}

@@ -188,7 +188,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
   const workspaces = createWorkspaceStore(root)
-  const worktrees = createWorktreeService(root, workspaces)
+  // proof:wave-12 (W12-06) only: the app dies between Git creating a worktree and Cockpit registering it.
+  const crashBeforeRegister = process.env.COCKPIT_PROOF_WORKTREE_CRASH === '1' ? { beforeRegister: () => { process.kill(process.pid, 'SIGKILL') } } : {}
+  const worktrees = createWorktreeService(root, workspaces, crashBeforeRegister)
   const processes = createProcessRunner({ ledgerFile: join(root, 'processes.json') })
   const sessions = createMcpSessions()
   // Known once listening; sessions only start after that.

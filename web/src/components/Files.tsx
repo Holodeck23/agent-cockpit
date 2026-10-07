@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Project } from '../api.ts'
-import type { SelectionGuard, WorkspaceRef } from '../workspaces.ts'
+import { MAIN_CHECKOUT, type SelectionGuard, type WorkspaceRef } from '../workspaces.ts'
 import { fileReferenceToken } from '../../../server/files/references.ts'
 import { isDirty, spaceOf } from '../file-text.ts'
 import { useOpenFiles } from '../useOpenFiles.ts'
@@ -55,7 +55,12 @@ export function Files({ project, workspace, workspaceLabel, guard, onAttach, rev
             <button type="button" role="tab" aria-selected={space === 'project'} onClick={() => choose('project')}>Project files</button>
             <button type="button" role="tab" aria-selected={space === 'documents'} onClick={() => choose('documents')}>Your documents</button>
           </div>
-          <p>{space === 'project' ? 'Edit a text file, or add it to a conversation draft.' : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
+          {/* Once the project has worktrees: project files are this checkout's own, documents are shared by all of them (W12-08). */}
+          <p className="file-space-note">{space === 'project'
+            ? `${workspaceLabel ? `The files in ${workspaceLabel === MAIN_CHECKOUT ? 'the main checkout' : workspaceLabel}. ` : ''}Edit a text file, or add it to a conversation draft.`
+            : workspaceLabel
+              ? `Shared by every workspace of ${project.name}: notes and drafts Cockpit keeps outside the repository.`
+              : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
         </header>
         {space === 'project'
           ? <FileTree key={project.path} {...shared} pins={project.pinnedFiles ?? []} onPins={onPins} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />

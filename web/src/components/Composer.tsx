@@ -121,14 +121,13 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
   }
   const attach = useComposerAttach({
     projectPath: workspaceFolder ?? projectPath,
+    draftKey,
     onInsert: (pieces) => {
       update(pieces.reduce((draft, piece) => addReference(draft, piece), box.current?.value ?? text))
       box.current?.focus()
     },
   })
   // Images belong to the draft they were added to; another conversation starts without them.
-  const { clear: clearImages } = attach
-  useEffect(() => { clearImages() }, [draftKey])
 
   const submit = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault()
@@ -136,11 +135,12 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     if (!trimmed || sending || disabled || blocked) return
     setSending(true)
     setSubmitError(undefined)
+    const sentFrom = draftKey
     try {
       await onSubmit(trimmed, attach.images.map(chipToSend))
       // Whatever you typed while it was sending stays; only the sent text leaves the box.
       update(draftAfterSend(box.current?.value ?? '', trimmed))
-      attach.clear()
+      attach.clear(sentFrom)
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {

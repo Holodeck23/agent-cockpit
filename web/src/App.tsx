@@ -222,7 +222,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }, [select])
   const detailProject = projects.all.find((p) => p.path === cockpit.detail?.meta.projectPath)
   const projectName = (path: string): string => projects.all.find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path
-  const selectedId = visible.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
+  // An open conversation stays open when another workspace is chosen: the choice moves where its next message goes (W12.2).
+  const selectedId = projectThreads.some((t) => t.meta.id === cockpit.selectedId) ? cockpit.selectedId : undefined
   const hideList = listHidden && !phone
   // A page's website data lives with its folder: a conversation's own workspace, else the selected one.
   const previewThread = section === 'conversations' && selectedId ? cockpit.threads.find((t) => t.meta.id === selectedId) : undefined
@@ -263,7 +264,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   // The selector sits under the conversation list title; Files and Processes say which workspace they show.
   const workspaceSlot = !phone && projects.active?.projectId ? (
     <WorkspaceSelector project={projects.active} workspaces={workspaces} threads={projectThreads}
-      onSelect={(id) => { workspaces.select(id); cockpit.select(undefined) }} onError={cockpit.reportError} />
+      onSelect={workspaces.select} onError={cockpit.reportError} />
   ) : undefined
   const workspaceLabel = workspaces.hasWorktrees ? selection.label : undefined
   const workspaceFor = (meta?: ThreadMeta): ThreadWorkspace | undefined => {
