@@ -1,5 +1,5 @@
 import { request, type IncomingHttpHeaders } from 'node:http'
-import { createServer as netServer, type AddressInfo } from 'node:net'
+import { connect, createServer as netServer, type AddressInfo } from 'node:net'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,7 +18,7 @@ const OWNER = 'owner@example.com'
 const CONTROL = `https://${HOST}`
 const PREVIEW = `https://${HOST}:8443`
 
-const APP = `require('http').createServer((q,s)=>{if(q.url==='/sse'){s.writeHead(200,{'content-type':'text/event-stream'});return s.write('data: hi\\n\\n')}s.setHeader('content-type','text/plain');s.end('fixture '+q.url+' cookie='+(q.headers.cookie||'none')+' host='+q.headers.host)}).listen(0,'127.0.0.1',function(){console.log('Local: http://127.0.0.1:'+this.address().port+'/')})`
+const APP = `require('http').createServer((q,s)=>{if(q.url==='/sse'){s.writeHead(200,{'content-type':'text/event-stream'});return s.write('data: hi\\n\\n')}s.setHeader('content-type','text/plain');s.end('fixture '+q.url+' cookie='+(q.headers.cookie||'none')+' host='+q.headers.host)}).on('upgrade',(q,k)=>{k.write('HTTP/1.1 101 Switching Protocols\\r\\nupgrade: websocket\\r\\nconnection: Upgrade\\r\\n\\r\\n')}).listen(0,'127.0.0.1',function(){console.log('Local: http://127.0.0.1:'+this.address().port+'/')})`
 
 interface Reply { status: number; body: string; headers: IncomingHttpHeaders }
 function call(port: number, path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<Reply> {
@@ -270,6 +270,25 @@ describe('phone preview access ends (14c revocation)', () => {
     expect([old.status, old.headers['x-cockpit-preview']]).toEqual([401, 'expired'])
     const fresh = await signIn(ctx, id, false)
     expect((await call(fresh.gw, '/', { headers: fresh.headers })).body).toContain('fixture')
+  }, 30_000)
+
+  it('turning phone access off returns at once and closes a live WebSocket (an upgraded socket must not hold the listener open)', async () => {
+    const ctx = await setup()
+    const id = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, id)
+    const ws = connect(a.gw, '127.0.0.1')
+    let wsClosed = false
+    ws.on('close', () => { wsClosed = true })
+    const switched = new Promise<string>((resolve) => ws.once('data', (d) => resolve(d.toString())))
+    ws.write(`GET /hmr HTTP/1.1\r\n${Object.entries({ ...a.headers, origin: PREVIEW, upgrade: 'websocket', connection: 'Upgrade',
+      'sec-websocket-version': '13', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' }).map(([k, v]) => `${k}: ${v}`).join('\r\n')}\r\n\r\n`)
+    expect(await switched).toMatch(/^HTTP\/1\.1 101/)
+    const started = Date.now()
+    const off = await Promise.race([ctx.local('/api/remote', { enabled: false }), settle(5000).then(() => undefined)])
+    expect(off?.status).toBe(200)
+    expect(Date.now() - started).toBeLessThan(2000)
+    await settle()
+    expect(wsClosed).toBe(true)
   }, 30_000)
 
   it('removing the project retires its previews for good and keeps their origin reserved', async () => {

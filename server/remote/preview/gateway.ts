@@ -188,6 +188,8 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse, service: PreviewService): Promise<void> {
+    req.on('error', () => res.destroy())
+    res.on('error', () => res.destroy())
     const path = req.url ?? '/'
     if (path === BOOTSTRAP_PATH || path.startsWith(`${BOOTSTRAP_PATH}?`)) return bootstrap(req, res, service)
     if (path.startsWith(RESERVED_PREFIX)) return sendState(res, 'unavailable', deps.policy()?.controlOrigin)
@@ -212,6 +214,7 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
     const upstream = httpRequest({ host: target.hostname, port: target.port, method: req.method, path, headers: upstreamHeaders(req, target, session, path) }, (upRes) => {
       clearTimeout(firstByte)
       const headers = { ...upRes.headers }
+      upRes.on('error', () => res.destroy())
       absorb(session.jar, headers['set-cookie'], path)
       delete headers['set-cookie']
       for (const name of HOP) delete headers[name]
@@ -227,11 +230,14 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
       socket.setTimeout(CONNECT_MS, () => upstream.destroy(new Error('connect timeout')))
       socket.once('connect', () => socket.setTimeout(0))
     })
-    upstream.once('error', (error) => { clearTimeout(firstByte); if (!res.headersSent) sendState(res, error.message === 'connect timeout' ? 'slow' : 'unreachable', deps.policy()?.controlOrigin); else res.destroy() })
+    upstream.on('error', (error) => { clearTimeout(firstByte); if (!res.headersSent) sendState(res, error.message === 'connect timeout' ? 'slow' : 'unreachable', deps.policy()?.controlOrigin); else res.destroy() })
     upstream.end(body)
   }
 
   async function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, service: PreviewService): Promise<void> {
+    // A phone that drops off the tailnet resets its socket; that ends this connection, nothing more.
+    // (In Cockpit's Electron main process an uncaught socket error is a modal dialog that freezes the server.)
+    socket.on('error', () => socket.destroy())
     const refuse = (status: number, why: string): void => { log(`preview ${service.slot} websocket refused (${why})`); socket.end(`HTTP/1.1 ${status} Refused\r\nconnection: close\r\ncontent-length: 0\r\n\r\n`) }
     const admitted = await admit(req, service)
     if ('state' in admitted) return refuse(STATE_TEXT[admitted.state].status, admitted.state)
@@ -252,6 +258,7 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
     // The dev server's own handshake answer, minus its cookies (into the jar) and hop headers.
     upstream.once('upgrade', (upRes, upSocket, upHead) => {
       up = upSocket
+      upSocket.on('error', () => { upSocket.destroy(); socket.destroy() })
       absorb(session.jar, upRes.headers['set-cookie'], path)
       const lines = Object.entries(upRes.headers).filter(([name]) => name !== 'set-cookie' && !['keep-alive', 'transfer-encoding', 'proxy-connection', 'trailer'].includes(name))
         .flatMap(([name, value]) => (value === undefined ? [] : [value].flat().map((v) => `${name}: ${v}`)))
@@ -263,7 +270,7 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
       upSocket.once('close', () => socket.destroy())
     })
     upstream.once('response', (upRes) => { upRes.resume(); refuse(upRes.statusCode ?? 502, 'upstream did not switch') })
-    upstream.once('error', () => socket.destroy())
+    upstream.on('error', () => socket.destroy())
     upstream.end()
   }
 

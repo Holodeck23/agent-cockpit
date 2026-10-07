@@ -40,6 +40,8 @@ beforeAll(async () => {
   app.on('upgrade', (req, socket) => {
     seen = req.headers
     socket.write('HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nset-cookie: ws=leak\r\n\r\n')
+    // The fixture app's own socket: its resets are the fixture's, not the gateway's, so it listens.
+    socket.on('error', () => socket.destroy())
     socket.on('data', (d) => socket.write(d))
   })
   await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', () => resolve()))
@@ -168,6 +170,34 @@ describe('phone preview gateway', () => {
     generation = 'g2'
     expect((await call('/', { headers: withSession(session) })).status).toBe(401)
     expect((await call('/', { headers: withSession(await signIn()) })).status).toBe(200)
+  })
+
+  it('a phone that drops a live WebSocket (TCP reset) while the app is still sending raises nothing uncaught', async () => {
+    // In Cockpit's Electron main process an uncaught socket error opens a modal error dialog that
+    // freezes the server; proof:wave-11 hit it when the tailnet dropped mid-HMR.
+    const session = await signIn()
+    const uncaught: unknown[] = []
+    const onError = (error: unknown): void => { uncaught.push(error) }
+    process.on('uncaughtException', onError)
+    try {
+      for (let round = 0; round < 5; round += 1) {
+        const socket = connect(port, '127.0.0.1')
+        await new Promise<void>((resolve) => socket.once('connect', () => resolve()))
+        const headers = { ...withSession(session), origin: ORIGIN, upgrade: 'websocket', connection: 'Upgrade', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', 'sec-websocket-version': '13' }
+        socket.write(`GET /hmr HTTP/1.1\r\n${Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n')}\r\n\r\n`)
+        await new Promise<void>((resolve) => socket.once('data', () => resolve()))
+        socket.on('error', () => undefined)
+        // The app echoes; keep it busy, then vanish with a reset instead of a close.
+        for (let i = 0; i < 20; i += 1) socket.write(Buffer.alloc(64 * 1024, 120))
+        socket.resetAndDestroy()
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    } finally {
+      process.off('uncaughtException', onError)
+    }
+    expect(uncaught.map(String)).toEqual([])
+    expect((await call('/', { headers: withSession(session) })).status).toBe(200)
   })
 
   it('WebSockets need the exact preview origin; the dev server’s cookies stay out; revocation closes them (SEC-04, SEC-06)', async () => {
