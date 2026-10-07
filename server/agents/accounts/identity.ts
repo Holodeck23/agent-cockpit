@@ -1,8 +1,9 @@
 // Who is signed in, in one account context, from the CLI's own non-generating report (G-ACCOUNTS
 // "Identity"): Claude's `auth status --json`, Codex's app-server `account/read`. Neither sends a
 // prompt. The email is hashed at once and only a hint is kept; tokens are never asked for.
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { queryAppServer } from '../codex/app-server-query.ts'
 import type { AgentId } from '../types.ts'
 import type { IdentityObservation } from './types.ts'
 
@@ -65,41 +66,9 @@ function claudeIdentity({ executable, env, timeoutMs = TIMEOUT_MS }: IdentityPro
   })
 }
 
-function codexIdentity({ executable, env, timeoutMs = TIMEOUT_MS }: IdentityProbeOptions): Promise<IdentityObservation> {
-  return new Promise((resolve) => {
-    let settled = false
-    const child = spawn(executable, ['app-server'], { env: { ...env }, stdio: ['pipe', 'pipe', 'ignore'] })
-    const done = (observation: IdentityObservation): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      child.kill('SIGKILL')
-      resolve(observation)
-    }
-    const timer = setTimeout(() => done(unknown('codex account/read', 'codex app-server did not answer account/read in time')), timeoutMs)
-    child.on('error', (error) => done(unknown('codex account/read', `codex app-server could not start (${(error as NodeJS.ErrnoException).code ?? error.message})`)))
-    child.on('exit', () => done(unknown('codex account/read', 'codex app-server ended before answering')))
-    child.stdin.on('error', () => {})
-    let buffer = ''
-    child.stdout.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => {
-      buffer += chunk
-      let newline: number
-      while ((newline = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        let message: { id?: unknown; result?: unknown; error?: { message?: unknown } }
-        try { message = JSON.parse(line) as typeof message } catch { continue }
-        if (message.id === 1) {
-          child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'initialized' })}\n`)
-          child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'account/read', params: {} })}\n`)
-        } else if (message.id === 2) {
-          done(message.error ? unknown('codex account/read', `account/read failed: ${String(message.error.message ?? 'no detail')}`) : codexIdentityFrom(message.result))
-        }
-      }
-    })
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'cockpit-accounts', title: 'Cockpit', version: '1' }, capabilities: null } })}\n`)
-  })
+async function codexIdentity({ executable, env, timeoutMs = TIMEOUT_MS }: IdentityProbeOptions): Promise<IdentityObservation> {
+  const answer = await queryAppServer(executable, 'account/read', {}, { env, timeoutMs })
+  return answer.error !== undefined ? unknown('codex account/read', answer.error) : codexIdentityFrom(answer.result)
 }
 
 /** The real probe: only Claude and Codex have one (the others stay on their CLI default). */

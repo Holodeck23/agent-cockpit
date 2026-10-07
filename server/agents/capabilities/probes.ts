@@ -2,6 +2,7 @@
 // prompt or starts a session; each has a timeout; a failure is reported, never guessed around.
 import { execFile } from 'node:child_process'
 import { parseClaudeHelp } from '../claude/capabilities.ts'
+import { queryAppServer, type AppServerQuery } from '../codex/app-server-query.ts'
 import type { AgentId } from '../types.ts'
 import type { AuthCapability, Capability, ModelOption } from './types.ts'
 
@@ -123,21 +124,45 @@ async function agyModels(path: string, run: Runner, timeoutMs: number): Promise<
   return { auth: { state: 'unknown', reason }, models: { state: 'unavailable', reason, source: 'agy models' } }
 }
 
+/** model/list's visible models, in the CLI's order. Exported for tests. */
+export function parseCodexModels(result: unknown): ModelOption[] {
+  const data = (result as { data?: unknown } | undefined)?.data
+  if (!Array.isArray(data)) return []
+  const models: ModelOption[] = []
+  for (const entry of data as Array<{ id?: unknown; model?: unknown; displayName?: unknown; hidden?: unknown }>) {
+    const id = typeof entry.id === 'string' ? entry.id : typeof entry.model === 'string' ? entry.model : undefined
+    if (!id || entry.hidden === true || !/^[A-Za-z0-9._\-[\]/:]{1,100}$/.test(id)) continue
+    models.push({ id, ...(typeof entry.displayName === 'string' && entry.displayName ? { label: entry.displayName } : {}) })
+  }
+  return models
+}
+
+/** The models this Codex offers its signed-in account, from app-server model/list (no prompt is sent). */
+async function codexModels(path: string, query: AppServerQuery, timeoutMs: number): Promise<AgentProbe['models']> {
+  const source = 'codex app-server model/list'
+  const answer = await query(path, 'model/list', {}, { timeoutMs })
+  if (answer.error !== undefined) return { state: 'unavailable', reason: `${NOT_LISTED.codex} (${answer.error})`, source }
+  const models = parseCodexModels(answer.result)
+  return models.length > 0 ? { state: 'supported', value: models, source } : { state: 'unavailable', reason: `${NOT_LISTED.codex} (model/list returned none)`, source }
+}
+
 const NOT_LISTED: Record<Exclude<AgentId, 'antigravity'>, string> = {
   claude: 'Claude Code has no model list command: type an alias (haiku, sonnet, opus) or a full model id, or leave it blank for your default.',
-  codex: 'Codex lists models only inside a session: type a model id, or leave it blank for your default.',
+  codex: 'Codex did not list its models: type a model id, or leave it blank for your default.',
   opencode: 'OpenCode takes provider/model ids such as openrouter/…; Cockpit does not list them.',
 }
 
 /** Everything after `--version`, for one found executable. */
-export async function probeAgent(agent: AgentId, path: string, run: Runner, timeoutMs: number): Promise<AgentProbe> {
+export async function probeAgent(agent: AgentId, path: string, run: Runner, timeoutMs: number, query: AppServerQuery = queryAppServer): Promise<AgentProbe> {
   switch (agent) {
     case 'claude': {
       const [settings, auth] = await Promise.all([claudeSettings(path, run, timeoutMs), claudeAuth(path, run, timeoutMs)])
       return { settings, auth, models: { state: 'unavailable', reason: NOT_LISTED.claude } }
     }
-    case 'codex':
-      return { settings: {}, auth: await codexAuth(path, run, timeoutMs), models: { state: 'unavailable', reason: NOT_LISTED.codex } }
+    case 'codex': {
+      const [auth, models] = await Promise.all([codexAuth(path, run, timeoutMs), codexModels(path, query, timeoutMs)])
+      return { settings: {}, auth, models }
+    }
     case 'antigravity':
       return { settings: {}, ...(await agyModels(path, run, timeoutMs)) }
     case 'opencode':
