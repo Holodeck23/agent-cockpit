@@ -264,8 +264,10 @@ try {
   const note = (await page.locator('.workspace-note').textContent().catch(() => '')) ?? ''
   check('W12-07 choosing a worktree keeps the conversation open and says where the next message goes',
     stillOpen && /continues this conversation in Rose bed\. It last worked in the main checkout\./.test(note), note)
+  // The composer swaps drafts on the render after the choice: wait for it to settle (a leak never does).
+  const ownDraft = await until('Rose bed draft', async () => await messageBox(page).inputValue() === '' && (await chips(page)).length === 0, 5000)
   check('W12-07 the worktree has its own draft: the main checkout\'s text and image are not here',
-    await messageBox(page).inputValue() === '' && (await chips(page)).length === 0)
+    ownDraft === true, `${await messageBox(page).inputValue()} | ${(await chips(page)).join()}`)
   await messageBox(page).fill('MARK-W1 continue in the rose bed')
   await pasteImage(page, 'rose.png')
   await shot(page, '07-move-note')
@@ -279,8 +281,8 @@ try {
 
   step('W12-07 back to the main checkout')
   await choose(page, /Main checkout/)
-  check('W12-07 the main checkout\'s draft text and image chip are as they were left',
-    await messageBox(page).inputValue() === 'MARK-P2 back home' && (await chips(page)).join() === 'home.png', `${await messageBox(page).inputValue()} | ${(await chips(page)).join()}`)
+  const kept = await until('main checkout draft', async () => await messageBox(page).inputValue() === 'MARK-P2 back home' && (await chips(page)).join() === 'home.png', 5000)
+  check('W12-07 the main checkout\'s draft text and image chip are as they were left', kept === true, `${await messageBox(page).inputValue()} | ${(await chips(page)).join()}`)
   await messageBox(page).press('Enter')
   const r3 = await reply(page, threadId, 3)
   check('W12-07 turn 3 resumes the main checkout\'s own session with only what happened since (Rose bed\'s turn)',
@@ -360,13 +362,13 @@ try {
   check('W12-08 the agent\'s MCP grant starts the process in the worktree folder, owned by that workspace',
     /process=20[01]/.test(r5) && sleeper?.cwd === rose.cwd && sleeper?.workspaceId === rose.id, `${r5} | ${sleeper?.cwd}`)
   await section(page, 'Processes')
-  await page.locator('.process-row', { hasText: 'wt-sleeper' }).waitFor().catch(() => undefined)
-  const inRose = await page.locator('.process-row', { hasText: 'wt-sleeper' }).count()
+  await page.locator('.process-list').getByText('wt-sleeper', { exact: true }).waitFor().catch(() => undefined)
+  const inRose = await page.locator('.process-list').getByText('wt-sleeper', { exact: true }).count()
   const processKicker = (await page.locator('.workflow-kicker').first().textContent()) ?? ''
   await shot(page, '08-processes-rose-bed')
   await choose(page, /Main checkout/)
-  await page.locator('.process-row', { hasText: 'wt-sleeper' }).waitFor({ state: 'detached', timeout: 5000 }).catch(() => undefined)
-  const inMain = await page.locator('.process-row', { hasText: 'wt-sleeper' }).count()
+  await page.locator('.process-list').getByText('wt-sleeper', { exact: true }).waitFor({ state: 'detached', timeout: 5000 }).catch(() => undefined)
+  const inMain = await page.locator('.process-list').getByText('wt-sleeper', { exact: true }).count()
   check('W12-08 Processes carries the workspace picker', await page.locator('.panel-workspace').count() === 1)
   check('W12-08 Processes lists it under Rose bed only', inRose === 1 && inMain === 0 && processKicker === 'Garden · Rose bed', `rose ${inRose}, main ${inMain}`)
 
