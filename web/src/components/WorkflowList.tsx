@@ -15,6 +15,7 @@ interface WorkflowListProps {
   onCreate: () => void
   galleryOpen: boolean
   onOpenGallery: () => void
+  hidden?: boolean
 }
 
 const VIEWS: ReadonlyArray<{ id: WorkflowView; label: string }> = [
@@ -23,7 +24,7 @@ const VIEWS: ReadonlyArray<{ id: WorkflowView; label: string }> = [
   { id: 'manual', label: 'Manual' },
 ]
 
-export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, onCreate, galleryOpen, onOpenGallery }: WorkflowListProps) {
+export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, onCreate, galleryOpen, onOpenGallery, hidden }: WorkflowListProps) {
   const [query, setQuery] = useState('')
   const [view, setView] = useState<WorkflowView>('all')
   const groups = useMemo(() => groupByCollection(filterWorkflows(rows, query, view)), [rows, query, view])
@@ -31,7 +32,7 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
   const shown = groups.reduce((n, g) => n + g.rows.length, 0)
 
   return (
-    <nav className="workflow-list" aria-label="Saved workflows">
+    <nav className="workflow-list" aria-label="Saved workflows" hidden={hidden}>
       <header>
         <div><span className="workflow-kicker">{project.name}</span><h1>Workflows</h1></div>
         <button type="button" className="new-button" aria-label="New workflow" disabled={busy} onClick={onCreate}><PlusIcon /></button>
@@ -62,11 +63,14 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
           {group.rows.map((w) => (
             <button type="button" key={w.id} className={`workflow-row ${selected === w.id ? 'selected' : ''}`}
               aria-current={selected === w.id ? 'true' : undefined} disabled={busy} onClick={() => onSelect(w.id)}>
-              <strong>{displayTitle(w)}</strong>
+              <span className="workflow-row-top"><strong>{displayTitle(w)}</strong>
+                <small className={`workflow-status${w.lastError ? ' workflow-error' : w.enabled ? ' scheduled' : ''}`}>
+                  {w.lastError ? 'Needs attention' : w.enabled ? 'Scheduled' : w.calendar ? 'Paused' : 'Manual'}
+                </small>
+              </span>
               <code className="workflow-slug">@workflow:{w.name}</code>
               <span>{w.prompt.slice(0, 100)}</span>
-              <small className={w.lastError ? 'workflow-error' : ''}>{w.lastError ? 'Needs attention' : w.enabled ? (w.calendar ? describeCalendar(w.calendar) : `Every ${w.intervalMinutes} min`)
-                : w.calendar ? `Paused · ${describeCalendar(w.calendar)}` : 'Manual / paused'}</small>
+              {w.calendar || w.intervalMinutes ? <span className="workflow-frequency">{w.calendar ? describeCalendar(w.calendar) : `Every ${w.intervalMinutes} min`}</span> : null}
             </button>
           ))}
         </section>

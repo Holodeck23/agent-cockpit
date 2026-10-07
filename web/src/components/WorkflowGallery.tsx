@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { GALLERY, type GalleryWorkflow } from '../gallery/catalog.ts'
 import { categoryCounts, featured, findGallery, inCategory, needsSentence, relatedTo, scheduleLabel, searchGallery, type CategoryFilter } from '../gallery/gallery.ts'
 import { PERMISSION_LABEL } from './AgentPicker.tsx'
-import { ChevronLeftIcon, FileIcon, SearchIcon } from './icons.tsx'
+import { ChevronLeftIcon, FileIcon, SearchIcon, SidebarIcon } from './icons.tsx'
 
 interface GalleryProps {
   projectName: string
@@ -11,9 +11,10 @@ interface GalleryProps {
   busy: boolean
   onAdd: (entry: GalleryWorkflow) => void
   onClose: () => void
+  listToggle?: { readonly hidden: boolean; readonly toggle: () => void }
 }
 
-export function WorkflowGallery({ projectName, taken, busy, onAdd, onClose }: GalleryProps) {
+export function WorkflowGallery({ projectName, taken, busy, onAdd, onClose, listToggle }: GalleryProps) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<CategoryFilter>('All')
   const [open, setOpen] = useState<string>()
@@ -42,8 +43,14 @@ export function WorkflowGallery({ projectName, taken, busy, onAdd, onClose }: Ga
       <main ref={pane} className="gallery gallery-detail" aria-label={`${entry.title} in the gallery`}>
         <button type="button" className="gallery-back" onClick={() => setOpen(undefined)}><ChevronLeftIcon />Gallery</button>
         <header>
-          <span className="workflow-kicker">{entry.category}</span>
-          <h1>{entry.title}</h1>
+          <div className="workflow-detail-heading">
+            {listToggle ? <button type="button" className="workflow-list-toggle" aria-label={listToggle.hidden ? 'Show workflows' : 'Hide workflows'}
+              aria-pressed={!listToggle.hidden} onClick={listToggle.toggle}><SidebarIcon /></button> : null}
+            <div><span className="workflow-kicker">{entry.category}</span>
+              <h1>{entry.title}</h1>
+              {listToggle ? <div className="workflow-breadcrumbs"><span>Workflows</span><span aria-hidden="true">›</span><span>Gallery</span></div> : null}
+            </div>
+          </div>
           <p>{entry.summary}</p>
         </header>
         <dl className="gallery-facts">
@@ -82,9 +89,12 @@ export function WorkflowGallery({ projectName, taken, busy, onAdd, onClose }: Ga
   return (
     <main ref={pane} className="gallery" aria-label="Workflow gallery">
       <header className="gallery-head">
+        {listToggle ? <button type="button" className="workflow-list-toggle" aria-label={listToggle.hidden ? 'Show workflows' : 'Hide workflows'}
+          aria-pressed={!listToggle.hidden} onClick={listToggle.toggle}><SidebarIcon /></button> : null}
         <div>
           <span className="workflow-kicker">Workflow gallery</span>
           <h1>Start from a workflow</h1>
+          {listToggle ? <div className="workflow-breadcrumbs"><span>Workflows</span><span aria-hidden="true">›</span><span>Gallery</span></div> : null}
           <p>{GALLERY.length} ready-made jobs, most of them for working inside a repository. Adding one copies it into {projectName}, paused: it never runs or schedules itself.</p>
         </div>
         <button type="button" className="button-soft" onClick={onClose}>Close gallery</button>
