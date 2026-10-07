@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, type RemoteStatus } from '../api.ts'
 import { usePopover } from '../usePopover.ts'
 import { PhoneIcon } from './icons.tsx'
+import { PhonePreviews } from './PhonePreviews.tsx'
 
 // Phone access settings, in the sub-nav: turn it on, show the Tailscale address
 // (and a QR code for the phone's camera), approve pairing requests, and revoke
@@ -95,6 +96,7 @@ export function PhonePanel({ status, onError, onOpenChange }: PhoneButtonProps) 
                   ({ sent }) => { if (!sent.some((s) => s.status >= 200 && s.status < 300)) onError('The test notification was not accepted. Turn notifications off and on again on the phone.') },
                   (e: unknown) => onError(String(e)))}>Send a test notification</button>
               ) : null}
+              <PhonePreviews onError={onError} />
               <button type="button" className="phone-toggle off" disabled={busy} onClick={() => toggle(false)}>Turn off phone access</button>
             </div>
           ) : (

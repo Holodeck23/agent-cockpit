@@ -32,10 +32,12 @@ import type { Project, ProjectPatch } from '../../server/projects/store.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 import type { RemoteStatus } from '../../server/remote/service.ts'
+import type { PreviewsStatus } from '../../server/remote/preview/control.ts'
 import type { AgentStatus } from '../../server/agents/status.ts'
 import type { GitState } from '../../server/git/branches.ts'
 
 export type { AgentCapabilities, LatestCheck, OperationKind, OperationView, Plan }
+export type { PreviewsStatus }
 export type { AgentStatus, ProcessInfo, ProcessRead, Project, ProjectPatch, RemoteStatus, StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary, ThreadUpdate }
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
@@ -224,6 +226,11 @@ export const api = {
   pushUnsubscribe: () => request<unknown>('/api/remote/push/unsubscribe', { method: 'POST', body: {} }),
   testPush: () => request<{ sent: { deviceId: string; status: number }[] }>('/api/remote/push/test', { method: 'POST', body: {} }),
   pairingStatus: (id: string) => request<{ status: 'pending' | 'approved' | 'denied' }>(`/api/remote/pair/${id}`),
+  // Phone previews (H5). The Mac sets them up; the phone only asks for a ticket (phone-preview.ts).
+  phonePreviews: () => request<PreviewsStatus>('/api/phone/previews'),
+  preparePhonePreview: (processId: string) => request<{ serviceId: string; status: PreviewsStatus }>('/api/phone/previews', { method: 'POST', body: { processId } }),
+  servePhonePreview: (serviceId: string) => request<PreviewsStatus>(`/api/phone/previews/${serviceId}/serve`, { method: 'POST', body: {} }),
+  unservePhonePreview: (serviceId: string) => request<PreviewsStatus>(`/api/phone/previews/${serviceId}/unserve`, { method: 'POST', body: {} }),
 }
 
 export interface StreamHandlers {
