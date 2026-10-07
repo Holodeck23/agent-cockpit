@@ -50,7 +50,8 @@ export function searchFiles(projectPath: string, query: string): FileSearch {
 export interface ReferenceCheck { kind: 'file' | 'workflow'; reference: string; ok: boolean; problem?: string }
 
 /** Each distinct reference in a draft, and whether it would resolve if sent now. */
-export function checkReferences(text: string, projectPath: string, workflows: WorkflowStore): ReferenceCheck[] {
+/** `folder` is where @file references resolve (a worktree's own folder); workflows are the project's. */
+export function checkReferences(text: string, projectPath: string, workflows: WorkflowStore, folder: string = projectPath): ReferenceCheck[] {
   const checks: ReferenceCheck[] = []
   const seen = new Set<string>()
   for (const [, , encoded] of text.matchAll(FILE_REFERENCE)) {
@@ -58,7 +59,7 @@ export function checkReferences(text: string, projectPath: string, workflows: Wo
     seen.add(`file:${encoded}`)
     const path = parseFileReference(encoded)?.path
     if (path === undefined) { checks.push({ kind: 'file', reference: encoded, ok: false, problem: 'Not a valid file reference' }); continue }
-    try { readProjectFile(projectPath, path); checks.push({ kind: 'file', reference: encoded, ok: true }) }
+    try { readProjectFile(folder, path); checks.push({ kind: 'file', reference: encoded, ok: true }) }
     catch (error) { checks.push({ kind: 'file', reference: encoded, ok: false, problem: error instanceof Error ? error.message : String(error) }) }
   }
   const names = new Set(workflows.list(projectPath).map((w) => w.name))

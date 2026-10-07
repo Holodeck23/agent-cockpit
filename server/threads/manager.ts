@@ -273,7 +273,8 @@ export interface ThreadManager {
   /** Clears the question or blocker the last turn ended with, without replying. */
   dismissAwaiting(threadId: string): void
   /** Tells the project's other conversations that its branch changed (from `byThreadId`, if given). */
-  noteBranchChange(projectPath: string, from: string, to: string, byThreadId?: string): void
+  /** `workspaceId` limits it to the conversations working in that workspace: a branch belongs to one workspace. */
+  noteBranchChange(projectPath: string, from: string, to: string, byThreadId?: string, workspaceId?: string): void
   /** Stops its agent session, deletes everything stored for it and tells every window. */
   remove(threadId: string): Promise<void>
   /** Same agent, new model/effort/permissions: the native session resumes with them from the next message. */
@@ -796,10 +797,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       record(threadId, { kind: 'completion_changed', completed })
       return meta
     },
-    noteBranchChange(projectPath, from, to, byThreadId) {
+    noteBranchChange(projectPath, from, to, byThreadId, workspaceId) {
       const byTitle = byThreadId ? store.get(byThreadId)?.title : undefined
       for (const meta of store.list()) {
         if (meta.projectPath !== projectPath || meta.id === byThreadId || deleted.has(meta.id)) continue
+        if (workspaceId && currentWorkspace(meta) !== workspaceId) continue
         record(meta.id, { kind: 'branch_changed', from, to, ...(byTitle ? { byTitle } : {}) })
       }
     },
