@@ -19,6 +19,7 @@ import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from '
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
 import { createWorkspaceStore } from './projects/workspaces.ts'
+import { createWorktreeService } from './projects/worktrees.ts'
 import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
@@ -185,6 +186,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
   const workspaces = createWorkspaceStore(root)
+  const worktrees = createWorktreeService(root, workspaces)
   const processes = createProcessRunner({ ledgerFile: join(root, 'processes.json') })
   const sessions = createMcpSessions()
   // Known once listening; sessions only start after that.
@@ -326,7 +328,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta

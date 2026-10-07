@@ -75,6 +75,12 @@ export const ROUTES: readonly RouteClass[] = [
   { method: 'POST', route: 'phone/previews/:id/serve', phone: false },
   { method: 'POST', route: 'phone/previews/:id/unserve', phone: false },
 
+  // Worktree workspaces (M1, W12.2): folders, branches and repository changes stay on the Mac.
+  { method: 'GET', route: 'projects/:id/workspaces', phone: false },
+  { method: 'GET', route: 'projects/:id/workspaces/preflight', phone: false },
+  { method: 'POST', route: 'projects/:id/workspaces', phone: false },
+  { method: 'POST', route: 'workspace-operations/:id/recover', phone: false },
+  { method: 'POST', route: 'workspace-operations/:id/dismiss', phone: false },
   // The agent's browser tools (H3, wave 9): agents' MCP calls on the Mac, never the phone.
   { method: 'POST', route: 'mcp/browser/:op', phone: false },
 ]

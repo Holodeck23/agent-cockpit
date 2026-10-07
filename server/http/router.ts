@@ -47,7 +47,9 @@ import type { AgyMcp } from '../projects/agy-mcp.ts'
 import type { Lifecycle } from '../agents/lifecycle/service.ts'
 import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
 import { handleAccountRoute, isAccountRoute } from './account-routes.ts'
+import { handleWorkspaceRoute, isWorkspaceRoute } from './workspace-routes.ts'
 import type { AccountService } from '../agents/accounts/service.ts'
+import type { WorktreeService } from '../projects/worktrees.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -136,6 +138,8 @@ export interface ApiDeps {
   readonly lifecycle?: Lifecycle
   /** Account profiles and each project's choice per agent (W12.1); desktop only. */
   readonly accounts?: AccountService
+  /** Worktree workspaces (M1, W12.2); desktop only. */
+  readonly worktrees?: WorktreeService
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -167,7 +171,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -258,6 +262,15 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         await handleAccountRoute(req, res, url, parts, accounts, (projectId) => {
           const known = workspaces?.list().projects.find((p) => p.id === projectId)?.path
           return known && projects.list().some((p) => p.path === known) ? known : undefined
+        })
+        return true
+      }
+      // Workspaces name folders and branches; creating one changes the repository: the Mac only (INTERFACES §4).
+      if (isWorkspaceRoute(parts) && workspaces && worktrees) {
+        if (viaPhone) throw new HttpError(403, 'Workspaces are only available on the Mac')
+        await handleWorkspaceRoute(req, res, parts, workspaces, worktrees, (projectId) => {
+          const known = workspaces.list().projects.find((p) => p.id === projectId)?.path
+          return known !== undefined && projects.list().some((p) => p.path === known)
         })
         return true
       }
