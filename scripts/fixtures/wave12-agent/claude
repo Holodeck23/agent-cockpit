@@ -6,7 +6,7 @@
 # in its launch context (ctx: --append-system-prompt text or file, where a new session's handoff goes). A
 # message containing START-PROC starts a process through Cockpit's MCP API, like a real agent. A
 # message containing HOLD keeps its turn running for 60 s (two worktrees can then work at once)
-# until Cockpit's Stop interrupts it.
+# until Cockpit's Stop interrupts it. A message containing LINK names notes.txt in the reply.
 # Like the real CLI it stays alive between turns and exits on stdin EOF.
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 12 fixture)"; exit 0; }
 session=""; resumed=0; previous=""; context=""
@@ -53,6 +53,8 @@ while IFS= read -r line; do
   # Markers are reported without their MARK- prefix, so this reply (which later turns may be handed) carries none.
   saw=$(printf '%s' "$saw" | sed 's/MARK-//g'); ctx=$(printf '%s' "$ctx" | sed 's/MARK-//g')
   text="cwd=$(pwd -P) session=$session resumed=$resumed turn=$turn saw=[${saw# }] ctx=[${ctx# }]$started"
+  # LINK: the reply names a file in its folder, as an agent's summary would (a file link in Cockpit).
+  case "$line" in *LINK*) text="$text. See \`notes.txt:1\`." ;; esac
   printf '{"type":"assistant","message":{"id":"wave12-%s-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$session" "$turn" "$text"
   case "$line" in
     *HOLD*)
