@@ -54,6 +54,7 @@ import type { AccountService } from '../agents/accounts/service.ts'
 import type { WorktreeService } from '../projects/worktrees.ts'
 import type { WorktreeLifecycle } from '../projects/worktree-lifecycle.ts'
 import { isBusy } from '../threads/status.ts'
+import { runsIn } from '../threads/workspace-events.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
 export const MAX_MESSAGE_IMAGES = 8
@@ -88,6 +89,8 @@ const createThreadBody = z.object({
 /** `operationId`: one per send attempt, so a repeated request is answered once (ID-05). */
 const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional(), workspaceId: z.uuid().optional() })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
+/** Stop: one workspace's agent, or (without one) every agent in the conversation (W12-15). */
+const interruptBody = z.object({ workspaceId: z.uuid().optional() })
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
 const completedBody = z.object({ completed: z.boolean() })
@@ -600,6 +603,8 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
             events: store.events(threadId),
             transcriptPath: store.transcriptPath(threadId),
             streaming: manager.partialText(threadId),
+            // Each workspace's agent, when the conversation has more than one at work (W12-15).
+            runs: manager.runs(threadId),
           },
         })
       } else if (method === 'GET' && action === 'images' && parts.length === 5) {
@@ -632,8 +637,11 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'interrupt') {
-        await checks?.cancelForThread(threadId)
-        manager.interrupt(threadId)
+        const { workspaceId } = parseBody(interruptBody, await readJson(req))
+        // A workspace's Stop ends that workspace's checks only; Stop all ends them all.
+        const runIds = workspaceId ? runsIn(store.events(threadId), workspaceId) : undefined
+        await checks?.cancelForThread(threadId, runIds)
+        manager.interrupt(threadId, workspaceId)
         sendJson(res, 202, { data: {} })
       } else if (method === 'DELETE' && !action) {
         if (viaPhone) throw new HttpError(403, 'Conversations can only be deleted on the Mac')

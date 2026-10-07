@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink, NormalizedEvent } from '../server/agents/types.ts'
 import type { Workspace } from '../server/projects/workspaces.ts'
-import { ChooseWorkspaceError, createThreadManager, ThreadBusyError, WorkspaceUnavailableError, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
+import { ChooseWorkspaceError, createThreadManager, WorkspaceUnavailableError, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 
@@ -122,11 +122,11 @@ describe('a native session per workspace (W12-07)', () => {
     expect(store.events(meta.id)).toHaveLength(before)
   })
 
-  it('refuses another project\'s workspace, a removed one, and moving while working', async () => {
+  // Moving while working is no longer refused: since order 18 (W12-15) it starts a second agent in
+  // the other workspace; tests/concurrent-workspaces.test.ts covers that.
+  it('refuses another project\'s workspace and a removed one', async () => {
     const { manager, launches, settings, spike, foreign, registry } = setup()
     const meta = manager.create({ projectPath: '/proj', settings, text: 'first' })
-    // Still working on the first message.
-    expect(() => manager.send(meta.id, 'x', undefined, undefined, undefined, undefined, undefined, spike.id)).toThrow(ThreadBusyError)
     await finishTurn(launches[0]!, 'n1', 'ok')
     expect(() => manager.send(meta.id, 'x', undefined, undefined, undefined, undefined, undefined, foreign.id)).toThrow(WorkspaceUnavailableError)
     registry.set(spike.id, { ...spike, lifecycle: 'removed' })

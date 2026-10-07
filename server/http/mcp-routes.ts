@@ -51,7 +51,7 @@ export interface McpRouteDeps {
   readonly sessions: McpSessions
   readonly processes: ProcessRunner
   /** The owner a process started by this conversation's agent records (K1); resolved by the host. */
-  readonly processOwner?: (threadId: string) => ProcessOwner
+  readonly processOwner?: (threadId: string, workspaceId?: string) => ProcessOwner
   readonly openUrl: (preview: PreviewOpen) => Promise<void> | void
   readonly capturePreview?: (url: string) => Promise<{ data: string; mimeType: 'image/png'; width: number; height: number }>
   /** The desktop app: inspect_preview captures the calling conversation's own page at that local address (W9-11). */
@@ -203,7 +203,7 @@ export async function handleMcpRoute(
     if (method === 'GET') return sendJson(res, 200, { data: processes.list(projectPath, grant.cwd) })
     if (method === 'POST') {
       const body = parseBody(startBody, await readJson(req))
-      const owner: ProcessOwner = processOwner?.(grant.threadId) ?? { kind: 'project' }
+      const owner: ProcessOwner = processOwner?.(grant.threadId, grant.workspaceId) ?? { kind: 'project' }
       const started = await approved(deps, grant, res, 'start_process', { command: body.command, ...(body.name ? { name: body.name } : {}) },
         { description: 'Run this command in the project, as a process Cockpit keeps running.', sessionKey: 'processes' },
         () => {

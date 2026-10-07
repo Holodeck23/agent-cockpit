@@ -39,3 +39,11 @@ export function eventsIn(events: readonly StoredEvent[], workspaceId: WorkspaceK
   if (parts.size <= 1) return [...events]
   return parts.get(workspaceId) ?? []
 }
+
+/** The runs started in one workspace: the run IDs of the messages sent there. */
+export function runsIn(events: readonly StoredEvent[], workspaceId: WorkspaceKey): Set<string> {
+  const keys = attribute(events)
+  const runs = new Set<string>()
+  events.forEach(({ event }, i) => { if (event.kind === 'user_text' && event.runId && keys[i] === workspaceId) runs.add(event.runId) })
+  return runs
+}

@@ -334,8 +334,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     leases: browserLeases,
     cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])],
     // Only while the conversation is working and Stop has not been pressed.
-    currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
-    approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
+    currentRun: (threadId, workspaceId) => (manager.canControl(threadId, workspaceId) ? manager.currentRunId(threadId, workspaceId) : undefined),
+    runActive: (threadId, runId) => manager.runs(threadId).some((r) => r.working && r.runId === runId),
+    approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, { ...approval, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) }),
   }) : undefined
   // Removing or archiving a worktree waits for every run, process and check Cockpit owns in it (W12.4).
   const worktreeLifecycle = createWorktreeLifecycle({
@@ -355,13 +356,13 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   })
   const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
-      processOwner: (threadId) => {
+      processOwner: (threadId, workspaceId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
-        const runId = manager.currentRunId(threadId)
+        const runId = manager.currentRunId(threadId, workspaceId)
         return { kind: 'conversation', threadId, title: meta?.title ?? 'Deleted conversation', ...(runId ? { runId } : {}) }
       }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), ...(options.inspectPreview ? { inspectPreview: options.inspectPreview } : {}), workflows: workflows.store, memory,
       agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
-      approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
+      approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, { ...approval, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) }),
       cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])], ...(browser ? { browser } : {}) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)
   remote.attach(api)

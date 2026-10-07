@@ -18,6 +18,7 @@ import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
+import { attribute, partition } from './workspace-events.ts'
 import { awaitingOf } from './turns.ts'
 import type { ThreadStore } from './store.ts'
 import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
@@ -52,6 +53,8 @@ export interface ThreadUpdate {
   readonly threadId: string
   readonly event: NormalizedEvent
   readonly status: ThreadStatus
+  /** The workspace whose session it came from, when it came from one (W12-15). */
+  readonly workspaceId?: string
 }
 export type UpdateListener = (update: ThreadUpdate) => void
 
@@ -200,6 +203,9 @@ function refusedSession(agent: AgentId, reason: string, onEvent: EventSink): Age
 }
 
 interface Live {
+  /** The conversation and workspace this session belongs to ('' when the project has no workspace record). */
+  readonly threadId: string
+  readonly workspaceId: string
   readonly pending: Map<string, PendingApproval>
   readonly questions: Map<string, { readonly request: PendingApproval; readonly ids: ReadonlySet<string> }>
   readonly session: AgentSession
@@ -255,7 +261,8 @@ export interface ThreadManager {
    */
   /** A Cockpit-side action an agent asked for (conversation control, processes, memory, workflows), approved by the user here. */
   requestHostAction(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options?: HostActionOptions): Promise<Exclude<ApprovalBehavior, 'deny'>>
-  canControl(threadId: string): boolean
+  /** A turn is running and not being stopped: in that workspace, or (without one) in any of the conversation's. */
+  canControl(threadId: string, workspaceId?: string): boolean
   create(input: { createdByThreadId?: string; delegationDepth?: number; projectPath: string; title?: string; settings: ThreadSettings; text: string; agentText?: string; workflows?: readonly WorkflowSnapshot[]; workflowId?: string; workflowTrigger?: 'manual' | 'scheduled'; images?: readonly IncomingImage[]; /** An active workspace of this project to start in; refused (never replaced by the primary) when it is not. */ workspaceId?: string }): ThreadMeta
   /** `images` are checked and stored before anything is recorded or sent; a bad one throws ImageAttachError. */
   /** `operationId` makes a repeat of the same request a no-op that answers with the first run. */
@@ -268,7 +275,8 @@ export interface ThreadManager {
   unqueue(threadId: string, queuedId: string): Promise<{ text: string; images: { file: string; name?: string }[] }>
   /** Answers the agent's open questions (J6), or with undefined closes them unanswered. */
   answerQuestion(threadId: string, requestId: string, answers: Readonly<Record<string, string>> | undefined): void
-  interrupt(threadId: string): void
+  /** Stops the turn in one workspace; without `workspaceId`, every workspace's (Stop all, W12-15). */
+  interrupt(threadId: string, workspaceId?: string): void
   setCompleted(threadId: string, completed: boolean): ThreadMeta
   /** Clears the question or blocker the last turn ended with, without replying. */
   dismissAwaiting(threadId: string): void
@@ -289,11 +297,13 @@ export interface ThreadManager {
   /** Resume with manual permissions and CLI defaults; retain the native session when the agent is unchanged. */
   resumeRecovered(threadId: string, agent: AgentId, text: string, agentText: string): ThreadMeta
   summaries(): ThreadSummary[]
-  /** The run the conversation's agent is working on now, if any. */
-  currentRunId(threadId: string): string | undefined
+  /** The run the conversation's agent is working on now, if any (in that workspace, when named). */
+  currentRunId(threadId: string, workspaceId?: string): string | undefined
   status(threadId: string): ThreadStatus
-  /** The agent message currently being streamed, or '' between messages. */
-  partialText(threadId: string): string
+  /** The agent message currently being streamed, or '' between messages (every workspace's, joined, without `workspaceId`). */
+  partialText(threadId: string, workspaceId?: string): string
+  /** Each workspace's streamed text and whether its turn is running (W12-15). */
+  runs(threadId: string): Array<{ workspaceId: string; working: boolean; partial: string; runId?: string }>
   subscribe(listener: UpdateListener): () => void
   /** Live sessions on one agent CLI, in every project: working (a turn or helpers) and idle (W10-07). */
   agentActivity(agent: AgentId): { busy: number; idle: number }
@@ -324,13 +334,18 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     antigravity: antigravityLauncher(capabilities ? () => capabilities.get('antigravity', { purpose: 'launch' }) : undefined, options.antigravityMcp),
     ...options.launchers,
   }
+  // One live agent session per conversation AND workspace: two worktrees of one conversation can each
+  // have an agent at work at the same time (W12-15). Keyed by keyOf(threadId, workspaceId).
   const live = new Map<string, Live>()
   const listeners = new Set<UpdateListener>()
   const generations = new Map<string, symbol>()
+  const keyOf = (threadId: string, workspaceId: string | undefined): string => `${threadId}\u0000${workspaceId ?? ''}`
+  const entriesOf = (threadId: string): Live[] => [...live.values()].filter((e) => e.threadId === threadId)
+  const entryIn = (threadId: string, workspaceId: string | undefined): Live | undefined => live.get(keyOf(threadId, workspaceId))
   const closing = new Set<Promise<void>>()
   // Deleted conversations: a closing session's last events must not recreate their files.
   const deleted = new Set<string>()
-  const hostActions = createHostActions((id, event) => record(id, event))
+  const hostActions = createHostActions((id, event, workspaceId) => record(id, event, workspaceId))
   const images = options.images ?? createImageStore(store.root)
 
   /** An image the agent showed, saved; undefined (and logged) when it is not one Cockpit keeps. */
@@ -357,7 +372,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   }
 
   const busy = (entry: Live | undefined): boolean => Boolean(entry && (entry.turnRunning || entry.helpers.size > 0))
-  const statusOf = (threadId: string): ThreadStatus => deriveStatus(store.events(threadId), busy(live.get(threadId)))
+  const anyBusy = (threadId: string): boolean => entriesOf(threadId).some(busy)
+  /** Whether a workspace's turn is running; '' (events from before workspaces) means any of them. */
+  const busyIn = (threadId: string) => (workspaceId: string): boolean => (workspaceId === '' ? anyBusy(threadId) : busy(entryIn(threadId, workspaceId)))
+  const statusOf = (threadId: string): ThreadStatus => deriveStatus(store.events(threadId), busyIn(threadId))
   const armIdleClose = (entry: Live): void => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
     entry.idleTimer = setTimeout(() => void entry.session.close(), IDLE_CLOSE_MS)
@@ -365,13 +383,14 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   // A streamed token changes no stored event, so its status is the last one worked out for the
   // thread, unless the live session has since started or finished being busy.
-  const lastStatus = new Map<string, { status: ThreadStatus; busy: boolean }>()
-  const broadcast = (threadId: string, event: NormalizedEvent): void => {
-    const isBusyNow = busy(live.get(threadId))
+  const lastStatus = new Map<string, { status: ThreadStatus; busy: string }>()
+  const busySignature = (threadId: string): string => entriesOf(threadId).filter(busy).map((e) => e.workspaceId).sort().join('\n')
+  const broadcast = (threadId: string, event: NormalizedEvent, workspaceId?: string): void => {
+    const isBusyNow = busySignature(threadId)
     const last = lastStatus.get(threadId)
-    const status = event.kind === 'text_delta' && last && last.busy === isBusyNow ? last.status : deriveStatus(store.events(threadId), isBusyNow)
+    const status = event.kind === 'text_delta' && last && last.busy === isBusyNow ? last.status : deriveStatus(store.events(threadId), busyIn(threadId))
     lastStatus.set(threadId, { status, busy: isBusyNow })
-    const update: ThreadUpdate = { threadId, event, status }
+    const update: ThreadUpdate = { threadId, event, status, ...(workspaceId ? { workspaceId } : {}) }
     for (const listener of listeners) listener(update)
   }
 
@@ -379,20 +398,25 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     try { write() } catch (error) { console.error(`[cockpit] could not save a ${kind} event`, error) }
   }
 
-  const record = (threadId: string, raw: NormalizedEvent): void => {
+  /**
+   * `workspaceId` names the workspace whose session (or send) the event belongs to; the event is stored
+   * with it, and only that workspace's live session reacts to it. Conversation-wide events pass none.
+   */
+  const record = (threadId: string, raw: NormalizedEvent, workspaceId?: string): void => {
     if (deleted.has(threadId)) return
     // Text an agent types into a web page is never stored or shown, only its length (H3).
     const incoming = redactBrowserEvent(raw)
     if (incoming.kind === 'image_data') {
       const image = keepImage(threadId, incoming)
-      if (image) record(threadId, image)
+      if (image) record(threadId, image, workspaceId)
       return
     }
+    const owner = workspaceId === undefined ? undefined : entryIn(threadId, workspaceId)
     // Taken signals matter only for messages that waited; the rest would just fill the log.
     if (incoming.kind === 'user_taken') {
-      const waiting = live.get(threadId)?.waiting
+      const waiting = owner?.waiting
       if (!incoming.id || !waiting?.delete(incoming.id)) return
-      const entry = live.get(threadId)!
+      const entry = owner!
       entry.afterResult = false
       const taken = entry.queuedRuns.get(incoming.id)
       if (taken) { entry.runId = taken; entry.queuedRuns.delete(incoming.id) }
@@ -402,11 +426,13 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         if (entry.idleTimer) clearTimeout(entry.idleTimer)
       }
     }
-    if (incoming.kind === 'result' || incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.cancel(threadId)
-    if (incoming.kind === 'exit' || incoming.kind === 'agent_switch') hostActions.forget(threadId)
-    const entry = live.get(threadId)
+    // A run's end cancels only its own workspace's pending Cockpit actions; a switch ends them all.
+    if (incoming.kind === 'result' || incoming.kind === 'exit') hostActions.cancel(threadId, workspaceId ?? '')
+    if (incoming.kind === 'exit') hostActions.forget(threadId, workspaceId ?? '')
+    if (incoming.kind === 'agent_switch') { hostActions.cancel(threadId); hostActions.forget(threadId) }
+    const entry = owner
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
-    if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false })
+    if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false }, workspaceId)
     // A failed result right after the user pressed Stop is a stop, not an error.
     const stopped: NormalizedEvent =
       incoming.kind === 'result' && !incoming.ok && entry?.stopRequested ? { ...incoming, stopped: true } : incoming
@@ -414,7 +440,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Deltas are for live rendering only; the final assistant_text is persisted.
     // A write that fails (a full disk) loses this event from the log, but the state below must still
     // move: a lost result or exit would otherwise leave the conversation working, and its session live, for good.
-    if (event.kind !== 'text_delta') persist(() => store.append(threadId, event), event.kind)
+    if (event.kind !== 'text_delta') persist(() => store.append(threadId, event, undefined, workspaceId || undefined), event.kind)
     if (entry && event.kind === 'text_delta') entry.partial += event.text
     if (entry && (event.kind === 'assistant_text' || event.kind === 'result')) entry.partial = ''
     if (entry && event.kind === 'subagent') {
@@ -430,10 +456,14 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       entry.turnRunning = true
       if (entry.idleTimer) clearTimeout(entry.idleTimer)
     }
-    // Only provider evidence makes a session resumable; constructing a process does not.
+    // Only provider evidence makes a session resumable; constructing a process does not. A session
+    // still running in a workspace the conversation has since moved away from updates that binding.
     if (event.kind === 'session') {
       const meta = store.get(threadId)
-      if (meta) persist(() => store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined }), event.kind)
+      const away = meta && workspaceId && currentWorkspace(meta) !== workspaceId ? meta.bindings?.[workspaceId] : undefined
+      if (meta && away && workspaceId) {
+        persist(() => store.update(threadId, { bindings: { ...meta.bindings, [workspaceId]: { ...away, sessionId: event.sessionId, sessionStarted: true } } }), event.kind)
+      } else if (meta) persist(() => store.update(threadId, { sessionId: event.sessionId, sessionStarted: true, handoff: undefined }), event.kind)
     }
     if (entry && event.kind === 'result') {
       entry.pending.clear()
@@ -445,12 +475,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       // Closing the process would kill helpers still at work, or drop waiting messages.
       if (entry.helpers.size === 0 && !entry.turnRunning) armIdleClose(entry)
     }
-    if (event.kind === 'exit') {
+    if (event.kind === 'exit' && workspaceId !== undefined) {
       if (entry?.idleTimer) clearTimeout(entry.idleTimer)
-      live.delete(threadId)
-      generations.delete(threadId)
+      live.delete(keyOf(threadId, workspaceId))
+      generations.delete(keyOf(threadId, workspaceId))
     }
-    broadcast(threadId, event)
+    broadcast(threadId, event, workspaceId)
   }
 
   /**
@@ -458,13 +488,15 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
    * recovery): pending Cockpit actions are refused and what was allowed for that session is
    * forgotten now, not when an exit that is dropped as stale would have done it.
    */
-  const retire = (threadId: string): Promise<void> => {
-    hostActions.cancel(threadId)
-    hostActions.forget(threadId)
-    const entry = live.get(threadId)
-    live.delete(threadId)
-    generations.delete(threadId)
-    return entry ? closeEntry(entry) : Promise.resolve()
+  const retire = (threadId: string, workspaceId?: string): Promise<void> => {
+    hostActions.cancel(threadId, workspaceId)
+    hostActions.forget(threadId, workspaceId)
+    const entries = workspaceId === undefined ? entriesOf(threadId) : [entryIn(threadId, workspaceId)].filter((e): e is Live => e !== undefined)
+    for (const entry of entries) {
+      live.delete(keyOf(threadId, entry.workspaceId))
+      generations.delete(keyOf(threadId, entry.workspaceId))
+    }
+    return Promise.all(entries.map(closeEntry)).then(() => undefined)
   }
 
   /** The account a conversation's native session belongs to: before accounts, the CLI default. */
@@ -501,9 +533,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const homeProject = home ? options.workspace?.(home)?.projectId : undefined
     if (!into || !homeProject || into.projectId !== homeProject) throw new WorkspaceUnavailableError("That workspace is not part of this conversation's project")
     if (into.lifecycle !== 'active') throw new WorkspaceUnavailableError('That workspace is no longer available')
-    const entry = live.get(meta.id)
-    if (busy(entry) || (entry?.waiting.size ?? 0) > 0) throw new ThreadBusyError('This conversation is still working. Stop it or wait until it is idle, then continue in another workspace.')
-    void retire(meta.id)
+    // A run in the workspace being left keeps going on its own binding (W12-15); an idle session there closes.
+    const leavingEntry = entryIn(meta.id, current)
+    if (!busy(leavingEntry) && (leavingEntry?.waiting.size ?? 0) === 0) void retire(meta.id, current ?? '')
     const events = store.events(meta.id)
     const leaving = current ? { [current]: {
       agent: meta.settings.agent, bindingId: bindingIdOf(meta), sessionId: meta.sessionId, sessionStarted: meta.sessionStarted,
@@ -514,7 +546,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const where = into.kind === 'primary' ? meta.projectPath : into.cwd
     const dir = images.dir(meta.id)
     const resumes = back !== undefined && back.agent === meta.settings.agent && back.sessionStarted
-    const since = resumes ? events.slice(back.cursor) : events
+    // A resumed session hears what happened ELSEWHERE since its cursor: never its own output again,
+    // which matters when it kept working while the conversation was looking at another workspace.
+    const keys = attribute(events)
+    const since = resumes ? events.filter((_, i) => i >= back.cursor && keys[i] !== target) : events
     const told = since.length > 0 ? workspaceContext(since, where, resumes ? 'catch-up' : 'handoff', dir) : undefined
     record(meta.id, { kind: 'workspace_changed', from: current ?? '', to: target, ...(current ? { fromLabel: labelOf(options.workspace?.(current)) } : {}), toLabel: labelOf(into),
       context: resumes ? 'resumed' : told ? 'handoff' : 'none' })
@@ -550,27 +585,28 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const ensureSession = (start: ThreadMeta): Live => {
     let meta = start
-    const existing = live.get(meta.id)
+    const workspaceId = currentWorkspace(meta)
+    const key = keyOf(meta.id, workspaceId)
+    const existing = live.get(key)
     if (existing?.session.alive()) return existing
     // A new session starts with nothing allowed for it, however the previous one ended.
-    hostActions.forget(meta.id)
+    hostActions.forget(meta.id, workspaceId ?? '')
     // Read at launch: the project's account now. A native session from another account (or an older
     // identity of this one) is never resumed under it: the conversation is rebound first (W12-03).
     const account = options.accounts?.resolve(meta.projectPath, meta.settings.agent)
     if (account && hasAccount(meta) && !boundTo(meta, account)) meta = rebind(meta, account, accountOf(meta) === account.accountId ? 'identity_changed' : 'selected')
     const generation = Symbol()
-    generations.set(meta.id, generation)
+    generations.set(key, generation)
     const pending = new Map<string, PendingApproval>()
     const questions: Live['questions'] = new Map()
     const requestIds = new Map<string, string>()
     // Persisted before the boundary, so every event after it belongs to this launch, even across a restart.
     const launchNumber = (meta.sessionGeneration ?? 0) + 1
-    const workspaceId = currentWorkspace(meta)
     const cwd = cwdOf(meta, workspaceId)
     store.update(meta.id, { sessionGeneration: launchNumber, bindingId: bindingIdOf(meta), ...(workspaceId ? { workspaceId } : {}),
       ...(account ? { accountId: account.accountId, accountGeneration: account.generation } : {}) })
     record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta), ...(account ? { account: { id: account.accountId, generation: account.generation } } : {}),
-      ...(workspaceId ? { workspaceId } : {}) })
+      ...(workspaceId ? { workspaceId } : {}) }, workspaceId ?? '')
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
@@ -587,8 +623,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const handleEvent: EventSink = (event) => {
       if (event.kind === 'exit') releaseGrant()
       // An old process may still talk after its replacement started: it is labelled, never acted on (ID-04).
-      if (generations.get(meta.id) !== generation) {
-        if (STALE_LABELLED.has(event.kind)) record(meta.id, { kind: 'stale_event', generation: launchNumber, eventKind: event.kind })
+      if (generations.get(key) !== generation) {
+        if (STALE_LABELLED.has(event.kind)) record(meta.id, { kind: 'stale_event', generation: launchNumber, eventKind: event.kind }, workspaceId ?? '')
         return
       }
       if (event.kind === 'approval_request' && HOST_APPROVED_TOOLS.has(event.toolName)) {
@@ -597,33 +633,33 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
         pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
-        record(meta.id, { ...event, requestId: publicId })
+        record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
       } else if (event.kind === 'question') {
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
         // Claude echoes its tool input back with the answers; this is that input, field for field.
         const input = { questions: event.questions.map(({ question, header, options, multiSelect }) => ({ question, header, options, multiSelect })) }
         questions.set(publicId, { request: { requestId: event.requestId, input, suggestions: [] }, ids: new Set(event.questions.map((q) => q.id)) })
-        record(meta.id, { ...event, requestId: publicId })
+        record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
       } else if (event.kind === 'question_answered') {
         const publicId = requestIds.get(event.requestId)
         if (!publicId) return
         questions.delete(publicId)
         requestIds.delete(event.requestId)
-        record(meta.id, { ...event, requestId: publicId })
+        record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
       } else if (event.kind === 'approval_resolved') {
         const publicId = requestIds.get(event.requestId)
         if (!publicId) return
         pending.delete(publicId)
         requestIds.delete(event.requestId)
-        record(meta.id, { ...event, requestId: publicId })
+        record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
       } else {
         if (event.kind === 'result' || event.kind === 'exit') {
           pending.clear()
           questions.clear()
           requestIds.clear()
         }
-        record(meta.id, event)
+        record(meta.id, event, workspaceId ?? '')
       }
     }
     const blocked = cwd === undefined ? 'This workspace no longer exists. Continue the conversation in another workspace.' : options.launchGate?.(meta.settings.agent)
@@ -642,8 +678,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       deliver,
     )
     launching = false
-    const entry: Live = { pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '', generation: launchNumber, queuedRuns: new Map(), releaseGrant }
-    live.set(meta.id, entry)
+    const entry: Live = { threadId: meta.id, workspaceId: workspaceId ?? '', pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '', generation: launchNumber, queuedRuns: new Map(), releaseGrant }
+    live.set(key, entry)
     store.update(meta.id, { instructionsRevision: instructions?.revision, instructionsText: instructions?.text })
     return entry
   }
@@ -669,16 +705,19 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     // Once it has run in several workspaces, a request says which; it is never guessed (INTERFACES §5).
     if (workspaceId) moveTo(meta, workspaceId)
     else if (Object.keys(meta.bindings ?? {}).length > 0) throw new ChooseWorkspaceError('This conversation has run in more than one workspace. Choose the workspace to continue in.')
-    hostActions.cancel(threadId)
+    const target = currentWorkspace(requireMeta(threadId)) ?? ''
+    hostActions.cancel(threadId, target)
     // Every image is checked and stored first, so a bad one sends nothing.
     const stored = attached.map((image) => ({ ...images.save(threadId, image.bytes), image }))
     const outgoing: OutgoingImage[] = stored.map(({ path, mediaType, image }) => ({ path, mediaType, data: image.bytes.toString('base64') }))
     const entry = ensureSession(requireMeta(threadId))
     if (entry.idleTimer) clearTimeout(entry.idleTimer)
     // A resumed workspace session hears once what happened elsewhere since it last ran.
+    // Not while that session is mid-turn: the catch-up waits for its next idle message.
     const launched = requireMeta(threadId)
-    const toAgent = launched.catchUp && launched.sessionStarted ? `${launched.catchUp}\n\n${agentText}` : agentText
-    if (launched.catchUp) store.update(threadId, { catchUp: undefined })
+    const deliverCatchUp = Boolean(launched.catchUp && launched.sessionStarted && !entry.turnRunning)
+    const toAgent = deliverCatchUp ? `${launched.catchUp}\n\n${agentText}` : agentText
+    if (launched.catchUp && (deliverCatchUp || !launched.sessionStarted)) store.update(threadId, { catchUp: undefined })
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
     const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
     const runId = randomUUID()
@@ -691,17 +730,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}), runId, ...(operation ? { operation } : {}), ...(binding ? { binding } : {}) })
-    for (const { file, mediaType, image } of stored) record(threadId, { kind: 'image', file, mediaType, from: 'you', ...(image.name ? { name: image.name } : {}) })
+    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}), runId, ...(operation ? { operation } : {}), ...(binding ? { binding } : {}) }, target)
+    for (const { file, mediaType, image } of stored) record(threadId, { kind: 'image', file, mediaType, from: 'you', ...(image.name ? { name: image.name } : {}) }, target)
     entry.session.send(toAgent, queuedId, outgoing.length ? outgoing : undefined)
     return { runId, replayed: false }
   }
 
   return {
-    canControl: (id) => Boolean(live.get(id)?.turnRunning && !live.get(id)?.stopRequested),
+    canControl: (id, workspaceId) => (workspaceId === undefined ? entriesOf(id) : [entryIn(id, workspaceId)]).some((e) => Boolean(e?.turnRunning && !e.stopRequested)),
     requestHostAction(threadId, toolName, input, signal, options) {
-      if (!live.get(threadId)?.turnRunning || live.get(threadId)?.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
-      return hostActions.request(threadId, toolName, input, signal, options)
+      // The asking agent's own workspace: named by its grant, else the one session that is working.
+      const working = entriesOf(threadId).filter((e) => e.turnRunning && !e.stopRequested)
+      const asking = options?.workspaceId !== undefined ? entryIn(threadId, options.workspaceId) : working.length === 1 ? working[0] : undefined
+      if (!asking?.turnRunning || asking.stopRequested) return Promise.reject(new Error("The calling conversation is no longer working"))
+      return hostActions.request(threadId, toolName, input, signal, { ...options, workspaceId: asking.workspaceId })
     },
     create({ projectPath, title, settings, text, agentText, workflows, workflowId, workflowTrigger, createdByThreadId, delegationDepth, images: attached, workspaceId: startIn }) {
       const now = new Date().toISOString()
@@ -741,7 +783,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     send,
     approve(threadId, requestId, behavior) {
       if (hostActions.approve(threadId, requestId, behavior)) return
-      const entry = live.get(threadId)
+      // The session that asked, in whichever workspace: never another workspace's (W12-15).
+      const entry = entriesOf(threadId).find((e) => e.pending.has(requestId)) ?? entriesOf(threadId)[0]
       if (!entry?.session.alive()) throw new Error('This approval belongs to a session that has ended')
       const request = entry.pending.get(requestId)
       if (!request || !entry.turnRunning) throw new Error('Unknown or expired approval request')
@@ -749,7 +792,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       entry.session.respondApproval(request, behavior)
     },
     async unqueue(threadId, queuedId) {
-      const entry = live.get(threadId)
+      const entry = entriesOf(threadId).find((e) => e.waiting.has(queuedId))
       const sent = store.events(threadId).find((e) => e.event.kind === 'user_text' && e.event.queuedId === queuedId)?.event
       if (!entry?.waiting.has(queuedId) || sent?.kind !== 'user_text' || !entry.session.cancelQueued) throw new Error('The agent has already taken this message')
       if (!(await entry.session.cancelQueued(queuedId))) throw new Error('The agent has already taken this message')
@@ -769,11 +812,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         entry.stopRequested = false
         if (entry.helpers.size === 0) armIdleClose(entry)
       }
-      record(threadId, { kind: 'user_unqueued', id: queuedId })
+      record(threadId, { kind: 'user_unqueued', id: queuedId }, entry.workspaceId)
       return { text: sent.text, images }
     },
     answerQuestion(threadId, requestId, answers) {
-      const entry = live.get(threadId)
+      const entry = entriesOf(threadId).find((e) => e.questions.has(requestId)) ?? entriesOf(threadId)[0]
       if (!entry?.session.alive()) throw new Error('These questions belong to a session that has ended')
       const open = entry.questions.get(requestId)
       if (!open || !entry.turnRunning || !entry.session.respondQuestion) throw new Error('Unknown or expired questions')
@@ -782,17 +825,18 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       entry.questions.delete(requestId)
       entry.session.respondQuestion(open.request, kept && Object.keys(kept).length > 0 ? kept : undefined)
     },
-    interrupt(threadId) {
-      hostActions.cancel(threadId)
-      const entry = live.get(threadId)
-      if (!entry) return
-      entry.stopRequested = true
-      entry.session.interrupt()
+    interrupt(threadId, workspaceId) {
+      hostActions.cancel(threadId, workspaceId)
+      const entries = workspaceId === undefined ? entriesOf(threadId) : [entryIn(threadId, workspaceId)].filter((e): e is Live => e !== undefined)
+      for (const entry of entries) {
+        entry.stopRequested = true
+        entry.session.interrupt()
+      }
     },
     setCompleted(threadId, completed) {
       requireMeta(threadId)
-      // J11: nothing to complete while the agent is still at it. Reopening is always allowed.
-      if (completed && busy(live.get(threadId))) throw new ThreadBusyError('Mark it complete when the agent has finished')
+      // J11: nothing to complete while any of its agents is still at it. Reopening is always allowed.
+      if (completed && anyBusy(threadId)) throw new ThreadBusyError('Mark it complete when every agent in it has finished')
       const meta = store.update(threadId, { completed })
       record(threadId, { kind: 'completion_changed', completed })
       return meta
@@ -810,7 +854,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!awaitingOf(store.events(threadId))) throw new Error('Nothing is waiting on you in this conversation')
       record(threadId, { kind: 'awaiting_dismissed' })
     },
-    currentRunId: (threadId) => (live.get(threadId)?.turnRunning ? live.get(threadId)?.runId : undefined),
+    currentRunId: (threadId, workspaceId) => {
+      const working = (workspaceId === undefined ? entriesOf(threadId) : [entryIn(threadId, workspaceId)]).filter((e) => e?.turnRunning)
+      return working.length === 1 ? working[0]?.runId : undefined
+    },
     async remove(threadId) {
       requireMeta(threadId)
       deleted.add(threadId)
@@ -827,8 +874,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     switchAgent(threadId, settings, shown) {
       const meta = requireMeta(threadId)
-      const entry = live.get(threadId)
-      if (busy(entry)) throw new Error('Stop the current turn before switching agents')
+      if (anyBusy(threadId)) throw new Error('Stop the current turn before switching agents')
       const { text: handoff } = previewHandoff(store.events(threadId), workingFolder(meta), images.dir(threadId))
       if (shown !== undefined && handoffDigest(handoff) !== shown) throw new HandoffChangedError('The conversation changed since you reviewed the handoff. Review it again before switching.')
       void retire(threadId)
@@ -840,8 +886,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     changeSettings(threadId, settings) {
       const meta = requireMeta(threadId)
       if (settings.agent !== meta.settings.agent) throw new Error('Switch agents to change the agent')
-      const entry = live.get(threadId)
-      if (busy(entry)) throw new Error('Stop the current turn before changing settings')
+      if (anyBusy(threadId)) throw new Error('Stop the current turn before changing settings')
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
       void retire(threadId)
       const next = store.update(threadId, { settings })
@@ -851,8 +896,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     resumeRecovered(threadId, agent, text, agentText) {
       const meta = requireMeta(threadId)
-      const entry = live.get(threadId)
-      if (busy(entry)) throw new Error('Stop the current turn before resuming recent work')
+      if (anyBusy(threadId)) throw new Error('Stop the current turn before resuming recent work')
       const settings: ThreadSettings = { agent, permissionMode: 'manual', useHooks: false }
       if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
       else {
@@ -866,11 +910,15 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     recoverInterrupted() {
       const recovered: string[] = []
       for (const meta of store.list()) {
-        if (live.has(meta.id) || deleted.has(meta.id)) continue
-        const run = unfinishedRun(meta.id, store.events(meta.id))
-        if (!run) continue
-        record(meta.id, { kind: 'result', ok: false, interrupted: true, runId: run.runId })
-        recovered.push(meta.id)
+        if (entriesOf(meta.id).length > 0 || deleted.has(meta.id)) continue
+        // Each workspace's run is closed on its own: two may have been at work when Cockpit stopped.
+        const events = store.events(meta.id)
+        const runs = [...partition(events)].flatMap(([workspaceId, part]) => {
+          const run = unfinishedRun(meta.id, part)
+          return run ? [{ run, workspaceId }] : []
+        })
+        for (const { run, workspaceId } of runs) record(meta.id, { kind: 'result', ok: false, interrupted: true, runId: run.runId }, workspaceId || undefined)
+        if (runs.length) recovered.push(meta.id)
       }
       return recovered
     },
@@ -879,19 +927,21 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         const events = store.events(meta.id)
         return {
           meta,
-          status: deriveStatus(events, busy(live.get(meta.id))),
+          status: deriveStatus(events, busyIn(meta.id)),
           preview: previewOf(events),
           messageCount: messageCountOf(events),
           lastActivityAt: events.findLast((e) => !QUIET.has(e.event.kind))?.ts ?? meta.updatedAt,
           ...(awaitingOf(events) ? { awaiting: awaitingOf(events) } : {}),
-          ...(busy(live.get(meta.id)) && openQuestion(events) ? { asking: openQuestion(events) } : {}),
+          ...(anyBusy(meta.id) && openQuestion(events) ? { asking: openQuestion(events) } : {}),
           ...(latestTurn(events) ? { turn: latestTurn(events) } : {}),
         }
       })
       return all.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
     },
     status: statusOf,
-    partialText: (threadId) => live.get(threadId)?.partial ?? '',
+    partialText: (threadId, workspaceId) => (workspaceId === undefined ? entriesOf(threadId) : [entryIn(threadId, workspaceId)])
+      .map((e) => e?.partial ?? '').filter(Boolean).join('\n\n'),
+    runs: (threadId) => entriesOf(threadId).map((e) => ({ workspaceId: e.workspaceId, working: busy(e), partial: e.partial, ...(e.runId ? { runId: e.runId } : {}) })),
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -909,8 +959,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     accountActivity(projectPath, agent) {
       let working = 0
       let queued = 0
-      for (const [id, entry] of live) {
-        const meta = store.get(id)
+      for (const entry of live.values()) {
+        const meta = store.get(entry.threadId)
         if (!meta || meta.projectPath !== projectPath || meta.settings.agent !== agent || !entry.session.alive()) continue
         if (busy(entry)) working++
         if (entry.waiting.size > 0) queued++
@@ -919,27 +969,27 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     },
     accountSessions(accountId) {
       let count = 0
-      for (const [id, entry] of live) {
-        const meta = store.get(id)
+      for (const entry of live.values()) {
+        const meta = store.get(entry.threadId)
         if (meta && entry.session.alive() && busy(entry) && accountOf(meta) === accountId) count++
       }
       return count
     },
     async closeAccountSessions(accountId) {
-      const idle = [...live].filter(([id, entry]) => {
-        const meta = store.get(id)
+      const idle = [...live.values()].filter((entry) => {
+        const meta = store.get(entry.threadId)
         return meta && entry.session.alive() && !busy(entry) && accountOf(meta) === accountId
-      }).map(([id]) => id)
-      await Promise.all(idle.map(retire))
+      })
+      await Promise.all(idle.map((entry) => retire(entry.threadId, entry.workspaceId)))
     },
     async rebindProject(projectPath, agent, to) {
       const affected = store.list().filter((meta) => meta.projectPath === projectPath && meta.settings.agent === agent && !deleted.has(meta.id))
-      if (affected.some((meta) => busy(live.get(meta.id)) || (live.get(meta.id)?.waiting.size ?? 0) > 0)) throw new ThreadBusyError('A conversation on this agent is still working in this project')
+      if (affected.some((meta) => entriesOf(meta.id).some((e) => busy(e) || e.waiting.size > 0))) throw new ThreadBusyError('A conversation on this agent is still working in this project')
       await Promise.all(affected.map((meta) => retire(meta.id)))
       for (const meta of affected) if (!boundTo(meta, to) && hasAccount(meta)) rebind(store.get(meta.id) ?? meta, to, 'selected')
     },
     async identityChanged(accountId, to, from) {
-      const affected = store.list().filter((meta) => !deleted.has(meta.id) && accountOf(meta) === accountId && hasAccount(meta) && !busy(live.get(meta.id)) && !boundTo(meta, to))
+      const affected = store.list().filter((meta) => !deleted.has(meta.id) && accountOf(meta) === accountId && hasAccount(meta) && !anyBusy(meta.id) && !boundTo(meta, to))
       await Promise.all(affected.map((meta) => retire(meta.id)))
       for (const meta of affected) rebind(store.get(meta.id) ?? meta, to, 'identity_changed', from)
     },

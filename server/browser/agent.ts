@@ -80,7 +80,10 @@ export interface BrowserAgentDeps {
   readonly leases: BrowserLeases
   readonly cockpitPorts: () => readonly number[]
   /** The run the conversation is on now; undefined when it is not working or Stop was pressed. */
-  readonly currentRun: (threadId: string) => string | undefined
+  /** The run working now in the grant's workspace (W12-15: a conversation can have one per workspace). */
+  readonly currentRun: (threadId: string, workspaceId?: string) => string | undefined
+  /** Whether that run of the conversation is still working, in whichever workspace. */
+  readonly runActive?: (threadId: string, runId: string) => boolean
   /** Asks the person in the conversation; rejects on Deny, expiry, Stop or the caller hanging up. */
   readonly approve: (grant: McpGrant, toolName: string, input: Record<string, unknown>, options: HostActionOptions, signal: AbortSignal) => Promise<ApprovalBehavior>
 }
@@ -122,7 +125,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
       throw new HttpError(409, error instanceof Error ? error.message : String(error))
     }
     // The approval took time: the run may have ended or been stopped meanwhile.
-    if (deps.currentRun(grant.threadId) !== runId) throw new HttpError(409, 'The run that asked has ended; nothing was done.')
+    if (deps.currentRun(grant.threadId, grant.workspaceId) !== runId) throw new HttpError(409, 'The run that asked has ended; nothing was done.')
     if (behavior === 'allow_session') deps.leases.grant(scope)
   }
 
@@ -159,7 +162,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     const key = pageKeyOf(grant.threadId)
     // Never says whether another page exists: only that this one is the caller's.
     if (input.pageId !== undefined && input.pageId !== key) throw new HttpError(403, 'That is not this conversation’s page. Use the pageId your own browser calls return.')
-    const runId = deps.currentRun(grant.threadId)
+    const runId = deps.currentRun(grant.threadId, grant.workspaceId)
     if (!runId) throw new HttpError(409, 'This conversation is not working (or Stop was pressed), so it cannot use the browser now.')
     deps.leases.keepRun(grant.threadId, runId)
     const ports = deps.cockpitPorts()
@@ -200,7 +203,8 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     handle,
     /** Busy with a call, or granted to a run that is still going (W9-10 keeps such a page loaded). */
     inUse(pageKey: string): boolean {
-      return (active.get(pageKey) ?? 0) > 0 || deps.leases.list().some((l) => l.pageKey === pageKey && deps.currentRun(l.threadId) === l.runId)
+      return (active.get(pageKey) ?? 0) > 0 || deps.leases.list().some((l) => l.pageKey === pageKey
+        && (deps.runActive ? deps.runActive(l.threadId, l.runId) : deps.currentRun(l.threadId) === l.runId))
     },
   }
 }
