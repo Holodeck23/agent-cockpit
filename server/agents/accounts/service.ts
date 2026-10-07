@@ -20,6 +20,8 @@ import { defaultAccountId, DEFAULT_ONLY_REASON, PROFILE_ISOLATION, supportsProfi
 export interface AccountSessions {
   activity(projectPath: string, agent: AgentId): { readonly busy: number; readonly queued: number }
   inUse(accountId: string): number
+  /** Ends idle sessions on an account, so none still runs in a context about to be signed out. */
+  closeIdle(accountId: string): Promise<void>
   rebindProject(projectPath: string, agent: AgentId, to: ResolvedAccount): Promise<void>
   identityChanged(accountId: string, to: ResolvedAccount): Promise<void>
 }
@@ -271,6 +273,9 @@ export function createAccountService(options: AccountServiceOptions) {
         throw new AccountInUseError(`${choosing.length} project${choosing.length === 1 ? ' uses' : 's use'} “${account.label}”. Choose another account for ${choosing.length === 1 ? 'it' : 'them'} first, or move ${choosing.length === 1 ? 'it' : 'them'} to the CLI default.`, choosing)
       }
       for (const project of choosing) await service.select(project, account.agent, defaultAccountId(account.agent))
+      await options.sessions.closeIdle(account.id)
+      // A turn may have started while the idle ones closed: still never sign out under it.
+      if (options.sessions.inUse(account.id) > 0) throw new AccountInUseError(`A conversation started on “${account.label}” just now. Try again when it has finished.`)
       mkdirSync(logDir, { recursive: true, mode: 0o700 })
       const logFile = join(logDir, `remove-${account.id}.log`)
       const exit = await logout(account.agent, envFor(account), logFile)

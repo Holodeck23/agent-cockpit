@@ -80,6 +80,7 @@
     "proof:wave-9": "tsx scripts/proof-wave-9.ts",
     "proof:wave-10": "tsx scripts/proof-wave-10.ts",
     "proof:handoff": "tsx scripts/proof-handoff.ts",
+    "proof:accounts": "tsx scripts/proof-accounts.ts",
     "proof:wave-11": "tsx scripts/proof-wave-11.ts",
     "proof:crash-guard": "tsx scripts/proof-crash-guard.ts",
     "proof:conversation-style": "tsx scripts/proof-conversation-style.ts",

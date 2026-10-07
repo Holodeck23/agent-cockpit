@@ -73,10 +73,10 @@ describe('account routes', () => {
     expect(launches[0]!.accountEnv?.CLAUDE_CONFIG_DIR).toMatch(new RegExp(`account-profiles/${accountId}$`))
     expect(launches[1]!.accountEnv).toBeUndefined()
 
-    // Removal is refused while a conversation runs on it (the one just started is still live).
+    // Its turn has finished (the session idles on): removal is refused only because the project still chooses it.
     const refused = await call(`/api/accounts/${accountId}/remove`, {})
     expect(refused.status).toBe(409)
-    expect(refused.body.error).toMatch(/1 conversation is running on “Work”/)
+    expect(refused.body.projects).toEqual([join(dir, 'work')])
   }, 30_000)
 
   it('rejects bad input and unknown targets', async () => {

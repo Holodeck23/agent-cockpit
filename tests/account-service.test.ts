@@ -24,6 +24,7 @@ function setup(over: Partial<AccountSessions> = {}) {
   const sessions: AccountSessions = {
     activity: () => ({ busy: 0, queued: 0 }),
     inUse: () => 0,
+    closeIdle: async (...args: [string]) => { calls.push({ kind: 'closeIdle', args }) },
     rebindProject: async (...args: [string, AgentId, ResolvedAccount]) => { calls.push({ kind: 'rebind', args }) },
     identityChanged: async (...args: [string, ResolvedAccount]) => { calls.push({ kind: 'identity', args }) },
     ...over,

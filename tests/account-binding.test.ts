@@ -81,6 +81,21 @@ describe('launch under the project account (W12-01)', () => {
   })
 })
 
+describe('sessions on an account, for removal (W12-04)', () => {
+  it('only working conversations count as in use; idle ones are closed before its context is signed out', async () => {
+    const { manager, accounts, launches, settings } = setup()
+    const b = accounts.createManaged('claude', 'B', known('kb', 'b…'))
+    accounts.select('/p', 'claude', b.id)
+    const meta = manager.create({ projectPath: '/p', settings, text: 'work' })
+    expect(manager.accountSessions(b.id)).toBe(1)
+    finishTurn(launches[0]!, meta.sessionId)
+    expect(manager.accountSessions(b.id)).toBe(0)
+    expect(launches[0]!.alive).toBe(true)
+    await manager.closeAccountSessions(b.id)
+    expect(launches[0]!.alive).toBe(false)
+  })
+})
+
 describe('changing one project while another works (W12-02)', () => {
   it('the idle project changes; the working one keeps its account and refuses a change until it is idle', async () => {
     const { manager, accounts, launches, settings, store } = setup()

@@ -291,8 +291,10 @@ export interface ThreadManager {
   closeIdleSessions(agent: AgentId): Promise<void>
   /** A project's conversations on one agent that are working or hold queued messages: an account change waits for them. */
   accountActivity(projectPath: string, agent: AgentId): { busy: number; queued: number }
-  /** Live agent sessions running under an account, in every project. */
+  /** Conversations working under an account right now, in every project (idle sessions not counted). */
   accountSessions(accountId: string): number
+  /** Gracefully ends the idle sessions running under an account, before its context is signed out. */
+  closeAccountSessions(accountId: string): Promise<void>
   /**
    * After a project's account changed: idle sessions on that agent close, and each conversation bound
    * to another account records the change and continues on a fresh native session with a handoff.
@@ -836,9 +838,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       let count = 0
       for (const [id, entry] of live) {
         const meta = store.get(id)
-        if (meta && entry.session.alive() && accountOf(meta) === accountId) count++
+        if (meta && entry.session.alive() && busy(entry) && accountOf(meta) === accountId) count++
       }
       return count
+    },
+    async closeAccountSessions(accountId) {
+      const idle = [...live].filter(([id, entry]) => {
+        const meta = store.get(id)
+        return meta && entry.session.alive() && !busy(entry) && accountOf(meta) === accountId
+      }).map(([id]) => id)
+      await Promise.all(idle.map(retire))
     },
     async rebindProject(projectPath, agent, to) {
       const affected = store.list().filter((meta) => meta.projectPath === projectPath && meta.settings.agent === agent && !deleted.has(meta.id))
