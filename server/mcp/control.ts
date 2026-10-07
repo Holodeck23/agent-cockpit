@@ -32,7 +32,7 @@ export function createConversationControl(deps: ConversationDeps, agents: () => 
   }
   const check = (grant: McpGrant, request: ControlInput, authorized: () => boolean) => {
     const caller = source(grant, authorized)
-    if (!deps.manager.canControl(caller.id)) throw new HttpError(409, 'The calling turn is no longer working')
+    if (!deps.manager.canControl(caller.id, grant.workspaceId)) throw new HttpError(409, 'The calling turn is no longer working')
     if (request.action !== 'start') {
       if (request.input.id === caller.id) throw new HttpError(400, 'A conversation cannot message or stop itself')
       requireConversation(deps, grant, request.input.id)
@@ -69,7 +69,7 @@ export function createConversationControl(deps: ConversationDeps, agents: () => 
         const description = request.action === 'start'
           ? `Start ${request.input.agent} in this project with manual permissions and its default model.${request.input.agent === 'antigravity' ? '\nAntigravity allows workspace edits under its headless policy; shell actions needing approval are denied. It has no Cockpit approval cards or injected MCP tools.' : ''}\nTitle: ${request.input.title ? oneLine(request.input.title) : 'From task text'}\nTask:\n${revealHidden(request.input.text)}`
           : `${request.action === 'send' ? 'Send a follow-up to' : 'Stop'} ${oneLine(target!.title)} (${target!.id}).\nAgent: ${target!.settings.agent}; permissions: ${target!.settings.permissionMode}.${request.action === 'send' ? `\nMessage:\n${revealHidden(request.input.text)}` : ''}`
-        await deps.manager.requestHostAction(caller.id, `mcp__cockpit__${tool}`, { description: `One action only. Answer within 45 seconds.\n${description}`, ...request.input }, signal)
+        await deps.manager.requestHostAction(caller.id, `mcp__cockpit__${tool}`, { description: `One action only. Answer within 45 seconds.\n${description}`, ...request.input }, signal, grant.workspaceId ? { workspaceId: grant.workspaceId } : undefined)
           .catch((error: Error) => { throw new HttpError(409, error.message) })
         // No awaits between this final state/limit check and dispatch.
         check(grant, request, authorized)

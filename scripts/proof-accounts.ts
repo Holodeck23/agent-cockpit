@@ -146,7 +146,7 @@ try {
   await messageBox(page).press('Enter')
   check('03 the new account actually runs', await until('default reply', async () => (await threadText(page, alphaId)).includes('Done as alice@example.com')))
   const last = launches().findLast((l) => l.startsWith('claude ')) ?? ''
-  check('03 a fresh session, not a resume of Work B’s, with the conversation as a handoff', /^claude ctx=default account=alice@example\.com session=\S+ resume=- handoff=yes$/.test(last), last)
+  check('03 a fresh session, not a resume of Work B’s, with the conversation as a handoff', /^claude ctx=default account=alice@example\.com session=\S+ resume=- handoff=yes( cwd=\S+)?$/.test(last), last)
   await shot(page, '03-continued')
 
   // Usage labels: each account's own report only.

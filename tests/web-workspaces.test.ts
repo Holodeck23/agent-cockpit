@@ -3,7 +3,7 @@ import type { ThreadSummary } from '../server/threads/types.ts'
 import type { Workspace } from '../server/projects/workspaces.ts'
 import {
   activityIn, branchSuggestion, createSelectionGuard, folderOf, labelOf, nativeFolder, phoneWorkspaceId, processIn, resolveSelection, scopedKey,
-  sendTarget, threadsIn, workspacesOf,
+  sendTarget, threadsIn, workspacesOf, healthLabel, uniqueWork, workingWorkspaces,
 } from '../web/src/workspaces.ts'
 
 const PRIMARY = '00000000-0000-4000-8000-000000000001'
@@ -153,5 +153,32 @@ describe('stale answers', () => {
     guard.sync('garden|A')
     expect(forA()).toBe(false)
     expect(forB()).toBe(false)
+  })
+})
+
+describe('the end of a worktree, in words (W12.4)', () => {
+  it('names a worktree Git does not see where it was registered', () => {
+    expect(healthLabel({ state: 'ok' })).toBeUndefined()
+    expect(healthLabel(undefined)).toBeUndefined()
+    expect(healthLabel({ state: 'missing', detail: '' })).toBe('Folder missing')
+    expect(healthLabel({ state: 'moved', detail: '', path: '/x' })).toBe('Moved')
+    expect(healthLabel({ state: 'unlisted', detail: '' })).toBe('Not listed by Git')
+  })
+  it('says what removing would lose', () => {
+    expect(uniqueWork({ unique: { changed: 0, untracked: 0, ignored: 0, commits: 0 } })).toBeUndefined()
+    expect(uniqueWork({ unique: { changed: 1, untracked: 2, ignored: 0, commits: 1 } })).toBe('1 changed file, 2 untracked files, 1 commit on no other branch')
+  })
+})
+
+describe('which workspaces are working (W12-15)', () => {
+  const ev = (event: object, workspaceId?: string) => ({ ts: '2026-10-07T20:00:00.000Z', event, ...(workspaceId ? { workspaceId } : {}) }) as never
+  it('lists each workspace whose latest turn has not ended, only while the conversation works', () => {
+    const events = [
+      ev({ kind: 'user_text', text: 'a', runId: 'r1' }, 'P'), ev({ kind: 'user_text', text: 'b', runId: 'r2' }, 'W'),
+      ev({ kind: 'result', ok: true, runId: 'r1' }, 'P'), ev({ kind: 'user_text', text: 'c', runId: 'r3' }, 'P'),
+    ]
+    expect(workingWorkspaces(events, true).sort()).toEqual(['P', 'W'])
+    expect(workingWorkspaces([...events, ev({ kind: 'result', ok: true }, 'W')], true)).toEqual(['P'])
+    expect(workingWorkspaces(events, false)).toEqual([])
   })
 })

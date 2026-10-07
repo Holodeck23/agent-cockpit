@@ -67,7 +67,8 @@ export interface CheckRunner {
   /** Stops its process group; it ends as cancelled even if a zero exit arrives late. */
   cancel(checkId: string): Promise<CheckRecord | undefined>
   /** The parent conversation was stopped: its checks are cancelled. */
-  cancelForThread(threadId: string): Promise<void>
+  /** With `runIds`, only checks of those runs (one workspace's Stop). */
+  cancelForThread(threadId: string, runIds?: ReadonlySet<string>): Promise<void>
   isLive(checkId: string): boolean
   /** Resolves once the check has a terminal receipt (tests). */
   settled(checkId: string): Promise<void>
@@ -236,8 +237,8 @@ export function createCheckRunner(store: ResultStore, options: { look?: (path: s
       return find(entry.runId, checkId)
     },
 
-    async cancelForThread(threadId) {
-      await Promise.all([...live].filter(([, e]) => e.threadId === threadId).map(([id]) => runner.cancel(id)))
+    async cancelForThread(threadId, runIds) {
+      await Promise.all([...live].filter(([, e]) => e.threadId === threadId && (!runIds || runIds.has(e.runId))).map(([id]) => runner.cancel(id)))
     },
 
     isLive: (checkId) => live.has(checkId),

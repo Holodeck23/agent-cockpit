@@ -77,6 +77,8 @@ export type ThreadStatus = 'idle' | 'starting' | 'working' | 'needs_input' | 'do
 export interface StoredEvent {
   readonly ts: string
   readonly event: NormalizedEvent
+  /** The workspace of the session it came from (since order 18); older events are attributed by workspace-events.ts. */
+  readonly workspaceId?: string
 }
 
 export interface ThreadSummary {

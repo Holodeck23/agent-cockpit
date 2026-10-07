@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { Project, ThreadSummary } from '../api.ts'
 import type { Workspaces } from '../useWorkspaces.ts'
-import { activityIn, MAIN_CHECKOUT, worktreeLabel, type WorkspaceActivity } from '../workspaces.ts'
+import { activityIn, healthLabel, MAIN_CHECKOUT, worktreeLabel, type WorkspaceActivity } from '../workspaces.ts'
 import { usePopover } from '../usePopover.ts'
 import { BranchIcon, CheckIcon, ChevronDownIcon, PlusIcon } from './icons.tsx'
 import { NewWorktreeDialog } from './NewWorktreeDialog.tsx'
+import { ManageWorktreesDialog } from './ManageWorktreesDialog.tsx'
 
 // The workspace selector under the project (W12.2 M1): the main checkout and each worktree, with
 // a dot for work running or waiting on you, a missing state, "New worktree…", and interrupted
@@ -19,7 +20,7 @@ function Dot({ activity }: { activity: WorkspaceActivity }) {
   return null
 }
 
-export function WorkspaceSelector({ project, workspaces, threads, onSelect, onError }: {
+export function WorkspaceSelector({ project, workspaces, threads, onSelect, onError, onShowFiles }: {
   project: Project
   workspaces: Workspaces
   /** This project's conversations, for the activity dots. */
@@ -27,9 +28,12 @@ export function WorkspaceSelector({ project, workspaces, threads, onSelect, onEr
   /** Chooses a worktree's ID, or undefined for the main checkout. */
   onSelect: (id: string | undefined) => void
   onError: (message: string) => void
+  /** Shows the main checkout's Files (a merge conflict is resolved there). */
+  onShowFiles?: () => void
 }) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   const [creating, setCreating] = useState(false)
+  const [managing, setManaging] = useState(false)
   const [busyOp, setBusyOp] = useState('')
   const { selection, worktrees, pending } = workspaces
   const primaryId = project.workspaceId
@@ -68,7 +72,7 @@ export function WorkspaceSelector({ project, workspaces, threads, onSelect, onEr
             {worktrees.map((w) => (
               <button key={w.id} type="button" role="option" aria-selected={selection.id === w.id} className="workspace-row" onClick={() => choose(w.id)}>
                 <BranchIcon />
-                <span className="workspace-row-text"><strong>{worktreeLabel(w)}</strong><small>{w.branch ?? 'no branch'}</small></span>
+                <span className="workspace-row-text"><strong>{worktreeLabel(w)}</strong><small>{w.branch ?? 'no branch'}{healthLabel(workspaces.health[w.id]) ? ` · ${healthLabel(workspaces.health[w.id])}` : ''}</small></span>
                 <Dot activity={activityIn(threads, w.id, primaryId)} />
                 {selection.id === w.id ? <CheckIcon className="workspace-check" /> : null}
               </button>
@@ -83,6 +87,12 @@ export function WorkspaceSelector({ project, workspaces, threads, onSelect, onEr
               <PlusIcon />
               <span className="workspace-row-text"><strong>New worktree…</strong></span>
             </button>
+            {worktrees.length || workspaces.archived.length ? (
+              <button type="button" className="workspace-row workspace-manage" onClick={() => { setOpen(false); setManaging(true) }}>
+                <BranchIcon />
+                <span className="workspace-row-text"><strong>Manage worktrees…</strong></span>
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -109,6 +119,7 @@ export function WorkspaceSelector({ project, workspaces, threads, onSelect, onEr
           ))}
         </ul>
       ) : null}
+      {managing ? <ManageWorktreesDialog project={project} workspaces={workspaces} threads={threads} onClose={() => setManaging(false)} {...(onShowFiles ? { onShowFiles } : {})} /> : null}
       {creating && project.projectId ? (
         <NewWorktreeDialog projectId={project.projectId} projectName={project.name}
           onCreate={async (body) => { const made = await workspaces.create(body); onSelect(made.id) }} onClose={() => setCreating(false)} />

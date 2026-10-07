@@ -39,7 +39,9 @@ import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo, ProcessRead } from '../../server/processes/runner.ts'
 import type { Project as StoredProject, ProjectPatch } from '../../server/projects/store.ts'
 import type { Workspace } from '../../server/projects/workspaces.ts'
-import type { PendingOperation, Preflight } from '../../server/projects/worktrees.ts'
+import type { PendingOperation, Preflight, GitWorktree } from '../../server/projects/worktrees.ts'
+import type { RemovalCheck, WorktreeHealth } from '../../server/projects/worktree-lifecycle.ts'
+import type { MergeOperationView, MergePreflight } from '../../server/projects/merge.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 import type { RemoteStatus } from '../../server/remote/service.ts'
@@ -53,10 +55,14 @@ export type { AgentStatus, ProcessInfo, ProcessRead, ProjectPatch, RemoteStatus,
 
 /** A project as the list returns it: with the opaque IDs of the project and its primary workspace (absent if identity is unavailable). */
 export type Project = StoredProject & { readonly projectId?: string; readonly workspaceId?: string }
-export type { PendingOperation, Preflight, Workspace }
+export type { PendingOperation, Preflight, Workspace, RemovalCheck, WorktreeHealth, GitWorktree, MergeOperationView, MergePreflight }
 
 /** A project's workspaces: the registered ones (primary first) and creates a crash left unfinished. */
-export interface WorkspaceList { readonly revision: number; readonly workspaces: readonly Workspace[]; readonly pending: readonly PendingOperation[] }
+export interface WorkspaceList {
+  readonly revision: number; readonly workspaces: readonly Workspace[]; readonly pending: readonly PendingOperation[]
+  /** What Git says about each registered worktree that is not removed (W12-14), and worktrees Git has that Cockpit did not make. */
+  readonly health?: Readonly<Record<string, WorktreeHealth>>; readonly unregistered?: readonly GitWorktree[]
+}
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
 export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean; notifications: boolean }
@@ -69,6 +75,8 @@ export interface ThreadDetail {
   readonly transcriptPath: string
   /** The agent message being streamed right now, if any. */
   readonly streaming: string
+  /** Each workspace's live agent: whether it is working, its streamed text, its run (W12-15). */
+  readonly runs?: ReadonlyArray<{ readonly workspaceId: string; readonly working: boolean; readonly partial: string; readonly runId?: string }>
 }
 
 /** An API refusal; `status` 409 means a conflict the person should resolve. */
@@ -220,6 +228,15 @@ export const api = {
     request<{ workspace: Workspace }>(`/api/projects/${projectId}/workspaces`, { method: 'POST', body }),
   recoverWorkspaceOperation: (id: string) => request<{ workspace: Workspace }>(`/api/workspace-operations/${id}/recover`, { method: 'POST', body: {} }),
   dismissWorkspaceOperation: (id: string) => request<{ operation: PendingOperation }>(`/api/workspace-operations/${id}/dismiss`, { method: 'POST', body: {} }),
+  workspaceRemoval: (id: string) => request<RemovalCheck>(`/api/workspaces/${id}/removal`),
+  removeWorkspace: (id: string, fingerprint: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/remove`, { method: 'POST', body: { fingerprint } }),
+  archiveWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/archive`, { method: 'POST', body: {} }),
+  restoreWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/restore`, { method: 'POST', body: {} }),
+  forgetWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/forget`, { method: 'POST', body: {} }),
+  mergePreview: (id: string) => request<MergePreflight>(`/api/workspaces/${id}/merge`),
+  mergeWorkspace: (id: string, fingerprint: string) => request<{ operation: MergeOperationView }>(`/api/workspaces/${id}/merge`, { method: 'POST', body: { fingerprint } }),
+  continueMerge: (operationId: string) => request<{ operation: MergeOperationView }>(`/api/merge-operations/${operationId}/continue`, { method: 'POST', body: {} }),
+  abortMerge: (operationId: string) => request<{ operation: MergeOperationView }>(`/api/merge-operations/${operationId}/abort`, { method: 'POST', body: {} }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
   createThread: (body: { projectPath: string; workspaceId?: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),
@@ -234,7 +251,8 @@ export const api = {
   /** No answers closes the agent's questions unanswered. */
   answerQuestion: (id: string, requestId: string, answers: Record<string, string> | undefined) =>
     request<unknown>(`/api/threads/${id}/questions/${requestId}`, { method: 'POST', body: answers ? { answers } : {} }),
-  interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
+  /** Stops one workspace's agent, or (without one) every agent in the conversation. */
+  interrupt: (id: string, workspaceId?: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: workspaceId ? { workspaceId } : {} }),
   /** The exact handoff a switch would send now (D13). */
   handoffPreview: (id: string) => request<HandoffPreview>(`/api/threads/${id}/handoff`),
   /** `handoff` is the digest of the preview the user read; the server refuses if it no longer matches. */

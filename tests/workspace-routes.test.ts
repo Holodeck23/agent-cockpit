@@ -54,11 +54,51 @@ describe('workspace routes', () => {
     expect((await call('/api/projects/00000000-0000-4000-8000-000000000000/workspaces')).status).toBe(404)
     expect((await call('/api/workspace-operations/nope/recover', {})).status).toBe(404)
     expect((await call(`/api/projects/${projectId}/workspaces`, { name: 1 })).status).toBe(400)
+
+    // Order 18a: Git's view, then remove what is clean and archive what is not (W12-12, W12-13, W12-14).
+    const spike = created.body.data.workspace as { id: string; cwd: string }
+    expect((await call(`/api/projects/${projectId}/workspaces`)).body.data.health).toEqual({ [spike.id]: { state: 'ok' } })
+    writeFileSync(join(spike.cwd, 'notes.txt'), 'only here\n')
+    const unique = await call(`/api/workspaces/${spike.id}/removal`)
+    expect(unique.body.data).toMatchObject({ removable: false, unique: { untracked: 1 } })
+    const kept = await call(`/api/workspaces/${spike.id}/remove`, { fingerprint: unique.body.data.fingerprint })
+    expect(kept.status).toBe(409)
+    expect(kept.body.error).toBe('Removing it would lose 1 untracked file. Keep it, or archive it as it is.')
+    expect((await call(`/api/workspaces/${spike.id}/archive`, {})).body.data.workspace).toMatchObject({ lifecycle: 'archived' })
+    expect((await call(`/api/workspaces/${spike.id}/restore`, {})).body.data.workspace).toMatchObject({ lifecycle: 'active' })
+
+    const clean = (await call(`/api/projects/${projectId}/workspaces`, { name: 'Clean' })).body.data.workspace as { id: string; cwd: string }
+    const check = (await call(`/api/workspaces/${clean.id}/removal`)).body.data
+    expect(check.removable).toBe(true)
+    expect((await call(`/api/workspaces/${clean.id}/remove`, { fingerprint: 'not-the-one-checked' })).body.refusal).toMatchObject({ code: 'stale' })
+    expect((await call(`/api/workspaces/${clean.id}/remove`, { fingerprint: check.fingerprint })).body.data.workspace).toMatchObject({ lifecycle: 'removed' })
+
+    const primaryId = (await call(`/api/projects/${projectId}/workspaces`)).body.data.workspaces[0].id as string
+    const primaryRefused = await call(`/api/workspaces/${primaryId}/archive`, {})
+    expect(primaryRefused.status).toBe(409)
+    expect(primaryRefused.body.error).toBe('The main checkout cannot be removed or archived.')
+    expect((await call('/api/workspaces/00000000-0000-4000-8000-000000000000/removal')).status).toBe(404)
+
+    // Order 18c: merge back what the check showed, and nothing else (W12-09).
+    execFileSync('git', ['-C', repo, 'add', '.'], { env })
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'tidy'], { env })
+    writeFileSync(join(spike.cwd, 'merge-me.txt'), 'from the worktree\n')
+    execFileSync('git', ['-C', spike.cwd, 'add', '.'], { env })
+    execFileSync('git', ['-C', spike.cwd, 'commit', '-q', '-m', 'worktree work'], { env })
+    const preview = await call(`/api/workspaces/${spike.id}/merge`)
+    expect(preview.body.data).toMatchObject({ mode: 'merge', targetBranch: 'main', sourceBranch: 'codex/spike', blockers: [] })
+    expect((await call(`/api/workspaces/${spike.id}/merge`, { fingerprint: 'not-what-was-checked' })).body.refusal).toMatchObject({ code: 'stale' })
+    const merged = await call(`/api/workspaces/${spike.id}/merge`, { fingerprint: preview.body.data.fingerprint })
+    expect(merged.body.data.operation).toMatchObject({ stage: 'merged' })
+    expect((await call('/api/merge-operations/00000000-0000-4000-8000-000000000000/abort', {})).status).toBe(404)
   })
 
   it('keeps every workspace route off the phone', () => {
     for (const [method, path] of [['GET', '/api/projects/p/workspaces'], ['GET', '/api/projects/p/workspaces/preflight'], ['POST', '/api/projects/p/workspaces'],
-      ['POST', '/api/workspace-operations/o/recover'], ['POST', '/api/workspace-operations/o/dismiss']] as const) {
+      ['POST', '/api/workspace-operations/o/recover'], ['POST', '/api/workspace-operations/o/dismiss'],
+      ['GET', '/api/workspaces/w/removal'], ['POST', '/api/workspaces/w/remove'], ['POST', '/api/workspaces/w/archive'],
+      ['POST', '/api/workspaces/w/restore'], ['POST', '/api/workspaces/w/forget'], ['GET', '/api/workspaces/w/merge'], ['POST', '/api/workspaces/w/merge'],
+      ['POST', '/api/merge-operations/m/continue'], ['POST', '/api/merge-operations/m/abort']] as const) {
       expect(isRemoteRoute(method, path)).toBe(false)
     }
   })

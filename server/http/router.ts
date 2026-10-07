@@ -52,7 +52,10 @@ import { handleAccountRoute, isAccountRoute } from './account-routes.ts'
 import { handleWorkspaceRoute, isWorkspaceRoute } from './workspace-routes.ts'
 import type { AccountService } from '../agents/accounts/service.ts'
 import type { WorktreeService } from '../projects/worktrees.ts'
+import type { WorktreeLifecycle } from '../projects/worktree-lifecycle.ts'
+import type { MergeService } from '../projects/merge.ts'
 import { isBusy } from '../threads/status.ts'
+import { runsIn } from '../threads/workspace-events.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
 export const MAX_MESSAGE_IMAGES = 8
@@ -87,6 +90,8 @@ const createThreadBody = z.object({
 /** `operationId`: one per send attempt, so a repeated request is answered once (ID-05). */
 const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional(), workspaceId: z.uuid().optional() })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
+/** Stop: one workspace's agent, or (without one) every agent in the conversation (W12-15). */
+const interruptBody = z.object({ workspaceId: z.uuid().optional() })
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
 const completedBody = z.object({ completed: z.boolean() })
@@ -146,6 +151,10 @@ export interface ApiDeps {
   readonly accounts?: AccountService
   /** Worktree workspaces (M1, W12.2); desktop only. */
   readonly worktrees?: WorktreeService
+  /** Remove, archive, restore and Git's view of registered worktrees (W12.4); desktop only. */
+  readonly worktreeLifecycle?: WorktreeLifecycle
+  /** Merge a worktree back into the main checkout (W12.3); desktop only. */
+  readonly merges?: MergeService
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -177,7 +186,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   const scope = createWorkspaceScope(projects, workspaces)
@@ -279,7 +288,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         await handleWorkspaceRoute(req, res, parts, workspaces, worktrees, (projectId) => {
           const known = workspaces.list().projects.find((p) => p.id === projectId)?.path
           return known !== undefined && projects.list().some((p) => p.path === known)
-        })
+        }, worktreeLifecycle, merges)
         return true
       }
       // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).
@@ -597,6 +606,8 @@ export function createApiHandler({ manager, store, projects, workspaces, process
             events: store.events(threadId),
             transcriptPath: store.transcriptPath(threadId),
             streaming: manager.partialText(threadId),
+            // Each workspace's agent, when the conversation has more than one at work (W12-15).
+            runs: manager.runs(threadId),
           },
         })
       } else if (method === 'GET' && action === 'images' && parts.length === 5) {
@@ -629,8 +640,11 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'interrupt') {
-        await checks?.cancelForThread(threadId)
-        manager.interrupt(threadId)
+        const { workspaceId } = parseBody(interruptBody, await readJson(req))
+        // A workspace's Stop ends that workspace's checks only; Stop all ends them all.
+        const runIds = workspaceId ? runsIn(store.events(threadId), workspaceId) : undefined
+        await checks?.cancelForThread(threadId, runIds)
+        manager.interrupt(threadId, workspaceId)
         sendJson(res, 202, { data: {} })
       } else if (method === 'DELETE' && !action) {
         if (viaPhone) throw new HttpError(403, 'Conversations can only be deleted on the Mac')

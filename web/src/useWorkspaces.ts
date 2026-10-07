@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, type PendingOperation, type Project, type Workspace } from './api.ts'
+import { api, type PendingOperation, type Project, type Workspace, type WorktreeHealth } from './api.ts'
 import {
   createSelectionGuard, isActiveWorktree, loadSelected, resolveSelection, saveSelected, viewKey,
   type SelectionGuard, type WorkspaceSelection,
@@ -19,6 +19,10 @@ export interface Workspaces {
   readonly hasWorktrees: boolean
   /** Every workspace record, for labels and folders by ID; undefined until the first answer. */
   readonly list: readonly Workspace[] | undefined
+  /** What Git says about each registered worktree (absent: not read yet, or fine). */
+  readonly health: Readonly<Record<string, WorktreeHealth>>
+  /** Worktrees taken out of use with their folders kept (W12.4). */
+  readonly archived: readonly Workspace[]
   /** Changes with each project/workspace choice; requests capture it through `guard`. */
   readonly guard: SelectionGuard
   /** The workspace to show (a worktree's ID, or undefined for the main checkout). */
@@ -28,9 +32,12 @@ export interface Workspaces {
   create(body: { name: string; base?: string; branch?: string }): Promise<Workspace>
   recover(operationId: string): Promise<void>
   dismiss(operationId: string): Promise<void>
+  /** Remove (after a fresh check), archive, restore or forget a worktree; each reads the list again. */
+  change(workspaceId: string, action: 'archive' | 'restore' | 'forget' | { remove: string }): Promise<Workspace>
 }
 
-interface Loaded { readonly projectId: string; readonly list: readonly Workspace[]; readonly pending: readonly PendingOperation[] }
+interface Loaded { readonly projectId: string; readonly list: readonly Workspace[]; readonly pending: readonly PendingOperation[]; readonly health: Readonly<Record<string, WorktreeHealth>> }
+const NO_HEALTH: Readonly<Record<string, WorktreeHealth>> = {}
 
 export function useWorkspaces(project: Project | undefined, enabled: boolean): Workspaces {
   const path = project?.path
@@ -52,7 +59,7 @@ export function useWorkspaces(project: Project | undefined, enabled: boolean): W
     if (!projectId) return
     try {
       const answer = await api.workspaces(projectId)
-      setLoaded({ projectId, list: answer.workspaces, pending: answer.pending })
+      setLoaded({ projectId, list: answer.workspaces, pending: answer.pending, health: answer.health ?? NO_HEALTH })
     } catch {
       // keep what is shown; a focus change reads it again
     }
@@ -63,7 +70,7 @@ export function useWorkspaces(project: Project | undefined, enabled: boolean): W
     let live = true
     const read = (): void => {
       api.workspaces(projectId).then(
-        (answer) => { if (live) setLoaded({ projectId, list: answer.workspaces, pending: answer.pending }) },
+        (answer) => { if (live) setLoaded({ projectId, list: answer.workspaces, pending: answer.pending, health: answer.health ?? NO_HEALTH }) },
         () => { /* keep what is shown; the next focus tries again */ },
       )
     }
@@ -98,10 +105,21 @@ export function useWorkspaces(project: Project | undefined, enabled: boolean): W
     await refresh()
   }, [refresh])
 
+  const change = useCallback(async (workspaceId: string, action: 'archive' | 'restore' | 'forget' | { remove: string }): Promise<Workspace> => {
+    const { workspace } = typeof action === 'object' ? await api.removeWorkspace(workspaceId, action.remove)
+      : action === 'archive' ? await api.archiveWorkspace(workspaceId)
+        : action === 'restore' ? await api.restoreWorkspace(workspaceId)
+          : await api.forgetWorkspace(workspaceId)
+    await refresh()
+    return workspace
+  }, [refresh])
+
   const worktrees = useMemo(() => (list ?? []).filter(isActiveWorktree), [list])
+  const archived = useMemo(() => (list ?? []).filter((w) => w.kind === 'worktree' && w.lifecycle === 'archived'), [list])
+  const current = loaded && loaded.projectId === projectId ? loaded : undefined
   return {
-    selection, worktrees, pending: loaded && loaded.projectId === projectId ? loaded.pending : [],
+    selection, worktrees, archived, pending: current?.pending ?? [], health: current?.health ?? NO_HEALTH,
     hasWorktrees: (list ?? []).some((w) => w.kind === 'worktree'),
-    list, guard, select, refresh, create, recover, dismiss,
+    list, guard, select, refresh, create, recover, dismiss, change,
   }
 }

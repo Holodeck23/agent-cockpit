@@ -7,6 +7,8 @@ export interface Cockpit {
   readonly detail: ThreadDetail | undefined
   /** Text streamed for the current turn but not yet finalized. */
   readonly streaming: string
+  /** Text being streamed per workspace ('' when the conversation never named one): two agents can stream at once (W12-15). */
+  readonly streams: Readonly<Record<string, string>>
   readonly error: string | undefined
   /** Project processes (dev servers etc.) started through the cockpit MCP, newest first. */
   readonly processes: ProcessInfo[]
@@ -63,7 +65,8 @@ export function useCockpit(local = true): Cockpit {
   const [threads, setThreads] = useState<ThreadSummary[]>([])
   const [selectedId, setSelectedId] = useState<string>()
   const [detail, setDetail] = useState<ThreadDetail>()
-  const [streaming, setStreaming] = useState('')
+  const [streams, setStreams] = useState<Readonly<Record<string, string>>>({})
+  const streaming = Object.values(streams).filter(Boolean).join('\n\n')
   const [error, setError] = useState<string>()
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
   const [remote, setRemote] = useState<RemoteStatus>()
@@ -91,7 +94,7 @@ export function useCockpit(local = true): Cockpit {
         // Re-read them instead of losing approvals/results while detail is still loading.
         if (eventsAtStart !== eventVersion.current) { reloadDetail(id); return }
         setDetail(loaded)
-        setStreaming(loaded.streaming)
+        setStreams(loaded.runs?.length ? Object.fromEntries(loaded.runs.filter((r) => r.partial).map((r) => [r.workspaceId, r.partial])) : loaded.streaming ? { '': loaded.streaming } : {})
       },
       (e: unknown) => {
         if (version === loadVersion.current && selectedRef.current === id) setError(String(e))
@@ -105,7 +108,7 @@ export function useCockpit(local = true): Cockpit {
     selectedRef.current = id
     setSelectedId(id)
     setDetail(undefined)
-    setStreaming('')
+    setStreams({})
   }, [])
 
   useEffect(() => {
@@ -126,7 +129,7 @@ export function useCockpit(local = true): Cockpit {
           selectedRef.current = undefined
           setSelectedId(undefined)
           setDetail(undefined)
-          setStreaming('')
+          setStreams({})
         }
         return
       }
@@ -137,7 +140,8 @@ export function useCockpit(local = true): Cockpit {
       ++eventVersion.current
       if (update.event.kind === 'text_delta') {
         const delta = update.event.text
-        setStreaming((s) => s + delta)
+        const key = update.workspaceId ?? ''
+        setStreams((current) => ({ ...current, [key]: (current[key] ?? '') + delta }))
         return
       }
       if (update.event.kind === 'completion_changed') {
@@ -152,7 +156,11 @@ export function useCockpit(local = true): Cockpit {
         refresh()
         return
       }
-      if (update.event.kind === 'assistant_text' || update.event.kind === 'result') setStreaming('')
+      // A workspace's finished message clears only its own stream; an untagged one clears them all.
+      if (update.event.kind === 'assistant_text' || update.event.kind === 'result') {
+        const key = update.workspaceId
+        setStreams((current) => { if (key === undefined) return {}; const { [key]: _done, ...rest } = current; return rest })
+      }
       const stored: StoredEvent = { ts: new Date().toISOString(), event: update.event }
       setDetail((d) => (d && d.meta.id === update.threadId ? { ...d, status: update.status, events: [...d.events, stored] } : d))
     }
@@ -172,6 +180,7 @@ export function useCockpit(local = true): Cockpit {
     selectedId,
     detail,
     streaming,
+    streams,
     error,
     processes,
     remote,

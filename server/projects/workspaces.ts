@@ -43,8 +43,13 @@ const workspaceSchema = z.object({
   /** The workspace it was created from, and that workspace's branch then (the default merge target). */
   createdFrom: z.uuid().optional(),
   createdFromBranch: z.string().min(1).optional(),
+  /** Worktrees that stopped being active (W12.4): when, why, and where its work was (the recovery metadata). */
+  ended: z.object({
+    at: z.string(), reason: z.string().max(500), path: z.string(), branch: z.string().optional(), head: z.string().optional(),
+  }).optional(),
 })
 export type Workspace = z.output<typeof workspaceSchema>
+export type WorkspaceEnd = NonNullable<Workspace['ended']>
 
 const fileSchema = z.object({
   schemaVersion: z.union([z.literal(PRIMARY_ONLY_VERSION), z.literal(WORKSPACES_SCHEMA_VERSION)]),
@@ -64,6 +69,11 @@ export interface WorkspaceStore {
   forProject(projectId: string): Workspace[]
   /** Registers a worktree of a known project once; a second call for the same folder returns the first record. */
   addWorktree(input: NewWorktree): Workspace
+  /**
+   * A worktree's lifecycle: `archived` keeps its folder exactly as it is, `removed` after Git removed it,
+   * `active` restores an archived one. The primary never changes. Returns the updated record.
+   */
+  setLifecycle(workspaceId: string, lifecycle: Workspace['lifecycle'], ended?: WorkspaceEnd): Workspace
 }
 
 export interface NewWorktree {
@@ -181,6 +191,16 @@ export function createWorkspaceStore(root: string): WorkspaceStore {
       }
       write({ ...data, revision: data.revision + 1, workspaces: [...data.workspaces, workspace] })
       return workspace
+    },
+    setLifecycle(workspaceId, lifecycle, ended) {
+      const data = read()
+      const current = data.workspaces.find((w) => w.id === workspaceId)
+      if (!current) throw new Error('Unknown workspace')
+      if (current.kind !== 'worktree') throw new Error('The main checkout is always active')
+      const { ended: _previous, ...rest } = current
+      const next: Workspace = { ...rest, lifecycle, revision: current.revision + 1, ...(lifecycle !== 'active' && ended ? { ended } : {}) }
+      write({ ...data, revision: data.revision + 1, workspaces: data.workspaces.map((w) => (w.id === workspaceId ? next : w)) })
+      return next
     },
   }
 }
