@@ -78,13 +78,27 @@ describe('workspace routes', () => {
     expect(primaryRefused.status).toBe(409)
     expect(primaryRefused.body.error).toBe('The main checkout cannot be removed or archived.')
     expect((await call('/api/workspaces/00000000-0000-4000-8000-000000000000/removal')).status).toBe(404)
+
+    // Order 18c: merge back what the check showed, and nothing else (W12-09).
+    execFileSync('git', ['-C', repo, 'add', '.'], { env })
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'tidy'], { env })
+    writeFileSync(join(spike.cwd, 'merge-me.txt'), 'from the worktree\n')
+    execFileSync('git', ['-C', spike.cwd, 'add', '.'], { env })
+    execFileSync('git', ['-C', spike.cwd, 'commit', '-q', '-m', 'worktree work'], { env })
+    const preview = await call(`/api/workspaces/${spike.id}/merge`)
+    expect(preview.body.data).toMatchObject({ mode: 'merge', targetBranch: 'main', sourceBranch: 'codex/spike', blockers: [] })
+    expect((await call(`/api/workspaces/${spike.id}/merge`, { fingerprint: 'not-what-was-checked' })).body.refusal).toMatchObject({ code: 'stale' })
+    const merged = await call(`/api/workspaces/${spike.id}/merge`, { fingerprint: preview.body.data.fingerprint })
+    expect(merged.body.data.operation).toMatchObject({ stage: 'merged' })
+    expect((await call('/api/merge-operations/00000000-0000-4000-8000-000000000000/abort', {})).status).toBe(404)
   })
 
   it('keeps every workspace route off the phone', () => {
     for (const [method, path] of [['GET', '/api/projects/p/workspaces'], ['GET', '/api/projects/p/workspaces/preflight'], ['POST', '/api/projects/p/workspaces'],
       ['POST', '/api/workspace-operations/o/recover'], ['POST', '/api/workspace-operations/o/dismiss'],
       ['GET', '/api/workspaces/w/removal'], ['POST', '/api/workspaces/w/remove'], ['POST', '/api/workspaces/w/archive'],
-      ['POST', '/api/workspaces/w/restore'], ['POST', '/api/workspaces/w/forget']] as const) {
+      ['POST', '/api/workspaces/w/restore'], ['POST', '/api/workspaces/w/forget'], ['GET', '/api/workspaces/w/merge'], ['POST', '/api/workspaces/w/merge'],
+      ['POST', '/api/merge-operations/m/continue'], ['POST', '/api/merge-operations/m/abort']] as const) {
       expect(isRemoteRoute(method, path)).toBe(false)
     }
   })

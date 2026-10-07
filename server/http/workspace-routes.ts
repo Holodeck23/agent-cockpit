@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import type { WorkspaceStore } from '../projects/workspaces.ts'
 import { LifecycleRefusalError, type LifecycleRefusal, type WorktreeLifecycle } from '../projects/worktree-lifecycle.ts'
+import { MergeRefusalError, type MergeRefusal, type MergeService } from '../projects/merge.ts'
 import { WORKTREE_NAME_MAX, WorktreeRefusalError, type WorktreeRefusal, type WorktreeService } from '../projects/worktrees.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 
@@ -17,9 +18,30 @@ import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 //   POST /api/workspaces/:id/archive               out of use, folder kept exactly as it is
 //   POST /api/workspaces/:id/restore               an archived worktree back in use
 //   POST /api/workspaces/:id/forget                a worktree whose folder is gone stops being offered (no prune)
+//   GET  /api/workspaces/:id/merge                 merging it back: target, mode, files, blockers, a waiting conflict (W12.3)
+//   POST /api/workspaces/:id/merge                 { fingerprint } → Git's merge of exactly what was checked
+//   POST /api/merge-operations/:id/continue        commit a resolved conflict
+//   POST /api/merge-operations/:id/abort           Git's abort, only for this recorded merge
 
 export const isWorkspaceRoute = (parts: readonly string[]): boolean =>
-  (parts[1] === 'projects' && parts[3] === 'workspaces') || parts[1] === 'workspace-operations' || parts[1] === 'workspaces'
+  (parts[1] === 'projects' && parts[3] === 'workspaces') || parts[1] === 'workspace-operations' || parts[1] === 'workspaces' || parts[1] === 'merge-operations'
+
+/** What the person reads when a merge is refused. */
+export function describeMergeRefusal(refusal: MergeRefusal): string {
+  switch (refusal.code) {
+    case 'unknown-workspace': return 'Unknown workspace'
+    case 'not-a-worktree': return 'Only a worktree merges back into the main checkout.'
+    case 'blocked': return refusal.blockers.join(' ')
+    case 'stale': return refusal.detail
+    case 'up-to-date': return 'The main checkout already has everything in this worktree.'
+    case 'identity': return refusal.detail
+    case 'unknown-operation': return 'Unknown merge'
+    case 'not-in-conflict': return `This merge is ${refusal.stage}, not waiting on a conflict.`
+    case 'still-conflicted': return `Still conflicted: ${refusal.paths.join(', ')}. Resolve and stage them, then continue.`
+    case 'unsafe': return refusal.detail
+    case 'git-failed': return `Git did not finish: ${refusal.detail}`
+  }
+}
 
 /** What the person reads when removing, archiving or restoring is refused. */
 export function describeLifecycleRefusal(refusal: LifecycleRefusal): string {
@@ -76,16 +98,31 @@ const createSchema = z.object({
 
 export async function handleWorkspaceRoute(
   req: IncomingMessage, res: ServerResponse, parts: readonly string[], workspaces: WorkspaceStore, worktrees: WorktreeService,
-  knownProject: (projectId: string) => boolean, lifecycle?: WorktreeLifecycle,
+  knownProject: (projectId: string) => boolean, lifecycle?: WorktreeLifecycle, merges?: MergeService,
 ): Promise<void> {
   const method = req.method ?? 'GET'
   try {
+    if (parts[1] === 'merge-operations') {
+      const id = parts[2] ?? ''
+      if (!merges || method !== 'POST' || parts.length !== 4) throw new HttpError(404, 'Not found')
+      if (parts[3] === 'continue') { sendJson(res, 200, { data: { operation: await merges.continue(id) } }); return }
+      if (parts[3] === 'abort') { sendJson(res, 200, { data: { operation: await merges.abort(id) } }); return }
+      throw new HttpError(404, 'Not found')
+    }
     if (parts[1] === 'workspaces') {
       const id = parts[2] ?? ''
       const workspace = workspaces.get(id)
       if (!lifecycle || !workspace || !knownProject(workspace.projectId) || parts.length !== 4) throw new HttpError(404, 'Not found')
       const action = parts[3]
       if (method === 'GET' && action === 'removal') { sendJson(res, 200, { data: await lifecycle.removalCheck(id) }); return }
+      if (action === 'merge' && merges) {
+        if (method === 'GET') { sendJson(res, 200, { data: await merges.preflight(id) }); return }
+        if (method === 'POST') {
+          const { fingerprint } = parseBody(removeSchema, await readJson(req))
+          sendJson(res, 200, { data: { operation: await merges.merge(id, fingerprint) } })
+          return
+        }
+      }
       if (method !== 'POST') throw new HttpError(404, 'Not found')
       if (action === 'remove') {
         const { fingerprint } = parseBody(removeSchema, await readJson(req))
@@ -120,6 +157,10 @@ export async function handleWorkspaceRoute(
     }
     throw new HttpError(404, 'Not found')
   } catch (error) {
+    if (error instanceof MergeRefusalError) {
+      sendJson(res, error.refusal.code === 'unknown-workspace' || error.refusal.code === 'unknown-operation' ? 404 : 409, { error: describeMergeRefusal(error.refusal), refusal: error.refusal })
+      return
+    }
     if (error instanceof LifecycleRefusalError) {
       sendJson(res, error.refusal.code === 'unknown-workspace' ? 404 : 409, { error: describeLifecycleRefusal(error.refusal), refusal: error.refusal })
       return

@@ -18,9 +18,10 @@ import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
-import { createWorkspaceStore, type WorkspaceStore } from './projects/workspaces.ts'
+import { createWorkspaceStore, type Workspace, type WorkspaceStore } from './projects/workspaces.ts'
 import { createWorktreeService } from './projects/worktrees.ts'
 import { createWorktreeLifecycle } from './projects/worktree-lifecycle.ts'
+import { createMergeService } from './projects/merge.ts'
 import { isBusy } from './threads/status.ts'
 import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
@@ -338,23 +339,25 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     runActive: (threadId, runId) => manager.runs(threadId).some((r) => r.working && r.runId === runId),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, { ...approval, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) }),
   }) : undefined
-  // Removing or archiving a worktree waits for every run, process and check Cockpit owns in it (W12.4).
-  const worktreeLifecycle = createWorktreeLifecycle({
-    workspaces,
-    activeIn: (workspace) => {
-      const primaryId = workspaces.forProject(workspace.projectId).find((w) => w.kind === 'primary')?.id
-      const working = manager.summaries().filter((t) => isBusy(t.status) && (t.meta.workspaceId ?? primaryId) === workspace.id).length
-      const running = processes.list(undefined, workspace.cwd).filter((p) => p.status !== 'exited').map((p) => p.name)
-      const checking = resultStore.runs().flatMap((runId) => resultStore.get(runId)?.checks ?? [])
-        .filter((c) => c.workspaceId === workspace.id && c.phase !== 'terminal' && checks.isLive(c.id)).length
-      return [
-        ...(working ? [`${working} conversation${working === 1 ? ' is' : 's are'} working in it.`] : []),
-        ...running.map((name) => `Process ${name} is running in it.`),
-        ...(checking ? [`${checking} check${checking === 1 ? ' is' : 's are'} running in it.`] : []),
-      ]
-    },
-  })
-  const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  // Removing, archiving or merging a worktree waits for every run, process and check Cockpit owns in it (W12.3, W12.4).
+  const activeIn = (workspace: Workspace): string[] => {
+    const primaryId = workspaces.forProject(workspace.projectId).find((w) => w.kind === 'primary')?.id
+    // A conversation's agent per workspace (W12-15): it may be working in a workspace it has moved away from.
+    const working = manager.summaries().filter((t) => isBusy(t.status)
+      && manager.runs(t.meta.id).some((r) => r.working && (r.workspaceId || primaryId) === workspace.id)).length
+    const running = processes.list(undefined, workspace.cwd).filter((p) => p.status !== 'exited').map((p) => p.name)
+    const checking = resultStore.runs().flatMap((runId) => resultStore.get(runId)?.checks ?? [])
+      .filter((c) => c.workspaceId === workspace.id && c.phase !== 'terminal' && checks.isLive(c.id)).length
+    return [
+      ...(working ? [`${working} conversation${working === 1 ? ' is' : 's are'} working in it.`] : []),
+      ...running.map((name) => `Process ${name} is running in it.`),
+      ...(checking ? [`${checking} check${checking === 1 ? ' is' : 's are'} running in it.`] : []),
+    ]
+  }
+  const worktreeLifecycle = createWorktreeLifecycle({ workspaces, activeIn })
+  // Merging back waits for the same work, in both the worktree and the main checkout (W12.3).
+  const merges = createMergeService(root, { workspaces, activeIn })
+  const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId, workspaceId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
