@@ -125,11 +125,18 @@ const processes = await getJson<ProcessInfo[]>(page, '/api/processes')
 const dev = processes.find((p) => p.projectPath === project && p.status === 'running' && p.url)
 check('dev server is running with its URL detected', Boolean(dev), JSON.stringify(processes.map((p) => [p.name, p.status, p.url])))
 const devUrl = dev?.url ?? ''
-// Since phase 7, open_preview shows the app in Cockpit's own preview pane (Browser ↗ still opens
-// the external browser); either counts, at the dev server's port.
+// open_preview shows the app in the conversation's in-app browser page (wave 9, a host-drawn view,
+// so its address is read from the main process); Browser ↗ still opens the external browser.
+// Either counts, at the dev server's port.
 const portOf = (url: string): string => { try { return new URL(url).port } catch { return '' } }
-const paneUrl = await page.locator('.preview-pane .preview-address code').textContent({ timeout: 10_000 }).catch(() => '') ?? ''
-check('the preview opened at that URL', devUrl !== '' && [paneUrl, ...(await openedUrls())].some((url) => portOf(url) === portOf(devUrl)), `pane ${paneUrl}; external ${(await openedUrls()).join(', ')}; dev ${devUrl}`)
+const browserUrls = (): Promise<string[]> => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().flatMap((w) => w.contentView.children)
+  .map((v) => (v as unknown as { webContents?: Electron.WebContents }).webContents)
+  .flatMap((c) => (c && !c.isDestroyed() && /^http:\/\/(127\.0\.0\.1|localhost):\d+/.test(c.getURL()) ? [c.getURL()] : [])))
+const opened = await waitUntil(page, 'the preview page', async () => {
+  const urls = [...await browserUrls(), ...await openedUrls()]
+  return urls.some((url) => portOf(url) === portOf(devUrl)) ? urls : undefined
+}, 15_000).catch(() => [] as string[])
+check('the preview opened at that URL', devUrl !== '' && opened.length > 0, `opened ${opened.join(', ')}; dev ${devUrl}`)
 const served = devUrl ? await fetch(devUrl).then((r) => r.text()).catch(() => '') : ''
 check('the site is actually served', served.includes('Sprout is growing'))
 const ppid = dev?.pid ? execFileSync('ps', ['-o', 'ppid=', '-p', String(dev.pid)], { encoding: 'utf8' }).trim() : ''
@@ -161,7 +168,13 @@ check('Stop in the list stopped the whole dev server', refused && groupMembers(f
 // Restart it, then quit the app with it running.
 await messageBox(page).fill('Start the dev server again, please.')
 await messageBox(page).press('Enter')
-await approveUntilDone(page, threadId)
+const askedAgain = await approveUntilDone(page, threadId)
+// One ask per Cockpit action (PR #23 for Claude; Codex gets approval_mode="approve" per Cockpit tool):
+// every start_process shows Cockpit's own card once, never also the CLI's generic MCP prompt.
+const { events: all } = await getJson<{ events: StoredEvent[] }>(page, `/api/threads/${threadId}/events`)
+const starts = all.filter(({ event }) => event.kind === 'tool_use' && event.name === 'mcp__cockpit__start_process').length
+const cards = [...asked, ...askedAgain].filter((tool) => tool === 'Start a process' || tool.startsWith('MCP: cockpit'))
+check('each start_process asked exactly once', starts >= 2 && cards.length === starts && !cards.some((tool) => tool.startsWith('MCP:')), `${starts} starts; asked ${cards.join(' | ')}`)
 const again = await waitUntil(page, 'the restarted server', async () =>
   (await getJson<ProcessInfo[]>(page, '/api/processes')).find((p) => p.projectPath === project && p.status === 'running' && p.url),
 )
