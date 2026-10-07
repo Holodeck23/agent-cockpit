@@ -214,6 +214,17 @@
 .field input, .field select { padding: 7px 10px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 14px; }
 .picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .picker-note { font-size: 12px; color: var(--muted); }
+/* The handoff, read before a switch (D13): wider than the settings, the text scrolls on its own. */
+.picker-panel:has(.handoff-review) { width: min(560px, calc(100vw - 40px)); }
+.handoff-review { display: grid; gap: 8px; min-width: 0; }
+.handoff-title { margin: 0; font-weight: 600; color: var(--strong); }
+.handoff-size { margin: 0; }
+.handoff-review [role='alert'] { margin: 0; color: var(--danger); }
+.handoff-text {
+  margin: 0; max-height: min(360px, calc(100vh - 360px)); min-height: 120px; overflow: auto; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--field); color: var(--strong);
+  font: 11.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
 
 /* ---------- new conversation ---------- */
 .new-conversation .events { display: grid; place-items: center; }

@@ -53,3 +53,17 @@ export async function setTheme(page: Page, theme: 'System' | 'Light' | 'Dark'): 
   await page.getByRole('dialog', { name: 'Appearance' }).getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: theme, exact: true }).click()
   await page.keyboard.press('Escape')
 }
+
+/**
+ * Switches agents from an open picker the way a person does since D13: "Switch…" shows the
+ * handoff, "Start handoff" sends exactly that. Resolves to the text that was shown.
+ */
+export async function switchWithHandoff(picker: Locator): Promise<string> {
+  await picker.getByRole('button', { name: 'Switch…', exact: true }).click()
+  const shown = picker.getByRole('group', { name: 'Handoff' }).getByLabel('Handoff text')
+  await shown.waitFor()
+  const text = (await shown.textContent()) ?? ''
+  await picker.getByRole('button', { name: 'Start handoff', exact: true }).click()
+  await picker.waitFor({ state: 'detached' })
+  return text
+}

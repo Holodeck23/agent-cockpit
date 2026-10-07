@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { withAttachmentNote } from '../files/references.ts'
 import type { StoredEvent } from './types.ts'
@@ -19,6 +20,26 @@ export const HANDOFF_BUDGET = 400_000
  * (in `imagesDir`), so the new agent can open them.
  */
 export function buildHandoff(events: readonly StoredEvent[], projectPath: string, imagesDir?: string): string {
+  return composeHandoff(events, projectPath, imagesDir).text
+}
+
+/** What the picker shows before a switch (D13): the exact text, and how many messages were left out to fit. */
+export interface HandoffPreview {
+  readonly text: string
+  /** sha256 of `text`; the switch carries it back so the agent receives only what was shown. */
+  readonly digest: string
+  readonly leftOut: number
+  readonly budget: number
+}
+
+export const handoffDigest = (text: string): string => createHash('sha256').update(text).digest('hex')
+
+export function previewHandoff(events: readonly StoredEvent[], projectPath: string, imagesDir?: string): HandoffPreview {
+  const { text, leftOut } = composeHandoff(events, projectPath, imagesDir)
+  return { text, digest: handoffDigest(text), leftOut, budget: HANDOFF_BUDGET }
+}
+
+function composeHandoff(events: readonly StoredEvent[], projectPath: string, imagesDir?: string): { text: string; leftOut: number } {
   // The conversation as it stands: a message you took back (and its images) never reached anyone.
   const skip = takenBackPositions(events)
   const questions = new Map<string, readonly AgentQuestion[]>()
@@ -54,8 +75,8 @@ export function buildHandoff(events: readonly StoredEvent[], projectPath: string
         return []
     }
   })
-  const transcript = fitToBudget(lines)
-  return [
+  const { transcript, leftOut } = fitToBudget(lines)
+  const text = [
     'You are taking over a task another coding agent was working on in this project.',
     `Project folder: ${projectPath}. The files on disk reflect everything done so far.`,
     'Conversation so far:',
@@ -64,15 +85,17 @@ export function buildHandoff(events: readonly StoredEvent[], projectPath: string
     '---',
     "Continue from here. If the user's next message asks what has been done, answer from this transcript and the files.",
   ].join('\n')
+  return { text, leftOut }
 }
 
-function fitToBudget(lines: readonly string[]): string {
+function fitToBudget(lines: readonly string[]): { transcript: string; leftOut: number } {
   const whole = lines.join('\n')
-  if (whole.length <= HANDOFF_BUDGET) return whole
+  if (whole.length <= HANDOFF_BUDGET) return { transcript: whole, leftOut: 0 }
   const opening = lines.findIndex((line) => line.startsWith('USER: '))
   const head = opening >= 0 ? lines.slice(0, opening + 1) : []
   let used = head.reduce((sum, line) => sum + line.length + 1, 0)
   let start = lines.length
   while (start > head.length && used + lines[start - 1]!.length + 1 <= HANDOFF_BUDGET) used += lines[--start]!.length + 1
-  return [...head, `[${start - head.length} earlier messages left out to fit]`, ...lines.slice(start)].join('\n')
+  const leftOut = start - head.length
+  return { transcript: [...head, `[${leftOut} earlier messages left out to fit]`, ...lines.slice(start)].join('\n'), leftOut }
 }

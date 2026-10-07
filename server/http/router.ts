@@ -18,7 +18,7 @@ import { workflowTitle } from '../workflows/title.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { OperationConflictError, ThreadBusyError, type ThreadManager } from '../threads/manager.ts'
+import { HandoffChangedError, OperationConflictError, ThreadBusyError, type ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
@@ -96,6 +96,8 @@ const writeFileBody = z.object({
 const renameBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(1000), name: z.string().min(1).max(255), space: spaceSchema })
 const markBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(255), pinned: z.boolean().optional(), archived: z.boolean().optional() })
 const switchBody = z.object({ settings: threadSettingsSchema })
+/** A switch names the handoff the user reviewed (D13): sha256 of the previewed text. */
+const agentSwitchBody = switchBody.extend({ handoff: z.string().regex(/^[0-9a-f]{64}$/) })
 const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
 // A data: URL is about 4/3 of the file; the 512 KB limit itself is checked after decoding.
 const imageBody = z.object({ path: z.string().min(1).max(1000), image: z.string().max(750_000).nullable() })
@@ -600,14 +602,17 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       } else if (method === 'POST' && action === 'settings') {
         const { settings } = parseBody(switchBody, await readJson(req))
         try { sendJson(res, 200, { data: manager.changeSettings(threadId, settings) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
+      } else if (method === 'GET' && action === 'handoff') {
+        sendJson(res, 200, { data: manager.handoffPreview(threadId) })
       } else if (method === 'POST' && action === 'agent') {
-        sendJson(res, 200, { data: manager.switchAgent(threadId, parseBody(switchBody, await readJson(req)).settings) })
+        const { settings, handoff } = parseBody(agentSwitchBody, await readJson(req))
+        sendJson(res, 200, { data: manager.switchAgent(threadId, settings, handoff) })
       } else {
         throw new HttpError(404, 'Not found')
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError || error instanceof HandoffChangedError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })

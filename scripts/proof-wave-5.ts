@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { chooseAgent, headStatus, messageBox, openProject, setTheme, startConversation } from './lib/ui.ts'
+import { chooseAgent, headStatus, messageBox, openProject, setTheme, startConversation, switchWithHandoff } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave5-proof-'))
@@ -177,7 +177,7 @@ try {
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const picker = page.getByRole('dialog', { name: 'Agent settings' })
   await picker.getByRole('radio', { name: 'Codex', exact: true }).click()
-  await picker.getByRole('button', { name: 'Switch' }).click()
+  await switchWithHandoff(picker)
   await send(page, 'What do you have?')
   const handoff = page.locator('.bubble').filter({ hasText: /^Handoff \d+ characters/ })
   check('J5 the new agent answers after the switch', await until('codex reply', async () => (await handoff.count()) === 1))
