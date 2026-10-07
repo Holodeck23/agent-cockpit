@@ -356,7 +356,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   }
   const worktreeLifecycle = createWorktreeLifecycle({ workspaces, activeIn })
   // Merging back waits for the same work, in both the worktree and the main checkout (W12.3).
-  const merges = createMergeService(root, { workspaces, activeIn })
+  // proof:wave-12 part 2 (W12-11) only: the app dies after Git started a merge, before Cockpit recorded its end.
+  const crashAfterGit = process.env.COCKPIT_PROOF_MERGE_CRASH === '1' ? { afterGit: () => { process.kill(process.pid, 'SIGKILL') } } : {}
+  const merges = createMergeService(root, { workspaces, activeIn }, crashAfterGit)
   const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId, workspaceId) => {

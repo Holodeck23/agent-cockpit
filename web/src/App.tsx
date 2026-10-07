@@ -158,9 +158,23 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const openWebFromReply = useCallback((url: string) => {
     if (replyProject && replyThread) showPage({ url, projectPath: replyProject, threadId: replyThread })
   }, [replyProject, replyThread, showPage])
-  const replyContext = useMemo(() => ({ projectPath: replyProject, workspaceId: replyWorkspace, onOpenFile: openFileFromReply, onOpenCommit: openCommitFromReply,
+  // A file a conversation names is in the workspace it works in: shown there, and never the main
+  // checkout's copy in place of a worktree that is gone (W12-13).
+  const replyMeta = phone ? undefined : cockpit.detail?.meta
+  const { select: selectWorkspace, list: workspaceList } = workspaces
+  const { reportError } = cockpit
+  const openConversationFile = useCallback((target: FileTarget) => {
+    if (!replyMeta) { openFileFromReply(target); return }
+    const primary = projectsRef.current.find((p) => p.path === replyMeta.projectPath)?.workspaceId
+    const at = replyMeta.workspaceId ?? primary
+    if (!at || at === primary) { selectWorkspace(undefined); openFileFromReply(target); return }
+    const found = workspaceList?.find((w) => w.id === at)
+    if (found && isActiveWorktree(found)) { selectWorkspace(at); openFileFromReply(target); return }
+    reportError(`${found?.name ?? 'That worktree'} is no longer there, so ${target.path} was not opened. Cockpit does not open the main checkout's copy in its place.`)
+  }, [replyMeta, selectWorkspace, workspaceList, openFileFromReply, reportError])
+  const replyContext = useMemo(() => ({ projectPath: replyProject, workspaceId: replyWorkspace, onOpenFile: openConversationFile, onOpenCommit: openCommitFromReply,
     ...(inAppBrowser ? { onOpenWeb: openWebFromReply } : {}) }),
-    [replyProject, replyWorkspace, openFileFromReply, openCommitFromReply, inAppBrowser, openWebFromReply])
+    [replyProject, replyWorkspace, openConversationFile, openCommitFromReply, inAppBrowser, openWebFromReply])
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
@@ -373,7 +387,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               onBack={() => cockpit.select(undefined)}
               onToggleList={() => setHidden(!hideList)}
               listHidden={hideList}
-              onOpenFile={openFileFromReply}
+              onOpenFile={openConversationFile}
               workspace={workspaceFor(cockpit.detail.meta)}
             />
           ) : (

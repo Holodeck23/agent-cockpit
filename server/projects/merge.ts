@@ -85,6 +85,8 @@ export interface MergeDeps {
 export interface MergeOptions {
   /** Test seam: runs after the journal says "started" and before Git merges (a crash point). */
   readonly beforeMerge?: () => void
+  /** Proof seam: runs after Git's merge returned (or stopped on a conflict), before Cockpit records how it ended. */
+  readonly afterGit?: () => void
 }
 
 export interface MergeService {
@@ -241,7 +243,9 @@ export function createMergeService(root: string, { workspaces, activeIn }: Merge
         const args = mode === 'fast-forward' ? ['merge', '--ff-only', now.sourceHead] : ['merge', '--no-ff', '--no-edit', '-m', message, now.sourceHead]
         try {
           await run(target.cwd, args, MERGE_TIMEOUT_MS)
+          options.afterGit?.()
         } catch (error) {
+          options.afterGit?.()
           const conflicts = await unmerged(target.cwd)
           if (conflicts.length) return view(advance(operation, { stage: 'conflict', conflicts }))
           operation = await settle(operation)
