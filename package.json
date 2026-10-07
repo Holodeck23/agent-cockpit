@@ -82,7 +82,8 @@
     "proof:handoff": "tsx scripts/proof-handoff.ts",
     "proof:wave-11": "tsx scripts/proof-wave-11.ts",
     "proof:crash-guard": "tsx scripts/proof-crash-guard.ts",
-    "proof:conversation-style": "tsx scripts/proof-conversation-style.ts"
+    "proof:conversation-style": "tsx scripts/proof-conversation-style.ts",
+    "proof:style-screens": "tsx scripts/proof-style-screens.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",

@@ -18,6 +18,7 @@ interface FileRowProps {
   /** Pin and archive, for documents. */
   extra?: readonly ExtraAction[]
   detail?: ReactNode
+  status?: 'Archived'
   onOpen: () => void
   onRenamed: (to: string) => void
   onTrashed: () => void
@@ -27,7 +28,7 @@ interface FileRowProps {
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 /** One file in a list, with Rename, Open in default app, Reveal in Finder and Move to Trash behind ⋯. */
-export function FileRow({ projectPath, path, selected, pinned, dirty, extra = [], detail, onOpen, onRenamed, onTrashed, onError }: FileRowProps) {
+export function FileRow({ projectPath, path, selected, pinned, dirty, extra = [], detail, status, onOpen, onRenamed, onTrashed, onError }: FileRowProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(() => splitName(fileName(path)))
@@ -70,6 +71,7 @@ export function FileRow({ projectPath, path, selected, pinned, dirty, extra = []
         <span>{shown}</span>
         {pinned ? <PinIcon className="file-pin" title="Pinned" /> : null}
         {detail}
+        {dirty || status ? <span className={`file-row-status${dirty ? ' unsaved' : ''}`}>{dirty ? 'Unsaved' : status}</span> : null}
       </button>
       <button type="button" className="file-more" aria-label={`More for ${shown}`} aria-expanded={open} onClick={() => setOpen(!open)}><MoreIcon /></button>
       {open ? (
