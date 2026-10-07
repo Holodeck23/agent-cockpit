@@ -1,6 +1,6 @@
 // Phase 6 gate, run against the PACKAGED app (npm run package first): `npm run proof:phone`.
 // Needs Tailscale installed and logged in on this Mac. Turns phone access on for real
-// (`tailscale serve` on HTTPS 8443, so an installed Cockpit on 443 is left alone), drives a Pixel-sized Chrome through the Mac's
+// (`tailscale serve` on HTTPS 10000, so an installed Cockpit on 443 is left alone), drives a Pixel-sized Chrome through the Mac's
 // tailnet address, and turns it off again at the end.
 //
 // Every refusal is paired with a control that shows the same path CAN succeed, so a
@@ -32,7 +32,9 @@ import { tailscaleBinary } from '../server/remote/tailscale.ts'
 mkdirSync(PROOF_DIR, { recursive: true })
 const { check, finish } = checker()
 const PORT = 47822
-const HTTPS_PORT = 8443
+// 10000: allowed by the phone settings (443, 8443, 10000) and outside the phone-preview range
+// (8443–8458), so a real preview on this Mac never blocks the proof.
+const HTTPS_PORT = 10000
 
 function tailscale(args: string[]): string {
   return execFileSync(tailscaleBinary(), args, { encoding: 'utf8', timeout: 15_000 })
@@ -90,7 +92,7 @@ async function launch(state: string): Promise<{ app: ElectronApplication; page: 
   return { app, page }
 }
 
-/** What HTTPS 8443 serves: 'cockpit' (this proof's port), 'none', or something else to leave alone. */
+/** What HTTPS 10000 serves: 'cockpit' (this proof's port), 'none', or something else to leave alone. */
 function serveTarget(): string {
   const text = tailscale(['serve', 'status', '--json']).trim()
   const web = (text ? JSON.parse(text) : {}) as { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> }

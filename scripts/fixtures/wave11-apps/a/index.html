@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Service A</title>
+<style>body{font:17px system-ui;margin:20px;background:#eef4ff}button{font-size:17px;padding:8px 14px}#msg{font-size:26px;font-weight:700;color:#1d4ed8}</style>
+<h1>Service A</h1>
+<p id="msg"></p>
+<p>Session: <b id="state">…</b></p>
+<form method="post" action="/login"><button>Log in to the app</button></form>
+<form method="post" action="/inc"><button>+1 (server counter)</button></form>
+<p>SSE ticks: <b id="sse">0</b></p>
+<script type="module" src="/src/main.js"></script>

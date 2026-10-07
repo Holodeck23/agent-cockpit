@@ -67,9 +67,17 @@ export function isRemoteRoute(method: string, pathname: string): boolean {
 }
 
 export function cookieValue(req: IncomingMessage, name: string): string | undefined {
-  for (const part of (header(req, 'cookie') ?? '').split(';')) {
+  return cookieValues(req, name)[0]
+}
+
+/**
+ * Every value sent under a cookie name. Cookies are not isolated by port, so a phone-preview origin
+ * on the same host can set one with the same name on another path (SEC-04): callers that
+ * authenticate with a cookie treat more than one value as no value.
+ */
+export function cookieValues(req: IncomingMessage, name: string): string[] {
+  return (header(req, 'cookie') ?? '').split(';').flatMap((part) => {
     const [key, ...rest] = part.trim().split('=')
-    if (key === name) return rest.join('=')
-  }
-  return undefined
+    return key === name ? [rest.join('=')] : []
+  })
 }

@@ -14,6 +14,7 @@ import { ChangesView } from './ChangesView.tsx'
 import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
+import { PhoneApps } from './PhoneApps.tsx'
 import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
@@ -148,7 +149,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
                 Changes
               </button>
             )}
-            {phone ? null : <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />}
+            {phone ? <PhoneApps processes={processes} /> : <ProcessChip processes={processes} onStop={(id) => guard(api.stopProcess(id))} />}
           </div>
         </div>
         <div className="thread-actions">

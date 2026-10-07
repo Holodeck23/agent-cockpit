@@ -190,6 +190,7 @@ try {
   await setTheme(page, 'Dark')
   await shot(page, 'thread-dark')
   await setTheme(page, 'Light')
+  const fullSize = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize())
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(980, 640))
   await page.waitForTimeout(400)
   await shot(page, 'thread-narrow')
@@ -200,6 +201,11 @@ try {
     return pane.scrollWidth <= pane.clientWidth && menu.right <= window.innerWidth
   })
   check('narrow: a long title ellipsizes and the pane fits the window', fits)
+  // Back to the window's own size: at 980 px the thread pane covers the list's New conversation
+  // button (a list-layout defect on main, owed to the conversation-screen pass), which made every
+  // step after this one time out.
+  await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0]!.setContentSize(w!, h!), fullSize)
+  await page.waitForTimeout(400)
   // C9: Codex offers an effort above Max; Claude does not.
   await page.getByRole('button', { name: 'New conversation' }).click()
   // Per model since wave 6.5 (R7): gpt-5.6-sol is one Codex 0.147 advertises Ultra for.

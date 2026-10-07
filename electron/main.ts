@@ -93,6 +93,7 @@ async function boot(): Promise<void> {
     // Created just below, once the server's ports are known; agents call it only later.
     browserHost: () => browserHost,
     ...proofInstallers(),
+    ...proofPreviews(),
   })
   // Before the window loads, so its very first API call carries the key.
   installWindowKey(session.defaultSession, new URL(running.url).origin, windowKey, () => mainWindow)
@@ -156,6 +157,16 @@ function proofInstallers(): { installerDownload?: (url: string) => Promise<Buffe
   const dir = process.env.COCKPIT_PROOF_INSTALLERS
   if (IS_RELEASE_BUILD || !dir) return {}
   return { installerDownload: async (url) => readFileSync(join(dir, `${new URL(url).hostname}.sh`)) }
+}
+
+/**
+ * W11 gate. A proof build may shorten how long a phone preview waits for a dev server's first
+ * byte (default 60 s), so the packaged proof can watch the slow-app page; a release build ignores it.
+ */
+function proofPreviews(): { remote?: { previewFirstByteMs: number } } {
+  const ms = Number(process.env.COCKPIT_PROOF_PREVIEW_FIRST_BYTE_MS)
+  if (IS_RELEASE_BUILD || !Number.isFinite(ms) || ms < 1000) return {}
+  return { remote: { previewFirstByteMs: ms } }
 }
 
 // In memory only (no "persist:"), and cleared after every capture.

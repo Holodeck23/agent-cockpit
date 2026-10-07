@@ -90,3 +90,29 @@
   .approval-actions button:first-child { grid-column: 1 / -1; }
   .toast { top: auto; bottom: calc(16px + env(safe-area-inset-bottom)); right: 12px; left: 12px; max-width: none; }
 }
+
+/* ---------- phone previews (H5): Enable phone previews on the Mac, View app on the phone ---------- */
+.phone-menu { max-height: min(80vh, 720px); overflow-y: auto; }
+.phone-previews { display: grid; gap: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.preview-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; padding: 6px 0; }
+.preview-command {
+  grid-column: 1 / -1; display: block; padding: 6px 8px; border-radius: var(--r-sm); background: var(--field);
+  font: 11.5px var(--mono); color: var(--strong); overflow-wrap: anywhere; user-select: all;
+}
+.preview-row .pairing-allow { grid-column: 1 / -1; justify-self: start; }
+.preview-on { font-size: 12px; color: #2fa24f; overflow-wrap: anywhere; }
+.preview-conflict { grid-column: 1 / -1; }
+.preview-limits { line-height: 1.45; }
+.phone-apps-menu { width: min(360px, calc(100vw - 24px)); }
+.phone-view-app {
+  flex: none; padding: 6px 12px; border: 0; border-radius: var(--r-sm); background: var(--blue); color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: default;
+}
+.phone-apps-state { display: grid; gap: 8px; padding: 6px 10px 10px; }
+.phone-apps-state strong { color: var(--strong); }
+.phone-apps-state p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--body); }
+.phone-apps-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.phone-apps-opened, .phone-apps-none { margin: 0 10px 6px; font-size: 12.5px; color: var(--muted); }
+/* On the phone the chip sits mid-row, so the menu spans the screen instead of hanging off it.
+   No top or bottom: a fixed box keeps its static (in-flow) vertical place, just under the chip. */
+.phone .phone-apps-menu { position: fixed; left: 12px; right: 12px; top: auto; bottom: auto; width: auto; }

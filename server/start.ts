@@ -29,6 +29,8 @@ import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
+import { createPhonePreviews, previewOrigins, type PhonePreviews } from './remote/preview/control.ts'
+import type { ListenerGroups } from './remote/preview/upstream.ts'
 import type { PreviewCapture, PreviewOpen } from './preview/types.ts'
 
 export interface StartOptions {
@@ -57,7 +59,13 @@ export interface StartOptions {
   /** inspect_preview on the conversation's own page (desktop app, W9-11); capturePreview stays for result evidence. */
   readonly inspectPreview?: (preview: PreviewOpen) => Promise<PreviewCapture>
   /** Phone access: the Tailscale CLI to drive (a fake in tests) and a port override (0 = any free port). */
-  readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
+  readonly remote?: {
+    readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender
+    /** Phone preview listeners on any free port (0) instead of their fixed ones, and who holds a port (tests). */
+    readonly previewListenPort?: number; readonly listenerGroups?: ListenerGroups
+    /** A proof build's shorter wait for a previewed dev server's first byte. */
+    readonly previewFirstByteMs?: number
+  }
   /** How agent CLIs are checked for the picker; a fake in tests. */
   readonly agentProbe?: VersionProbe
   /** The capability cache (W10.1); a fixture in tests. Defaults to probing the CLIs on PATH. */
@@ -88,6 +96,8 @@ export interface RunningServer {
   readonly manager: ThreadManager
   readonly processes: ProcessRunner
   readonly remote: RemoteAccess
+  /** Phone previews (H5): per-app origins, tickets and their Tailscale entries. */
+  readonly phonePreviews: PhonePreviews
   /** Known project folders; the desktop shell checks these before opening one in Finder. */
   readonly projects: ProjectStore
   /** Records each run's before/after workspace observations; tests settle it before reading. */
@@ -137,7 +147,22 @@ export const PAGE_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ')
 
-function serveStatic(webDist: string, pathname: string, res: ServerResponse): void {
+/**
+ * The page as the phone gets it: View app posts a one-use ticket to the app's own preview origin
+ * (W11.2), so those origins, and only those, are allowed form targets. Nothing may frame it.
+ */
+export function phonePagePolicy(hostname: string): string {
+  return PAGE_POLICY.replace("form-action 'self'", ["form-action 'self'", ...previewOrigins(hostname)].join(' '))
+}
+
+/**
+ * The phone page's referrer policy. View app's form POST must carry the control Origin, and Chrome
+ * sends `Origin: null` on a cross-origin POST under no-referrer (Fetch, "serializing a request
+ * origin"). strict-origin sends the bare origin, never a path, and nothing over plain HTTP.
+ */
+export const PHONE_REFERRER_POLICY = 'strict-origin'
+
+function serveStatic(webDist: string, pathname: string, res: ServerResponse, policy = PAGE_POLICY, referrer = 'no-referrer'): void {
   const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, '')
   let file = join(webDist, safe)
   if (!file.startsWith(webDist) || !existsSync(file) || statSync(file).isDirectory()) file = join(webDist, 'index.html')
@@ -147,8 +172,8 @@ function serveStatic(webDist: string, pathname: string, res: ServerResponse): vo
     return
   }
   const type = MIME[extname(file)] ?? 'application/octet-stream'
-  res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
-    ...(type.startsWith('text/html') ? { 'content-security-policy': PAGE_POLICY } : {}) })
+  res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': referrer,
+    ...(type.startsWith('text/html') ? { 'content-security-policy': policy } : {}) })
   res.end(readFileSync(file))
 }
 
@@ -227,9 +252,21 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
   const remoteStore = createRemoteStore(root)
   const push = createPushStore(root)
-  const remote = createRemoteAccess({ store: remoteStore, tailscale: options.remote?.tailscale ?? systemTailscale,
-    serveStatic: (pathname, res) => serveStatic(options.webDist, pathname, res), port: options.remote?.port,
+  const tailscale = options.remote?.tailscale ?? systemTailscale
+  const remote = createRemoteAccess({ store: remoteStore, tailscale,
+    serveStatic: (pathname, res) => {
+      const hostname = remote.previewPolicy()?.hostname
+      if (hostname) serveStatic(options.webDist, pathname, res, phonePagePolicy(hostname), PHONE_REFERRER_POLICY)
+      else serveStatic(options.webDist, pathname, res)
+    }, port: options.remote?.port,
     push, ...(options.remote?.sendPush ? { sendPush: options.remote.sendPush } : {}) })
+  const previewListenPort = options.remote?.previewListenPort
+  const phonePreviews = createPhonePreviews({ root, remoteStore, tailscale, processes, policy: () => remote.previewPolicy(),
+    ...(previewListenPort !== undefined ? { listenPort: () => previewListenPort } : {}),
+    ...(options.remote?.listenerGroups ? { listenerGroups: options.remote.listenerGroups } : {}),
+    ...(options.remote?.previewFirstByteMs ? { firstByteMs: options.remote.previewFirstByteMs } : {}),
+    log: (line) => console.log(`[cockpit] ${line}`) })
+  remote.attachPreviews(phonePreviews)
   const stopNotifier = startNotifier({ push, manager, threads: store,
     active: () => remote.status().running,
     paired: (deviceId) => remoteStore.devices().some((d) => d.id === deviceId),
@@ -268,7 +305,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, agyMcp, lifecycle: agentLifecycle, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
@@ -294,7 +331,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown(), agentLifecycle.shutdown()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), phonePreviews.dispose(), checks.shutdown(), agentLifecycle.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {
@@ -305,5 +342,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, projects, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
 }

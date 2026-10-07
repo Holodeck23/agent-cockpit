@@ -1,0 +1,47 @@
+#!/bin/sh
+# Stand-in `tailscale` for `npm run proof:wave-11`. The app finds it first (COCKPIT_AGENT_PATH), so
+# the proof never runs the real CLI and never touches this Mac's real Serve config. It answers the
+# four calls Cockpit makes and keeps its Serve table as one file per HTTPS port under
+# $COCKPIT_PROOF_TAILSCALE/serve; the proof's loopback HTTPS proxy plays `tailscale serve` from it.
+# Every call is appended to $COCKPIT_PROOF_TAILSCALE/calls.log, so the proof can show exactly
+# which commands ran, and when.
+dir="${COCKPIT_PROOF_TAILSCALE:?COCKPIT_PROOF_TAILSCALE is not set}"
+host="${COCKPIT_PROOF_TAILNET_HOST:?}"
+login="${COCKPIT_PROOF_TAILNET_LOGIN:?}"
+mkdir -p "$dir/serve"
+echo "$*" >> "$dir/calls.log"
+
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  printf '{"BackendState":"Running","Self":{"DNSName":"%s.","UserID":1},"User":{"1":{"LoginName":"%s"}}}\n' "$host" "$login"
+  exit 0
+fi
+
+if [ "$1" = "serve" ] && [ "$2" = "status" ]; then
+  printf '{"Web":{'
+  first=1
+  for file in "$dir"/serve/*; do
+    [ -f "$file" ] || continue
+    [ "$first" = 1 ] || printf ','
+    first=0
+    printf '"%s:%s":{"Handlers":{"/":{"Proxy":"%s"}}}' "$host" "$(basename "$file")" "$(cat "$file")"
+  done
+  printf '}}\n'
+  exit 0
+fi
+
+# serve --bg --https=<port> http://127.0.0.1:<port>
+if [ "$1" = "serve" ] && [ "$2" = "--bg" ]; then
+  port="${3#--https=}"
+  case "$4" in http://127.0.0.1:*) ;; *) echo "only http://127.0.0.1 targets" >&2; exit 1 ;; esac
+  printf '%s' "$4" > "$dir/serve/$port"
+  exit 0
+fi
+
+# serve --https=<port> off
+if [ "$1" = "serve" ] && [ "$3" = "off" ]; then
+  rm -f "$dir/serve/${2#--https=}"
+  exit 0
+fi
+
+echo "stand-in tailscale: unsupported call: $*" >&2
+exit 2

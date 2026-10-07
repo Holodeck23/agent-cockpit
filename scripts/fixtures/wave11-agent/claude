@@ -1,0 +1,30 @@
+#!/bin/sh
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
+# Stand-in `claude` for `npm run proof:wave-11`. Each turn starts the apps listed in the project's
+# .wave11-processes (one "name|command" per line) the way a real agent does: a POST to Cockpit's MCP
+# API with this session's token, one at a time, each behind Cockpit's own approval card.
+# Like the real CLI it stays alive between turns and exits on stdin EOF.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 11 fixture)"; exit 0; }
+session=""
+previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) session="$arg" ;; esac
+  previous="$arg"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave11-fixture"}\n' "$session"
+turn=0
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  turn=$((turn + 1))
+  started=""
+  while IFS='|' read -r name command; do
+    [ -n "$name" ] || continue
+    status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
+      -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
+      -d "{\"command\":\"$command\",\"name\":\"$name\"}")
+    started="$started $name ($status)"
+  done < .wave11-processes
+  text="Started:$started."
+  printf '{"type":"assistant","message":{"id":"wave11-fixture-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$text"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$text"
+done

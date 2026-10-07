@@ -39,6 +39,7 @@ import { resolveWorkflows } from '../workflows/store.ts'
 import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
+import type { PhonePreviews } from '../remote/preview/control.ts'
 import type { AgentStatus } from '../agents/status.ts'
 import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { AGENT_IDS } from '../agents/capabilities/types.ts'
@@ -121,6 +122,8 @@ export interface ApiDeps {
   readonly processes: ProcessRunner
   readonly mcp: McpRouteDeps
   readonly remote: RemoteAccess
+  /** Phone previews' desktop routes (/api/phone/previews); the phone's ticket route is on the phone listener. */
+  readonly phonePreviews?: Pick<PhonePreviews, 'handleLocal' | 'retireProject'>
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
   /** Typed capability records per agent (W10.1); desktop only. */
@@ -160,7 +163,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, agyMcp, lifecycle, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -412,6 +415,12 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         await remote.handleLocal(req, res, parts)
         return true
       }
+      if (parts[1] === 'phone' && parts[2] === 'previews') {
+        if (viaPhone) throw new HttpError(403, 'Phone previews are set up on the Mac')
+        if (!phonePreviews) throw new HttpError(404, 'Not found')
+        await phonePreviews.handleLocal(req, res, parts)
+        return true
+      }
       if (parts[1] === 'workflows') {
         await handleWorkflowRoute(req, res, url, parts, workflows)
         return true
@@ -497,7 +506,10 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         if (busy > 0) throw new HttpError(409, `${busy === 1 ? 'A conversation' : `${busy} conversations`} in this project ${busy === 1 ? 'is' : 'are'} still working or waiting for you. Stop or answer ${busy === 1 ? 'it' : 'them'} first.`)
         const scheduled = workflows.store.list(path).filter((w) => w.enabled)
         for (const w of scheduled) workflows.store.update(w.id, { enabled: false, nextRunAt: null })
-        sendJson(res, 200, { data: { project: projects.hide(path), pausedSchedules: scheduled.length } })
+        const project = projects.hide(path)
+        // Its phone previews end with it (W11.2: workspace removal invalidates sessions).
+        await phonePreviews?.retireProject(path)
+        sendJson(res, 200, { data: { project, pausedSchedules: scheduled.length } })
         return true
       }
       if (parts[1] === 'projects' && parts.length === 2) {
