@@ -342,7 +342,8 @@ try {
   check('W12-14 after restart the registry reports what Git has: Pond moved, Lilies missing',
     health[pond.id]?.state === 'moved' && health[lilies.id]?.state === 'missing', JSON.stringify(health))
   dialog = await manage(page)
-  check('W12-14 Manage worktrees says so', await row(dialog, 'Pond').getByText('Moved').count() === 1 && await row(dialog, 'Lilies').getByText('Folder missing').count() === 1)
+  check('W12-14 Manage worktrees says so', (await row(dialog, 'Pond').locator('.worktree-state').allTextContents()).join() === 'Moved'
+    && (await row(dialog, 'Lilies').locator('.worktree-state').allTextContents()).join() === 'Folder missing')
   await shot(page, '14-reconciled')
   await row(dialog, 'Lilies').getByRole('button', { name: 'Forget' }).click()
   await until('lilies forgotten', async () => (await list()).workspaces.find((w) => w.id === lilies.id)?.lifecycle === 'removed')

@@ -101,3 +101,5 @@
 .merge-files code { font: 12px var(--mono); color: var(--secondary); overflow-wrap: anywhere; }
 .merge-status { width: 14px; flex: none; font: 12px var(--mono); color: var(--muted); }
 .merge-more { color: var(--muted); }
+/* The merge entry sits like the other row actions, not stretched across the row. */
+.worktree-manage-row > .button-soft { justify-self: start; padding: 4px 11px; font-size: 12.5px; }
