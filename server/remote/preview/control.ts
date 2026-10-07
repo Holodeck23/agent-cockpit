@@ -71,6 +71,8 @@ export interface PhonePreviewOptions {
   /** Tests: listener ports (0 = any free one) and who holds a port. */
   readonly listenPort?: (service: PreviewService) => number
   readonly listenerGroups?: ListenerGroups
+  /** A proof build's shorter wait for a dev server's first byte. */
+  readonly firstByteMs?: number
   readonly log?: (line: string) => void
 }
 
@@ -109,6 +111,7 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
     upstream: (service) => resolver.resolve(liveProcess(service)),
     ...(options.listenPort ? { listenPort: options.listenPort } : {}),
     ...(options.log ? { log: options.log } : {}),
+    ...(options.firstByteMs ? { firstByteMs: options.firstByteMs } : {}),
   })
   /** The listener port each open service actually got (the slot's, except in tests). */
   const bound = new Map<string, number>()

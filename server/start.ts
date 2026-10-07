@@ -63,6 +63,8 @@ export interface StartOptions {
     readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender
     /** Phone preview listeners on any free port (0) instead of their fixed ones, and who holds a port (tests). */
     readonly previewListenPort?: number; readonly listenerGroups?: ListenerGroups
+    /** A proof build's shorter wait for a previewed dev server's first byte. */
+    readonly previewFirstByteMs?: number
   }
   /** How agent CLIs are checked for the picker; a fake in tests. */
   readonly agentProbe?: VersionProbe
@@ -254,6 +256,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const phonePreviews = createPhonePreviews({ root, remoteStore, tailscale, processes, policy: () => remote.previewPolicy(),
     ...(previewListenPort !== undefined ? { listenPort: () => previewListenPort } : {}),
     ...(options.remote?.listenerGroups ? { listenerGroups: options.remote.listenerGroups } : {}),
+    ...(options.remote?.previewFirstByteMs ? { firstByteMs: options.remote.previewFirstByteMs } : {}),
     log: (line) => console.log(`[cockpit] ${line}`) })
   remote.attachPreviews(phonePreviews)
   const stopNotifier = startNotifier({ push, manager, threads: store,

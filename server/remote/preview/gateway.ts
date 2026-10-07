@@ -45,6 +45,8 @@ export interface GatewayDeps {
   readonly log?: (line: string) => void
   /** Loopback port for a service's listener; tests pass 0. */
   readonly listenPort?: (service: PreviewService) => number
+  /** How long a dev server may take to start answering (FIRST_BYTE_MS); a proof build shortens it. */
+  readonly firstByteMs?: number
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
@@ -69,10 +71,11 @@ export function previewLogin(req: IncomingMessage, policy: GatewayPolicy, servic
   return login && policy.allowedLogins.some((allowed) => allowed.toLowerCase() === login.toLowerCase()) ? login : undefined
 }
 
-type State = 'denied' | 'revoked' | 'expired' | 'stopped' | 'invalid-ticket' | 'unavailable' | 'too-large' | 'slow' | 'unreachable'
+type State = 'denied' | 'cross-site' | 'revoked' | 'expired' | 'stopped' | 'invalid-ticket' | 'unavailable' | 'too-large' | 'slow' | 'unreachable'
 
 const STATE_TEXT: Record<State, { status: number; title: string; body: string }> = {
   denied: { status: 403, title: 'Not available', body: 'This address only works from a paired phone on your tailnet.' },
+  'cross-site': { status: 403, title: 'Blocked', body: 'Another site tried to send something to this app. Open the app from Cockpit and use it from its own page.' },
   revoked: { status: 401, title: 'This phone is signed out of Cockpit', body: 'Its access was removed on your Mac, or this browser lost its sign-in. Pair it again from Cockpit; nothing here changes your Mac.' },
   expired: { status: 401, title: 'Preview access ended', body: 'It expired, the app restarted, or this phone’s access was removed. Open the app again from Cockpit.' },
   stopped: { status: 503, title: 'The app is not running', body: 'Its dev server stopped, or its port now belongs to another program. Start it again from Cockpit; this page never starts it.' },
@@ -192,6 +195,14 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
     if ('state' in admitted) return sendState(res, admitted.state, admitted.policy?.controlOrigin)
     const { session, target } = admitted
     if (req.method === 'CONNECT' || !path.startsWith('/')) return sendState(res, 'unavailable', deps.policy()?.controlOrigin)
+    // Cookies are shared across ports, so another preview origin's page could post here with this
+    // app's session cookie. A write that names any origin but this one is refused (W11.2).
+    const origin = header(req, 'origin')
+    const policy = deps.policy()
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? 'GET') && origin !== undefined && (!policy || origin !== previewOrigin(policy.hostname, service))) {
+      req.resume()
+      return sendState(res, 'cross-site', policy?.controlOrigin)
+    }
     let body: Buffer | undefined
     try { body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await readBody(req, BODY_LIMIT) } catch {
       return sendState(res, 'too-large', deps.policy()?.controlOrigin)
@@ -210,7 +221,7 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
       // Streams (SSE) live as long as the session allows, not by a body timeout.
       res.once('close', () => upRes.destroy())
     })
-    const firstByte = setTimeout(() => { upstream.destroy(); sendState(res, 'slow', deps.policy()?.controlOrigin) }, FIRST_BYTE_MS)
+    const firstByte = setTimeout(() => { upstream.destroy(); sendState(res, 'slow', deps.policy()?.controlOrigin) }, deps.firstByteMs ?? FIRST_BYTE_MS)
     upstream.once('socket', (socket: Socket) => {
       if (!socket.connecting) return
       socket.setTimeout(CONNECT_MS, () => upstream.destroy(new Error('connect timeout')))

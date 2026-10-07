@@ -147,6 +147,18 @@ describe('phone preview gateway', () => {
     expect((await call('/__cockpit/anything', { headers: withSession(session) })).status).toBe(404)
   })
 
+  it('refuses a write that another origin sends with this app\'s cookie, and lets its own through (W11-04)', async () => {
+    const session = await signIn()
+    seen = {}
+    const other = await call('/upload', { method: 'POST', headers: withSession(session, { origin: `https://${HOSTNAME}:8444` }), body: 'from B' })
+    expect([other.status, other.headers['x-cockpit-preview']]).toEqual([403, 'cross-site'])
+    expect(seen).toEqual({})
+    expect((await call('/upload', { method: 'POST', headers: withSession(session, { origin: CONTROL }), body: 'from control' })).status).toBe(403)
+    expect((await call('/upload', { method: 'POST', headers: withSession(session, { origin: ORIGIN }), body: 'own' })).text).toBe('stored')
+    expect((await call('/upload', { method: 'POST', headers: withSession(session), body: 'no origin' })).text).toBe('stored')
+    expect((await call('/', { headers: withSession(session, { origin: `https://${HOSTNAME}:8444` }) })).status).toBe(200)
+  })
+
   it('a stopped app shows stopped, and a restart needs fresh access (W11-05, SEC-06)', async () => {
     const session = await signIn()
     generation = undefined
