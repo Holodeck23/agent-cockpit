@@ -51,7 +51,12 @@ export function validateClaudeArgs(args: readonly string[], capabilities: Claude
     const value = args[++i]!
     if (['--permission-mode', '--effort', '--input-format', '--output-format', '--permission-prompts'].includes(option)) {
       const choices = block?.match(/\(choices:\s*([\s\S]*?)\)/)?.[1]
-      const supported = choices ? [...choices.matchAll(/"([^"]+)"/g)].map((m) => m[1]) : []
+      // Claude 2.1.291 lists effort levels in prose instead of Commander's
+      // quoted choices. Read only a complete list in this option's own block;
+      // unknown help formats and missing levels must still fail closed.
+      const effortLevels = option === '--effort' ? block?.match(/\(\s*([a-z]+(?:\s*,\s*[a-z]+)+)\s*\)/)?.[1] : undefined
+      const supported = choices ? [...choices.matchAll(/"([^"]+)"/g)].map((m) => m[1])
+        : effortLevels?.split(',').map((level) => level.trim()) ?? []
       if (!supported.includes(value)) throw incompatible(`${option} ${value}`)
     }
   }

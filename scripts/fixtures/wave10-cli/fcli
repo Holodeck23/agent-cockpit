@@ -1,0 +1,31 @@
+#!/bin/bash
+# Stand-in agent CLI for the packaged wave 10 gate (proof-wave-10.ts). It plays `claude` or `codex`
+# by the name it is run as, and keeps its state in $HOME/.fcli, so install, update and sign-in
+# change what the next capability probe sees. No network, no real account.
+S="$HOME/.fcli"; mkdir -p "$S"
+case "$0" in */claude|*/share/claude/*) name=claude ;; */codex|*/codex/*) name=codex ;; *) name=$(basename "$0") ;; esac
+case "$name" in
+  claude)
+    v=$(cat "$S/claude-version" 2>/dev/null || echo 2.1.289)
+    case "$1 $2" in
+      "--version "*) echo "$v (Claude Code)" ;;
+      "--help "*) cat "$S/claude-help.txt" ;;
+      "auth status")
+        if [ -f "$S/claude-signed-in" ]; then echo '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}'
+        else echo '{"loggedIn":false}'; exit 1; fi ;;
+      "auth login")
+        echo "Opening your browser to sign in..."
+        # A credential-shaped marker and an address: both must be redacted before they are shown or logged.
+        echo "debug token sk-ant-proofmarker0123456789abcdef for proof.user@example.com"
+        sleep 2; touch "$S/claude-signed-in"; echo "Login successful." ;;
+      "update "*)
+        echo "Current version: $v"; echo "Checking for updates..."; sleep 2
+        echo 2.1.292 > "$S/claude-version"; echo "Successfully updated from $v to version 2.1.292" ;;
+    esac ;;
+  codex)
+    case "$1 $2" in
+      "--version "*) echo "codex-cli 0.160.1" ;;
+      "login status") if [ -f "$S/codex-signed-in" ]; then echo "Logged in using ChatGPT"; else echo "Not logged in" >&2; exit 1; fi ;;
+    esac ;;
+esac
+exit 0

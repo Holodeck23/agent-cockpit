@@ -3,7 +3,8 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createAgentStatus, latestUsage, probeVersion, type Installation } from '../server/agents/status.ts'
+import { createAgentStatus, fixedCapabilities, installationOf, latestUsage } from '../server/agents/status.ts'
+import type { AgentCapabilities } from '../server/agents/capabilities/types.ts'
 import type { AgentId, NormalizedEvent } from '../server/agents/types.ts'
 import { createThreadStore, type ThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
@@ -44,34 +45,33 @@ describe('latestUsage', () => {
 })
 
 describe('createAgentStatus', () => {
-  it('reports installation per agent and caches the version check for a minute', async () => {
-    let probes = 0
-    let clock = 0
-    const probe = async (command: string): Promise<Installation> => {
-      probes += 1
-      return command === 'claude' ? { installed: true, version: '2.1.284 (Claude Code)' } : { installed: false, problem: `${command} is not installed or not on your PATH` }
+  const record = (agent: AgentId, executable: AgentCapabilities['executable'], settings: AgentCapabilities['settings'] = {}): AgentCapabilities =>
+    ({ agent, context: 'default', executable, settings, models: { state: 'not_checked' }, auth: { state: 'not_checked' } })
+  const identity = (command: string, version?: string) => ({ command, path: `/bin/${command}`, realpath: `/bin/${command}`, fingerprint: command, ...(version ? { version } : {}) })
+
+  it('summarizes each capability record: found, not checked, missing, and found but not answering', async () => {
+    const records: Record<AgentId, AgentCapabilities> = {
+      claude: record('claude', { state: 'found', identity: identity('claude', '2.1.291 (Claude Code)') }, { chrome: { state: 'supported' } }),
+      codex: record('codex', { state: 'unavailable', reason: 'codex --version timed out after 10 s', identity: identity('codex') }),
+      antigravity: record('antigravity', { state: 'found', identity: identity('agy') }),
+      opencode: record('opencode', { state: 'missing', reason: 'opencode is not installed or not on the PATH Cockpit uses' }),
     }
-    let chromeChecks = 0
-    const status = createAgentStatus(newStore(), probe, () => clock, async () => { chromeChecks += 1; return { supported: true, extension: false } })
-    const first = await status()
-    expect(first).toEqual([
-      // Use my Chrome readiness (W9-12), checked with the version and cached with it, never a turn.
-      { id: 'claude', installation: { installed: true, version: '2.1.284 (Claude Code)' }, chrome: { supported: true, extension: false } },
-      { id: 'codex', installation: { installed: false, problem: 'codex is not installed or not on your PATH' } },
-      { id: 'antigravity', installation: { installed: false, problem: 'agy is not installed or not on your PATH' } },
-      { id: 'opencode', installation: { installed: false, problem: 'opencode is not installed or not on your PATH' } },
+    const asked: string[] = []
+    const status = createAgentStatus(newStore(), { get: async (agent, request) => { asked.push(`${agent}:${request?.refresh === true}`); return records[agent] } }, () => '/nowhere/manifest.json')
+    expect(await status()).toEqual([
+      { id: 'claude', installation: { installed: true, version: '2.1.291 (Claude Code)' }, chrome: { supported: true, extension: false } },
+      { id: 'codex', installation: { installed: false, problem: '/bin/codex was found but did not answer: codex --version timed out after 10 s' } },
+      // Found, version not checked: Antigravity is not run just to draw the picker.
+      { id: 'antigravity', installation: { installed: true } },
+      { id: 'opencode', installation: { installed: false, problem: 'opencode is not installed or not on the PATH Cockpit uses' } },
     ])
-    await status()
-    expect(probes).toBe(4)
-    expect(chromeChecks).toBe(1)
-    clock = 61_000
-    await status()
-    expect(probes).toBe(8)
-    expect(chromeChecks).toBe(2)
+    // The picker never forces a probe; only Refresh does.
+    expect(asked).toEqual(['claude:false', 'codex:false', 'antigravity:false', 'opencode:false'])
   })
 
-  it('says plainly when a CLI is missing', async () => {
-    const result = await probeVersion('cockpit-no-such-agent-cli')
-    expect(result).toEqual({ installed: false, problem: 'cockpit-no-such-agent-cli is not installed or not on your PATH' })
+  it('serves a fixed answer for tests without running a CLI', async () => {
+    const service = fixedCapabilities(async (command) => command === 'claude' ? { installed: true, version: '1' } : { installed: false, problem: `${command} absent` })
+    expect(installationOf(await service.get('claude'))).toEqual({ installed: true, version: '1' })
+    expect(installationOf(await service.get('codex'))).toEqual({ installed: false, problem: 'codex absent' })
   })
 })

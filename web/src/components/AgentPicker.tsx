@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
-import { api, type AgentStatus, type Preset, type ThreadSettings } from '../api.ts'
+import { api, type AgentCapabilities, type AgentStatus, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
 import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
+import { AgentCapabilityPanel } from './AgentCapabilityPanel.tsx'
+import { AgentLifecycle } from './AgentLifecycle.tsx'
 import { AgentGlyph } from './AgentGlyph.tsx'
 import { ChevronDownIcon } from './icons.tsx'
 
@@ -24,8 +26,8 @@ const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
   claude: ['haiku', 'sonnet', 'opus'],
   // Account-specific model ids can be typed; blank uses the user's CLI default.
   codex: [],
-  // Current subscription-backed models reported by `agy models`; blank uses Antigravity's default.
-  antigravity: ['gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high', 'gemini-3.1-pro-low', 'gemini-3.1-pro-high'],
+  // Listed by the installed agy itself (`agy models`, on Refresh); blank uses Antigravity's default.
+  antigravity: [],
   // OpenRouter through OpenCode: openrouter/<provider>/<model>; blank uses OpenCode's own default.
   opencode: ['openrouter/anthropic/claude-sonnet-4', 'openrouter/openai/gpt-4o', 'openrouter/google/gemini-2.5-pro'],
 }
@@ -60,7 +62,7 @@ function AgentState({ status, loading }: { status: AgentStatus | undefined; load
   return (
     <div className="agent-state" role="group" aria-label={`${agentName(status.id)} status`}>
       {installation.installed ? (
-        <p className="agent-state-line">Installed · {installation.version}</p>
+        <p className="agent-state-line">{installation.version !== undefined ? `Installed · ${installation.version}` : 'Installed · version not checked yet'}</p>
       ) : (
         <p className="agent-state-line agent-state-problem">{installation.problem}</p>
       )}
@@ -157,6 +159,9 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
   const [presets, setPresets] = useState<Preset[]>([])
   const [naming, setNaming] = useState<string | undefined>(undefined)
   const [presetError, setPresetError] = useState('')
+  const [caps, setCaps] = useState<AgentCapabilities | undefined>(undefined)
+  const [refreshing, setRefreshing] = useState(false)
+  const [capsError, setCapsError] = useState<string | undefined>(undefined)
 
   // Checked each time the panel opens: cheap, and never polled in the background.
   useEffect(() => {
@@ -170,6 +175,32 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false }
   }, [open])
+
+  // The selected agent's checked details. A late answer for another agent is dropped (INTERFACES §5).
+  const capsAgent = current.agent
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    setCaps(undefined)
+    setCapsError(undefined)
+    api.agentCapabilities(capsAgent).then((next) => { if (live) setCaps(next) }, (e: unknown) => { if (live) setCapsError(e instanceof Error ? e.message : String(e)) })
+    return () => { live = false }
+  }, [open, capsAgent])
+
+  const refresh = (): void => {
+    const agent = capsAgent
+    setRefreshing(true)
+    setCapsError(undefined)
+    api.refreshAgentCapabilities(agent)
+      .then((next) => { if (next.agent === agent) setCaps((shown) => (shown === undefined || shown.agent === agent ? next : shown)) })
+      .then(() => api.agents().then(setStatuses, () => undefined), (e: unknown) => setCapsError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setRefreshing(false))
+  }
+  const shownCaps = caps?.agent === current.agent ? caps : undefined
+  // Install, update and sign-in run on this Mac only; the phone is refused them (W10.2).
+  const phone = typeof document !== 'undefined' && document.documentElement.classList.contains('phone')
+  const listedModels = shownCaps?.models.state === 'supported' ? (shownCaps.models.value ?? []).map((m) => m.id) : undefined
+  const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
 
   const set = (next: AgentChoice): void => {
     const remembered = remember(memory, next)
@@ -258,6 +289,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
               ))}
             </div>
             <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} />
+            <AgentCapabilityPanel caps={shownCaps} refreshing={refreshing} error={capsError} onRefresh={refresh} />
+            {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
             <label className="field">
               Model
               <input
@@ -267,11 +300,14 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
                 onChange={(e) => patch({ model: e.target.value.trim() })}
               />
               <datalist id={`models-${current.agent}`}>
-                {MODEL_SUGGESTIONS[current.agent].map((m) => (
+                {modelOptions.map((m) => (
                   <option key={m} value={m} />
                 ))}
               </datalist>
             </label>
+            {current.agent === 'antigravity' && shownCaps && shownCaps.models.state !== 'supported' ? (
+              <p className="picker-note">{shownCaps.models.reason ?? 'Refresh to list the models this Antigravity offers.'}</p>
+            ) : null}
             {current.agent === 'opencode' ? null : (
               <label className="field">
                 Effort

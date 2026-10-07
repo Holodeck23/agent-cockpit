@@ -9,7 +9,10 @@ import { spawn } from 'node:child_process'
 import { createWorkflowStore } from './workflows/store.ts'
 import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
-import { createAgentStatus, type VersionProbe } from './agents/status.ts'
+import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
+import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
+import { createAgyMcp } from './projects/agy-mcp.ts'
+import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
@@ -57,6 +60,8 @@ export interface StartOptions {
   readonly remote?: { readonly tailscale?: Tailscale; readonly port?: number; readonly sendPush?: PushSender }
   /** How agent CLIs are checked for the picker; a fake in tests. */
   readonly agentProbe?: VersionProbe
+  /** The capability cache (W10.1); a fixture in tests. Defaults to probing the CLIs on PATH. */
+  readonly capabilities?: CapabilityService
   /**
    * The desktop app's per-launch key: every desktop /api request must carry it (guard.ts).
    * Without it, any local process can use the API, which only `npm start` should allow.
@@ -64,6 +69,8 @@ export interface StartOptions {
   readonly windowKey?: string
   /** The in-app browser's pages (desktop app only), read when an agent calls a browser tool. */
   readonly browserHost?: () => BrowserHost | undefined
+  /** Where official installers are read from; a proof build's local stand-ins (never a release build). */
+  readonly installerDownload?: LifecycleOptions['download']
 }
 
 function openWithSystem({ url }: PreviewOpen): Promise<void> {
@@ -158,6 +165,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const mcpCommand = options.mcp
   const agentWorkflowsAllowed = (projectPath: string): boolean =>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
+  // Tests that fake the version check get a fixed record: no real CLI is run.
+  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
+  const agyMcp = createAgyMcp(projects, options.mcp)
+  // Created after the manager it watches; the manager asks it before starting a session.
+  let lifecycle: Lifecycle | undefined
   const manager = createThreadManager(store, {
     workspaceFor: (projectPath) => {
       try {
@@ -172,6 +184,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
     },
+    capabilities,
+    antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
+    launchGate: (agent) => lifecycle?.launchBlock(agent),
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
@@ -185,6 +200,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         }
       : {}),
   })
+  lifecycle = createLifecycle({ stateRoot: root, capabilities, ...(options.installerDownload ? { download: options.installerDownload } : {}), sessions: { activity: (agent) => manager.agentActivity(agent), closeIdle: (agent) => manager.closeIdleSessions(agent) } })
+  const agentLifecycle = lifecycle
+  // A waiting update starts as soon as the last conversation on that CLI stops working.
+  manager.subscribe(() => agentLifecycle.activityChanged())
   const runs = createRunObservationStore(root)
   const runObserver = observeRuns(manager, runs)
   const resultStore = createResultStore(root)
@@ -239,8 +258,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const port = (server.address() as AddressInfo).port
   baseUrl = `http://${host}:${port}`
   const openUrl = options.openUrl ?? openWithSystem
-  // Tests that fake the version check fake Chrome readiness too: no real CLI is run.
-  const agents = createAgentStatus(store, options.agentProbe, undefined, options.agentProbe ? async () => ({ supported: false, extension: false }) : undefined)
+  const agents = createAgentStatus(store, capabilities, options.agentProbe ? () => join(store.root, 'no-chrome-helper.json') : undefined)
   const browserLeases = createBrowserLeases()
   const browser = options.browserHost ? createBrowserAgent({
     host: options.browserHost,
@@ -250,7 +268,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, agents, capabilities, agyMcp, lifecycle: agentLifecycle, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
@@ -276,7 +294,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown(), agentLifecycle.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {

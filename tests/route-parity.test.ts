@@ -58,6 +58,9 @@ describe('phone route classification (R5)', () => {
   it('keeps desktop-only routes off the phone, and paths must match exactly', () => {
     expect(isRemoteRoute('POST', '/api/threads/t1/completed')).toBe(false)
     expect(isRemoteRoute('POST', '/api/threads/t1/agent')).toBe(false)
+    // Capabilities name executable paths and sign-in state (W10.1).
+    expect(isRemoteRoute('GET', '/api/agents/claude/capabilities')).toBe(false)
+    expect(isRemoteRoute('POST', '/api/agents/claude/capabilities/refresh')).toBe(false)
     expect(isRemoteRoute('DELETE', '/api/threads/t1')).toBe(false)
     expect(isRemoteRoute('POST', '/api/git/switch')).toBe(false)
     expect(isRemoteRoute('GET', '/api/threads/t1/images/a/b.png')).toBe(false)

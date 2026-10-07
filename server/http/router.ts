@@ -40,6 +40,11 @@ import type { WorkflowSnapshot } from '../agents/types.ts'
 import { openSse } from './sse.ts'
 import type { RemoteAccess } from '../remote/service.ts'
 import type { AgentStatus } from '../agents/status.ts'
+import type { CapabilityService } from '../agents/capabilities/service.ts'
+import { AGENT_IDS } from '../agents/capabilities/types.ts'
+import type { AgyMcp } from '../projects/agy-mcp.ts'
+import type { Lifecycle } from '../agents/lifecycle/service.ts'
+import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -116,6 +121,12 @@ export interface ApiDeps {
   readonly remote: RemoteAccess
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
+  /** Typed capability records per agent (W10.1); desktop only. */
+  readonly capabilities?: CapabilityService
+  /** P3: per-project Antigravity access to Cockpit's tools; desktop only. */
+  readonly agyMcp?: AgyMcp
+  /** Install, update and sign-in for agent CLIs (W10.2/W10.3); desktop only. */
+  readonly lifecycle?: Lifecycle
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -147,7 +158,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, agents, capabilities, agyMcp, lifecycle, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -225,6 +236,27 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (parts[1] === 'agents' && parts.length === 2 && method === 'GET' && agents) {
         sendJson(res, 200, { data: await agents() })
         return true
+      }
+      // Installers, updaters and sign-in helpers run on the Mac and are started from it only.
+      if (isAgentLifecycleRoute(parts) && lifecycle) {
+        if (viaPhone) throw new HttpError(403, 'Installing, updating and signing in to agents is only available on the Mac')
+        await handleAgentLifecycleRoute(req, res, parts, lifecycle)
+        return true
+      }
+      // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).
+      if (parts[1] === 'agents' && parts[3] === 'capabilities' && capabilities) {
+        if (viaPhone) throw new HttpError(403, 'Agent capabilities are only available on the Mac')
+        const agent = AGENT_IDS.find((id) => id === parts[2])
+        if (!agent) throw new HttpError(404, 'Unknown agent')
+        if (parts.length === 4 && method === 'GET') {
+          sendJson(res, 200, { data: await capabilities.get(agent) })
+          return true
+        }
+        if (parts.length === 5 && parts[4] === 'refresh' && method === 'POST') {
+          sendJson(res, 200, { data: await capabilities.get(agent, { refresh: true }) })
+          return true
+        }
+        throw new HttpError(404, 'Not found')
       }
       if (parts[1] === 'files' && parts[2] === 'write' && method === 'PUT') {
         if (viaPhone) throw new HttpError(403, 'Editing files is only available on the Mac')
@@ -447,6 +479,15 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         return true
       }
       // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
+      // P3: writes a plugin into the project folder, so the Mac only (W10-04).
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'agy-mcp' && method === 'POST' && agyMcp) {
+        if (viaPhone) throw new HttpError(403, "Cockpit's tools for Antigravity can only be changed on the Mac")
+        const body = parseBody(z.object({ path: z.string().min(1).max(1000), connected: z.boolean() }), await readJson(req))
+        const result = agyMcp.setConnected(body.path, body.connected)
+        if (!result.ok) throw new HttpError(result.code === 'unknown_project' ? 404 : result.code === 'unavailable' ? 503 : 409, result.message)
+        sendJson(res, 200, { data: { project: result.project, ...(result.message ? { message: result.message } : {}), ...(result.backup ? { backup: result.backup } : {}) } })
+        return true
+      }
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'remove' && method === 'POST') {
         const { path } = parseBody(z.object({ path: z.string().min(1).max(1000) }), await readJson(req))
         if (!projects.list().some((p) => p.path === path)) throw new HttpError(404, 'Unknown project')

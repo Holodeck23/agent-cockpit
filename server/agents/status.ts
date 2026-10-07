@@ -1,10 +1,10 @@
 // What the agent picker shows about each agent: is its CLI installed, and what did its
 // provider last report about usage. Read-only: no sign-in, no agent calls, no polling.
-import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { parseClaudeHelp } from './claude/capabilities.ts'
+import type { CapabilityService } from './capabilities/service.ts'
+import { AGENT_COMMANDS, AGENT_IDS, type AgentCapabilities } from './capabilities/types.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import type { AgentId, NormalizedEvent } from './types.ts'
 
@@ -15,8 +15,9 @@ export interface AgentUsage extends Omit<UsageEvent, 'kind'> {
   readonly observedAt: string
 }
 
+/** `version` is absent while the CLI is found but not checked yet (Antigravity before Refresh). */
 export type Installation =
-  | { readonly installed: true; readonly version: string }
+  | { readonly installed: true; readonly version?: string }
   | { readonly installed: false; readonly problem: string }
 
 /**
@@ -41,42 +42,34 @@ export interface AgentStatus {
 export const chromeHostManifest = (): string => join(process.env.COCKPIT_CHROME_NATIVE_HOSTS
   ?? join(homedir(), 'Library', 'Application Support', 'Google', 'Chrome', 'NativeMessagingHosts'), 'com.anthropic.claude_code_browser_extension.json')
 
-export type ChromeProbe = () => Promise<ChromeReadiness>
-
-export const probeChrome: ChromeProbe = () =>
-  new Promise((resolve) => {
-    const extension = existsSync(chromeHostManifest())
-    execFile(AGENT_COMMANDS.claude, ['--help'], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 256 * 1024 }, (error, stdout) => {
-      let supported = false
-      if (!error) { try { supported = parseClaudeHelp(String(stdout)).chrome } catch { supported = false } }
-      resolve({ supported, extension })
-    })
-  })
-
-export const AGENT_COMMANDS: Record<AgentId, string> = { claude: 'claude', codex: 'codex', antigravity: 'agy', opencode: 'opencode' }
-const VERSION_TIMEOUT_MS = 10_000
-const CACHE_MS = 60_000
+export { AGENT_COMMANDS }
 /** Usage older than this many recently active threads is not worth scanning for. */
 const MAX_THREADS_SCANNED = 50
 
+/** The picker's summary of a capability record: a failed check is "present but unusable", not "not installed". */
+export function installationOf(caps: AgentCapabilities): Installation {
+  const { executable } = caps
+  if (executable.state === 'missing') return { installed: false, problem: executable.reason }
+  if (executable.state === 'unavailable') return { installed: false, problem: `${executable.identity.path} was found but did not answer: ${executable.reason}` }
+  return { installed: true, ...(executable.identity.version !== undefined ? { version: executable.identity.version } : {}) }
+}
+
+/** A fixed per-command answer, for tests and proofs that must not run real CLIs. */
 export type VersionProbe = (command: string) => Promise<Installation>
 
-export const probeVersion: VersionProbe = (command) =>
-  new Promise((resolve) => {
-    execFile(command, ['--version'], { timeout: VERSION_TIMEOUT_MS }, (error, stdout, stderr) => {
-      if (!error) {
-        resolve({ installed: true, version: stdout.trim().split('\n')[0] ?? '' })
-        return
+export function fixedCapabilities(probe: VersionProbe): CapabilityService {
+  return {
+    async get(agent, request = {}) {
+      const command = AGENT_COMMANDS[agent]
+      const result = await probe(command)
+      const identity = { command, path: command, realpath: command, fingerprint: `fixture:${command}` }
+      return {
+        agent, context: request.context ?? 'default', models: { state: 'not_checked' }, settings: {}, auth: { state: 'not_checked' },
+        executable: result.installed ? { state: 'found', identity: { ...identity, ...(result.version !== undefined ? { version: result.version } : {}) } } : { state: 'missing', reason: result.problem },
       }
-      const code = (error as NodeJS.ErrnoException).code
-      // The CLI's own first stderr line says more than Node's "Command failed: …".
-      const reason = String(stderr).trim().split('\n')[0] || (error.killed ? 'timed out' : error.message)
-      resolve({
-        installed: false,
-        problem: code === 'ENOENT' ? `${command} is not installed or not on your PATH` : `${command} --version failed: ${reason.slice(0, 200)}`,
-      })
-    })
-  })
+    },
+  }
+}
 
 /**
  * The latest usage report per agent, newest threads first. A thread's events are
@@ -103,23 +96,19 @@ export function latestUsage(store: ThreadStore): Partial<Record<AgentId, AgentUs
   return found
 }
 
-/** Installation is cached briefly (a version check spawns the CLI); usage is always fresh. */
-export function createAgentStatus(store: ThreadStore, probe: VersionProbe = probeVersion, now: () => number = Date.now, chromeProbe: ChromeProbe = probeChrome) {
-  let cached: { at: number; installs: Record<AgentId, Installation>; chrome: ChromeReadiness } | undefined
+/** Installation and Chrome readiness come from the capability cache (one probe policy); usage is always fresh. */
+export function createAgentStatus(store: ThreadStore, capabilities: CapabilityService, chromeManifest: () => string = chromeHostManifest) {
   return async (): Promise<AgentStatus[]> => {
-    if (!cached || now() - cached.at > CACHE_MS) {
-      const [claude, codex, antigravity, opencode] = await Promise.all([
-        probe(AGENT_COMMANDS.claude), probe(AGENT_COMMANDS.codex), probe(AGENT_COMMANDS.antigravity), probe(AGENT_COMMANDS.opencode),
-      ])
-      const chrome = claude.installed ? await chromeProbe() : { supported: false, extension: false }
-      cached = { at: now(), installs: { claude, codex, antigravity, opencode }, chrome }
-    }
+    const records = await Promise.all(AGENT_IDS.map((id) => capabilities.get(id)))
     const usage = latestUsage(store)
-    return (['claude', 'codex', 'antigravity', 'opencode'] as const).map((id) => ({
-      id,
-      installation: cached!.installs[id],
-      ...(usage[id] ? { usage: usage[id] } : {}),
-      ...(id === 'claude' ? { chrome: cached!.chrome } : {}),
+    return records.map((caps) => ({
+      id: caps.agent,
+      installation: installationOf(caps),
+      ...(usage[caps.agent] ? { usage: usage[caps.agent] } : {}),
+      ...(caps.agent === 'claude' ? { chrome: {
+        supported: caps.settings.chrome?.state === 'supported',
+        extension: caps.executable.state === 'found' && existsSync(chromeManifest()),
+      } } : {}),
     }))
   }
 }

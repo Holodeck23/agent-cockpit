@@ -201,8 +201,9 @@
 .picker-button .chevron { width: 14px; height: 14px; color: var(--muted); }
 .picker-panel {
   position: absolute; left: 0; bottom: calc(100% + 10px); z-index: 25; display: grid; gap: 12px; width: 330px; padding: 14px;
-  /* Bounded on short windows; scrolls inside rather than running off the top. */
-  max-height: min(600px, calc(100vh - 150px)); overflow-y: auto; overscroll-behavior: contain;
+  /* Bounded on short windows; scrolls inside rather than running off the top. 190px is the
+     window's own chrome above the composer (tab and section bars) plus a margin. */
+  max-height: min(600px, calc(100vh - 190px)); overflow-y: auto; overscroll-behavior: contain;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.35);
 }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 10px; background: var(--field); }
@@ -240,6 +241,23 @@
 .agent-state-line { margin: 0; font-size: 13px; color: var(--body); overflow-wrap: anywhere; }
 .agent-state-problem { color: var(--danger); }
 .agent-state-note { margin: 0; font-size: 12px; color: var(--muted); }
+.agent-capabilities { display: grid; gap: 4px; padding: 0 2px; }
+.agent-capabilities .agent-state-note { overflow-wrap: anywhere; }
+.agent-capabilities-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* install, update and sign-in under the checked details */
+.agent-lifecycle { display: grid; gap: 8px; padding: 0 2px; }
+.agent-lifecycle .agent-state-note { overflow-wrap: anywhere; }
+.lifecycle-op, .lifecycle-confirm, .lifecycle-updates { display: grid; gap: 6px; }
+.lifecycle-op { padding: 10px 12px; border-radius: var(--r-sm); background: var(--subtle); }
+.lifecycle-output {
+  margin: 0; max-height: 7.5em; overflow: auto; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-xs);
+  background: var(--panel); color: var(--secondary); font-family: var(--mono); font-size: 11px; line-height: 1.25; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.lifecycle-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lifecycle-actions:empty { display: none; }
+.lifecycle-input { display: flex; gap: 6px; }
+.lifecycle-input input { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); }
+.lifecycle-command { font-family: var(--mono); font-size: 11.5px; padding: 1px 4px; border-radius: 4px; background: var(--field); color: var(--body); overflow-wrap: anywhere; user-select: all; }
 .usage-bar { height: 6px; border-radius: 999px; background: var(--field); overflow: hidden; }
 .usage-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--link); }
 .agent-missing { margin-left: 2px; font-size: 11px; font-weight: 500; color: var(--danger); }

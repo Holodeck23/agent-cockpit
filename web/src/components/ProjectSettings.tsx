@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Project } from '../api.ts'
 import { native } from '../native.ts'
 import { avatarDataUrl } from '../project-image.ts'
+import { AntigravityTools } from './AntigravityTools.tsx'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 
 // Name, tab tint, picture, instructions and the folder, for one project.
@@ -112,6 +113,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
               workflows with the schedule off, after you approve. Applies when an agent next starts.
             </span>
           </label>
+          <AntigravityTools project={project} />
           <DocumentsFolder projectPath={project.path} />
           {native?.browser ? <WebsiteData projectPath={project.path} projectName={project.name} /> : null}
           <div className="field">

@@ -105,12 +105,29 @@ try {
   check('2 the documents move to a folder that takes them', moved.status === 200 && existsSync(join(newDocs, 'release-plan.md')), `${moved.status} ${moved.body.slice(0, 200)}`)
 
   // 3. Restart: the conversation reopens with its image, its state settled, and carries on.
+  //    Nothing it recorded is lost or relabelled across the restart (route Day 12).
+  const stored = async (): Promise<{ label: string; events: string[] }> => {
+    const rows = await getJson<{ data: { meta: { id: string; title: string; settings: { agent: string } }; messageCount: number }[] }>(page, '/api/threads')
+    const row = rows.data.find((t) => t.meta.id === id)
+    const events = (await getJson<Detail>(page, `/api/threads/${id}/events`)).data.events.map((e) => JSON.stringify(e))
+    return { label: `${row?.meta.title} · ${row?.meta.settings.agent} · ${row?.messageCount}`, events }
+  }
+  const cardLabel = (): Promise<string> => page.locator('.card').filter({ hasText: 'ask cross-wave' }).first()
+    .evaluate((card) => `${card.querySelector('.card-title')?.textContent} · ${card.querySelector('.card-meta')?.textContent}`)
+  await page.evaluate((thread) => { location.search = `?thread=${thread}` }, id)
+  await page.getByRole('heading', { level: 1, name: 'ask cross-wave' }).waitFor()
+  const kept = await stored(), cardBefore = await cardLabel()
   await app.close()
   app = await launchPackagedApp(env)
   page = await app.firstWindow()
   page.setDefaultTimeout(15_000)
   await page.evaluate((thread) => { location.search = `?thread=${thread}` }, id)
   await page.getByRole('heading', { level: 1, name: 'ask cross-wave' }).waitFor()
+  const reopened = await stored(), cardAfter = await cardLabel()
+  check('3 after a restart it keeps its title, agent and message count', reopened.label === kept.label, `${kept.label} → ${reopened.label}`)
+  check('3 and every recorded event, unchanged and in order', kept.events.length > 0 && kept.events.every((e, i) => reopened.events[i] === e),
+    `${kept.events.length} before, ${reopened.events.length} after; added: ${reopened.events.slice(kept.events.length).join(' ')}`)
+  check('3 and its sidebar row reads the same', cardAfter === cardBefore, `${cardBefore} → ${cardAfter}`)
   check('3 after a restart the conversation shows its image', await until('image after restart', () => imagesShown(page)))
   check('3 and is not left Starting or Working', await settled(page), await headText(page))
   await send(page, 'still there?')
