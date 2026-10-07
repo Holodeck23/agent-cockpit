@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import { z } from 'zod'
 import { HttpError, parseBody, readJson, sendJson } from '../http/json.ts'
-import { checkRemote, cookieValue, isRemoteRoute, remoteAuthority } from './guard.ts'
+import { checkRemote, cookieValues, isRemoteRoute, remoteAuthority } from './guard.ts'
 import type { DeviceView, RemoteStore } from './store.ts'
 import { pushSubscriptionBody, webPushSender, type PushSender, type PushStore } from './push.ts'
 import { TailscaleError, type Tailscale, type TailscaleSelf } from './tailscale.ts'
@@ -88,6 +88,8 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
   async function handleRemote(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const isApi = url.pathname.startsWith('/api/')
+    // No other page may frame the phone page or its answers (it holds approvals). No CORS, ever.
+    res.setHeader('x-frame-options', 'DENY')
     const check = checkRemote(req, policy())
     if (!check.ok) {
       if (isApi) return sendJson(res, check.status, { error: check.error })
@@ -98,7 +100,13 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
     if (!isApi) return serveStatic(url.pathname, res)
     try {
       const method = req.method ?? 'GET'
-      const device = store.deviceFor(cookieValue(req, DEVICE_COOKIE), check.login)
+      // Cookies are shared across ports, so a preview origin's page could add a second one on a
+      // narrower path (SEC-04). Two is ambiguous, and ambiguous is no sign-in at all.
+      const deviceCookies = cookieValues(req, DEVICE_COOKIE)
+      if (deviceCookies.length > 1) {
+        return sendJson(res, 400, { error: 'This browser sent two Cockpit sign-ins. Clear this site\'s data in the browser, then pair the phone again.' })
+      }
+      const device = store.deviceFor(deviceCookies[0], check.login)
       if (url.pathname === '/api/remote/me' && method === 'GET') {
         return sendJson(res, 200, { data: { mode: 'remote', login: check.login, paired: Boolean(device),
           notifications: device ? push.has(device.id) : false } })

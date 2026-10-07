@@ -289,3 +289,48 @@ describe('phone preview access ends (14c revocation)', () => {
     expect(again.status.services.find((v: { id: string }) => v.id === again.serviceId).slot).toBe(1)
   }, 30_000)
 })
+
+describe('the control origin against preview origins (SEC-04, 14c)', () => {
+  it('lets the phone page post only to preview origins, and nothing frame it', async () => {
+    const ctx = await setup()
+    const page = await call(ctx.s.remote.port()!, '/', { headers: ctx.via() })
+    expect(page.status).toBe(200)
+    const csp = String(page.headers['content-security-policy'])
+    expect(csp).toContain(`form-action 'self' ${PREVIEW} `)
+    expect(csp).toContain(`https://${HOST}:8458;`)
+    expect(csp).not.toContain(':8459')
+    expect(csp).toContain("frame-ancestors 'none'")
+    expect(page.headers['x-frame-options']).toBe('DENY')
+    // The desktop page keeps form-action 'self'.
+    expect(String((await call(ctx.s.port, '/')).headers['content-security-policy'])).toContain("form-action 'self';")
+    const api = await ctx.phone('/api/remote/me')
+    expect(api.headers['x-frame-options']).toBe('DENY')
+  }, 20_000)
+
+  it('refuses a preview origin on control APIs and sends no CORS headers', async () => {
+    const ctx = await setup()
+    const id = await startApp(ctx.s, ctx.root)
+    for (const [path, body] of [['/api/threads', undefined], ['/api/phone/preview-tickets', { processId: id }], ['/api/remote/me', undefined]] as const) {
+      const r = await ctx.phone(path, body, { origin: PREVIEW })
+      expect(r.status).toBe(403)
+      expect(Object.keys(r.headers).filter((h) => h.startsWith('access-control-'))).toEqual([])
+    }
+    const control = await ctx.phone('/api/threads', undefined, { origin: CONTROL })
+    expect(control.status).toBe(200)
+    expect(Object.keys(control.headers).filter((h) => h.startsWith('access-control-'))).toEqual([])
+  }, 20_000)
+
+  it('treats two device cookies as no sign-in, on the control origin and on previews', async () => {
+    const ctx = await setup()
+    const id = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, id)
+    const twice = { cookie: `${ctx.device}; cockpit_device=planted` }
+    expect((await ctx.phone('/api/threads', undefined, twice)).status).toBe(400)
+    expect((await ctx.phone('/api/phone/preview-tickets', { processId: id }, twice)).status).toBe(400)
+    expect((await ctx.phone('/api/threads')).status).toBe(200)
+    const preview = await call(a.gw, '/', { headers: { ...a.headers, cookie: `${a.headers.cookie}; cockpit_device=planted` } })
+    expect(preview.status).toBe(401)
+    expect(preview.body).not.toContain('fixture')
+    expect((await call(a.gw, '/', { headers: a.headers })).body).toContain('fixture')
+  }, 20_000)
+})

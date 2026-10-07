@@ -29,7 +29,7 @@ import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
-import { createPhonePreviews, type PhonePreviews } from './remote/preview/control.ts'
+import { createPhonePreviews, previewOrigins, type PhonePreviews } from './remote/preview/control.ts'
 import type { ListenerGroups } from './remote/preview/upstream.ts'
 import type { PreviewCapture, PreviewOpen } from './preview/types.ts'
 
@@ -145,7 +145,15 @@ export const PAGE_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ')
 
-function serveStatic(webDist: string, pathname: string, res: ServerResponse): void {
+/**
+ * The page as the phone gets it: View app posts a one-use ticket to the app's own preview origin
+ * (W11.2), so those origins, and only those, are allowed form targets. Nothing may frame it.
+ */
+export function phonePagePolicy(hostname: string): string {
+  return PAGE_POLICY.replace("form-action 'self'", ["form-action 'self'", ...previewOrigins(hostname)].join(' '))
+}
+
+function serveStatic(webDist: string, pathname: string, res: ServerResponse, policy = PAGE_POLICY): void {
   const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, '')
   let file = join(webDist, safe)
   if (!file.startsWith(webDist) || !existsSync(file) || statSync(file).isDirectory()) file = join(webDist, 'index.html')
@@ -156,7 +164,7 @@ function serveStatic(webDist: string, pathname: string, res: ServerResponse): vo
   }
   const type = MIME[extname(file)] ?? 'application/octet-stream'
   res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
-    ...(type.startsWith('text/html') ? { 'content-security-policy': PAGE_POLICY } : {}) })
+    ...(type.startsWith('text/html') ? { 'content-security-policy': policy } : {}) })
   res.end(readFileSync(file))
 }
 
@@ -237,7 +245,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const push = createPushStore(root)
   const tailscale = options.remote?.tailscale ?? systemTailscale
   const remote = createRemoteAccess({ store: remoteStore, tailscale,
-    serveStatic: (pathname, res) => serveStatic(options.webDist, pathname, res), port: options.remote?.port,
+    serveStatic: (pathname, res) => {
+      const hostname = remote.previewPolicy()?.hostname
+      serveStatic(options.webDist, pathname, res, hostname ? phonePagePolicy(hostname) : PAGE_POLICY)
+    }, port: options.remote?.port,
     push, ...(options.remote?.sendPush ? { sendPush: options.remote.sendPush } : {}) })
   const previewListenPort = options.remote?.previewListenPort
   const phonePreviews = createPhonePreviews({ root, remoteStore, tailscale, processes, policy: () => remote.previewPolicy(),
