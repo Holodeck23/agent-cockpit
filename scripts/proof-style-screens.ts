@@ -1,5 +1,5 @@
 // Visual proof of each styled screen in a packaged app. All state lives in a disposable HOME.
-// Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:style-screens -- files|workflows
+// Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:style-screens -- files|workflows|memory
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +10,7 @@ import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts
 import { apiPost, openProject, setTheme } from './lib/ui.ts'
 
 const screen = process.argv[2]
-if (screen !== 'files' && screen !== 'workflows') throw new Error(`Unknown style screen: ${screen ?? '(none)'}`)
+if (screen !== 'files' && screen !== 'workflows' && screen !== 'memory') throw new Error(`Unknown style screen: ${screen ?? '(none)'}`)
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-style-screens-'))
 const home = join(root, 'home'), project = join(root, 'garden')
@@ -51,7 +51,7 @@ try {
     const documentsActive = await page.locator('.file-spaces [aria-selected="true"]').getByText('Your documents').count() === 1
     await page.getByRole('tab', { name: 'Project files' }).click()
     check('Files space filters use an active filled pill', documentsActive && await page.locator('.file-spaces [aria-selected="true"]').getByText('Project files').count() === 1)
-  } else {
+  } else if (screen === 'workflows') {
     await page.getByRole('tab', { name: 'Workflows', exact: true }).click()
     await page.locator('.workflow-row').filter({ hasText: 'Nightly check' }).click()
     await page.locator('.workflow-editor h1').getByText('Nightly check').waitFor()
@@ -66,6 +66,26 @@ try {
     const scheduledActive = await page.locator('.workflow-views [aria-selected="true"]').getByText('Scheduled').count() === 1
     await page.getByRole('tab', { name: /All/ }).click()
     check('Workflows filters use an active filled pill', scheduledActive && await page.locator('.workflow-views [aria-selected="true"]').getByText('All').count() === 1)
+  } else {
+    await page.getByRole('tab', { name: 'Memory', exact: true }).click()
+    const memory = page.locator('main.memory')
+    await memory.getByRole('textbox', { name: 'New memory' }).fill('Release notes need a plain-language summary.')
+    await memory.getByRole('button', { name: 'Remember', exact: true }).click()
+    await memory.locator('.memory-entry').getByText('Release notes need a plain-language summary.').waitFor()
+    await memory.getByRole('textbox', { name: 'New memory' }).fill('I prefer short, concrete explanations.')
+    await memory.getByRole('radio', { name: 'Everywhere' }).click()
+    await memory.getByRole('button', { name: 'Remember', exact: true }).click()
+    await memory.locator('.memory-entry').getByText('I prefer short, concrete explanations.').waitFor()
+    check('Memory has flat rows with scope pills at the right', await memory.locator('.memory-entry').count() === 2
+      && await memory.locator('.memory-scope-pill').count() === 2)
+    await memory.getByRole('tab', { name: /This project/ }).click()
+    const projectOnly = await memory.locator('.memory-entry').count() === 1
+    await memory.getByRole('tab', { name: /All/ }).click()
+    check('Memory filters use an active filled pill', projectOnly && await memory.locator('.memory-filters [aria-selected="true"]').getByText('All').count() === 1)
+    await memory.getByRole('region', { name: 'This project' }).getByRole('button', { name: /^Edit/ }).click()
+    const editing = await memory.locator('.memory-entry.editing').count() === 1
+    await memory.getByRole('button', { name: 'Cancel' }).click()
+    check('the active memory row is filled while editing', editing && await memory.locator('.memory-entry.editing').count() === 0)
   }
   check(`${screen} keeps the green project tint`, await page.locator('.app.tint-green').count() === 1)
   await setTheme(page, 'Light')
@@ -74,6 +94,13 @@ try {
   await shot(page, 'dark')
   await page.setViewportSize({ width: 980, height: 640 })
   const narrow = await page.evaluate((which) => {
+    if (which === 'memory') {
+      const view = document.querySelector('.memory')!.getBoundingClientRect()
+      const filters = document.querySelector('.memory-filters')!
+      return { pageFits: document.documentElement.scrollWidth <= innerWidth,
+        columnsFit: view.right <= innerWidth && view.left >= 0,
+        toggleVisible: filters.scrollWidth <= filters.clientWidth }
+    }
     const list = document.querySelector(which === 'files' ? '.file-list' : '.workflow-list')!.getBoundingClientRect()
     const detail = document.querySelector(which === 'files' ? '.file-preview' : '.workflow-editor')!.getBoundingClientRect()
     const toggle = document.querySelector(which === 'files' ? '.file-preview header .file-explorer-toggle' : '.workflow-editor header .workflow-list-toggle')!.getBoundingClientRect()
