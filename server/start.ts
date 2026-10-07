@@ -244,7 +244,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       inUse: (accountId) => manager.accountSessions(accountId),
       closeIdle: (accountId) => manager.closeAccountSessions(accountId),
       rebindProject: (projectPath, agent, to) => manager.rebindProject(projectPath, agent, to),
-      identityChanged: (accountId, to) => manager.identityChanged(accountId, to),
+      identityChanged: (accountId, to, from) => manager.identityChanged(accountId, to, from),
     },
   })
   const accountService = accounts

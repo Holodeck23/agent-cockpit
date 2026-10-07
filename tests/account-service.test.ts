@@ -26,7 +26,7 @@ function setup(over: Partial<AccountSessions> = {}) {
     inUse: () => 0,
     closeIdle: async (...args: [string]) => { calls.push({ kind: 'closeIdle', args }) },
     rebindProject: async (...args: [string, AgentId, ResolvedAccount]) => { calls.push({ kind: 'rebind', args }) },
-    identityChanged: async (...args: [string, ResolvedAccount]) => { calls.push({ kind: 'identity', args }) },
+    identityChanged: async (...args: [string, ResolvedAccount, unknown?]) => { calls.push({ kind: 'identity', args }) },
     ...over,
   }
   const service = createAccountService({
@@ -192,7 +192,7 @@ describe('the default identity changes outside Cockpit (W12-04)', () => {
     writeFileSync(join(home, '.claude', '.fixture-identity'), 'z@example.com 50\n')
     const changed = await service.refresh(defaultAccountId('claude'))
     expect(changed).toMatchObject({ changed: true, account: { generation: 2, identity: { hint: 'z…@example.com · pro' } } })
-    expect(calls).toMatchObject([{ kind: 'identity', args: [defaultAccountId('claude'), { generation: 2 }] }])
+    expect(calls).toMatchObject([{ kind: 'identity', args: [defaultAccountId('claude'), { generation: 2 }, { hint: 'a…@example.com · pro' }] }])
     expect(service.defaultUsageKey('claude')).toBe(`${defaultAccountId('claude')}#2`)
 
     writeFileSync(join(home, '.claude', '.fixture-identity'), '')

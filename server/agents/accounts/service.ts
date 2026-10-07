@@ -23,7 +23,7 @@ export interface AccountSessions {
   /** Ends idle sessions on an account, so none still runs in a context about to be signed out. */
   closeIdle(accountId: string): Promise<void>
   rebindProject(projectPath: string, agent: AgentId, to: ResolvedAccount): Promise<void>
-  identityChanged(accountId: string, to: ResolvedAccount): Promise<void>
+  identityChanged(accountId: string, to: ResolvedAccount, from?: AccountRef): Promise<void>
 }
 
 export interface AccountServiceOptions {
@@ -90,6 +90,8 @@ export function createAccountService(options: AccountServiceOptions) {
   const resolve = (account: Account): ResolvedAccount => resolved(account, dirFor(account))
   const envFor = (account: Account): Record<string, string> => ({ ...baseEnv(), ...accountEnv(account, dirFor(account)) })
   const label = (agent: AgentId): string => AGENT_LABEL[agent]
+  const refOf = (account: Account): AccountRef =>
+    ({ id: account.id, label: account.label, ...(account.identity?.state === 'known' && account.identity.hint ? { hint: account.identity.hint } : {}) })
 
   const update = (id: string, patch: Partial<SigninView>): void => {
     const entry = signins.get(id)
@@ -119,8 +121,9 @@ export function createAccountService(options: AccountServiceOptions) {
 
   async function observe(account: Account): Promise<{ account: Account; changed: boolean }> {
     const identity = await probe(account.agent, { executable: await options.executable(account.agent), env: envFor(account) })
+    const before = refOf(account)
     const result = store.observe(account.id, identity)
-    if (result.changed) await options.sessions.identityChanged(account.id, resolve(result.account))
+    if (result.changed) await options.sessions.identityChanged(account.id, resolve(result.account), before)
     return result
   }
 
@@ -175,7 +178,7 @@ export function createAccountService(options: AccountServiceOptions) {
     resolve: (projectPath: string, agent: AgentId): ResolvedAccount => resolve(store.selected(projectPath, agent)),
     describe(accountId: string): AccountRef | undefined {
       const account = store.get(accountId)
-      return account ? { id: account.id, label: account.label, ...(account.identity?.state === 'known' && account.identity.hint ? { hint: account.identity.hint } : {}) } : undefined
+      return account ? refOf(account) : undefined
     },
     /** The CLI default's current usage key, so its old identity's usage is not shown as its own. */
     defaultUsageKey: (agent: AgentId): string => usageKeyOf(store.get(defaultAccountId(agent))!),

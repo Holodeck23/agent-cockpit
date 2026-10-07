@@ -301,7 +301,7 @@ export interface ThreadManager {
    */
   rebindProject(projectPath: string, agent: AgentId, to: ResolvedAccount): Promise<void>
   /** The identity behind an account changed outside Cockpit: idle conversations on it are told and rebound. */
-  identityChanged(accountId: string, to: ResolvedAccount): Promise<void>
+  identityChanged(accountId: string, to: ResolvedAccount, from?: AccountRef): Promise<void>
   /** Stops every live agent session; resolves once all have exited. */
   shutdown(): Promise<void>
 }
@@ -470,8 +470,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
    * user reads it, and the next message starts a new native session there with the conversation so
    * far as a handoff. Provider resume across accounts is impossible for both CLIs (G-ACCOUNTS).
    */
-  const rebind = (meta: ThreadMeta, to: ResolvedAccount, reason: 'selected' | 'identity_changed'): ThreadMeta => {
-    const from = options.accounts?.describe(accountOf(meta))
+  const rebind = (meta: ThreadMeta, to: ResolvedAccount, reason: 'selected' | 'identity_changed', previous?: AccountRef): ThreadMeta => {
+    // After an identity change the account's record already holds the new identity: the previous
+    // one is passed in, or (not known here) left out rather than shown as the new one.
+    const current = options.accounts?.describe(accountOf(meta))
+    const from = previous ?? (reason === 'identity_changed' && current ? { id: current.id, label: current.label } : current)
     const target = options.accounts?.describe(to.accountId) ?? { id: to.accountId, label: to.label }
     const started = meta.sessionStarted
     // An agent switch's handoff that was never delivered still goes; otherwise the transcript.
@@ -857,10 +860,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       await Promise.all(affected.map((meta) => retire(meta.id)))
       for (const meta of affected) if (!boundTo(meta, to) && hasAccount(meta)) rebind(store.get(meta.id) ?? meta, to, 'selected')
     },
-    async identityChanged(accountId, to) {
+    async identityChanged(accountId, to, from) {
       const affected = store.list().filter((meta) => !deleted.has(meta.id) && accountOf(meta) === accountId && hasAccount(meta) && !busy(live.get(meta.id)) && !boundTo(meta, to))
       await Promise.all(affected.map((meta) => retire(meta.id)))
-      for (const meta of affected) rebind(store.get(meta.id) ?? meta, to, 'identity_changed')
+      for (const meta of affected) rebind(store.get(meta.id) ?? meta, to, 'identity_changed', from)
     },
     async closeIdleSessions(agent) {
       const idle = [...live.values()].filter((entry) => entry.session.agent === agent && entry.session.alive() && !busy(entry))
