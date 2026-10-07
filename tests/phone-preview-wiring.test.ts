@@ -302,6 +302,9 @@ describe('the control origin against preview origins (SEC-04, 14c)', () => {
     expect(csp).not.toContain(':8459')
     expect(csp).toContain("frame-ancestors 'none'")
     expect(page.headers['x-frame-options']).toBe('DENY')
+    // View app's POST must carry the control Origin; no-referrer would make Chrome send Origin: null.
+    expect(page.headers['referrer-policy']).toBe('strict-origin')
+    expect((await call(ctx.s.port, '/')).headers['referrer-policy']).toBe('no-referrer')
     // The desktop page keeps form-action 'self'.
     expect(String((await call(ctx.s.port, '/')).headers['content-security-policy'])).toContain("form-action 'self';")
     const api = await ctx.phone('/api/remote/me')

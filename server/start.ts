@@ -155,7 +155,14 @@ export function phonePagePolicy(hostname: string): string {
   return PAGE_POLICY.replace("form-action 'self'", ["form-action 'self'", ...previewOrigins(hostname)].join(' '))
 }
 
-function serveStatic(webDist: string, pathname: string, res: ServerResponse, policy = PAGE_POLICY): void {
+/**
+ * The phone page's referrer policy. View app's form POST must carry the control Origin, and Chrome
+ * sends `Origin: null` on a cross-origin POST under no-referrer (Fetch, "serializing a request
+ * origin"). strict-origin sends the bare origin, never a path, and nothing over plain HTTP.
+ */
+export const PHONE_REFERRER_POLICY = 'strict-origin'
+
+function serveStatic(webDist: string, pathname: string, res: ServerResponse, policy = PAGE_POLICY, referrer = 'no-referrer'): void {
   const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, '')
   let file = join(webDist, safe)
   if (!file.startsWith(webDist) || !existsSync(file) || statSync(file).isDirectory()) file = join(webDist, 'index.html')
@@ -165,7 +172,7 @@ function serveStatic(webDist: string, pathname: string, res: ServerResponse, pol
     return
   }
   const type = MIME[extname(file)] ?? 'application/octet-stream'
-  res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
+  res.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': referrer,
     ...(type.startsWith('text/html') ? { 'content-security-policy': policy } : {}) })
   res.end(readFileSync(file))
 }
@@ -249,7 +256,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const remote = createRemoteAccess({ store: remoteStore, tailscale,
     serveStatic: (pathname, res) => {
       const hostname = remote.previewPolicy()?.hostname
-      serveStatic(options.webDist, pathname, res, hostname ? phonePagePolicy(hostname) : PAGE_POLICY)
+      if (hostname) serveStatic(options.webDist, pathname, res, phonePagePolicy(hostname), PHONE_REFERRER_POLICY)
+      else serveStatic(options.webDist, pathname, res)
     }, port: options.remote?.port,
     push, ...(options.remote?.sendPush ? { sendPush: options.remote.sendPush } : {}) })
   const previewListenPort = options.remote?.previewListenPort

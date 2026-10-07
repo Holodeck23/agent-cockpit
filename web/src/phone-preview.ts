@@ -36,14 +36,16 @@ export async function requestTicket(processId: string, fetcher: typeof fetch = f
 
 /**
  * Posts the ticket to the app's bootstrap in its own named tab. The ticket travels only in this
- * form body (never a URL), and noopener keeps the app's page from steering this one.
+ * form body (never a URL), and noopener keeps the app's page from steering this one. Not
+ * noreferrer: under it Chrome sends `Origin: null`, and the bootstrap accepts only the control
+ * Origin (the page's own policy is strict-origin for the same reason).
  */
 export function postTicket(ticket: PreviewTicket, doc: Document = document): void {
   const form = doc.createElement('form')
   form.method = 'POST'
   form.action = ticket.bootstrap
   form.target = ticket.target
-  form.setAttribute('rel', 'noopener noreferrer')
+  form.setAttribute('rel', 'noopener')
   form.hidden = true
   const input = doc.createElement('input')
   input.type = 'hidden'

@@ -46,7 +46,8 @@ describe('posting the ticket', () => {
     expect(seen?.action).toBe(ticket.bootstrap)
     expect(seen?.action).not.toContain('T0k3n')
     expect(seen?.target).toBe('preview-0')
-    expect(seen?.getAttribute('rel')).toBe('noopener noreferrer')
+    // Not noreferrer: Chrome would send Origin: null and the bootstrap would refuse the ticket.
+    expect(seen?.getAttribute('rel')).toBe('noopener')
     expect(new FormData(seen!).get('ticket')).toBe('T0k3n')
     expect(document.querySelector('form')).toBeNull()
     submit.mockRestore()
