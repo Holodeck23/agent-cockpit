@@ -192,8 +192,11 @@ export const api = {
   answerQuestion: (id: string, requestId: string, answers: Record<string, string> | undefined) =>
     request<unknown>(`/api/threads/${id}/questions/${requestId}`, { method: 'POST', body: answers ? { answers } : {} }),
   interrupt: (id: string) => request<unknown>(`/api/threads/${id}/interrupt`, { method: 'POST', body: {} }),
-  switchAgent: (id: string, settings: Partial<ThreadSettings>) =>
-    request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings } }),
+  /** The exact handoff a switch would send now (D13). */
+  handoffPreview: (id: string) => request<HandoffPreview>(`/api/threads/${id}/handoff`),
+  /** `handoff` is the digest of the preview the user read; the server refuses if it no longer matches. */
+  switchAgent: (id: string, settings: Partial<ThreadSettings>, handoff: string) =>
+    request<ThreadMeta>(`/api/threads/${id}/agent`, { method: 'POST', body: { settings, handoff } }),
   /** `processes` decides what happens to running processes the conversation owns (K2); without it such a delete is refused. */
   deleteThread: (id: string, processes?: 'stop' | 'keep') => request<{ deleted: string }>(`/api/threads/${id}`, { method: 'DELETE', body: processes ? { processes } : {} }),
   setCompleted: (id: string, completed: boolean) =>
@@ -255,3 +258,5 @@ export type ImportableSession = SessionSummary & { inCockpit: boolean }
 export type { FileMatch, ReferenceCheck } from '../../server/files/search.ts'
 
 export type { Preset }
+import type { HandoffPreview } from '../../server/threads/handoff.ts'
+export type { HandoffPreview }

@@ -10,7 +10,7 @@ import type { ElectronApplication, Page } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
 import { documentsDir } from '../server/files/documents.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { apiPost, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
+import { apiPost, headStatus, messageBox, openProject, startConversation, switchWithHandoff } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-cross-wave-proof-'))
@@ -68,7 +68,7 @@ try {
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const picker = page.getByRole('dialog', { name: 'Agent settings' })
   await picker.getByRole('radio', { name: 'Codex', exact: true }).click()
-  await picker.getByRole('button', { name: 'Switch' }).click()
+  await switchWithHandoff(picker)
   await send(page, 'What was chosen?')
   const handoff = page.locator('.bubble').filter({ hasText: /^Handoff: / })
   check('1 Codex answers after the switch', await until('codex', async () => (await handoff.count()) === 1))

@@ -1,0 +1,36 @@
+#!/usr/bin/perl
+# Stand-in `codex app-server` for proof:handoff (D13, no provider usage). It writes the developer
+# instructions Cockpit starts the thread with (the switch handoff) to $COCKPIT_PROOF_HANDOFF_OUT,
+# byte for byte, so the proof can compare them with the text the picker showed. Every turn is
+# answered with the size of what arrived. Perl, because /usr/bin always has it.
+use strict; use warnings;
+use JSON::PP;
+$| = 1;
+if (@ARGV && $ARGV[0] eq '--version') { print "codex-cli 0.0.0 (Cockpit handoff fixture)\n"; exit 0 }
+my $json = JSON::PP->new->canonical;
+my $thread = 'handoff-codex-thread'; my $handoff = ''; my $turn = 0;
+sub reply { print $json->encode($_[0]), "\n" }
+while (my $line = <STDIN>) {
+  my $message = eval { $json->decode($line) } or next;
+  my ($method, $id) = ($message->{method}, $message->{id});
+  next unless defined $method && defined $id;
+  if ($method eq 'initialize') { reply({ id => $id, result => { userAgent => 'fixture' } }) }
+  elsif ($method eq 'thread/start' || $method eq 'thread/resume') {
+    $handoff = $message->{params}{developerInstructions} // '';
+    if (my $out = $ENV{COCKPIT_PROOF_HANDOFF_OUT}) {
+      open(my $fh, '>:encoding(UTF-8)', $out) or die "cannot write $out";
+      print $fh $handoff; close($fh);
+    }
+    reply({ id => $id, result => { thread => { id => $thread } } });
+    reply({ method => 'thread/started', params => { thread => { id => $thread } } });
+  }
+  elsif ($method eq 'turn/start') {
+    $turn++;
+    my $text = sprintf('Received %d characters of handoff.', length($handoff));
+    reply({ id => $id, result => { turn => { id => "turn-$turn" } } });
+    reply({ method => 'turn/started', params => { threadId => $thread, turn => { id => "turn-$turn" } } });
+    reply({ method => 'item/completed', params => { threadId => $thread, item => { type => 'agentMessage', id => "msg-$turn", text => $text } } });
+    reply({ method => 'turn/completed', params => { threadId => $thread, turn => { id => "turn-$turn", status => 'completed' } } });
+  }
+  else { reply({ id => $id, result => {} }) }
+}

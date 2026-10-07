@@ -11,7 +11,7 @@ import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { effortForClaude } from '../agents/claude/flags.ts'
 import { COCKPIT_GUIDANCE, MCP_SERVER_NAME, type CockpitMcpLaunch, type McpGrant } from '../mcp/sessions.ts'
-import { buildHandoff } from './handoff.ts'
+import { handoffDigest, previewHandoff, type HandoffPreview } from './handoff.ts'
 import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
@@ -211,6 +211,8 @@ export class ThreadBusyError extends Error {}
 
 /** An operation ID already used for a different request (HTTP 409); the first request stands (ID-05). */
 export class OperationConflictError extends Error {}
+/** The handoff the user read is no longer what a switch would send (D13). */
+export class HandoffChangedError extends Error {}
 
 /** A late event worth a label: what a replaced process tried to say, never deltas, usage or its own exit. */
 // Cockpit tools whose every call Cockpit approves itself, on the server (host-actions.ts), because
@@ -251,8 +253,13 @@ export interface ThreadManager {
   remove(threadId: string): Promise<void>
   /** Same agent, new model/effort/permissions: the native session resumes with them from the next message. */
   changeSettings(threadId: string, settings: ThreadSettings): ThreadMeta
-  /** Hand the thread to another agent/model; the transcript goes with it. */
-  switchAgent(threadId: string, settings: ThreadSettings): ThreadMeta
+  /** The handoff a switch would send now, for the user to read first (D13). */
+  handoffPreview(threadId: string): HandoffPreview
+  /**
+   * Hand the thread to another agent/model; the transcript goes with it. With `shown` (the digest of
+   * the previewed handoff), a conversation that changed since the preview is refused, not sent.
+   */
+  switchAgent(threadId: string, settings: ThreadSettings, shown?: string): ThreadMeta
   /** Resume with manual permissions and CLI defaults; retain the native session when the agent is unchanged. */
   resumeRecovered(threadId: string, agent: AgentId, text: string, agentText: string): ThreadMeta
   summaries(): ThreadSummary[]
@@ -670,12 +677,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const update: ThreadUpdate = { threadId, event: { kind: 'thread_deleted' }, status: 'idle' }
       for (const listener of listeners) listener(update)
     },
-    switchAgent(threadId, settings) {
+    handoffPreview(threadId) {
+      const meta = requireMeta(threadId)
+      return previewHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
+    },
+    switchAgent(threadId, settings, shown) {
       const meta = requireMeta(threadId)
       const entry = live.get(threadId)
       if (busy(entry)) throw new Error('Stop the current turn before switching agents')
+      const { text: handoff } = previewHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
+      if (shown !== undefined && handoffDigest(handoff) !== shown) throw new HandoffChangedError('The conversation changed since you reviewed the handoff. Review it again before switching.')
       void retire(threadId)
-      const handoff = buildHandoff(store.events(threadId), meta.projectPath, images.dir(threadId))
       store.append(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })
       const next = store.update(threadId, { settings, sessionId: randomUUID(), bindingId: randomUUID(), sessionStarted: false, handoff })
       broadcast(threadId, { kind: 'agent_switch', from: meta.settings.agent, to: settings.agent })

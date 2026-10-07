@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
-import { api, type AgentCapabilities, type AgentStatus, type Preset, type ThreadSettings } from '../api.ts'
+import { api, type AgentCapabilities, type AgentStatus, type HandoffPreview, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
@@ -109,8 +109,13 @@ interface AgentPickerProps {
   value: AgentChoice
   /** New conversation: every change applies at once. */
   onChange?: (choice: AgentChoice) => void
-  /** Existing conversation, another agent: applies on "Switch" (the transcript goes along). */
-  onSwitch?: (choice: AgentChoice) => void
+  /**
+   * Existing conversation, another agent: "Switch…" shows the handoff first (D13), and "Start handoff"
+   * applies with the digest of what was shown, so the new agent receives exactly that text.
+   */
+  onSwitch?: (choice: AgentChoice, handoff: string) => Promise<unknown>
+  /** The handoff a switch would send now. */
+  previewHandoff?: () => Promise<HandoffPreview>
   /** Existing conversation, same agent: applies on "Apply"; the agent's session continues. */
   onApply?: (choice: AgentChoice) => void
   /** Why changing is unavailable right now, e.g. while a turn runs. */
@@ -145,7 +150,35 @@ function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disable
   )
 }
 
-export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }: AgentPickerProps) {
+/** The handoff, read before it is sent (D13): the exact text, its size and anything left out to fit. */
+function HandoffReview({ agent, preview, error, starting, onBack, onStart }: {
+  agent: AgentChoice['agent']; preview: HandoffPreview | undefined; error: string | undefined; starting: boolean
+  onBack: () => void; onStart: () => void
+}) {
+  return (
+    <div className="handoff-review" role="group" aria-label="Handoff">
+      <p className="handoff-title">What {agentName(agent)} receives</p>
+      {preview ? (
+        <>
+          <p className="picker-note handoff-size">
+            {preview.text.length.toLocaleString('en')} characters · {preview.leftOut > 0
+              ? `${preview.leftOut.toLocaleString('en')} earlier ${preview.leftOut === 1 ? 'message' : 'messages'} left out to fit`
+              : 'the whole conversation'}
+          </p>
+          <pre className="handoff-text" tabIndex={0} aria-label="Handoff text">{preview.text}</pre>
+          <p className="picker-note">Your project instructions, and Cockpit's guidance when its tools are on, go with it as they do for every new session.</p>
+        </>
+      ) : error ? null : <p className="picker-note">Preparing the handoff…</p>}
+      {error ? <p className="picker-note agent-state-problem" role="alert">{error}</p> : null}
+      <div className="picker-foot">
+        <button type="button" className="button-soft" onClick={onBack}>Back</button>
+        <button type="button" className="button-primary" disabled={!preview || starting} onClick={onStart}>Start handoff</button>
+      </div>
+    </div>
+  )
+}
+
+export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff, lockedReason }: AgentPickerProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
   const existing = onSwitch !== undefined || onApply !== undefined
   const [draft, setDraft] = useState<AgentChoice>(value)
@@ -162,6 +195,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
   const [caps, setCaps] = useState<AgentCapabilities | undefined>(undefined)
   const [refreshing, setRefreshing] = useState(false)
   const [capsError, setCapsError] = useState<string | undefined>(undefined)
+  const [review, setReview] = useState<{ preview?: HandoffPreview; error?: string; starting?: boolean } | undefined>(undefined)
 
   // Checked each time the panel opens: cheap, and never polled in the background.
   useEffect(() => {
@@ -221,8 +255,23 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
   const matches = (p: Preset): boolean => p.agent === current.agent && p.model === current.model && p.effort === current.effort && p.permissionMode === current.permissionMode
 
   const toggle = (): void => {
-    if (!open) setDraft(value)
+    if (!open) { setDraft(value); setReview(undefined) }
     setOpen(!open)
+  }
+
+  const loadHandoff = (error?: string): void => {
+    setReview({ ...(error ? { error } : {}) })
+    if (!previewHandoff) { setReview({ error: 'The handoff cannot be shown here.' }); return }
+    previewHandoff().then((preview) => setReview((shown) => (shown ? { ...shown, preview } : shown)),
+      (e: unknown) => setReview((shown) => (shown ? { error: e instanceof Error ? e.message : String(e) } : shown)))
+  }
+  const startHandoff = (): void => {
+    const preview = review?.preview
+    if (!preview || !onSwitch) return
+    setReview({ preview, starting: true })
+    onSwitch(draft, preview.digest).then(close,
+      // Changed since it was shown (or refused): show the current handoff again, never send the unseen one.
+      (e: unknown) => loadHandoff(e instanceof Error ? e.message : String(e)))
   }
 
   // Effort beside the picker applies at once: in a new conversation directly, in an existing one
@@ -246,6 +295,10 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
         </button>
         {open ? (
           <div className="picker-panel" role="dialog" aria-label="Agent settings">
+            {review ? (
+              <HandoffReview agent={draft.agent} preview={review.preview} error={review.error} starting={review.starting === true}
+                onBack={() => setReview(undefined)} onStart={startHandoff} />
+            ) : (<>
             <div className="presets" role="group" aria-label="Presets">
               {presets.map((preset) => (
                 <span key={preset.name} className={`preset-chip${matches(preset) ? ' active' : ''}`}>
@@ -345,18 +398,18 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
             ) : null}
             {existing ? (
               <div className="picker-foot">
-                <span className="picker-note">{lockedReason ?? (sameAgent ? 'Applies from your next message; the session continues.' : 'The conversation so far goes to the new agent.')}</span>
+                <span className="picker-note">{lockedReason ?? (sameAgent ? 'Applies from your next message; the session continues.' : 'The conversation so far goes to the new agent. You see it first.')}</span>
                 <button
                   type="button"
                   className="button-primary"
                   disabled={!changed || lockedReason !== undefined}
                   onClick={() => {
-                    if (sameAgent) onApply?.(draft)
-                    else onSwitch?.(draft)
+                    if (!sameAgent) { loadHandoff(); return }
+                    onApply?.(draft)
                     close()
                   }}
                 >
-                  {sameAgent ? 'Apply' : 'Switch'}
+                  {sameAgent ? 'Apply' : 'Switch…'}
                 </button>
               </div>
             ) : (
@@ -368,6 +421,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, lockedReason }
                 <span>Close after choosing an agent</span>
               </label>
             )}
+            </>)}
           </div>
         ) : null}
       </div>

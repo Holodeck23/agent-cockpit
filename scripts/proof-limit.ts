@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { statusLabel, windowLabel } from '../web/src/usage.ts'
-import { chooseAgent, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
+import { chooseAgent, headStatus, messageBox, openProject, startConversation, switchWithHandoff } from './lib/ui.ts'
 
 const codexModel = process.env.COCKPIT_CODEX_MODEL ?? 'gpt-5.6-luna'
 const { check, finish } = checker()
@@ -111,7 +111,7 @@ try {
   await panel.getByRole('radio', { name: 'Codex', exact: true }).click()
   await panel.getByLabel('Model').fill(codexModel)
   await panel.getByLabel('Effort').selectOption('low')
-  await panel.getByRole('button', { name: 'Switch', exact: true }).click()
+  await switchWithHandoff(panel)
   const switched = await waitUntil(page, 'the switch to Codex', async () => {
     const detail = await getJson<Detail>(page, `/api/threads/${meta.id}/events`)
     return detail.meta.settings.agent === 'codex' ? detail : undefined

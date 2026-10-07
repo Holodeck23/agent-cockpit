@@ -8,7 +8,7 @@ import type { Page } from 'playwright-core'
 import { createThreadStore } from '../server/threads/store.ts'
 import { documentsDir } from '../server/files/documents.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
-import { apiPost, chooseAgent, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
+import { apiPost, chooseAgent, headStatus, messageBox, openProject, startConversation, switchWithHandoff } from './lib/ui.ts'
 
 const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-wave65-proof-'))
@@ -81,7 +81,7 @@ try {
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const picker = page.getByRole('dialog', { name: 'Agent settings' })
   await picker.getByRole('radio', { name: 'Codex', exact: true }).click()
-  await picker.getByRole('button', { name: 'Switch' }).click()
+  await switchWithHandoff(picker)
   await send(page, 'What was chosen?')
   const handoff = page.locator('.bubble').filter({ hasText: /^Handoff: / })
   check('R1 the switched-in agent answers', await until('codex reply', async () => (await handoff.count()) === 1))
@@ -135,7 +135,7 @@ try {
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const r3Picker = page.getByRole('dialog', { name: 'Agent settings' })
   await r3Picker.getByRole('radio', { name: 'Codex', exact: true }).click()
-  await r3Picker.getByRole('button', { name: 'Switch' }).click()
+  await switchWithHandoff(r3Picker)
   check('R3 switching agents is allowed', await until('switched', async () => (await page.getByText('Handed over from Claude Code to Codex').count()) >= 1))
   await shot(page, 'r3-taken-back')
 

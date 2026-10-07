@@ -6,7 +6,7 @@
 //   tsx scripts/proof-ui.ts switch <projectDir>     Claude writes a file, Codex answers about it
 import { mkdirSync } from 'node:fs'
 import { chromium, type Page } from 'playwright-core'
-import { chooseAgent, headStatus, messageBox, openProject, startConversation } from './lib/ui.ts'
+import { chooseAgent, headStatus, messageBox, openProject, startConversation, switchWithHandoff } from './lib/ui.ts'
 
 const BASE = process.env.COCKPIT_URL ?? 'http://127.0.0.1:4317'
 const OUT = new URL('../docs/proof/', import.meta.url).pathname
@@ -75,7 +75,7 @@ if (mode === 'parallel') {
   const panel = page.getByRole('dialog', { name: 'Agent settings' })
   await panel.getByRole('radio', { name: 'Codex' }).click()
   await panel.getByLabel('Model').fill('gpt-5.6-luna')
-  await panel.getByRole('button', { name: 'Switch' }).click()
+  await switchWithHandoff(panel)
   await page.locator('.note', { hasText: 'Handed over from Claude Code to Codex' }).waitFor({ timeout: 15_000 })
   await messageBox(page).fill('Without using any tools: which file did the previous agent create, and what word is in it? One line.')
   await messageBox(page).press('Enter')

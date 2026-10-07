@@ -250,7 +250,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
             key={`${meta.id}-${JSON.stringify(choice)}`}
             value={choice}
             lockedReason={running ? 'Stop the current turn before switching.' : undefined}
-            onSwitch={(next) => guard(api.switchAgent(meta.id, settingsFromChoice(next, meta.settings)))}
+            onSwitch={(next, handoff) => api.switchAgent(meta.id, settingsFromChoice(next, meta.settings), handoff)}
+            previewHandoff={() => api.handoffPreview(meta.id)}
             onApply={(next) => guard(api.changeSettings(meta.id, settingsFromChoice(next, meta.settings)))}
           />
         )}

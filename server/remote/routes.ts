@@ -35,6 +35,7 @@ export const ROUTES: readonly RouteClass[] = [
   { method: 'POST', route: 'threads/:id/completed', phone: false },
   { method: 'POST', route: 'threads/:id/dismiss', phone: false },
   { method: 'POST', route: 'threads/:id/settings', phone: false },
+  { method: 'GET', route: 'threads/:id/handoff', phone: false },
   { method: 'POST', route: 'threads/:id/agent', phone: false },
 
   // Branches and commits stay on the Mac.
