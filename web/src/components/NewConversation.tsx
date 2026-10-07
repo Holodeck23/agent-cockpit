@@ -8,7 +8,7 @@ import { Composer } from './Composer.tsx'
 import { WorkflowEditor } from './Workflows.tsx'
 import { FolderIcon, PlusIcon, SidebarIcon, WorkflowIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
-import type { ThreadWorkspace } from '../workspaces.ts'
+import { MAIN_CHECKOUT, type ThreadWorkspace } from '../workspaces.ts'
 
 interface NewConversationProps {
   onBrowseFiles?: () => void
@@ -167,7 +167,9 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
           {project ? (
             <>
               <p>
-                Say it in plain words. Your agent works in <strong title={workspace?.folder ?? project.path}>{project.name}</strong>{workspace?.showLabel ? <> in <strong>{workspace.currentLabel}</strong></> : null}.
+                Say it in plain words. Your agent works in {!workspace?.showLabel ? <strong title={project.path}>{project.name}</strong>
+                  : workspace.currentLabel === MAIN_CHECKOUT ? <>the main checkout of <strong title={workspace.folder}>{project.name}</strong></>
+                  : <><strong title={workspace.folder}>{workspace.currentLabel}</strong>, a worktree of <strong>{project.name}</strong></>}.
               </p>
               {workflows && workflows.length > 0 ? (
                 <section className="workflow-cards" aria-label="Start with a workflow">
