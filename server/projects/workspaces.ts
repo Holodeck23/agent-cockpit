@@ -7,8 +7,11 @@ import { StoreReadError } from '../state/read-error.ts'
 // <root>/workspaces.json: the opaque identity of every project folder and its workspaces (G-IDENTITY).
 // A separate file so projects.json keeps the shape older Cockpits read and write; migration only
 // ever adds records here, keyed by the folder's canonical path, never by its display name.
+// Version 2 adds worktree workspaces (M1). The file stays version 1 until the first worktree is
+// registered, so an older Cockpit keeps reading it for as long as nobody has made one.
 
-export const WORKSPACES_SCHEMA_VERSION = 1
+export const WORKSPACES_SCHEMA_VERSION = 2
+const PRIMARY_ONLY_VERSION = 1
 
 const projectIdentitySchema = z.object({
   id: z.uuid(),
@@ -22,21 +25,29 @@ export type ProjectIdentity = z.output<typeof projectIdentitySchema>
 const workspaceSchema = z.object({
   id: z.uuid(),
   projectId: z.uuid(),
-  /** Worktrees arrive with G-WORKTREES; every project has exactly one primary workspace. */
-  kind: z.enum(['primary']),
+  /** Every project has exactly one primary workspace; worktrees (G-WORKTREES) are Git linked worktrees of it. */
+  kind: z.enum(['primary', 'worktree']),
   cwd: z.string().min(1),
   canonicalCwd: z.string().min(1),
   /** The repository's shared .git folder, or null outside Git. */
   gitCommonDir: z.string().nullable(),
   managed: z.boolean(),
-  lifecycle: z.enum(['active']),
+  lifecycle: z.enum(['active', 'archived', 'removed']),
   revision: z.number().int().min(1),
   createdAt: z.string(),
+  /** Worktrees only: the name the person gave it, its branch, and the committed state it started from. */
+  name: z.string().min(1).optional(),
+  branch: z.string().min(1).optional(),
+  baseRef: z.string().min(1).optional(),
+  baseCommit: z.string().regex(/^[0-9a-f]{40,64}$/).optional(),
+  /** The workspace it was created from, and that workspace's branch then (the default merge target). */
+  createdFrom: z.uuid().optional(),
+  createdFromBranch: z.string().min(1).optional(),
 })
 export type Workspace = z.output<typeof workspaceSchema>
 
 const fileSchema = z.object({
-  schemaVersion: z.literal(WORKSPACES_SCHEMA_VERSION),
+  schemaVersion: z.union([z.literal(PRIMARY_ONLY_VERSION), z.literal(WORKSPACES_SCHEMA_VERSION)]),
   revision: z.number().int().min(0),
   projects: z.array(projectIdentitySchema),
   workspaces: z.array(workspaceSchema),
@@ -49,6 +60,21 @@ export interface WorkspaceStore {
   primaryFor(path: string): { project: ProjectIdentity; workspace: Workspace } | undefined
   get(workspaceId: string): Workspace | undefined
   list(): { revision: number; projects: ProjectIdentity[]; workspaces: Workspace[] }
+  /** The project's workspaces, primary first. */
+  forProject(projectId: string): Workspace[]
+  /** Registers a worktree of a known project once; a second call for the same folder returns the first record. */
+  addWorktree(input: NewWorktree): Workspace
+}
+
+export interface NewWorktree {
+  readonly projectId: string
+  readonly cwd: string
+  readonly name: string
+  readonly branch: string
+  readonly baseRef: string
+  readonly baseCommit: string
+  readonly createdFrom: string
+  readonly createdFromBranch?: string
 }
 
 /** The folder as the file system names it, so a symlink and its target are one project. */
@@ -72,7 +98,11 @@ export function gitCommonDir(cwd: string): string | null {
   }
 }
 
-const EMPTY: WorkspaceFile = { schemaVersion: WORKSPACES_SCHEMA_VERSION, revision: 0, projects: [], workspaces: [] }
+const EMPTY: WorkspaceFile = { schemaVersion: PRIMARY_ONLY_VERSION, revision: 0, projects: [], workspaces: [] }
+
+/** The oldest version that can hold these records, so a primary-only file stays readable by older Cockpits. */
+const versionFor = (workspaces: readonly Workspace[]): WorkspaceFile['schemaVersion'] =>
+  workspaces.some((w) => w.kind !== 'primary') ? WORKSPACES_SCHEMA_VERSION : PRIMARY_ONLY_VERSION
 
 export function createWorkspaceStore(root: string): WorkspaceStore {
   const file = join(root, 'workspaces.json')
@@ -92,7 +122,9 @@ export function createWorkspaceStore(root: string): WorkspaceStore {
     return parsed.data
   }
   const write = (next: WorkspaceFile): void => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(next, null, 2), { mode: 0o600 })
+    // A file that already says 2 stays 2: a reader that understood it once keeps understanding it.
+    const schemaVersion = next.schemaVersion === WORKSPACES_SCHEMA_VERSION ? next.schemaVersion : versionFor(next.workspaces)
+    writeFileSync(`${file}.tmp`, JSON.stringify({ ...next, schemaVersion }, null, 2), { mode: 0o600 })
     renameSync(`${file}.tmp`, file)
   }
   const primaryIn = (data: WorkspaceFile, path: string) => {
@@ -112,6 +144,8 @@ export function createWorkspaceStore(root: string): WorkspaceStore {
         if (!isAbsolute(path)) continue
         const canonical = canonicalPath(path)
         if (projects.some((p) => p.canonicalPath === canonical)) continue
+        // A worktree Cockpit registered is a workspace of its project, not a project of its own.
+        if (workspaces.some((w) => w.kind === 'worktree' && w.canonicalCwd === canonical)) continue
         const project: ProjectIdentity = { id: randomUUID(), path, canonicalPath: canonical, createdAt: now }
         projects.push(project)
         workspaces.push({ id: randomUUID(), projectId: project.id, kind: 'primary', cwd: path, canonicalCwd: canonical,
@@ -125,6 +159,28 @@ export function createWorkspaceStore(root: string): WorkspaceStore {
     list() {
       const { revision, projects, workspaces } = read()
       return { revision, projects, workspaces }
+    },
+    forProject(projectId) {
+      const mine = read().workspaces.filter((w) => w.projectId === projectId)
+      return [...mine.filter((w) => w.kind === 'primary'), ...mine.filter((w) => w.kind !== 'primary')]
+    },
+    addWorktree(input) {
+      const data = read()
+      if (!data.projects.some((p) => p.id === input.projectId)) throw new Error('Unknown project')
+      const canonical = canonicalPath(input.cwd)
+      const existing = data.workspaces.find((w) => w.canonicalCwd === canonical)
+      if (existing) {
+        if (existing.projectId !== input.projectId || existing.kind !== 'worktree') throw new Error('That folder is already registered as another workspace')
+        return existing
+      }
+      const workspace: Workspace = {
+        id: randomUUID(), projectId: input.projectId, kind: 'worktree', cwd: input.cwd, canonicalCwd: canonical,
+        gitCommonDir: gitCommonDir(canonical), managed: true, lifecycle: 'active', revision: 1, createdAt: new Date().toISOString(),
+        name: input.name, branch: input.branch, baseRef: input.baseRef, baseCommit: input.baseCommit, createdFrom: input.createdFrom,
+        ...(input.createdFromBranch ? { createdFromBranch: input.createdFromBranch } : {}),
+      }
+      write({ ...data, revision: data.revision + 1, workspaces: [...data.workspaces, workspace] })
+      return workspace
     },
   }
 }
