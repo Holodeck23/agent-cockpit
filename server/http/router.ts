@@ -46,6 +46,8 @@ import { AGENT_IDS } from '../agents/capabilities/types.ts'
 import type { AgyMcp } from '../projects/agy-mcp.ts'
 import type { Lifecycle } from '../agents/lifecycle/service.ts'
 import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
+import { handleAccountRoute, isAccountRoute } from './account-routes.ts'
+import type { AccountService } from '../agents/accounts/service.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -132,6 +134,8 @@ export interface ApiDeps {
   readonly agyMcp?: AgyMcp
   /** Install, update and sign-in for agent CLIs (W10.2/W10.3); desktop only. */
   readonly lifecycle?: Lifecycle
+  /** Account profiles and each project's choice per agent (W12.1); desktop only. */
+  readonly accounts?: AccountService
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -163,7 +167,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
@@ -246,6 +250,15 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (isAgentLifecycleRoute(parts) && lifecycle) {
         if (viaPhone) throw new HttpError(403, 'Installing, updating and signing in to agents is only available on the Mac')
         await handleAgentLifecycleRoute(req, res, parts, lifecycle)
+        return true
+      }
+      // Accounts name who is signed in where: the Mac only (INTERFACES §4).
+      if (isAccountRoute(parts) && accounts) {
+        if (viaPhone) throw new HttpError(403, 'Accounts are only available on the Mac')
+        await handleAccountRoute(req, res, url, parts, accounts, (projectId) => {
+          const known = workspaces?.list().projects.find((p) => p.id === projectId)?.path
+          return known && projects.list().some((p) => p.path === known) ? known : undefined
+        })
         return true
       }
       // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).
