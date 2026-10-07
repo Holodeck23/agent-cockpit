@@ -214,13 +214,13 @@ export class OperationConflictError extends Error {}
 /** The handoff the user read is no longer what a switch would send (D13). */
 export class HandoffChangedError extends Error {}
 
-/** A late event worth a label: what a replaced process tried to say, never deltas, usage or its own exit. */
 // Cockpit tools whose every call Cockpit approves itself, on the server (host-actions.ts), because
 // the CLI's own gate can be bypassed. The CLI's prompt for the same call would ask twice: it is
 // allowed here and only Cockpit's card is shown. save_workflow is not listed: Cockpit asks for it
 // only when the project has not allowed agent workflows, so the CLI's prompt may be the only one.
 const HOST_APPROVED_TOOLS = new Set(['start_process', 'stop_process', 'remember', 'start_conversation', 'send_to_conversation', 'stop_conversation']
   .map((tool) => `mcp__cockpit__${tool}`))
+/** A late event worth a label: what a replaced process tried to say, never deltas, usage or its own exit. */
 const STALE_LABELLED = new Set<NormalizedEvent['kind']>(['session', 'result', 'assistant_text', 'tool_use', 'approval_request', 'question', 'error', 'subagent'])
 
 export interface ThreadManager {
