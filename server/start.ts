@@ -309,7 +309,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), checks.shutdown(), agentLifecycle.shutdown()])
+      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), phonePreviews.dispose(), checks.shutdown(), agentLifecycle.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {

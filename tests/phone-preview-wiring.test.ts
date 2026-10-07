@@ -1,4 +1,5 @@
 import { request, type IncomingHttpHeaders } from 'node:http'
+import { createServer as netServer, type AddressInfo } from 'node:net'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +18,7 @@ const OWNER = 'owner@example.com'
 const CONTROL = `https://${HOST}`
 const PREVIEW = `https://${HOST}:8443`
 
-const APP = `require('http').createServer((q,s)=>{s.setHeader('content-type','text/plain');s.end('fixture '+q.url+' cookie='+(q.headers.cookie||'none')+' host='+q.headers.host)}).listen(0,'127.0.0.1',function(){console.log('Local: http://127.0.0.1:'+this.address().port+'/')})`
+const APP = `require('http').createServer((q,s)=>{if(q.url==='/sse'){s.writeHead(200,{'content-type':'text/event-stream'});return s.write('data: hi\\n\\n')}s.setHeader('content-type','text/plain');s.end('fixture '+q.url+' cookie='+(q.headers.cookie||'none')+' host='+q.headers.host)}).listen(0,'127.0.0.1',function(){console.log('Local: http://127.0.0.1:'+this.address().port+'/')})`
 
 interface Reply { status: number; body: string; headers: IncomingHttpHeaders }
 function call(port: number, path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<Reply> {
@@ -49,7 +50,30 @@ function fakeTailscale() {
 let server: RunningServer | undefined
 afterEach(async () => { await server?.close(); server = undefined })
 
-async function setup() {
+async function freePort(): Promise<number> {
+  const probe = netServer()
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', () => resolve()))
+  const { port } = probe.address() as AddressInfo
+  await new Promise<void>((resolve) => probe.close(() => resolve()))
+  return port
+}
+
+/** An open event stream through the preview, and whether it has ended. */
+function openStream(port: number, headers: Record<string, string>): Promise<{ ended: () => boolean; stop: () => void }> {
+  return new Promise((resolve, reject) => {
+    let ended = false
+    const req = request({ host: '127.0.0.1', port, path: '/sse', agent: false, headers }, (res) => {
+      res.on('close', () => { ended = true })
+      res.once('data', () => resolve({ ended: () => ended, stop: () => req.destroy() }))
+      if (res.statusCode !== 200) reject(new Error(`stream got ${res.statusCode}`))
+    })
+    req.on('error', () => { ended = true })
+    req.end()
+  })
+}
+const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
+
+async function setup(listenPort = 0) {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-pv-state-'))
   const web = mkdtempSync(join(tmpdir(), 'cockpit-pv-web-'))
   writeFileSync(join(web, 'index.html'), '<!doctype html><title>Cockpit</title>')
@@ -57,7 +81,7 @@ async function setup() {
     close: async () => { emit({ kind: 'exit', code: 0 }) } })
   const ts = fakeTailscale()
   server = await startServer({ port: 0, stateRoot: root, webDist: web, launchers: { claude: launcher, codex: launcher },
-    remote: { tailscale: ts.tailscale, port: 0, previewListenPort: 0 } })
+    remote: { tailscale: ts.tailscale, port: 0, previewListenPort: listenPort } })
   const s = server
   const local = (path: string, body?: unknown) => call(s.port, path, body === undefined ? {} : json(body))
   expect((await local('/api/remote', { enabled: true })).status).toBe(200)
@@ -66,11 +90,33 @@ async function setup() {
   const pairing = JSON.parse((await call(phonePort, '/api/remote/pair', { ...json({ name: 'Pixel' }), headers: via({ 'content-type': 'application/json' }) })).body).data
   await local(`/api/remote/pairings/${pairing.id}`, { approve: true })
   const device = String((await call(phonePort, `/api/remote/pair/${pairing.id}`, { headers: via() })).headers['set-cookie']?.[0]).split(';')[0]!
-  const phone = (path: string, body?: unknown, extra: Record<string, string> = {}) => call(phonePort, path, {
+  // Phone access on again binds a new port (port 0), so ask for it each time.
+  const phone = (path: string, body?: unknown, extra: Record<string, string> = {}) => call(s.remote.port()!, path, {
     ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
     headers: via({ cookie: device, ...(body === undefined ? {} : { 'content-type': 'application/json', origin: CONTROL }), ...extra }),
   })
   return { s, root, ts, local, phone, device, phonePort, via }
+}
+
+type Ctx = Awaited<ReturnType<typeof setup>>
+
+/** Turns the app's preview on, then signs the phone in with a fresh ticket. */
+async function signIn(ctx: Ctx, processId: string, serve = true) {
+  if (serve) {
+    const { serviceId } = JSON.parse((await ctx.local('/api/phone/previews', { processId })).body).data
+    await ctx.local(`/api/phone/previews/${serviceId}/serve`, {})
+  }
+  const status = JSON.parse((await ctx.local('/api/phone/previews')).body).data
+  const gw = status.services[0].serve.listenPort as number
+  const issued = await ctx.phone('/api/phone/preview-tickets', { processId })
+  expect(issued.status).toBe(201)
+  const { ticket } = JSON.parse(issued.body).data
+  const viaPreview = (extra: Record<string, string> = {}) => ({ host: `${HOST}:8443`, 'x-forwarded-proto': 'https', 'tailscale-user-login': OWNER, ...extra })
+  const boot = await call(gw, '/__cockpit/bootstrap', { method: 'POST', body: `ticket=${ticket}`,
+    headers: viaPreview({ origin: CONTROL, cookie: ctx.device, 'content-type': 'application/x-www-form-urlencoded' }) })
+  expect(boot.status).toBe(303)
+  const headers = viaPreview({ cookie: `${ctx.device}; ${String(boot.headers['set-cookie']?.[0]).split(';')[0]}` })
+  return { gw, headers, serviceId: status.services[0].id as string }
 }
 
 async function startApp(s: RunningServer, root: string, name = 'web') {
@@ -164,4 +210,82 @@ describe('phone previews in the app (14c)', () => {
     await expect(call(gw, '/')).rejects.toThrow()
     expect(JSON.parse((await phone('/api/phone/preview-tickets', { processId })).body).state).toBe('not-enabled')
   }, 20_000)
+})
+
+describe('phone preview access ends (14c revocation)', () => {
+  it('a stop or restart ends sessions and open streams; a restart needs a fresh ticket', async () => {
+    const ctx = await setup()
+    const first = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, first)
+    expect((await call(a.gw, '/', { headers: a.headers })).status).toBe(200)
+    const stream = await openStream(a.gw, a.headers)
+
+    const second = (await ctx.s.processes.restart(first)).id
+    for (let i = 0; i < 100 && !ctx.s.processes.get(second)?.url; i += 1) await settle(50)
+    await settle()
+    expect(stream.ended()).toBe(true)
+    const old = await call(a.gw, '/', { headers: a.headers })
+    expect([old.status, old.headers['x-cockpit-preview']]).toEqual([401, 'expired'])
+    expect(old.body).not.toContain('fixture')
+
+    const b = await signIn(ctx, second, false)
+    expect((await call(b.gw, '/', { headers: b.headers })).body).toContain('fixture')
+    await ctx.s.processes.stop(second)
+    await settle()
+    const stopped = await call(b.gw, '/', { headers: b.headers })
+    expect([stopped.status, stopped.headers['x-cockpit-preview']]).toEqual([503, 'stopped'])
+    expect(JSON.parse((await ctx.phone('/api/phone/preview-tickets', { processId: second })).body).state).toBe('stopped')
+  }, 30_000)
+
+  it('removing the phone ends its sessions and streams at once', async () => {
+    const ctx = await setup()
+    const id = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, id)
+    const stream = await openStream(a.gw, a.headers)
+    const device = JSON.parse((await ctx.local('/api/remote')).body).data.devices[0]
+    await ctx.local(`/api/remote/devices/${device.id}/revoke`, {})
+    await settle()
+    expect(stream.ended()).toBe(true)
+    expect((await call(a.gw, '/', { headers: a.headers })).status).toBe(401)
+    expect((await ctx.phone('/api/phone/preview-tickets', { processId: id })).status).toBe(401)
+  }, 30_000)
+
+  it('phone access off closes previews without touching their Serve entries; back on, access starts over', async () => {
+    const ctx = await setup(await freePort())
+    const id = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, id)
+    const stream = await openStream(a.gw, a.headers)
+    await ctx.local('/api/remote', { enabled: false })
+    await settle()
+    expect(stream.ended()).toBe(true)
+    await expect(call(a.gw, '/', { headers: a.headers })).rejects.toThrow()
+    expect(ctx.ts.table.get(8443)).toBe(`http://127.0.0.1:${a.gw}`)
+    expect(ctx.ts.calls.filter((c) => c.includes('8443'))).toEqual([`serve 8443 -> ${a.gw}`])
+
+    await ctx.local('/api/remote', { enabled: true })
+    const back = JSON.parse((await ctx.local('/api/phone/previews')).body).data.services[0]
+    expect(back).toMatchObject({ open: true, tailscale: 'cockpit' })
+    const old = await call(a.gw, '/', { headers: a.headers })
+    expect([old.status, old.headers['x-cockpit-preview']]).toEqual([401, 'expired'])
+    const fresh = await signIn(ctx, id, false)
+    expect((await call(fresh.gw, '/', { headers: fresh.headers })).body).toContain('fixture')
+  }, 30_000)
+
+  it('removing the project retires its previews for good and keeps their origin reserved', async () => {
+    const ctx = await setup()
+    expect((await ctx.local('/api/projects', { path: ctx.root })).status).toBe(200)
+    const id = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, id)
+    const stream = await openStream(a.gw, a.headers)
+    expect((await ctx.local('/api/projects/remove', { path: ctx.root })).status).toBe(200)
+    await settle()
+    expect(stream.ended()).toBe(true)
+    await expect(call(a.gw, '/', { headers: a.headers })).rejects.toThrow()
+    const after = JSON.parse((await ctx.local('/api/phone/previews')).body).data
+    expect(after.services[0]).toMatchObject({ retired: true, open: false, slot: 0 })
+    expect((await ctx.local(`/api/phone/previews/${a.serviceId}/serve`, {})).status).toBe(404)
+    // Offered again, it gets a new origin; slot 0 is never handed out again.
+    const again = JSON.parse((await ctx.local('/api/phone/previews', { processId: id })).body).data
+    expect(again.status.services.find((v: { id: string }) => v.id === again.serviceId).slot).toBe(1)
+  }, 30_000)
 })

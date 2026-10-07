@@ -112,7 +112,19 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
   })
   /** The listener port each open service actually got (the slot's, except in tests). */
   const bound = new Map<string, number>()
-  const listenPortOf = (service: PreviewService): number => bound.get(service.id) ?? slotPorts(service.slot).listenPort
+  // A test override of 0 means "any free port", known only once bound.
+  const configuredPort = (service: PreviewService): number => options.listenPort?.(service) || slotPorts(service.slot).listenPort
+  const listenPortOf = (service: PreviewService): number => bound.get(service.id) ?? configuredPort(service)
+
+  // A run that stops, exits or is restarted takes its preview sessions (and their open sockets)
+  // with it; a restart is a new process id, so it needs a fresh ticket (W11.2, SEC-06).
+  const unsubscribe = processes.subscribe((info) => {
+    if (info.status === 'running') return
+    const service = services.find(identityOf(info))
+    if (!service) return
+    resolver.forget()
+    access.retireGenerations(service.id, liveProcess(service)?.id)
+  })
 
   async function open(service: PreviewService): Promise<number> {
     const port = await gateway.open(service)
@@ -240,7 +252,7 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
       if (!policy) return
       for (const service of services.list()) {
         if (service.retiredAt || gateway.openIds().includes(service.id)) continue
-        const expected = `http://127.0.0.1:${slotPorts(service.slot).listenPort}`
+        const expected = `http://127.0.0.1:${configuredPort(service)}`
         const target = await tailscale.serveTarget(policy.hostname, slotPorts(service.slot).httpsPort).catch(() => undefined)
         if (target === expected) await open(service).catch((error: unknown) => options.log?.(`preview ${service.slot} not reopened: ${error instanceof Error ? error.message : String(error)}`))
       }
@@ -252,6 +264,23 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
     },
     /** A phone was removed: its sessions, sockets and app cookies end. */
     deviceRevoked(deviceId: string): number { return access.revoke({ deviceId }) },
+    /**
+     * A project was removed: its previews end and are never offered again. Their origins stay
+     * reserved (an open phone tab could otherwise script the next app given that origin) and their
+     * Serve entries stay until the person removes them.
+     */
+    async retireProject(projectPath: string): Promise<void> {
+      for (const service of services.retireProject(projectPath)) {
+        access.revoke({ serviceId: service.id })
+        await close(service.id)
+      }
+    },
+    /** Cockpit is closing. */
+    async dispose(): Promise<void> {
+      unsubscribe()
+      for (const id of gateway.openIds()) await close(id)
+      access.revoke('all')
+    },
     /** For tests and the proof. */
     access,
     services,

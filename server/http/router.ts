@@ -123,7 +123,7 @@ export interface ApiDeps {
   readonly mcp: McpRouteDeps
   readonly remote: RemoteAccess
   /** Phone previews' desktop routes (/api/phone/previews); the phone's ticket route is on the phone listener. */
-  readonly phonePreviews?: Pick<PhonePreviews, 'handleLocal'>
+  readonly phonePreviews?: Pick<PhonePreviews, 'handleLocal' | 'retireProject'>
   /** Installation and last reported usage per agent, for the agent picker. */
   readonly agents?: () => Promise<AgentStatus[]>
   /** Typed capability records per agent (W10.1); desktop only. */
@@ -506,7 +506,10 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         if (busy > 0) throw new HttpError(409, `${busy === 1 ? 'A conversation' : `${busy} conversations`} in this project ${busy === 1 ? 'is' : 'are'} still working or waiting for you. Stop or answer ${busy === 1 ? 'it' : 'them'} first.`)
         const scheduled = workflows.store.list(path).filter((w) => w.enabled)
         for (const w of scheduled) workflows.store.update(w.id, { enabled: false, nextRunAt: null })
-        sendJson(res, 200, { data: { project: projects.hide(path), pausedSchedules: scheduled.length } })
+        const project = projects.hide(path)
+        // Its phone previews end with it (W11.2: workspace removal invalidates sessions).
+        await phonePreviews?.retireProject(path)
+        sendJson(res, 200, { data: { project, pausedSchedules: scheduled.length } })
         return true
       }
       if (parts[1] === 'projects' && parts.length === 2) {
