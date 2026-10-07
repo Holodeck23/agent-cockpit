@@ -33,11 +33,15 @@ const gitEnv = { ...process.env, GIT_AUTHOR_NAME: 'Gardener', GIT_AUTHOR_EMAIL: 
 const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8', env: gitEnv }).trim()
 git(garden, 'init', '-q', '-b', 'main')
 writeFileSync(join(garden, 'README.md'), '# Garden v1\n')
-writeFileSync(join(garden, 'beds.txt'), 'roses\n')
+writeFileSync(join(garden, 'notes.txt'), 'notes v1\n')
 git(garden, 'add', '.'); git(garden, 'commit', '-q', '-m', 'v1')
 const commitA = git(garden, 'rev-parse', 'HEAD')
 writeFileSync(join(garden, 'README.md'), '# Garden v2\n')
+writeFileSync(join(garden, 'notes.txt'), 'notes v2\n')
 git(garden, 'commit', '-q', '-am', 'v2')
+// README.md opens as a rendered document; the file checks read notes.txt in the text box.
+const NOTES_DIRTY = 'notes v2\nan uncommitted note\n'
+writeFileSync(join(garden, 'notes.txt'), NOTES_DIRTY)
 const DIRTY = '# Garden v2\nAn uncommitted edit in the main checkout.\n'
 writeFileSync(join(garden, 'README.md'), DIRTY)
 writeFileSync(join(garden, 'scratch.txt'), 'untracked in the main checkout\n')
@@ -69,7 +73,7 @@ interface Workspace { id: string; kind: 'primary' | 'worktree'; cwd: string; nam
 interface Pending { id: string; name: string }
 interface Project { path: string; projectId?: string; workspaceId?: string }
 interface Meta { id: string; projectPath: string; workspaceId?: string; sessionId?: string; bindings?: Record<string, unknown> }
-interface Detail { meta: Meta; status: string; events: Array<{ ts: string; event: { kind: string; text?: string; runId?: string; images?: unknown[] } }> }
+interface Detail { meta: Meta; status: string; events: Array<{ ts: string; event: { kind: string; text?: string; runId?: string; from?: string } }> }
 interface Proc { id: string; name: string; cwd: string; workspaceId?: string; status: string; projectPath: string }
 
 const projectOf = async (page: Page, path: string): Promise<Project> => (await get<Project[]>(page, '/api/projects')).find((p) => p.path === path)!
@@ -87,7 +91,10 @@ async function reply(page: Page, id: string, n: number): Promise<string> {
   }, 30_000)) ?? ''
 }
 const field = (text: string, name: string): string => new RegExp(`${name}=(\\S*)`).exec(text)?.[1] ?? ''
-const saw = (text: string): string[] => /saw=\[([^\]]*)\]/.exec(text)?.[1]?.split(' ').filter(Boolean) ?? []
+// The stand-in reports markers without their MARK- prefix, so its own replies never carry one into a later handoff.
+const marks = (name: string) => (text: string): string[] => (new RegExp(`${name}=\\[([^\\]]*)\\]`).exec(text)?.[1]?.split(' ').filter(Boolean) ?? []).map((m) => `MARK-${m}`)
+/** MARK-* words in the message the agent received, and in its launch context (where a new session's handoff goes). */
+const saw = marks('saw'), ctx = marks('ctx')
 
 /** The selector under the conversation list, driven the way a person does. */
 async function choose(page: Page, label: RegExp): Promise<void> {
@@ -116,7 +123,8 @@ async function pasteImage(page: Page, name: string): Promise<void> {
   await page.locator('.image-chip', { hasText: name }).waitFor()
 }
 const chips = async (page: Page): Promise<string[]> => (await page.locator('.image-chip span').allTextContents()).sort()
-const section = (page: Page, name: string) => page.getByRole('tab', { name, exact: true }).click()
+// Processes reads "Processes (1 running)" while something runs.
+const section = (page: Page, name: string) => (name === 'Processes' ? page.getByRole('button', { name: /^Processes/ }) : page.getByRole('tab', { name, exact: true })).click()
 
 const launch = (extra: Record<string, string> = {}): Promise<ElectronApplication> => launchPackagedApp({
   COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(FIX, 'wave12-agent'), ...extra,
@@ -175,7 +183,7 @@ try {
   await choose(page, /Main checkout/)
   let dialog = await openNewWorktree(page)
   const uncommitted = await dialog.getByText(/uncommitted files? in the main checkout will not be copied/).textContent({ timeout: 10_000 })
-  check('W12-05 the dialog says the main checkout\'s uncommitted files are not copied', /2 uncommitted files/.test(uncommitted ?? ''), uncommitted ?? '')
+  check('W12-05 the dialog says the main checkout\'s uncommitted files are not copied', /3 uncommitted files/.test(uncommitted ?? ''), uncommitted ?? '')
   await dialog.getByLabel('Worktree name').fill('Rose bed')
   await dialog.getByLabel('Base').fill(commitA.slice(0, 10))
   await shot(page, '05-dialog')
@@ -265,8 +273,9 @@ try {
   const r2 = await reply(page, threadId, 2)
   const s2 = field(r2, 'session')
   check('W12-07 turn 2 runs in Rose bed in its own new session, handed the conversation so far',
-    field(r2, 'cwd') === rose.cwd && field(r2, 'resumed') === '0' && Boolean(s2) && s2 !== s1 && saw(r2).includes('MARK-P1') && saw(r2).includes('MARK-W1'), r2)
-  check('W12-07 the header names the workspace the conversation works in now', (await page.locator('.workspace-chip').textContent())?.includes('Rose bed') === true)
+    field(r2, 'cwd') === rose.cwd && field(r2, 'resumed') === '0' && Boolean(s2) && s2 !== s1 && [...saw(r2), ...ctx(r2)].includes('MARK-P1') && saw(r2).includes('MARK-W1'), r2)
+  const chip = await until('header chip', async () => ((await page.locator('.workspace-chip').textContent()) ?? '').includes('Rose bed'))
+  check('W12-07 the header names the workspace the conversation works in now', chip === true, (await page.locator('.workspace-chip').textContent().catch(() => '')) ?? '')
 
   step('W12-07 back to the main checkout')
   await choose(page, /Main checkout/)
@@ -285,7 +294,12 @@ try {
   check('W12-07 Rose bed\'s draft went with its send; the main checkout\'s send did not touch it',
     await messageBox(page).inputValue() === '' && (await chips(page)).length === 0, (await chips(page)).join())
   const d = await detail(page, threadId)
-  const userImages = d.events.filter((e) => e.event.kind === 'user_text').map((e) => e.event.images?.length ?? 0)
+  // Each sent image is an image event from you right after its message.
+  const userImages: number[] = []
+  for (const { event } of d.events) {
+    if (event.kind === 'user_text') userImages.push(0)
+    else if (event.kind === 'image' && event.from === 'you') userImages[userImages.length - 1] = (userImages.at(-1) ?? 0) + 1
+  }
   const allThreads = (await get<Array<{ meta: Meta }>>(page, '/api/threads')).filter((t) => t.meta.projectPath === garden)
   check('W12-07 one conversation, one transcript; each sent image went with its own message',
     allThreads.length === 1 && userImages.join() === '0,1,1,0' && d.events.filter((e) => e.event.kind === 'workspace_changed').length === 2, `threads ${allThreads.length}, images ${userImages.join()}`)
@@ -298,10 +312,10 @@ try {
   await section(page, 'Files')
   await page.getByRole('tab', { name: 'Project files' }).click()
   const kicker = (await page.locator('.file-list .workflow-kicker').textContent()) ?? ''
-  await page.locator('.file-row').filter({ hasText: 'README.md' }).click()
+  await page.locator('.file-row').filter({ hasText: 'notes.txt' }).click()
   const fileText = page.getByLabel('File contents')
-  await until('worktree README', async () => (await fileText.inputValue()) === '# Garden v1\n')
-  check('W12-08 Files in Rose bed reads the worktree\'s own file and says which workspace', (await fileText.inputValue()) === '# Garden v1\n' && kicker === 'Garden · Rose bed', kicker)
+  await until('worktree notes', async () => (await fileText.inputValue()) === 'notes v1\n')
+  check('W12-08 Files in Rose bed reads the worktree\'s own file and says which workspace', (await fileText.inputValue()) === 'notes v1\n' && kicker === 'Garden · Rose bed', kicker)
   await page.getByRole('tab', { name: 'Your documents' }).click()
   const docNote = (await page.locator('.file-space-note').textContent()) ?? ''
   check('W12-08 Your documents are labelled as shared by every workspace', /Shared by every workspace of Garden/.test(docNote), docNote)
@@ -309,11 +323,11 @@ try {
   await page.getByRole('tab', { name: 'Project files' }).click()
 
   step('W12-08 pins')
-  await call(page, 'POST', '/api/projects/pins', { path: garden, files: ['README.md'] })
+  await call(page, 'POST', '/api/projects/pins', { path: garden, files: ['notes.txt'] })
   await page.reload()
   await section(page, 'Files')
-  await page.locator('.subnav-pin', { hasText: 'README.md' }).click()
-  const pinnedRose = await until('pinned README in Rose bed', async () => (await fileText.inputValue()) === '# Garden v1\n' && 'v1')
+  await page.locator('.subnav-pin', { hasText: 'notes.txt' }).click()
+  const pinnedRose = await until('pinned notes in Rose bed', async () => (await fileText.inputValue()) === 'notes v1\n' && 'v1')
   check('W12-08 a pinned file opens in the selected worktree, never the main checkout\'s copy', pinnedRose === 'v1', await fileText.inputValue())
 
   step('W12-08 a slow answer for the old selection does not replace the new view')
@@ -321,12 +335,15 @@ try {
   await page.route(/\/api\/files\/read\?.*workspaceId=/, async (route) => { delayed += 1; await new Promise((r) => setTimeout(r, 2500)); await route.continue().catch(() => undefined) })
   await page.reload()
   await section(page, 'Files')
-  await page.locator('.file-row').filter({ hasText: 'README.md' }).click()
+  await page.locator('.file-row').filter({ hasText: 'notes.txt' }).click()
+  // The workspace picker sits above the conversation list.
+  await section(page, 'Conversations')
   await choose(page, /Main checkout/)
-  await page.locator('.file-row').filter({ hasText: 'README.md' }).click()
-  await until('main README', async () => (await fileText.inputValue()) === DIRTY)
+  await section(page, 'Files')
+  await page.locator('.file-row').filter({ hasText: 'notes.txt' }).click()
+  await until('main notes', async () => (await fileText.inputValue()) === NOTES_DIRTY)
   await new Promise((r) => setTimeout(r, 3500))
-  check('W12-08 the late worktree answer was dropped; the main checkout\'s file stays shown', delayed >= 1 && (await fileText.inputValue()) === DIRTY, `${delayed} delayed`)
+  check('W12-08 the late worktree answer was dropped; the main checkout\'s file stays shown', delayed >= 1 && (await fileText.inputValue()) === NOTES_DIRTY, `${delayed} delayed`)
   await page.unroute(/\/api\/files\/read\?.*workspaceId=/)
 
   step('W12-08 an MCP process started by the agent in Rose bed')
@@ -343,9 +360,12 @@ try {
   check('W12-08 the agent\'s MCP grant starts the process in the worktree folder, owned by that workspace',
     /process=20[01]/.test(r5) && sleeper?.cwd === rose.cwd && sleeper?.workspaceId === rose.id, `${r5} | ${sleeper?.cwd}`)
   await section(page, 'Processes')
+  await page.locator('.process-row', { hasText: 'wt-sleeper' }).waitFor().catch(() => undefined)
   const inRose = await page.locator('.process-row', { hasText: 'wt-sleeper' }).count()
   const processKicker = (await page.locator('.workflow-kicker').first().textContent()) ?? ''
+  await section(page, 'Conversations')
   await choose(page, /Main checkout/)
+  await section(page, 'Processes')
   const inMain = await page.locator('.process-row', { hasText: 'wt-sleeper' }).count()
   check('W12-08 Processes lists it under Rose bed only', inRose === 1 && inMain === 0 && processKicker === 'Garden · Rose bed', `rose ${inRose}, main ${inMain}`)
 
@@ -377,6 +397,7 @@ try {
     JSON.stringify(ipc))
 
   step('W12-08 a workflow run while Rose bed is selected')
+  await section(page, 'Conversations')
   await choose(page, /Rose bed/)
   const flow = await call<{ id: string }>(page, 'POST', '/api/workflows', { projectPath: garden, name: 'bed-check', prompt: 'workflow turn', settings: { agent: 'claude', permissionMode: 'manual', useHooks: false } })
   const ran = await call<Meta>(page, 'POST', `/api/workflows/${flow.data?.id}/run`, {})
@@ -386,6 +407,8 @@ try {
 
   await shot(page, '08-end')
 } catch (error) {
+  const window = app ? await app.firstWindow().catch(() => undefined) : undefined
+  if (window) await shot(window, 'failed').catch(() => undefined)
   check('the proof ran to the end', false, error instanceof Error ? error.message.split('\n')[0] : String(error))
 } finally {
   await app?.close().catch(() => undefined)
