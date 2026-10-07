@@ -207,7 +207,8 @@ export async function handleMcpRoute(
       const started = await approved(deps, grant, res, 'start_process', { command: body.command, ...(body.name ? { name: body.name } : {}) },
         { description: 'Run this command in the project, as a process Cockpit keeps running.', sessionKey: 'processes' },
         () => {
-          try { return processes.start({ projectPath, cwd: grant.cwd, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}), ...body }, owner) } catch (error) {
+          // The grant's folder last: nothing in the agent's request decides where its process runs.
+          try { return processes.start({ ...body, projectPath, cwd: grant.cwd, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) }, owner) } catch (error) {
             if (error instanceof ProcessConflictError) throw new HttpError(409, error.message)
             throw error
           }
