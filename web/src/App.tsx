@@ -300,6 +300,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               instructionsRevision={detailProject?.instructions ? detailProject.instructionsRevision : undefined}
               phone={phone}
               onBack={() => cockpit.select(undefined)}
+              onToggleList={() => setHidden(!hideList)}
+              listHidden={hideList}
               onOpenFile={openFileFromReply}
             />
           ) : (

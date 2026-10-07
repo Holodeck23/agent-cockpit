@@ -1,8 +1,17 @@
 /* Conversation list (left column). */
 
 .list {
-  display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; min-height: 0;
+  display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; min-width: 0; min-height: 0;
   background: var(--canvas-app); border-right: 1px solid var(--border);
+}
+/* Keep the darker, higher-contrast palette within the conversation screen. */
+.layout {
+  --canvas-app: light-dark(#fafaf9, #191919);
+  --content: light-dark(#fff, #111111);
+  --field: light-dark(#f0f0eb, #292929);
+  --border: light-dark(#e5e5df, #ffffff20);
+  --conversation-row-selected: light-dark(#e9e9e4, #2b2b2b);
+  --conversation-filter-active: light-dark(#e6e3db, #302d28);
 }
 
 .list-head { display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px 14px; }
@@ -30,29 +39,27 @@
 .search input::placeholder { color: var(--muted); }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
 
-.filters { display: flex; justify-content: space-between; gap: 0; padding: 10px 12px 0; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.filters { display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 12px 12px 8px; overflow-x: auto; scrollbar-width: none; }
 .filter {
-  display: flex; align-items: center; gap: 4px; padding: 8px 3px 9px; background: none; border: 0;
-  border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 0;
-  color: var(--secondary); font: inherit; font-size: 13px; white-space: nowrap; cursor: default;
+  display: flex; align-items: center; gap: 4px; padding: 6px 9px; background: none; border: 0;
+  border-radius: 8px; color: var(--secondary); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: default;
 }
-.filter[aria-selected='true'] { color: var(--strong); font-weight: 500; border-bottom-color: var(--strong); }
-.filter:hover { color: var(--strong); }
+.filter[aria-selected='true'] { color: var(--strong); font-weight: 600; background: var(--conversation-filter-active); }
+.filter:hover:not([aria-selected='true']) { color: var(--strong); background: var(--field); }
 .filter-count { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
 .filter .icon { width: 15px; height: 15px; }
 .unread-icon { position: relative; display: inline-flex; }
 .unread-icon::after { content: ''; position: absolute; top: 0; right: -1px; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
 
-.cards { display: flex; flex-direction: column; gap: 6px; padding: 10px; overflow-y: auto; }
+.cards { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; overflow-y: auto; }
 
 .card {
   display: grid; gap: 6px; width: 100%; padding: 12px 14px; text-align: left;
-  background: transparent; border: 1px solid transparent; border-radius: var(--r-lg);
+  background: transparent; border: 0; border-radius: 12px;
   color: var(--body); font: inherit; cursor: default;
 }
 .card:hover { background: var(--field); }
-.card.selected { background: var(--panel); border-color: var(--border); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 16px -10px rgb(0 0 0 / 0.18); }
-.card.completed { opacity: 0.6; }
+.card.selected { background: var(--conversation-row-selected); }
 .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .card-count { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
 .card-count .icon { width: 15px; height: 15px; }
@@ -77,7 +84,7 @@
 @keyframes starting-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .starting-dot { animation: none; } }
 .pill-needs_input { background: var(--needs-bg); color: var(--needs-ink); box-shadow: inset 0 0 0 1px var(--needs-border); }
-.pill-done { color: var(--success); padding-inline: 2px; }
+.pill-done { color: var(--success); background: color-mix(in srgb, var(--success) 14%, var(--field)); }
 .pill-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 .list-empty { display: grid; justify-items: center; gap: 4px; padding: 36px 16px; text-align: center; color: var(--muted); }
@@ -95,8 +102,11 @@
 /* A narrow list (the fixed 260px below 1120px windows) keeps all four filters in view. */
 .list { container-type: inline-size; }
 @container (max-width: 300px) {
-  .filters { padding-inline: 10px; }
-  .filter { font-size: 12.5px; gap: 3px; }
+  .list-head { gap: 6px; padding: 14px 10px 10px; }
+  .list-art { display: none; }
+  .list-head h1 { font-size: 18px; }
+  .filters { gap: 0; padding-inline: 8px; }
+  .filter { padding-inline: 5px; font-size: 11.5px; gap: 2px; }
   .filter .icon, .filter .bars, .filter svg, .filter .unread-icon { display: none; }
 }
 .list-empty-icon.done { border-radius: 50%; color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
