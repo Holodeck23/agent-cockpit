@@ -13,8 +13,10 @@ type Load<T> = { state: 'loading' } | { state: 'error'; message: string } | { st
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 const time = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-export function ChangesView({ projectPath, threadId, runId, refreshKey, onOpenFile, onClose }: {
+export function ChangesView({ projectPath, workspaceId, threadId, runId, refreshKey, onOpenFile, onClose }: {
   projectPath: string
+  /** A worktree's ID; absent for the main checkout. */
+  workspaceId?: string
   threadId: string
   /** The run a result card opened this for; without one only Working changes is offered. */
   runId?: string
@@ -34,9 +36,9 @@ export function ChangesView({ projectPath, threadId, runId, refreshKey, onOpenFi
   useEffect(() => {
     let live = true
     setChanges((c) => (c.state === 'ready' ? c : { state: 'loading' }))
-    api.gitChanges(projectPath).then((data) => { if (live) setChanges({ state: 'ready', data }) }, (e: unknown) => { if (live) setChanges({ state: 'error', message: message(e) }) })
+    api.gitChanges(projectPath, workspaceId).then((data) => { if (live) setChanges({ state: 'ready', data }) }, (e: unknown) => { if (live) setChanges({ state: 'error', message: message(e) }) })
     return () => { live = false }
-  }, [projectPath, reloads, refreshKey])
+  }, [projectPath, workspaceId, reloads, refreshKey])
   useEffect(() => {
     if (!runId) return
     let live = true
@@ -96,7 +98,7 @@ export function ChangesView({ projectPath, threadId, runId, refreshKey, onOpenFi
                   {files.map((f) => <FileItem key={f.path} file={f} selected={f.path === current?.path} onSelect={() => setSelected(f.path)} />)}
                 </ul>
               </div>
-              {current ? <DiffPane key={`${current.path}:${reloads}:${refreshKey}`} projectPath={projectPath} file={current} onOpenFile={onOpenFile} onRefresh={refresh} /> : null}
+              {current ? <DiffPane key={`${current.path}:${reloads}:${refreshKey}`} projectPath={projectPath} workspaceId={workspaceId} file={current} onOpenFile={onOpenFile} onRefresh={refresh} /> : null}
             </div>
           )}
         </>

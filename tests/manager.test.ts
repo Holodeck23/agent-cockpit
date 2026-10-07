@@ -412,7 +412,7 @@ describe('switching agents', () => {
       },
     })
     const meta = manager.create({ projectPath: '/tmp', settings: threadSettingsSchema.parse({}), text: 'hi' })
-    expect(grants).toEqual([{ threadId: meta.id, projectPath: '/tmp' }])
+    expect(grants).toEqual([{ threadId: meta.id, projectPath: '/tmp', cwd: '/tmp' }])
     expect(agent.requests[0]?.cockpit?.secretEnv).toEqual({ COCKPIT_MCP_TOKEN: 't1' })
     agent.emit({ kind: 'result', ok: true })
     agent.emit({ kind: 'exit', code: 0 })

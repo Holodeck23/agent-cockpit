@@ -8,6 +8,7 @@ import { Composer } from './Composer.tsx'
 import { WorkflowEditor } from './Workflows.tsx'
 import { FolderIcon, PlusIcon, SidebarIcon, WorkflowIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
+import { MAIN_CHECKOUT, type ThreadWorkspace } from '../workspaces.ts'
 
 interface NewConversationProps {
   onBrowseFiles?: () => void
@@ -23,6 +24,8 @@ interface NewConversationProps {
   onOpenWorkflows?: () => void
   onToggleList?: () => void
   listHidden?: boolean
+  /** The selected workspace: where the conversation starts. */
+  workspace?: ThreadWorkspace
 }
 
 /** Workflow cards shown above the message box; the rest are a click away. */
@@ -78,7 +81,7 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false, workspace }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
@@ -129,9 +132,11 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
 
   const start = async (text: string, images: readonly MessageImage[]): Promise<void> => {
     if (!project) return
+    const target = workspace?.target
+    if (target && !target.ok) throw new Error(target.reason)
     setStarting(true)
     try {
-      onCreated(await api.createThread({ projectPath: project.path, text, settings: settingsFromChoice(choice), ...(images.length ? { images } : {}) }))
+      onCreated(await api.createThread({ projectPath: project.path, ...(target?.workspaceId ? { workspaceId: target.workspaceId } : {}), text, settings: settingsFromChoice(choice), ...(images.length ? { images } : {}) }))
     } catch (e: unknown) {
       onError(e instanceof Error ? e.message : String(e))
       throw e
@@ -156,13 +161,15 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
         </div>
       ) : <div className="events">
         <div className="start">
-          {project && !fresh ? <RecoveryCard projectPath={project.path} onCreated={onCreated} onFresh={() => setFresh(true)} /> : <>
+          {project && !fresh && !workspace?.scope ? <RecoveryCard projectPath={project.path} onCreated={onCreated} onFresh={() => setFresh(true)} /> : <>
           <StartArt className="start-art" />
           <h2>What are you working on?</h2>
           {project ? (
             <>
               <p>
-                Say it in plain words. Your agent works in <strong title={project.path}>{project.name}</strong>.
+                Say it in plain words. Your agent works in {!workspace?.showLabel ? <strong title={project.path}>{project.name}</strong>
+                  : workspace.currentLabel === MAIN_CHECKOUT ? <>the main checkout of <strong title={workspace.folder}>{project.name}</strong></>
+                  : <><strong title={workspace.folder}>{workspace.currentLabel}</strong>, a worktree of <strong>{project.name}</strong></>}.
               </p>
               {workflows && workflows.length > 0 ? (
                 <section className="workflow-cards" aria-label="Start with a workflow">
@@ -221,7 +228,10 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
         onDraftLoaded={onDraftLoaded}
         prefill={prefill}
         projectPath={project?.path}
-        draftKey={`new:${project?.path ?? ''}`}
+        workspaceId={workspace?.scope}
+        workspaceFolder={workspace?.folder}
+        blocked={workspace?.target.ok === false ? workspace.target.reason : undefined}
+        draftKey={`new:${project?.path ?? ''}${workspace?.scope ? `@${workspace.scope}` : ''}`}
         placeholder="Describe what you want…"
         disabled={!project || starting}
         onSubmit={start}

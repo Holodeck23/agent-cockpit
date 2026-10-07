@@ -97,14 +97,14 @@ function devProject(): string {
 describe('cockpit MCP tools', () => {
   it('lists the cockpit tools', async () => {
     const h = await harness()
-    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual(['browser_click', 'browser_drag', 'browser_hover', 'browser_key', 'browser_navigate', 'browser_read', 'browser_screenshot', 'browser_scroll', 'browser_type', 'inspect_preview', 'list_conversations', 'list_processes', 'open_preview', 'read_conversation', 'read_process_output', 'recall', 'remember', 'save_workflow', 'send_to_conversation', 'start_conversation', 'start_process', 'stop_conversation', 'stop_process'])
   })
 
   it('saves an unscheduled workflow only in the calling project and rejects expired tokens', async () => {
     const h = await harness()
-    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject() })
+    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() })
     const client = await h.connect(token)
     expect(textOf(await client.callTool({ name: 'save_workflow', arguments: { name: 'review', prompt: 'Review changes' } }))).toContain('schedule is paused')
     const forged = await fetch(`${h.url}/api/mcp/workflows`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -119,7 +119,7 @@ describe('cockpit MCP tools', () => {
 
   it('keeps agents from scheduling or overwriting workflows unless the project allows it (P1)', async () => {
     const h = await harness()
-    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
     const scheduled = await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', prompt: 'Check the build', schedule: { days: [1, 3], time: '09:00' } } })
     expect(scheduled.isError).toBe(true)
     expect(textOf(scheduled)).toMatch(/Project settings/)
@@ -132,7 +132,7 @@ describe('cockpit MCP tools', () => {
   it('lets agents schedule and update workflows when the project allows it (P1)', async () => {
     const h = await harness({ agentWorkflows: true })
     const project = devProject()
-    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: project }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: project, cwd: project }))
     expect(textOf(await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', title: 'Nightly check', prompt: 'Check the build', schedule: { days: [3, 1], time: '09:00' } } })))
       .toMatch(/scheduled/i)
     const updated = textOf(await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', prompt: 'Check the build and the tests' } }))
@@ -142,7 +142,7 @@ describe('cockpit MCP tools', () => {
   it('starts a dev server, reads its log, and opens its URL for the user', async () => {
     const h = await harness()
     const dir = devProject()
-    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: dir }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: dir, cwd: dir }))
 
     const started = textOf(await client.callTool({ name: 'start_process', arguments: { command: `"${process.execPath}" dev.js`, name: 'dev' } }))
     expect(started).toContain('Started.')
@@ -180,7 +180,7 @@ describe('cockpit MCP tools', () => {
     const own: PreviewOpen[] = []
     const h = await harness({ ownPage: own })
     const dir = devProject()
-    const client = await h.connect(h.sessions.issue({ threadId: 't7', projectPath: dir }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't7', projectPath: dir, cwd: dir }))
     const shot = await client.callTool({ name: 'inspect_preview', arguments: { url: 'http://localhost:5199/' } })
     expect(shot.content).toEqual([
       { type: 'text', text: 'Screenshot of http://localhost:5199/settings (520×700).' },
@@ -195,7 +195,7 @@ describe('cockpit MCP tools', () => {
 
   it('refuses to preview a non-local page', async () => {
     const h = await harness()
-    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
     const result = await client.callTool({ name: 'open_preview', arguments: { url: 'https://example.com/' } })
     expect(result.isError).toBe(true)
     expect(textOf(result)).toContain('only opens local')
@@ -206,7 +206,7 @@ describe('cockpit MCP tools', () => {
 
   it('rejects an unknown or revoked token', async () => {
     const h = await harness()
-    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject() })
+    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() })
     h.sessions.revoke(token)
     const client = await h.connect(token)
     const result = await client.callTool({ name: 'list_processes', arguments: {} })
@@ -217,7 +217,7 @@ describe('cockpit MCP tools', () => {
   it("confines a session to its own project's processes", async () => {
     const h = await harness()
     const other = h.processes.start({ projectPath: devProject(), command: 'sleep 30', name: 'theirs' })
-    const client = await h.connect(h.sessions.issue({ threadId: 't2', projectPath: devProject() }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't2', projectPath: devProject(), cwd: devProject() }))
     expect(textOf(await client.callTool({ name: 'list_processes', arguments: {} }))).toBe('No processes for this project.')
     const read = await client.callTool({ name: 'read_process_output', arguments: { id: other.process.id } })
     expect(read.isError).toBe(true)
@@ -265,7 +265,7 @@ it('MCP recall and remember report bounded corruption errors and preserve origin
   const h = await harness()
   const original = Buffer.from('[{"text":"private recoverable text"')
   writeFileSync(h.memoryFile, original)
-  const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+  const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
   for (const request of [
     { name: 'recall', arguments: { query: 'deploy' } },
     { name: 'remember', arguments: { text: 'new note', scope: 'project' } },
@@ -290,7 +290,7 @@ describe('Cockpit approves every agent write on the server (M1)', () => {
   it('refuses a process, a memory and a workflow the user did not approve, even called directly with the token', async () => {
     const h = await harness({ deny: true })
     const project = devProject()
-    const token = h.sessions.issue({ threadId: 't1', projectPath: project })
+    const token = h.sessions.issue({ threadId: 't1', projectPath: project, cwd: project })
     const started = await post(h, token, '/processes', { command: 'echo hijacked', name: 'x' })
     expect(started.status).toBe(409)
     expect(h.processes.list(project)).toEqual([])
@@ -303,7 +303,7 @@ describe('Cockpit approves every agent write on the server (M1)', () => {
 
   it('offers Allow for this session for processes, never for memory or workflows', async () => {
     const h = await harness()
-    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject() })
+    const token = h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() })
     const client = await h.connect(token)
     await client.callTool({ name: 'start_process', arguments: { command: 'echo ready; sleep 30', name: 'idle', wait_seconds: 0 } })
     await client.callTool({ name: 'remember', arguments: { text: 'uses pnpm', scope: 'project' } })
@@ -313,18 +313,18 @@ describe('Cockpit approves every agent write on the server (M1)', () => {
 
   it('skips the card for save_workflow only when the project lets agents manage workflows', async () => {
     const off = await harness()
-    const offClient = await off.connect(off.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const offClient = await off.connect(off.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
     await offClient.callTool({ name: 'save_workflow', arguments: { name: 'review', prompt: 'Review changes' } })
     expect(off.approvals.map((a) => a.tool)).toEqual(['mcp__cockpit__save_workflow'])
     const on = await harness({ agentWorkflows: true })
-    const onClient = await on.connect(on.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const onClient = await on.connect(on.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
     await onClient.callTool({ name: 'save_workflow', arguments: { name: 'review', prompt: 'Review changes' } })
     expect(on.approvals).toEqual([])
   })
 
   it('asks nothing when the save would be refused anyway', async () => {
     const h = await harness()
-    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject() }))
+    const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
     const scheduled = await client.callTool({ name: 'save_workflow', arguments: { name: 'nightly', prompt: 'Check', schedule: { everyMinutes: 60 } } })
     expect(scheduled.isError).toBe(true)
     expect(h.approvals).toEqual([])

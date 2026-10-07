@@ -3,7 +3,8 @@ import { agentName } from '../transcript.ts'
 import { buildActivity } from '../activity.ts'
 import { compactingNow, isBusy, openApprovals, runningHelpers } from '../../../server/threads/status.ts'
 import { awaitingOf } from '../../../server/threads/turns.ts'
-import { api, type ProcessInfo, type StoredImage, type ThreadDetail } from '../api.ts'
+import { api, type MessageImage, type ProcessInfo, type StoredImage, type ThreadDetail } from '../api.ts'
+import { phoneWorkspaceId, type ThreadWorkspace } from '../workspaces.ts'
 import { isWorking, STATUS_LABEL } from '../conversation-meta.ts'
 import { buildTranscript, followUpSuggestions } from '../transcript.ts'
 import { markUnread } from '../useSeen.ts'
@@ -15,7 +16,7 @@ import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
 import { ProcessChip } from './ProcessChip.tsx'
 import { PhoneApps } from './PhoneApps.tsx'
-import { ActivityIcon, Bars, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon, SidebarIcon } from './icons.tsx'
+import { ActivityIcon, Bars, BranchIcon, CheckIcon, ChevronDownIcon, StopIcon, ChevronLeftIcon, SidebarIcon } from './icons.tsx'
 import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 import { statusText, useNow } from './StatusPill.tsx'
@@ -40,9 +41,11 @@ interface ThreadViewProps {
   listHidden?: boolean
   /** Opens a file in Files at a line (desktop; Changes uses it for a right-side line). */
   onOpenFile?: (target: { path: string; line: number }) => void
+  /** The selected workspace and where a send goes (desktop). */
+  workspace?: ThreadWorkspace
 }
 
-export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onToggleList, listHidden = false, onOpenFile }: ThreadViewProps) {
+export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onToggleList, listHidden = false, onOpenFile, workspace }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = isBusy(status)
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
@@ -102,6 +105,11 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
     action.catch((e: unknown) => onError(e instanceof Error ? e.message : String(e)))
   }
 
+  // A send names its workspace once the project has a worktree; the phone names the conversation's own once it has run in two.
+  const sendTo = phone ? { ok: true as const, workspaceId: phoneWorkspaceId(meta) } : workspace?.target ?? { ok: true as const }
+  const send = (text: string, images: readonly MessageImage[]): Promise<unknown> =>
+    sendTo.ok ? api.send(meta.id, text, images, sendTo.workspaceId) : Promise.reject(new Error(sendTo.reason))
+
   const choice: AgentChoice = {
     agent: meta.settings.agent,
     model: meta.settings.model ?? '',
@@ -131,6 +139,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
               {shown === 'working' ? <Bars live /> : shown === 'starting' ? <span className="starting-dot" aria-hidden="true" /> : null}
               {compacting ? 'Compacting' : statusText(shown, turn, now)}
             </span>
+            {!phone && workspace?.showLabel ? <span className="workspace-chip" title="The workspace this conversation works in now"><BranchIcon />{workspace.currentLabel}</span> : null}
             {helpers > 0 ? <span className="helper-count" title="Helpers this agent started that are still at work">{helpers} helper{helpers === 1 ? '' : 's'} working</span> : null}
             {running ? (
               <button type="button" className="head-action" aria-label="Stop" title={helpers > 0 ? 'Stop the current turn and its helpers' : 'Stop the current turn'} onClick={() => guard(api.interrupt(meta.id))}>
@@ -193,7 +202,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         </div>
       </header>
       {changesFor && !phone ? (
-        <ChangesView projectPath={meta.projectPath} threadId={meta.id} runId={changesFor.runId} refreshKey={running ? 'running' : `idle:${events.length}`}
+        <ChangesView key={workspace?.scope ?? 'main'} projectPath={meta.projectPath} workspaceId={workspace?.scope} threadId={meta.id} runId={changesFor.runId} refreshKey={running ? 'running' : `idle:${events.length}`}
           onOpenFile={(target) => onOpenFile?.(target)} onClose={() => setChangesFor(undefined)} />
       ) : null}
       <div className="events" ref={scroller} hidden={Boolean(changesFor && !phone)}>
@@ -209,7 +218,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
           onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text, images }) => setRestore({ text, restore: true, images })))}
           onSendNow={() => guard(api.interrupt(meta.id))}
-          onRetry={(text, images) => guard(api.send(meta.id, text, images.map(({ file, name }) => ({ stored: file, ...(name ? { name } : {}) }))))}
+          onRetry={(text, images) => guard(send(text, images.map(({ file, name }) => ({ stored: file, ...(name ? { name } : {}) }))))}
           onDismiss={!running && awaitingOf(events) ? () => guard(api.dismissAwaiting(meta.id)) : undefined}
           onOpenChanges={phone ? undefined : (runId) => setChangesFor({ runId })}
         />
@@ -249,13 +258,18 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         onDraftLoaded={onDraftLoaded}
         onBrowseFiles={phone ? undefined : onBrowseFiles}
         projectPath={phone ? undefined : meta.projectPath}
+        workspaceId={workspace?.scope}
+        workspaceFolder={workspace?.folder}
+        blocked={sendTo.ok ? undefined : sendTo.reason}
+        note={workspace?.moves ? `Your next message continues this conversation in ${workspace.moves.to}. It last worked in ${workspace.moves.from}.` : undefined}
         threadId={meta.id}
-        draftKey={meta.id}
+        // Each workspace of a conversation keeps its own draft and image chips; the main checkout's stays the conversation's own key.
+        draftKey={workspace?.scope ? `${meta.id}@${workspace.scope}` : meta.id}
         prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         placeholder={running ? 'Add to the current turn…' : 'Add a follow-up…'}
         working={isWorking(status)}
-        onSubmit={(text, images) => api.send(meta.id, text, images).then(() => undefined)}
+        onSubmit={(text, images) => send(text, images).then(() => undefined)}
         picker={phone ? (
           <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>
         ) : (

@@ -11,6 +11,7 @@ import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, ExpandIcon, ExternalIcon,
 
 interface BrowserPaneProps {
   readonly pageKey: string
+  /** The folder whose website data this page uses: the project's, or a worktree's own folder. */
   readonly projectPath: string
   readonly layout: PaneLayout
   /** Changes each time something asks to show `layout.url` again (a link, a process site). */

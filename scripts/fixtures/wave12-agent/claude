@@ -1,0 +1,45 @@
+#!/bin/sh
+[ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
+# Stand-in `claude` for `npm run proof:wave-12` (worktrees). Each reply says where it ran and what
+# reached it: the folder (pwd -P), the session it was given, whether that was a --resume, which
+# MARK-* words were in the message it received (saw: a catch-up rides along with it) and which were
+# in its launch context (ctx: --append-system-prompt text or file, where a new session's handoff goes). A
+# message containing START-PROC starts a process through Cockpit's MCP API, like a real agent.
+# Like the real CLI it stays alive between turns and exits on stdin EOF.
+[ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 12 fixture)"; exit 0; }
+session=""; resumed=0; previous=""; context=""
+for arg in "$@"; do
+  case "$previous" in
+    --session-id) session="$arg" ;;
+    --resume) session="$arg"; resumed=1 ;;
+    --append-system-prompt) context="$context $arg" ;;
+    --append-system-prompt-file) [ -f "$arg" ] && context="$context $(cat "$arg")" ;;
+  esac
+  previous="$arg"
+done
+ctx=""
+for mark in MARK-P1 MARK-W1 MARK-P2; do
+  case "$context" in *"$mark"*) ctx="$ctx $mark" ;; esac
+done
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave12-fixture"}\n' "$session"
+turn=0
+while IFS= read -r line; do
+  case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  turn=$((turn + 1))
+  saw=""
+  for mark in MARK-P1 MARK-W1 MARK-P2; do
+    case "$line" in *"$mark"*) saw="$saw $mark" ;; esac
+  done
+  started=""
+  case "$line" in *START-PROC*)
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
+      -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
+      -d '{"command":"sleep 600","name":"wt-sleeper"}')
+    started=" process=$code" ;;
+  esac
+  # Markers are reported without their MARK- prefix, so this reply (which later turns may be handed) carries none.
+  saw=$(printf '%s' "$saw" | sed 's/MARK-//g'); ctx=$(printf '%s' "$ctx" | sed 's/MARK-//g')
+  text="cwd=$(pwd -P) session=$session resumed=$resumed turn=$turn saw=[${saw# }] ctx=[${ctx# }]$started"
+  printf '{"type":"assistant","message":{"id":"wave12-%s-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$session" "$turn" "$text"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'
+done

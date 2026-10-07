@@ -24,7 +24,7 @@ function setup() {
   const manager = createThreadManager(store, { launchers: { claude: launcher, codex: launcher, opencode: launcher, antigravity: launcher } }); managers.push(manager)
   const source = manager.create({ projectPath: store.root, title: 'Controller', text: 'delegate', settings: threadSettingsSchema.parse({}) })
   let valid = true
-  const grant = { threadId: source.id, projectPath: source.projectPath }
+  const grant = { threadId: source.id, projectPath: source.projectPath, cwd: source.projectPath }
   const probe = async () => (['claude','codex','opencode','antigravity'] as const).map((id) => ({ id, installation: { installed: true as const, version: 'fixture' } }))
   const control = createConversationControl({ manager, store }, probe)
   const act = (request: ControlInput, signal?: AbortSignal) => control.execute(grant, request, () => valid, signal)

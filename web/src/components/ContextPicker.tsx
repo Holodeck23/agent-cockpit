@@ -7,6 +7,7 @@ import { ReferenceList, referenceDisabled } from './ReferenceList.tsx'
 
 interface ContextPickerProps {
   projectPath: string
+  workspaceId?: string
   /** Tokens already in the draft, shown as added. */
   attached: ReadonlySet<string>
   filesFull: boolean
@@ -15,12 +16,12 @@ interface ContextPickerProps {
 }
 
 /** The composer's "+": search this project's files and workflows and add them to the message. */
-export function ContextPicker({ projectPath, attached, filesFull, onPick, onBrowseFiles }: ContextPickerProps) {
+export function ContextPicker({ projectPath, workspaceId, attached, filesFull, onPick, onBrowseFiles }: ContextPickerProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const input = useRef<HTMLInputElement>(null)
-  const { options, truncated, error, settled } = useReferenceSearch(projectPath, query, open)
+  const { options, truncated, error, settled } = useReferenceSearch(projectPath, query, open, workspaceId)
 
   useEffect(() => { if (open) input.current?.focus() }, [open])
 

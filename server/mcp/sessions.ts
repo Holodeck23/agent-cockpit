@@ -10,6 +10,10 @@ import { TURN_GUIDANCE } from '../threads/turns.ts'
 export interface McpGrant {
   readonly threadId: string
   readonly projectPath: string
+  /** The workspace the session works in; absent for a conversation that predates workspaces (its project folder). */
+  readonly workspaceId?: string
+  /** The folder the session runs in: the project folder for a primary workspace, the worktree's own folder otherwise. */
+  readonly cwd: string
 }
 
 export interface McpSessions {

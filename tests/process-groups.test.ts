@@ -3,7 +3,7 @@ import type { ProcessInfo } from '../server/processes/runner.ts'
 import { groupProcesses, ownerText, PROJECT_GROUP } from '../web/src/process-groups.ts'
 
 const proc = (id: string, over: Partial<ProcessInfo>): ProcessInfo => ({
-  id, name: id, command: 'x', projectPath: '/p', status: 'running', startedAt: '2026-10-05T10:00:00.000Z', exitCode: null, signal: null, owner: { kind: 'project' }, ...over,
+  id, name: id, command: 'x', projectPath: '/p', cwd: '/p', status: 'running', startedAt: '2026-10-05T10:00:00.000Z', exitCode: null, signal: null, owner: { kind: 'project' }, ...over,
 })
 
 describe('Processes grouped by owner (K2)', () => {

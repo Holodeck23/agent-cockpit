@@ -18,7 +18,8 @@ import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
 import { createProjectStore, type ProjectStore } from './projects/store.ts'
-import { createWorkspaceStore } from './projects/workspaces.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './projects/workspaces.ts'
+import { createWorktreeService } from './projects/worktrees.ts'
 import { createPresetStore } from './presets/store.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
@@ -102,6 +103,8 @@ export interface RunningServer {
   readonly phonePreviews: PhonePreviews
   /** Known project folders; the desktop shell checks these before opening one in Finder. */
   readonly projects: ProjectStore
+  /** Project and workspace identity; the desktop shell checks a worktree's folder against its registered records. */
+  readonly workspaces: WorkspaceStore
   /** Records each run's before/after workspace observations; tests settle it before reading. */
   readonly runObserver: RunObserver
   /** Durable result cards and finite host checks (pilot 10.1). */
@@ -185,6 +188,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const store = createThreadStore(root)
   const projects = createProjectStore(root)
   const workspaces = createWorkspaceStore(root)
+  // proof:wave-12 (W12-06) only: the app dies between Git creating a worktree and Cockpit registering it.
+  const crashBeforeRegister = process.env.COCKPIT_PROOF_WORKTREE_CRASH === '1' ? { beforeRegister: () => { process.kill(process.pid, 'SIGKILL') } } : {}
+  const worktrees = createWorktreeService(root, workspaces, crashBeforeRegister)
   const processes = createProcessRunner({ ledgerFile: join(root, 'processes.json') })
   const sessions = createMcpSessions()
   // Known once listening; sessions only start after that.
@@ -199,16 +205,18 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   let lifecycle: Lifecycle | undefined
   // Likewise: the manager resolves each launch's account through it (W12.1).
   let accounts: AccountService | undefined
+  const primaryWorkspaceId = (projectPath: string): string | undefined => {
+    try {
+      workspaces.ensure([projectPath])
+      return workspaces.primaryFor(projectPath)?.workspace.id
+    } catch (error) {
+      console.warn('[cockpit] no workspace identity:', error instanceof Error ? error.message : error)
+      return undefined
+    }
+  }
   const manager = createThreadManager(store, {
-    workspaceFor: (projectPath) => {
-      try {
-        workspaces.ensure([projectPath])
-        return workspaces.primaryFor(projectPath)?.workspace.id
-      } catch (error) {
-        console.warn('[cockpit] no workspace identity:', error instanceof Error ? error.message : error)
-        return undefined
-      }
-    },
+    workspace: (workspaceId) => workspaces.get(workspaceId),
+    workspaceFor: primaryWorkspaceId,
     instructions: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
@@ -251,11 +259,12 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // A waiting update starts as soon as the last conversation on that CLI stops working.
   manager.subscribe(() => agentLifecycle.activityChanged())
   const runs = createRunObservationStore(root)
-  const runObserver = observeRuns(manager, runs)
+  const workspaceLookup = (workspaceId: string) => workspaces.get(workspaceId)
+  const runObserver = observeRuns(manager, runs, undefined, workspaceLookup)
   const resultStore = createResultStore(root)
   const checks = createCheckRunner(resultStore)
   const results = createResultService({
-    store: resultStore, checks, runs, observing: runObserver.observing,
+    store: resultStore, checks, runs, observing: runObserver.observing, workspace: workspaceLookup,
     ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}),
   })
   const workflowStore = createWorkflowStore(root)
@@ -270,7 +279,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   }
   const memory = createMemoryStore(root)
   const presets = createPresetStore(root)
-  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
+  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId) }
   const remoteStore = createRemoteStore(root)
   const push = createPushStore(root)
   const tailscale = options.remote?.tailscale ?? systemTailscale
@@ -326,7 +335,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     currentRun: (threadId) => (manager.canControl(threadId) ? manager.currentRunId(threadId) : undefined),
     approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, approval),
   }) : undefined
-  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
@@ -363,5 +372,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, workspaces, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
 }

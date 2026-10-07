@@ -1,4 +1,4 @@
-import { useState, type ClipboardEvent, type DragEvent } from 'react'
+import { useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
 import { planDrop, type DroppedItem } from './composer-drop.ts'
 import { native } from './native.ts'
 
@@ -35,8 +35,23 @@ function readImage(file: File): Promise<PendingImage> {
   })
 }
 
-export function useComposerAttach({ projectPath, onInsert }: { projectPath?: string; onInsert: (pieces: readonly string[]) => void }) {
-  const [images, setImages] = useState<readonly PendingImage[]>([])
+// Unsent chips per draft for this window's life: leaving a conversation or workspace and coming back
+// finds them again (W12-07). Each conversation, and each workspace of one, has its own draft key.
+const held = new Map<string, readonly PendingImage[]>()
+
+export function useComposerAttach({ projectPath, draftKey, onInsert }: { projectPath?: string; draftKey: string; onInsert: (pieces: readonly string[]) => void }) {
+  const [images, setShown] = useState<readonly PendingImage[]>(() => held.get(draftKey) ?? [])
+  const [shownKey, setShownKey] = useState(draftKey)
+  if (shownKey !== draftKey) { setShownKey(draftKey); setShown(held.get(draftKey) ?? []) }
+  const current = useRef(draftKey)
+  current.current = draftKey
+  /** Changes one draft's chips; only the draft on screen is shown. An image read after a switch still joins the draft it was dropped on. */
+  const change = (key: string, next: (chips: readonly PendingImage[]) => readonly PendingImage[]): void => {
+    const chips = next(held.get(key) ?? [])
+    if (chips.length) held.set(key, chips)
+    else held.delete(key)
+    if (key === current.current) setShown(chips)
+  }
   const [note, setNote] = useState<string>()
   const [dragging, setDragging] = useState(false)
 
@@ -45,11 +60,12 @@ export function useComposerAttach({ projectPath, onInsert }: { projectPath?: str
       const path = native?.pathForFile(file)
       return { name: file.name, type: file.type, size: file.size, directory: directories[i] ?? false, ...(path ? { path } : {}) }
     })
+    const key = draftKey
     const plan = planDrop(items, projectPath, images.length)
     if (plan.insert.length) onInsert(plan.insert)
     setNote(plan.notes.length ? plan.notes.join(' ') : undefined)
     void Promise.all(plan.images.map((i) => readImage(files[i]!))).then(
-      (read) => setImages((current) => [...current, ...read]),
+      (read) => change(key, (chips) => [...chips, ...read]),
       (error: unknown) => setNote(error instanceof Error ? error.message : String(error)),
     )
   }
@@ -58,11 +74,12 @@ export function useComposerAttach({ projectPath, onInsert }: { projectPath?: str
     images,
     note,
     dragging,
-    remove: (id: string) => setImages((current) => current.filter((image) => image.id !== id)),
-    clear: () => { setImages([]); setNote(undefined) },
+    remove: (id: string) => change(draftKey, (chips) => chips.filter((image) => image.id !== id)),
+    /** After a send: that draft's chips go (`key`: the draft it was sent from, if the view has moved on since). */
+    clear: (key: string = draftKey) => { change(key, () => []); setNote(undefined) },
     /** Puts back the images of a message you took back, as chips that send them by name. */
-    restore: (threadId: string, held: readonly { file: string; name?: string }[]) => setImages((current) => [...current,
-      ...held.map(({ file, name }) => ({ id: crypto.randomUUID(), name: name ?? 'image', stored: file, url: `/api/threads/${threadId}/images/${file}` }))]),
+    restore: (threadId: string, taken: readonly { file: string; name?: string }[]) => change(draftKey, (chips) => [...chips,
+      ...taken.map(({ file, name }) => ({ id: crypto.randomUUID(), name: name ?? 'image', stored: file, url: `/api/threads/${threadId}/images/${file}` }))]),
     dropProps: {
       onDragOver: (event: DragEvent) => {
         if (!hasFiles(Array.from(event.dataTransfer.types))) return

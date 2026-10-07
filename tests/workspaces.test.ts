@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { StoreReadError } from '../server/state/read-error.ts'
-import { createWorkspaceStore, gitCommonDir } from '../server/projects/workspaces.ts'
+import { WORKSPACES_SCHEMA_VERSION, createWorkspaceStore, gitCommonDir } from '../server/projects/workspaces.ts'
 
 const newRoot = (): string => mkdtempSync(join(tmpdir(), 'cockpit-workspaces-'))
 const folder = (name: string): string => {
@@ -83,7 +83,7 @@ describe('workspace identity (ID-01, ID-02, ID-08)', () => {
 
   it('a file from a newer Cockpit is refused and left untouched', () => {
     const root = newRoot()
-    const future = JSON.stringify({ schemaVersion: 2, revision: 9, projects: [], workspaces: [], somethingNew: true })
+    const future = JSON.stringify({ schemaVersion: WORKSPACES_SCHEMA_VERSION + 1, revision: 9, projects: [], workspaces: [], somethingNew: true })
     writeFileSync(join(root, 'workspaces.json'), future)
     const store = createWorkspaceStore(root)
     expect(() => store.ensure([folder('a')])).toThrow(expect.objectContaining({ code: 'FUTURE_VERSION' }))

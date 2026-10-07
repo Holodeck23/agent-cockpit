@@ -3,7 +3,7 @@ import type { ProcessInfo } from '../server/processes/runner.ts'
 import { forgetPreview, previewKey, previewUrl, processPreview, rememberPreview } from '../web/src/preview-owner.ts'
 
 const process = (id: string, projectPath: string, threadId: string, url: string): ProcessInfo => ({
-  id, projectPath, command: 'npm run dev', name: 'site', status: 'running', pid: 1, exitCode: null, signal: null,
+  id, projectPath, cwd: projectPath, command: 'npm run dev', name: 'site', status: 'running', pid: 1, exitCode: null, signal: null,
   startedAt: '2026-10-05T10:00:00.000Z', url, owner: { kind: 'conversation', threadId, title: threadId },
 })
 
@@ -30,5 +30,14 @@ describe('owned previews (W7.3)', () => {
     expect(processPreview(process('a', '/one', 'thread-a', 'http://localhost:4000/'))).toMatchObject({ projectPath: '/one', threadId: 'thread-a' })
     expect(processPreview({ ...process('p', '/one', 'thread-a', 'http://localhost:4001/'), owner: { kind: 'project' } })).toEqual({ projectPath: '/one', url: 'http://localhost:4001/' })
     expect(processPreview({ ...process('x', '/one', 'thread-a', 'http://localhost:4002/'), status: 'exited' })).toBeUndefined()
+  })
+
+  it('gives a worktree its own project page, so its website data stays with its folder', () => {
+    const wt = processPreview({ ...process('w', '/one', 'thread-a', 'http://localhost:4003/'), cwd: '/one-worktree-ab12cd', owner: { kind: 'project' } })!
+    expect(wt).toMatchObject({ projectPath: '/one', cwd: '/one-worktree-ab12cd' })
+    expect(previewKey(wt)).toBe('project:/one-worktree-ab12cd')
+    expect(previewKey({ projectPath: '/one' })).toBe('project:/one')
+    // A conversation's page is the conversation's whichever folder it works in.
+    expect(previewKey({ projectPath: '/one', cwd: '/one-worktree-ab12cd', threadId: 't' })).toBe('thread:t')
   })
 })

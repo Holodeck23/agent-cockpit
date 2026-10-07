@@ -55,6 +55,8 @@ export interface StartCheck {
   readonly threadId: string
   readonly projectPath: string
   readonly workspaceId?: string
+  /** The workspace folder the check runs in; defaults to the project folder. */
+  readonly cwd?: string
   readonly operationId: string
   readonly definition: CheckDefinitionInput
 }
@@ -113,10 +115,11 @@ export function createCheckRunner(store: ResultStore, options: { look?: (path: s
         if (earlier.inputHash !== inputHash) throw new CheckConflictError('That operation ID was already used for a different check')
         return earlier
       }
-      const cwd = resolveCwd(input.projectPath, definition.cwd)
+      const root = input.cwd ?? input.projectPath
+      const cwd = resolveCwd(root, definition.cwd)
       const id = `chk-${randomUUID()}`
       // What it runs against, read before it starts.
-      const subject = await takeFingerprint(input.projectPath, definition.inputs, ...(options.look ? [options.look] : []))
+      const subject = await takeFingerprint(root, definition.inputs, ...(options.look ? [options.look] : []))
       const prepared = save({
         id, runId: input.runId, threadId: input.threadId, projectPath: input.projectPath, ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         operationId: input.operationId, definition, inputHash, approval: { by: 'user', at: now() }, origin: 'host', phase: 'prepared', preparedAt: now(), subject,

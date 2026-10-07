@@ -5,6 +5,8 @@ import { ReferenceList, referenceDisabled } from './ReferenceList.tsx'
 
 interface MentionMenuOptions {
   projectPath?: string
+  /** A worktree's ID: files are searched in that worktree. */
+  workspaceId?: string
   text: string
   /** Where the caret is, or undefined while the message box isn't focused. */
   caret?: number
@@ -19,6 +21,7 @@ export interface MenuKey { key: string; shiftKey: boolean; isComposing: boolean;
 
 interface ReferenceMenuOptions {
   projectPath?: string
+  workspaceId?: string
   /** The @word being typed (without the @), or undefined when there is none. */
   query: string | undefined
   /** Changes with each new @word, so Escape hides only that one. */
@@ -33,7 +36,7 @@ interface ReferenceMenuOptions {
  * The @ list itself, for any editor: matching files and workflows, keyboard choice, Escape to
  * hide until the next @. The message box and the workflow editors each find the @word their own way.
  */
-export function useReferenceMenu({ projectPath, query, anchor, attached, filesFull, onPick }: ReferenceMenuOptions): {
+export function useReferenceMenu({ projectPath, workspaceId, query, anchor, attached, filesFull, onPick }: ReferenceMenuOptions): {
   menu: ReactNode
   /** Handles the key if the list is open; returns true when it did. */
   onKey: (event: MenuKey) => boolean
@@ -42,7 +45,7 @@ export function useReferenceMenu({ projectPath, query, anchor, attached, filesFu
   const [active, setActive] = useState(0)
   const open = Boolean(projectPath && query !== undefined && anchor !== dismissed)
   const search = query ?? ''
-  const { options, truncated, settled } = useReferenceSearch(projectPath ?? '', search, open)
+  const { options, truncated, settled } = useReferenceSearch(projectPath ?? '', search, open, workspaceId)
 
   useEffect(() => { setActive(0) }, [search, anchor])
   const typing = query !== undefined
@@ -88,13 +91,13 @@ export function useReferenceMenu({ projectPath, query, anchor, attached, filesFu
  * Typing @ in a text box lists matching files and workflows right there; Enter or Tab
  * swaps the @word for the reference, Escape hides the list until the next @.
  */
-export function useMentionMenu({ projectPath, text, caret, attached, filesFull, onComplete }: MentionMenuOptions): {
+export function useMentionMenu({ projectPath, workspaceId, text, caret, attached, filesFull, onComplete }: MentionMenuOptions): {
   menu: ReactNode
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => boolean
 } {
   const mention = caret === undefined ? undefined : mentionAt(text, caret)
   const { menu, onKey } = useReferenceMenu({
-    projectPath, query: mention?.query, anchor: mention?.start, attached, filesFull,
+    projectPath, workspaceId, query: mention?.query, anchor: mention?.start, attached, filesFull,
     onPick: (token) => {
       if (!mention) return
       const next = completeMention(text, mention, token)

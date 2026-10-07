@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { OutputLine } from '../../../server/processes/output.ts'
 import { api, type ProcessInfo, type Project } from '../api.ts'
 import { SearchIcon, TerminalIcon } from './icons.tsx'
@@ -6,6 +6,7 @@ import { shortLabel, stateText } from './ProcessChip.tsx'
 import { groupProcesses, ownerText } from '../process-groups.ts'
 import type { PreviewOpen } from '../../../server/preview/types.ts'
 import { processPreview } from '../preview-owner.ts'
+import { processIn, type WorkspaceSelection } from '../workspaces.ts'
 
 // Every process the cockpit runner started in this project (dev servers, watchers),
 // with a live log beside the selected one. Agents start them through the cockpit MCP;
@@ -13,10 +14,14 @@ import { processPreview } from '../preview-owner.ts'
 
 interface ProcessesProps {
   project?: Project
+  /** The selected workspace: only its processes are listed. */
+  workspace?: Pick<WorkspaceSelection, 'id' | 'folder' | 'scope'> & { readonly label?: string; /** Clearing finished rows names the workspace once the project has worktrees, so one workspace's history is not wiped with another's. */ readonly clearId?: string }
   /** All projects' processes, newest first, kept current by the event stream. */
   processes: ProcessInfo[]
   onError: (message: string) => void
   onOpenSite: (preview: PreviewOpen) => void
+  /** The workspace picker, once the project has worktrees: which checkout's processes are listed. */
+  workspacePicker?: ReactNode
 }
 
 const MAX_LINES = 2000
@@ -50,13 +55,13 @@ function useProcessLog(id: string | undefined): Log | undefined {
   return log?.id === id ? log : undefined
 }
 
-export function Processes({ project, processes, onError, onOpenSite }: ProcessesProps) {
+export function Processes({ project, workspace, processes, onError, onOpenSite, workspacePicker }: ProcessesProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string>()
   const [pending, setPending] = useState('')
   // Finished processes leave the list; Show finished brings back their bounded history.
   const [finished, setFinished] = useState(false)
-  const mine = project ? processes.filter((p) => p.projectPath === project.path) : []
+  const mine = project ? processes.filter((p) => p.projectPath === project.path && (!workspace || processIn(p, workspace))) : []
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   const shown = mine.filter((p) => words.every((w) => `${p.name} ${p.command} ${p.url ?? ''} ${ownerText(p)}`.toLowerCase().includes(w)))
   const groups = groupProcesses(shown, finished)
@@ -92,9 +97,10 @@ export function Processes({ project, processes, onError, onOpenSite }: Processes
     <div className="processes-layout">
       <nav className="process-list" aria-label="Processes">
         <header>
-          <div><span className="workflow-kicker">{project.name}</span><h1>Processes</h1></div>
+          <div><span className="workflow-kicker">{project.name}{workspace?.label ? ` · ${workspace.label}` : ''}</span><h1>Processes</h1></div>
           <span className="process-count">{running} running</span>
         </header>
+        {workspacePicker ? <div className="panel-workspace">{workspacePicker}</div> : null}
         <label className="workflow-search">
           <SearchIcon />
           <input type="search" aria-label="Search processes" placeholder="Search processes…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -112,7 +118,7 @@ export function Processes({ project, processes, onError, onOpenSite }: Processes
             <button type="button" aria-pressed={finished} onClick={() => setFinished(true)}>Show finished{finishedCount ? ` (${finishedCount})` : ''}</button>
             {finished && finishedCount ? (
               <button type="button" className="process-clear" title="Removes finished rows from this list. Nothing is stopped."
-                onClick={() => void api.clearFinishedProcesses(project.path).catch((e: unknown) => onError(e instanceof Error ? e.message : String(e)))}>Clear finished</button>
+                onClick={() => void api.clearFinishedProcesses(project.path, workspace?.clearId ?? workspace?.scope).catch((e: unknown) => onError(e instanceof Error ? e.message : String(e)))}>Clear finished</button>
             ) : null}
           </div>
         ) : null}

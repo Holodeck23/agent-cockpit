@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Project } from '../api.ts'
+import { MAIN_CHECKOUT, type SelectionGuard, type WorkspaceRef } from '../workspaces.ts'
 import { fileReferenceToken } from '../../../server/files/references.ts'
 import { isDirty, spaceOf } from '../file-text.ts'
 import { useOpenFiles } from '../useOpenFiles.ts'
@@ -15,10 +16,12 @@ const EXPLORER_KEY = 'cockpit:files-explorer-hidden'
 const loadHidden = (): boolean => { try { return localStorage.getItem(EXPLORER_KEY) === '1' } catch { return false } }
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
-export function Files({ project, onAttach, reveal, onPins }: {
-  project?: Project; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
+export function Files({ project, workspace, workspaceLabel, guard, onAttach, reveal, onPins, workspacePicker }: {
+  project?: Project; workspace?: WorkspaceRef; workspaceLabel?: string; guard?: SelectionGuard; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
+  /** The workspace picker, once the project has worktrees: which checkout's files are shown. */
+  workspacePicker?: ReactNode
 }) {
-  const open = useOpenFiles(project?.path)
+  const open = useOpenFiles(project?.path, workspace?.scope, guard)
   const [space, setSpace] = useState<Space>(loadSpace)
   const [jump, setJump] = useState<Jump>()
   const [hidden, setHidden] = useState(loadHidden)
@@ -41,20 +44,26 @@ export function Files({ project, onAttach, reveal, onPins }: {
   }
   if (!project) return <main className="workflow-empty"><FolderIcon /><h1>Files</h1><p>Open a project to browse its files.</p></main>
   const shared = {
-    project, selected: open.active, dirty, onOpen: (path: string) => void open.open(path),
+    project, workspace, selected: open.active, dirty, onOpen: (path: string) => void open.open(path),
     onRenamed: open.renamed, onTrashed: open.removed, onError: open.setError,
   }
   return (
     <div className={`files-layout${hidden ? ' explorer-hidden' : ''}`}>
       <nav className="file-list" hidden={hidden} aria-label={space === 'project' ? 'Project files' : 'Your documents'}>
         <header>
-          <span className="workflow-kicker">{project.name}</span>
+          <span className="workflow-kicker">{project.name}{workspaceLabel ? ` · ${workspaceLabel}` : ''}</span>
           <h1>Files</h1>
+          {workspacePicker ? <div className="panel-workspace">{workspacePicker}</div> : null}
           <div className="file-spaces" role="tablist" aria-label="Where">
             <button type="button" role="tab" aria-selected={space === 'project'} onClick={() => choose('project')}>Project files</button>
             <button type="button" role="tab" aria-selected={space === 'documents'} onClick={() => choose('documents')}>Your documents</button>
           </div>
-          <p>{space === 'project' ? 'Edit a text file, or add it to a conversation draft.' : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
+          {/* Once the project has worktrees: project files are this checkout's own, documents are shared by all of them (W12-08). */}
+          <p className="file-space-note">{space === 'project'
+            ? `${workspaceLabel ? `The files in ${workspaceLabel === MAIN_CHECKOUT ? 'the main checkout' : workspaceLabel}. ` : ''}Edit a text file, or add it to a conversation draft.`
+            : workspaceLabel
+              ? `Shared by every workspace of ${project.name}: notes and drafts Cockpit keeps outside the repository.`
+              : 'Notes and drafts Cockpit keeps for this project, outside the repository.'}</p>
         </header>
         {space === 'project'
           ? <FileTree key={project.path} {...shared} pins={project.pinnedFiles ?? []} onPins={onPins} onCreate={(folder, name, kind) => open.create(folder, name, kind, 'project')} />

@@ -46,7 +46,13 @@ export interface QueueBinding {
 
 export type NormalizedEvent =
   /** A new agent process starts here: its launch number for this conversation, the binding and the account it runs under. */
-  | { kind: 'session_boundary'; generation?: number; bindingId?: string; account?: { id: string; generation: number } }
+  | { kind: 'session_boundary'; generation?: number; bindingId?: string; account?: { id: string; generation: number }; workspaceId?: string }
+  /**
+   * The conversation moved to another workspace of its project while idle (M1, W12.2). `context`:
+   * `resumed` returns to that workspace's own native session with what happened since it last ran,
+   * `handoff` starts a new one with the conversation so far, `none` starts one with nothing to carry.
+   */
+  | { kind: 'workspace_changed'; from: string; to: string; fromLabel?: string; toLabel: string; context: 'resumed' | 'handoff' | 'none' }
   /**
    * The conversation's account changed while it was idle (W12.1): you chose another, the CLI
    * default's identity changed outside Cockpit, or the profile went away. The next message starts

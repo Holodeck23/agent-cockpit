@@ -53,7 +53,7 @@ sleep 2
       session.send(big)
       await expect.poll(() => events.some((e) => e.kind === 'error' && /stopped taking input/.test(e.message)), FIRST_RUN).toBe(true)
     } finally { await session.close() }
-  })
+  }, FIRST_RUN.timeout * 3) // the settle plus a full first-run poll must fit inside the test
 
   it('JSON-RPC (Codex, ACP): the lost write is a protocol error, not a crash', async () => {
     const child = spawn('/bin/sh', ['-c', 'exec 0<&-; sleep 2'], { stdio: ['pipe', 'pipe', 'pipe'] })

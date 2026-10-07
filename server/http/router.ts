@@ -11,6 +11,8 @@ import { z } from 'zod'
 import { ProcessConflictError, type ProcessRunner } from '../processes/runner.ts'
 import { projectPatchSchema, type Project, type ProjectStore } from '../projects/store.ts'
 import type { WorkspaceStore } from '../projects/workspaces.ts'
+import { createWorkspaceScope } from './workspace-scope.ts'
+import { isRefusal, workspaceFolder } from '../projects/resolve.ts'
 import { ImageError, readProjectImage, removeProjectImages, saveProjectImage } from '../projects/images.ts'
 import { MAX_MEMORY_CHARS, MemoryReadError, memoryScope, type MemoryStore } from '../memory/store.ts'
 import { StoreReadError } from '../state/read-error.ts'
@@ -18,7 +20,7 @@ import { workflowTitle } from '../workflows/title.ts'
 import { listSessions } from '../import/sessions.ts'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { HandoffChangedError, OperationConflictError, ThreadBusyError, type ThreadManager } from '../threads/manager.ts'
+import { ChooseWorkspaceError, HandoffChangedError, OperationConflictError, ThreadBusyError, WorkspaceUnavailableError, type ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
 import { threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
@@ -47,7 +49,9 @@ import type { AgyMcp } from '../projects/agy-mcp.ts'
 import type { Lifecycle } from '../agents/lifecycle/service.ts'
 import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
 import { handleAccountRoute, isAccountRoute } from './account-routes.ts'
+import { handleWorkspaceRoute, isWorkspaceRoute } from './workspace-routes.ts'
 import type { AccountService } from '../agents/accounts/service.ts'
+import type { WorktreeService } from '../projects/worktrees.ts'
 import { isBusy } from '../threads/status.ts'
 
 /** Images one message may carry (I1/I2), as base64; the store checks what they really are. */
@@ -77,18 +81,22 @@ const createThreadBody = z.object({
   text: z.string().min(1).max(200_000),
   settings: threadSettingsSchema.default(threadSettingsSchema.parse({})),
   images: messageImages,
+  /** Start in this worktree (or the primary) instead of the project's primary. */
+  workspaceId: z.uuid().optional(),
 })
 /** `operationId`: one per send attempt, so a repeated request is answered once (ID-05). */
-const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional() })
+const messageBody = z.object({ text: z.string().min(1).max(200_000), images: messageImages, operationId: z.uuid().optional(), workspaceId: z.uuid().optional() })
 const approvalBody = z.object({ behavior: z.enum(['allow', 'allow_session', 'deny']) })
 /** No answers closes the questions unanswered. */
 const questionBody = z.object({ answers: z.record(z.string().max(500), z.string().max(4000)).optional() })
 const completedBody = z.object({ completed: z.boolean() })
 /** What happens to the running processes a deleted conversation owns (K2). */
 const deleteThreadBody = z.object({ processes: z.enum(['stop', 'keep']).optional() })
-const checkReferencesBody = z.object({ projectPath: z.string().min(1).max(1000), text: z.string().max(200_000) })
+const checkReferencesBody = z.object({ projectPath: z.string().min(1).max(1000).optional(), workspaceId: z.uuid().optional(), text: z.string().max(200_000) })
 const writeFileBody = z.object({
-  projectPath: z.string().min(1).max(1000),
+  projectPath: z.string().min(1).max(1000).optional(),
+  /** Files of a worktree: the workspace's folder is the root. Either this or projectPath. */
+  workspaceId: z.uuid().optional(),
   path: z.string().min(1).max(1000),
   text: z.string().max(200_000),
   /** The version the edit started from; null creates a new file. */
@@ -96,7 +104,7 @@ const writeFileBody = z.object({
   /** The repository, or the app's own documents folder for the project. */
   space: spaceSchema,
 })
-const renameBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(1000), name: z.string().min(1).max(255), space: spaceSchema })
+const renameBody = z.object({ projectPath: z.string().min(1).max(1000).optional(), workspaceId: z.uuid().optional(), path: z.string().min(1).max(1000), name: z.string().min(1).max(255), space: spaceSchema })
 const markBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(255), pinned: z.boolean().optional(), archived: z.boolean().optional() })
 const switchBody = z.object({ settings: threadSettingsSchema })
 /** A switch names the handoff the user reviewed (D13): sha256 of the previewed text. */
@@ -136,6 +144,8 @@ export interface ApiDeps {
   readonly lifecycle?: Lifecycle
   /** Account profiles and each project's choice per agent (W12.1); desktop only. */
   readonly accounts?: AccountService
+  /** Worktree workspaces (M1, W12.2); desktop only. */
+  readonly worktrees?: WorktreeService
   readonly memory?: MemoryStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
@@ -167,14 +177,16 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
+  const scope = createWorkspaceScope(projects, workspaces)
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
-  const expandedFor = (text: string, projectPath: string): { agentText: string; workflows?: WorkflowSnapshot[] } => {
+  // @file attachments come from the workspace the message works in (`folder`); workflows stay the project's.
+  const expandedFor = (text: string, projectPath: string, folder: string = projectPath): { agentText: string; workflows?: WorkflowSnapshot[] } => {
     const resolved = resolveWorkflows(text, projectPath, workflows.store)
-    return { agentText: expandFiles(resolved.text, projectPath), ...(resolved.used.length ? { workflows: resolved.used } : {}) }
+    return { agentText: expandFiles(resolved.text, folder), ...(resolved.used.length ? { workflows: resolved.used } : {}) }
   }
 
   /** `viaPhone` requests were already checked by the phone listener (remote/service.ts). */
@@ -261,6 +273,15 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         })
         return true
       }
+      // Workspaces name folders and branches; creating one changes the repository: the Mac only (INTERFACES §4).
+      if (isWorkspaceRoute(parts) && workspaces && worktrees) {
+        if (viaPhone) throw new HttpError(403, 'Workspaces are only available on the Mac')
+        await handleWorkspaceRoute(req, res, parts, workspaces, worktrees, (projectId) => {
+          const known = workspaces.list().projects.find((p) => p.id === projectId)?.path
+          return known !== undefined && projects.list().some((p) => p.path === known)
+        })
+        return true
+      }
       // Capabilities name executable paths and sign-in state: the Mac only (INTERFACES §4).
       if (parts[1] === 'agents' && parts[3] === 'capabilities' && capabilities) {
         if (viaPhone) throw new HttpError(403, 'Agent capabilities are only available on the Mac')
@@ -279,9 +300,9 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (parts[1] === 'files' && parts[2] === 'write' && method === 'PUT') {
         if (viaPhone) throw new HttpError(403, 'Editing files is only available on the Mac')
         const body = parseBody(writeFileBody, await readJson(req))
-        if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
+        const at = scope.resolve(body.projectPath, body.workspaceId)
         try {
-          sendJson(res, 200, { data: writeProjectFile(spaceRoot(store.root, body.projectPath, body.space), body.path, body.text, body.expected) })
+          sendJson(res, 200, { data: writeProjectFile(body.space === 'documents' ? spaceRoot(store.root, at.projectPath, 'documents') : at.cwd, body.path, body.text, body.expected) })
         } catch (error) {
           throw new HttpError(error instanceof FileConflictError ? 409 : 400, error instanceof Error ? error.message : String(error))
         }
@@ -290,8 +311,9 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (parts[1] === 'files' && parts[2] === 'rename' && method === 'POST') {
         if (viaPhone) throw new HttpError(403, 'Renaming files is only available on the Mac')
         const body = parseBody(renameBody, await readJson(req))
-        if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
-        try { sendJson(res, 200, { data: { path: renameFile(store.root, body.projectPath, body.space, body.path, body.name) } }) }
+        const at = scope.resolve(body.projectPath, body.workspaceId)
+        // Documents and their pin marks are the project's; a project file is renamed inside the workspace's folder.
+        try { sendJson(res, 200, { data: { path: renameFile(store.root, body.space === 'documents' ? at.projectPath : at.cwd, body.space, body.path, body.name) } }) }
         catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
         return true
       }
@@ -398,26 +420,24 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         }
       }
       if (parts[1] === 'files' && parts[2] === 'search' && method === 'GET') {
-        const projectPath = url.searchParams.get('projectPath') ?? ''
-        if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
-        try { sendJson(res, 200, { data: searchFiles(projectPath, (url.searchParams.get('q') ?? '').slice(0, 200)) }) }
+        const at = scope.resolve(url.searchParams.get('projectPath') ?? undefined, url.searchParams.get('workspaceId') ?? undefined)
+        try { sendJson(res, 200, { data: searchFiles(at.cwd, (url.searchParams.get('q') ?? '').slice(0, 200)) }) }
         catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
         return true
       }
       if (parts[1] === 'references' && parts[2] === 'check' && method === 'POST') {
         const body = parseBody(checkReferencesBody, await readJson(req))
-        if (!projects.list().some((project) => project.path === body.projectPath)) throw new HttpError(404, 'Open this project first')
-        sendJson(res, 200, { data: checkReferences(body.text, body.projectPath, workflows.store) })
+        const at = scope.resolve(body.projectPath, body.workspaceId)
+        sendJson(res, 200, { data: checkReferences(body.text, at.projectPath, workflows.store, at.cwd) })
         return true
       }
       if (parts[1] === 'files' && method === 'GET') {
-        const projectPath = url.searchParams.get('projectPath') ?? ''
-        if (!projects.list().some((project) => project.path === projectPath)) throw new HttpError(404, 'Open this project first')
+        const at = scope.resolve(url.searchParams.get('projectPath') ?? undefined, url.searchParams.get('workspaceId') ?? undefined)
         const path = url.searchParams.get('path') ?? ''
         try {
           const space = spaceSchema.parse(url.searchParams.get('space') ?? undefined)
           if (space === 'documents' && viaPhone) throw new Error('Your documents are only available on the Mac')
-          const base = spaceRoot(store.root, projectPath, space)
+          const base = space === 'documents' ? spaceRoot(store.root, at.projectPath, 'documents') : at.cwd
           const data = parts[2] === 'read' ? readProjectFile(base, path) : parts.length === 2 ? listFiles(base, path) : undefined
           if (!data) throw new Error('Unknown file action')
           sendJson(res, 200, { data })
@@ -454,18 +474,18 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         return true
       }
       if (parts[1] === 'git') {
-        await handleGitRoute(req, res, url, parts, { projects, manager, ...(runs ? { runs } : {}), ...(observingRun ? { observing: observingRun } : {}) }, viaPhone)
+        await handleGitRoute(req, res, url, parts, { projects, manager, scope, ...(runs ? { runs } : {}), ...(observingRun ? { observing: observingRun } : {}) }, viaPhone)
         return true
       }
       if ((parts[1] === 'runs' || parts[1] === 'checks') && results && checks) {
         await handleResultRoute(req, res, url, parts, {
-          manager, store, results, checks,
+          manager, store, results, checks, ...(workspaces ? { workspace: (id: string) => workspaces.get(id) } : {}),
           isOpen: (projectPath) => projects.list({ includeHidden: true }).some((project) => project.path === projectPath),
         }, viaPhone)
         return true
       }
       if (parts[1] === 'processes') {
-        await handleProcessRoute(req, res, url, parts, processes)
+        await handleProcessRoute(req, res, url, parts, processes, scope)
         return true
       }
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'image') {
@@ -555,9 +575,11 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       if (parts.length === 2 && method === 'POST') {
         const body = parseBody(createThreadBody, await readJson(req, IMAGE_BODY_BYTES))
         assertDirectory(body.projectPath)
+        // A worktree to start in is checked like every workspace request; the project's primary is the default.
+        const start = body.workspaceId ? scope.resolve(body.projectPath, body.workspaceId) : undefined
         // A12: an explicit title wins; otherwise a message opening with one workflow is named after it.
         const title = body.title?.trim() || workflowTitle(body.text, body.projectPath, workflows.store)
-        const meta = manager.create({ ...body, ...(title ? { title } : {}), ...expandedFor(body.text, body.projectPath), images: decodeImages(body.images) })
+        const meta = manager.create({ ...body, ...(title ? { title } : {}), ...expandedFor(body.text, body.projectPath, start?.cwd), images: decodeImages(body.images) })
         projects.open(body.projectPath)
         sendJson(res, 201, { data: meta })
         return true
@@ -590,9 +612,13 @@ export function createApiHandler({ manager, store, projects, workspaces, process
         })
         res.end(image.bytes)
       } else if (method === 'POST' && action === 'messages') {
-        const { text, images: attached, operationId } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
-        const expanded = expandedFor(text, store.get(threadId)!.projectPath)
-        const { runId, replayed } = manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes), operationId)
+        const { text, images: attached, operationId, workspaceId } = parseBody(messageBody, await readJson(req, IMAGE_BODY_BYTES))
+        // The folder the message works in: the workspace it names (checked), else the conversation's current one; a gone one is refused, never the primary.
+        const thread = store.get(threadId)!
+        const at = workspaceId ? scope.resolve(thread.projectPath, workspaceId) : undefined
+        const folder = at?.cwd ?? (() => { const f = workspaceFolder(workspaces ? (id) => workspaces.get(id) : undefined, thread.projectPath, thread.workspaceId); if (isRefusal(f)) throw new HttpError(409, f.refusal); return f.cwd })()
+        const expanded = expandedFor(text, thread.projectPath, folder)
+        const { runId, replayed } = manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes), operationId, workspaceId)
         sendJson(res, 202, { data: { status: manager.status(threadId), runId, replayed } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
         manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
@@ -637,7 +663,7 @@ export function createApiHandler({ manager, store, projects, workspaces, process
       }
       return true
     } catch (error: unknown) {
-      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError || error instanceof HandoffChangedError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
+      const status = error instanceof HttpError ? error.status : error instanceof MemoryReadError || error instanceof StoreReadError || error instanceof ProcessConflictError || error instanceof ThreadBusyError || error instanceof OperationConflictError || error instanceof HandoffChangedError || error instanceof ChooseWorkspaceError || error instanceof WorkspaceUnavailableError ? 409 : error instanceof MessageReferenceError || error instanceof ImageAttachError ? 400 : 500
       const message = error instanceof Error ? error.message : 'Unexpected error'
       if (status === 500) console.error('[cockpit] request failed', error)
       if (!res.headersSent) sendJson(res, status, { error: message })
