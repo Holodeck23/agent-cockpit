@@ -21,6 +21,8 @@ import { createCheckRunner } from '../server/results/checks.ts'
 import { createResultService } from '../server/results/service.ts'
 import { createResultStore } from '../server/results/store.ts'
 import { createRunObservationStore, observeRuns } from '../server/runs/observations.ts'
+import { createWorkflowRunner } from '../server/workflows/runner.ts'
+import { createWorkflowStore } from '../server/workflows/store.ts'
 import { createThreadManager, WorkspaceUnavailableError, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema, type StoredEvent, type ThreadMeta } from '../server/threads/types.ts'
@@ -265,5 +267,27 @@ describe('the conversation\'s browser page', () => {
     const grant: McpGrant = { threadId: 't1', projectPath: '/work/garden', cwd: '/work/garden-worktree-abc123', workspaceId: randomUUID() }
     await agent.handle(grant, 'navigate', { url: 'http://localhost:5173/' }, new AbortController().signal)
     expect(folders).toEqual(['/work/garden-worktree-abc123'])
+  })
+})
+
+describe('scheduled workflows', () => {
+  it('keep running in the primary workspace, named explicitly, with a worktree beside it', async () => {
+    const s = await setup()
+    const cwds: string[] = []
+    const launcher: Launcher = (request, onEvent) => {
+      cwds.push(request.cwd)
+      return { agent: 'claude', send: () => undefined, respondApproval: () => undefined, interrupt: () => undefined,
+        close: () => { onEvent({ kind: 'exit', code: 0 }); return Promise.resolve() }, alive: () => true } as AgentSession
+    }
+    const threads = createThreadStore(join(s.base, 'threads'))
+    const manager = createThreadManager(threads, { launchers: { claude: launcher, codex: launcher }, workspace: s.lookup, workspaceFor: (path) => (path === s.repo ? s.primary.id : undefined) })
+    const store = createWorkflowStore(join(s.base, 'workflows'))
+    const saved = store.save({ projectPath: s.repo, name: 'nightly', prompt: 'Review the changes', intervalMinutes: 5 })
+    const runner = createWorkflowRunner(store, manager, threads, undefined, (path) => (path === s.repo ? s.primary.id : undefined))
+    const thread = runner.run(saved.id, 'scheduled')
+    expect(thread.workspaceId).toBe(s.primary.id)
+    expect(cwds).toEqual([s.repo])
+    runner.close()
+    await manager.shutdown()
   })
 })

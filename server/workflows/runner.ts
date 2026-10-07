@@ -13,7 +13,11 @@ export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calen
   return workflow.intervalMinutes ? after + workflow.intervalMinutes * 60_000 : undefined
 }
 
-export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManager, threads: ThreadStore, now = Date.now) {
+/**
+ * Schedules and manual runs belong to the project's primary workspace (W12.2): the folder is the
+ * project's own and `primaryWorkspace` names it explicitly, so a worktree beside it never changes where one runs.
+ */
+export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManager, threads: ThreadStore, now = Date.now, primaryWorkspace?: (projectPath: string) => string | undefined) {
   let timer: NodeJS.Timeout | undefined
   let stopped = false
   const requireWorkflow = (id: string) => {
@@ -30,7 +34,8 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
       if (!statSync(workflow.projectPath).isDirectory()) throw new Error('Project folder is unavailable')
       const resolved = resolveWorkflows(workflow.prompt, workflow.projectPath, store)
       const agentText = expandFiles(resolved.text, workflow.projectPath)
-      const thread = manager.create({ projectPath: workflow.projectPath, settings: workflow.settings, text: workflow.prompt, agentText,
+      const workspaceId = primaryWorkspace?.(workflow.projectPath)
+      const thread = manager.create({ projectPath: workflow.projectPath, ...(workspaceId ? { workspaceId } : {}), settings: workflow.settings, text: workflow.prompt, agentText,
         ...(resolved.used.length ? { workflows: resolved.used } : {}),
         title: titleFor(workflow),
         workflowId: id, workflowTrigger: trigger })

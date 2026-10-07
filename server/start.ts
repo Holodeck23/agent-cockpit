@@ -201,17 +201,18 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   let lifecycle: Lifecycle | undefined
   // Likewise: the manager resolves each launch's account through it (W12.1).
   let accounts: AccountService | undefined
+  const primaryWorkspaceId = (projectPath: string): string | undefined => {
+    try {
+      workspaces.ensure([projectPath])
+      return workspaces.primaryFor(projectPath)?.workspace.id
+    } catch (error) {
+      console.warn('[cockpit] no workspace identity:', error instanceof Error ? error.message : error)
+      return undefined
+    }
+  }
   const manager = createThreadManager(store, {
     workspace: (workspaceId) => workspaces.get(workspaceId),
-    workspaceFor: (projectPath) => {
-      try {
-        workspaces.ensure([projectPath])
-        return workspaces.primaryFor(projectPath)?.workspace.id
-      } catch (error) {
-        console.warn('[cockpit] no workspace identity:', error instanceof Error ? error.message : error)
-        return undefined
-      }
-    },
+    workspaceFor: primaryWorkspaceId,
     instructions: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
@@ -274,7 +275,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   }
   const memory = createMemoryStore(root)
   const presets = createPresetStore(root)
-  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store) }
+  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId) }
   const remoteStore = createRemoteStore(root)
   const push = createPushStore(root)
   const tailscale = options.remote?.tailscale ?? systemTailscale
