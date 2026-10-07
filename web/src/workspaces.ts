@@ -2,7 +2,7 @@
 // they are unit-tested: resolving the person's saved choice against what exists now, which
 // conversations ran where, where a send goes, and the guard that stops a slow answer for an old
 // choice from replacing the view of the current one.
-import type { ProcessInfo, ThreadMeta, ThreadSummary, Workspace } from './api.ts'
+import type { ProcessInfo, RemovalCheck, ThreadMeta, ThreadSummary, Workspace, WorktreeHealth } from './api.ts'
 import { isWorking, needsYou } from './conversation-meta.ts'
 
 export const MAIN_CHECKOUT = 'Main checkout'
@@ -132,6 +132,30 @@ export function labelOf(list: readonly Workspace[] | undefined, project: Project
   if (!workspaceId || workspaceId === project.workspaceId) return MAIN_CHECKOUT
   const found = list?.find((w) => w.id === workspaceId)
   return found ? (isActiveWorktree(found) ? worktreeLabel(found) : `${worktreeLabel(found)} (missing)`) : 'Missing workspace'
+}
+
+// ---- the end of a worktree (W12.4) ----
+
+/** A short word for a worktree Git does not see where Cockpit registered it; nothing when it is fine. */
+export function healthLabel(health: WorktreeHealth | undefined): string | undefined {
+  switch (health?.state) {
+    case 'missing': return 'Folder missing'
+    case 'moved': return 'Moved'
+    case 'unlisted': return 'Not listed by Git'
+    case 'branch-changed': return 'On another branch'
+    default: return undefined
+  }
+}
+
+/** What removing would lose, in words, or nothing when nothing unique is there. */
+export function uniqueWork(check: Pick<RemovalCheck, 'unique'>): string | undefined {
+  const { changed, untracked, ignored, commits } = check.unique
+  const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`
+  const parts = [
+    changed ? plural(changed, 'changed file') : '', untracked ? plural(untracked, 'untracked file') : '',
+    ignored ? plural(ignored, 'ignored file') : '', commits ? `${plural(commits, 'commit')} on no other branch` : '',
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : undefined
 }
 
 // ---- default names ----

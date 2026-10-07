@@ -72,3 +72,19 @@
 /* The same picker at the top of Files and Processes: those panels show one checkout. */
 .panel-workspace { margin: 0 0 10px; }
 .panel-workspace .workspace-selector { padding: 0; }
+
+/* Manage worktrees (W12.4). */
+.workspace-manage .workspace-row-text strong { font-weight: 500; color: var(--secondary); }
+.modal.manage-worktrees { width: min(560px, 100%); gap: 12px; max-height: min(80vh, 720px); overflow: auto; }
+.worktree-manage-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.worktree-manage-row { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); min-width: 0; }
+.worktree-manage-row small { font-size: 12px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.worktree-manage-path { font-family: var(--mono); }
+.worktree-manage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.worktree-manage-head strong { font-size: 13.5px; color: var(--strong); }
+.worktree-manage-head code { font: 12px var(--mono); color: var(--muted); }
+.worktree-state { padding: 1px 7px; border-radius: 999px; background: var(--field); color: var(--secondary); font-size: 11.5px; }
+.worktree-state.warn { background: var(--needs-bg); color: var(--needs-ink); }
+.worktree-check p { margin: 4px 0 0; padding: 7px 10px; border-radius: var(--r-sm); background: var(--field); color: var(--body); font-size: 12.5px; line-height: 1.45; }
+.worktree-manage-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.worktree-manage-actions button { padding: 4px 11px; font-size: 12.5px; }

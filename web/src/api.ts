@@ -39,7 +39,8 @@ import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo, ProcessRead } from '../../server/processes/runner.ts'
 import type { Project as StoredProject, ProjectPatch } from '../../server/projects/store.ts'
 import type { Workspace } from '../../server/projects/workspaces.ts'
-import type { PendingOperation, Preflight } from '../../server/projects/worktrees.ts'
+import type { PendingOperation, Preflight, GitWorktree } from '../../server/projects/worktrees.ts'
+import type { RemovalCheck, WorktreeHealth } from '../../server/projects/worktree-lifecycle.ts'
 import type { ThreadUpdate } from '../../server/threads/manager.ts'
 import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from '../../server/threads/types.ts'
 import type { RemoteStatus } from '../../server/remote/service.ts'
@@ -53,10 +54,14 @@ export type { AgentStatus, ProcessInfo, ProcessRead, ProjectPatch, RemoteStatus,
 
 /** A project as the list returns it: with the opaque IDs of the project and its primary workspace (absent if identity is unavailable). */
 export type Project = StoredProject & { readonly projectId?: string; readonly workspaceId?: string }
-export type { PendingOperation, Preflight, Workspace }
+export type { PendingOperation, Preflight, Workspace, RemovalCheck, WorktreeHealth, GitWorktree }
 
 /** A project's workspaces: the registered ones (primary first) and creates a crash left unfinished. */
-export interface WorkspaceList { readonly revision: number; readonly workspaces: readonly Workspace[]; readonly pending: readonly PendingOperation[] }
+export interface WorkspaceList {
+  readonly revision: number; readonly workspaces: readonly Workspace[]; readonly pending: readonly PendingOperation[]
+  /** What Git says about each registered worktree that is not removed (W12-14), and worktrees Git has that Cockpit did not make. */
+  readonly health?: Readonly<Record<string, WorktreeHealth>>; readonly unregistered?: readonly GitWorktree[]
+}
 
 /** Where this page is running: the Mac's own window, or a phone through Tailscale. */
 export type PageMode = { mode: 'local' } | { mode: 'remote'; login: string; paired: boolean; notifications: boolean }
@@ -220,6 +225,11 @@ export const api = {
     request<{ workspace: Workspace }>(`/api/projects/${projectId}/workspaces`, { method: 'POST', body }),
   recoverWorkspaceOperation: (id: string) => request<{ workspace: Workspace }>(`/api/workspace-operations/${id}/recover`, { method: 'POST', body: {} }),
   dismissWorkspaceOperation: (id: string) => request<{ operation: PendingOperation }>(`/api/workspace-operations/${id}/dismiss`, { method: 'POST', body: {} }),
+  workspaceRemoval: (id: string) => request<RemovalCheck>(`/api/workspaces/${id}/removal`),
+  removeWorkspace: (id: string, fingerprint: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/remove`, { method: 'POST', body: { fingerprint } }),
+  archiveWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/archive`, { method: 'POST', body: {} }),
+  restoreWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/restore`, { method: 'POST', body: {} }),
+  forgetWorkspace: (id: string) => request<{ workspace: Workspace }>(`/api/workspaces/${id}/forget`, { method: 'POST', body: {} }),
   thread: (id: string) => request<ThreadDetail>(`/api/threads/${id}/events`),
   createThread: (body: { projectPath: string; workspaceId?: string; text: string; title?: string; settings: Partial<ThreadSettings>; images?: readonly MessageImage[] }) =>
     request<ThreadMeta>('/api/threads', { method: 'POST', body }),
