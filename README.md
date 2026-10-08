@@ -2,7 +2,7 @@
 
 Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your existing subscriptions or provider setup. Supported agents include Claude Code, Codex, Google Antigravity, and OpenCode (OpenRouter is accessed through OpenCode).
 
-> **v0.1.5 prerelease · 2026-10-07:** Everything built since v0.1.4 in one release. The agent picker now shows what each CLI really supports, and can install, update and sign in to Claude Code, Codex and Antigravity for you, using each vendor's official installer. Updates wait until that agent's conversations are idle. Also new: a changes viewer, processes and previews that belong to their conversation, an in-app browser page per conversation that the agent can use with your approval, image attachments, richer replies and workflows. Not notarized; Apple-silicon Macs only.
+> **v0.1.6 prerelease · 2026-10-08:** Worktrees (an agent works on its own copy of the project, then merges back), account profiles so a project can use a different Claude Code or Codex account, a handoff you see before switching agents, the live preview on your phone, Report a bug and Send feedback, and the one-line Terminal install below, which opens without the Gatekeeper block. It is the first build that sends crash reports: the beta is conditional on its [terms](BETA-TERMS.md). Not notarized; Apple-silicon Macs only.
 
 ## Pick up where you left off
 
@@ -41,7 +41,7 @@ Cockpit is in beta, and the beta is conditional on its [terms](BETA-TERMS.md): C
 
 ## Download
 
-Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.5-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.5/Cockpit-0.1.5-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.6-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.6/Cockpit-0.1.6-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
@@ -50,7 +50,7 @@ Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can fi
 
 **Updating:** v0.1.3 and later include **Cockpit → Check for Updates…**. It shows the newest release and its notes. From the next release, **Copy Install Command** copies the install line above for Terminal; before that, **Download Update** opens the official DMG in your browser. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
 
-See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.5) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
+See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.6) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
 
 ## How it works
 
