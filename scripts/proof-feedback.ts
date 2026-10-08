@@ -57,8 +57,7 @@ try {
   check('Include names this Cockpit\'s version', Boolean(await until('version', async () => (await dialog.textContent())?.includes(`Include Cockpit ${version}`))))
   await dialog.getByLabel('Title').fill('Stop does nothing')
   await dialog.getByLabel('Details').fill('Clicked Stop twice.\nThe agent kept going.')
-  for (const theme of ['Light', 'Dark'] as const) { await setTheme(page, theme); await shot(page, `bug-${theme.toLowerCase()}`) }
-  await setTheme(page, 'Light')
+  await shot(page, 'bug-light')
   await dialog.getByRole('button', { name: 'Continue on GitHub' }).click()
   const first = await until('link handed to the browser', async () => (await opened(app!))[0])
   const u = first ? new URL(first) : undefined
@@ -87,6 +86,13 @@ try {
   await page.keyboard.press('Escape')
   check('Escape closes it', await idea.waitFor({ state: 'detached', timeout: 3_000 }).then(() => true, () => false))
 
+  // The theme is set before the dialog opens: while it is open nothing behind it takes a click.
+  await setTheme(page, 'Dark')
+  await button.click()
+  await page.getByRole('dialog', { name: 'Report a bug' }).waitFor()
+  await shot(page, 'bug-dark')
+  await page.keyboard.press('Escape')
+  await setTheme(page, 'Light')
   await page.setViewportSize({ width: 700, height: 760 })
   await shot(page, 'toolbar-narrow')
   await button.click()
