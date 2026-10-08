@@ -127,6 +127,23 @@ describe('buildTranscript', () => {
     }
   })
 
+  it('takes a failed step after a card you denied as not allowed, whatever the agent calls it', () => {
+    const items = buildTranscript(
+      [
+        at(0, { kind: 'tool_use', id: 't', name: 'Bash', input: { command: 'npm test' } }),
+        at(1, { kind: 'approval_request', requestId: 'r', toolName: 'Bash', input: { command: 'npm test' }, suggestions: [] }),
+        at(2, { kind: 'approval_resolved', requestId: 'r', behavior: 'deny' }),
+        at(3, { kind: 'tool_result', toolUseId: 't', content: 'Permission denied', isError: true }),
+        at(4, { kind: 'tool_use', id: 'u', name: 'Bash', input: { command: 'cat x' } }),
+        at(5, { kind: 'tool_result', toolUseId: 'u', content: 'cat: x: Permission denied', isError: true }),
+      ],
+      'opencode',
+    )
+    const steps = items.filter((i) => i.type === 'step')
+    expect(steps[0]).toMatchObject({ label: 'Not allowed: running npm test', denied: true })
+    expect(steps[1]).toMatchObject({ label: 'Running cat x' })
+  })
+
   it('keeps the label of a step that failed on its own, including an OS "Permission denied"', () => {
     const items = buildTranscript(
       [

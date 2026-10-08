@@ -65,6 +65,8 @@ try {
   await messageBox(page).press('Enter')
   await answer(page, 'Deny')
   check('a denied step fails and the agent says so', (await page.locator('.bubble.agent').last().innerText()).includes('Skipped the tests'))
+  const denied = await page.locator('.step-label').allInnerTexts()
+  check('the denied step reads "Not allowed", not still running', denied.at(-1) === 'Not allowed: running npm test', denied.join(' | '))
 
   await app.close()
   ;({ app, page } = await launch())

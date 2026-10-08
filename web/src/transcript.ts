@@ -317,6 +317,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const takenBack = takenBackPositions(events)
   const steps = new Map<string, number>()
   const approvals = new Map<string, number>()
+  // Cards you denied this turn whose refused step has not reported yet: the next failed step is one,
+  // in whatever words its agent uses (OpenCode's "Permission denied" reads like an OS error).
+  let deniedCards = 0
   const helpers = new Map<string, number>()
   let compacting: number | undefined
   let lastUserText: string | undefined
@@ -393,7 +396,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const at = steps.get(event.toolUseId)
         const step = at === undefined ? undefined : items[at]
         if (at !== undefined && step?.type === 'step') {
-          const denied = event.isError && isDenial(event.content)
+          const byCard = event.isError && deniedCards > 0
+          if (byCard) deniedCards -= 1
+          const denied = byCard || (event.isError && isDenial(event.content))
           replace(at, {
             ...step,
             endedAt: ts,
@@ -435,6 +440,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const at = approvals.get(event.requestId)
         const card = at === undefined ? undefined : items[at]
         if (at !== undefined && card?.type === 'approval') replace(at, { ...card, resolution: event.behavior })
+        if (event.behavior === 'deny') deniedCards += 1
         return
       }
       case 'settings_changed': {
@@ -520,6 +526,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         items.push({ type: 'note', key, text: `Handed over from ${agentName(event.from)} to ${agentName(event.to)}. The conversation so far goes with it.`, tone: 'plain' })
         return
       case 'result': {
+        deniedCards = 0
         if (compacting !== undefined) endCompaction(ts, event.ok ? 'done' : 'failed')
         const failed = !event.ok && !event.stopped && !event.interrupted
         if (event.interrupted) {
