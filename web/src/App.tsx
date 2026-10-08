@@ -255,6 +255,9 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const activePageKey = previewTarget ? previewKey(previewTarget) : undefined
   const activeLayout = inAppBrowser && activePageKey ? layouts[activePageKey] : undefined
   const browserOpen = Boolean(activeLayout?.visible && previewTarget)
+  const [previewFocused, setPreviewFocused] = useState(false)
+  const hasPreview = Boolean((local && activePreviewUrl && !inAppBrowser) || browserOpen)
+  useEffect(() => { if (hasPreview) setPreviewFocused(true) }, [hasPreview, activePreviewUrl, openNonce])
   const changeLayout = useCallback((change: Partial<PaneLayout>) => {
     if (activePageKey) setLayouts((current) => updatePage(current, activePageKey, change))
   }, [activePageKey])
@@ -357,7 +360,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
       ) : null}
       <ReplyContext.Provider value={replyContext}>
-      <div className={`workspace${(local && activePreviewUrl && !inAppBrowser) || browserOpen ? ' has-preview' : ''}`}>
+      <div className={`workspace${hasPreview ? ' has-preview' : ''}${previewFocused ? ' preview-focused' : ''}`}>
+        {hasPreview ? <div className="workspace-preview-tabs" role="tablist" aria-label="Workspace and preview">
+          <button type="button" role="tab" aria-selected={!previewFocused} onClick={() => setPreviewFocused(false)}>Workspace</button>
+          <button type="button" role="tab" aria-selected={previewFocused} onClick={() => setPreviewFocused(true)}>Preview</button>
+        </div> : null}
         <div className="workspace-main">
       {section === 'conversations' ? (
         <div className={`layout${selectedId ? ' has-selection' : ''}${hideList ? ' list-hidden' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
