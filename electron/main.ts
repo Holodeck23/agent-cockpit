@@ -15,7 +15,7 @@ import { createUpdateChecker, isOfficialDownload, UPDATE_CHANNEL } from './updat
 import { updateDialog } from './update-dialog.ts'
 import { placeWindow, readWindowState, writeWindowState } from './window-state.ts'
 import { assertLocalUrl as assertLocalTarget } from '../server/http/mcp-routes.ts'
-import { HELP, issueUrl } from '../server/help-links.ts'
+import { feedbackUrl, HELP, issueUrl } from '../server/help-links.ts'
 import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
 import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
@@ -485,6 +485,17 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
     if (target.startsWith(`${resolve(threadsDir)}${sep}`) && target.endsWith(`${sep}messages.md`) && existsSync(target)) {
       shell.showItemInFolder(target)
     }
+  })
+  // Report a bug / Send feedback: the page sends only what the person typed; the version and macOS
+  // come from here, and only when they left Include on. Opens the browser; nothing is sent from Cockpit.
+  ipcMain.on('cockpit:report-issue', (event, value: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    const report = value as { kind?: unknown; title?: unknown; details?: unknown; includeInfo?: unknown } | null
+    if (!report || (report.kind !== 'bug' && report.kind !== 'feedback')) return
+    if (typeof report.title !== 'string' || !report.title.trim() || report.title.length > 200) return
+    if (typeof report.details !== 'string' || report.details.length > 100_000) return
+    void shell.openExternal(feedbackUrl({ kind: report.kind, title: report.title, details: report.details,
+      ...(report.includeInfo === true ? { info: { version: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch } } : {}) }))
   })
   ipcMain.handle('cockpit:app-version', (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined

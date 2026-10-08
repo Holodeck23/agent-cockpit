@@ -23,9 +23,10 @@ import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
 import { AppearanceMenu } from './components/AppearanceMenu.tsx'
 import { AppSettings } from './components/AppSettings.tsx'
+import { FeedbackDialog } from './components/FeedbackDialog.tsx'
 import { playSound, soundForChanges, useAttention, useSoundSettings } from './sounds.ts'
 import { notificationText, useNotifySettings } from './mac-notifications.ts'
-import { Mark, SlidersIcon } from './components/icons.tsx'
+import { FeedbackIcon, Mark, SlidersIcon } from './components/icons.tsx'
 import { native } from './native.ts'
 import { isWorking, needsYou } from './conversation-meta.ts'
 import type { PageMode, ThreadMeta } from './api.ts'
@@ -63,6 +64,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const { appearance, update: updateAppearance } = useAppearance()
   const { sounds, setSounds } = useSoundSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const listWidth = useListWidth()
   const [listDraft, setListDraft] = useState<number>()
   const { notify, setNotify } = useNotifySettings()
@@ -328,7 +330,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         runningProcesses={cockpit.processes.filter((p) => p.projectPath === activePath && p.status !== 'exited').length}
         pins={phone ? [] : [...(projects.active?.pinnedFiles ?? []), ...pinnedDocuments.map((name) => `${DOCUMENTS_PREFIX}${name}`)]}
         onOpenPin={(path) => openFileFromReply({ path })}
-        tools={local ? <><PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
+        tools={local ? <><button type="button" className="feedback-button" aria-label="Report a bug or send feedback" title="Report a bug or send feedback" onClick={() => setFeedbackOpen(true)}><FeedbackIcon /><span>Feedback</span></button>
+          <PhonePanel status={cockpit.remote} onError={cockpit.reportError} onOpenChange={setPhonePanelOpen} />
           <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}><SlidersIcon /></button></>
           : <PhoneNotify initiallyOn={page.mode === 'remote' && page.notifications} onError={cockpit.reportError} />}
       />
@@ -340,6 +343,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         </div>
       ) : null}
       {releaseNotes ? <ReleaseNotes lead={releaseNotes.lead} onClose={() => setReleaseNotes(undefined)} /> : null}
+      {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} /> : null}
       {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} notify={notify} onNotify={setNotify} onClose={() => setSettingsOpen(false)} /> : null}
       {local && !phonePanelOpen && cockpit.remote?.pairings.length ? (
         <div className="pairing-banner" role="alert"><PairingRequests status={cockpit.remote} onError={cockpit.reportError} /></div>

@@ -153,6 +153,14 @@ export const BellIcon = (p: IconProps) => (
     <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
   </Svg>
 )
+/** Report a bug / Send feedback: a speech bubble with an exclamation mark. */
+export const FeedbackIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.5 5.5h15v10.5h-8l-4.5 3.5v-3.5h-2.5z" />
+    <path d="M12 8.3v3.6" />
+    <path d="M12 14.1v.01" />
+  </Svg>
+)
 export const PhoneIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" />
