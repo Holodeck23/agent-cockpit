@@ -48,7 +48,9 @@ try {
   await page.getByRole('button', { name: 'Create a workflow', exact: true }).click()
   await page.getByLabel('Title', { exact: true }).fill('Calendar check')
   await page.getByLabel('Reference name', { exact: true }).fill('calendar-check')
-  await page.getByLabel('Instructions', { exact: true }).fill('Say done.')
+  // Instructions is a document editor (R2), not an input: typed, as a person would.
+  await page.locator('.workflow-doc .ProseMirror').click()
+  await page.keyboard.type('Say done.')
   await page.getByLabel('Repeat', { exact: true }).selectOption('weekly')
   const days = page.getByRole('group', { name: 'Days' })
   await days.getByRole('button', { name: DAY[day], exact: true }).click()
@@ -74,11 +76,14 @@ try {
   const nextWeek = new Date(target); nextWeek.setDate(nextWeek.getDate() + 7)
   check('next run is the same local time a week later', after.nextRunAt === nextWeek.toISOString(), after.nextRunAt ?? '')
 
-  // The filled textarea's own text joins its label's name, so match the start.
-  await page.getByRole('textbox', { name: /^Instructions/ }).fill('Say done, briefly.')
+  await page.locator('.workflow-doc .ProseMirror').click()
+  await page.keyboard.press('Meta+a')
+  await page.keyboard.type('Say done, briefly.')
   await page.getByRole('button', { name: 'Save workflow', exact: true }).click()
   await until(page, 'the pause', async () => !(await flow(page)).enabled, 10_000)
-  check('editing pauses the schedule', await page.locator('.workflow-row').filter({ hasText: 'Manual / paused' }).isVisible())
+  // The row keeps its calendar and says Paused (WorkflowList); "Manual / paused" was the old wording.
+  const paused = page.locator('.workflow-row').filter({ hasText: 'Calendar check' }).getByText('Paused', { exact: true })
+  check('editing pauses the schedule', await paused.waitFor({ timeout: 5000 }).then(() => true, () => false))
 
   await page.getByLabel('Repeat', { exact: true }).selectOption('daily')
   await page.getByLabel('At', { exact: true }).fill('07:30')
