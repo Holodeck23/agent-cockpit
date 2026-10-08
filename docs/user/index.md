@@ -16,7 +16,7 @@ The quickest way, and the one macOS does not block, is one line in Terminal:
 curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
 ```
 
-It downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
+It shows the [beta terms](../../BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
 
 Or install the DMG by hand:
 
@@ -36,7 +36,7 @@ Cockpit is currently not notarized by Apple. When you first open it, macOS Gatek
 
 ## Crash reports
 
-From v0.1.6, Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), so problems get fixed without anyone having to file them. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. The reporting project does not store IP addresses. Error text can still name a project or file. The first launch says so once; **Settings → Crash and error reports** turns them off, at once and for good. Development and test builds never send any.
+Cockpit is in beta, and the beta is conditional on its [terms](../../BETA-TERMS.md): Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), with no setting to turn them off. You accept the terms when installing from Terminal, or when Cockpit first opens. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. Error text can still name a project or file. Development and test builds never send any.
 
 ## Installing Agents
 

@@ -42,3 +42,9 @@
 .recovery-actions .button-plain { border: 0; background: transparent; padding: 8px 0; color: var(--link); font-size: 12px; }
 .recovery-card .first-run-error { color: var(--danger); font-size: 13px; }
 .recovery-card :is(button, select):focus-visible { outline: 3px solid var(--halo); outline-offset: 3px; }
+/* Beta terms (BetaTerms.tsx): shown before the first-run screen until accepted. */
+.beta-terms { width: min(640px, 100%); margin: auto; padding: 48px 32px 72px; color: var(--secondary); font-size: 15px; line-height: 1.6; }
+.beta-terms h1 { font: 750 clamp(30px, 3.4vw, 44px)/1.1 var(--round); letter-spacing: -.03em; color: var(--strong); margin: 0 0 18px; }
+.beta-terms ul { padding-left: 20px; margin: 16px 0; display: grid; gap: 8px; }
+.beta-terms a { color: var(--link); }
+.beta-terms-actions { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }

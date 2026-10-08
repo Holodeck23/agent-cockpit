@@ -33,11 +33,11 @@ Paste this into Terminal on an Apple Silicon Mac:
 curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
 ```
 
-It downloads the newest release, checks it against the release's `SHA256SUMS`, and puts Cockpit in Applications. Installed this way, Cockpit opens on the first try, with no Gatekeeper block ([what it does](install.sh)). Run the same line again to update, after quitting Cockpit.
+It shows the [beta terms](BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS`, and puts Cockpit in Applications. Installed this way, Cockpit opens on the first try, with no Gatekeeper block ([what it does](install.sh)). Run the same line again to update, after quitting Cockpit.
 
 ## Crash reports
 
-From v0.1.6, Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), so problems get fixed without anyone having to file them. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. The reporting project does not store IP addresses. Error text can still name a project or file. The first launch says so once; **Settings → Crash and error reports** turns them off, at once and for good. Development and test builds never send any.
+Cockpit is in beta, and the beta is conditional on its [terms](BETA-TERMS.md): Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), with no setting to turn them off. You accept the terms when installing from Terminal, or when Cockpit first opens. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. Error text can still name a project or file. Development and test builds never send any.
 
 ## Download
 
