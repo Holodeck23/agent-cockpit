@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
 import { startErrorMessage } from '../start-error.ts'
-import { AGENT_SPAWN, stopChild } from '../stop.ts'
+import { AGENT_SPAWN, signalAgent, stopChild } from '../stop.ts'
 import { guardStdin } from '../stdin.ts'
 import type { AgentSession, EventSink, NormalizedEvent, OutgoingImage } from '../types.ts'
 import type { AgentCapabilities } from '../capabilities/types.ts'
@@ -129,6 +129,8 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
   })
   let exited = false
   let firstTurn = true
+  // Set by Stop until the next message: what agy reports about the stopped turn is not shown as a failure.
+  let stopping = false
   const stderrTail: string[] = []
   guardStdin(child, () => { if (!exited) onEvent({ kind: 'error', message: 'Antigravity stopped taking input; that message was not delivered' }) })
 
@@ -139,7 +141,8 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
       onEvent({ kind: 'error', message: `Could not read Antigravity output: ${error instanceof Error ? error.message : String(error)}` })
       return
     }
-    for (const event of events) onEvent(event)
+    // After Stop the turn has already ended as stopped: agy's own "interrupted" result is not a failure.
+    for (const event of events) if (!(stopping && (event.kind === 'result' || event.kind === 'error'))) onEvent(event)
   })
   createInterface({ input: child.stderr }).on('line', (line) => {
     stderrTail.push(line)
@@ -157,7 +160,9 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
   child.on('exit', (code) => {
     if (exited) return
     exited = true
-    if (code !== 0 && code !== null && stderrTail.length > 0) onEvent({ kind: 'error', message: stderrTail.join('\n') })
+    if (!stopping && code !== 0 && code !== null && stderrTail.length > 0) onEvent({ kind: 'error', message: stderrTail.join('\n') })
+    // A command agy started for the stopped turn may ignore SIGINT (a background job does): it ends with agy.
+    if (stopping && child.pid) try { process.kill(-child.pid, 'SIGTERM') } catch { /* nothing left in the group */ }
     onEvent({ kind: 'exit', code })
   })
 
@@ -174,6 +179,7 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
         ? `<cockpit-instructions>\n${value.instructions}\n</cockpit-instructions>\n\n${message}`
         : message
       firstTurn = false
+      stopping = false
       child.stdin.write(`${JSON.stringify({ event: 'user', message: { content } })}\n`)
     },
     respondApproval() {
@@ -181,8 +187,10 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
     },
     interrupt() {
       if (!exited) {
+        stopping = true
         onEvent({ kind: 'result', ok: false, stopped: true })
-        child.kill('SIGINT')
+        // The whole group: a shell command agy is running stops too, not only agy (dogfood 10-08: `sleep 45`).
+        signalAgent(child, 'SIGINT')
       }
     },
     close: () => stopChild(child, () => !exited),

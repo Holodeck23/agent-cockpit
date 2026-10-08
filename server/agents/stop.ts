@@ -9,7 +9,7 @@ export const STOP_GRACE_MS = 1500
  */
 export const AGENT_SPAWN = { detached: true } as const
 
-function signalAgent(child: ChildProcess, signal: NodeJS.Signals): void {
+export function signalAgent(child: ChildProcess, signal: NodeJS.Signals): void {
   if (child.pid) {
     try { process.kill(-child.pid, signal); return } catch { /* not a group leader, or already gone */ }
   }
