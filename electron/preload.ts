@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { NewProject } from './new-project.ts'
 import type { ReleaseNotes } from './updates.ts'
+import type { ReportsStatus } from './telemetry.ts'
 import type { PreviewOpen } from '../server/preview/types.ts'
 import type { CapacityRefusal, NavAction, PageState } from './browser-service.ts'
 
@@ -68,6 +69,10 @@ const cockpit = {
     return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
   },
   appVersion: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:app-version') as Promise<string | undefined>,
+  /** Crash and error reports (on by default): read the setting, or change it (false stops them). */
+  reports: (on?: boolean): Promise<ReportsStatus | undefined> => ipcRenderer.invoke('cockpit:reports', on) as Promise<ReportsStatus | undefined>,
+  /** An uncaught page error, for a crash report (dropped when reports are turned off). */
+  pageError: (error: { message: string; stack?: string }): void => ipcRenderer.send('cockpit:page-error', error),
   releaseNotes: (): Promise<ReleaseNotes> => ipcRenderer.invoke('cockpit:release-notes') as Promise<ReleaseNotes>,
   onShowReleaseNotes: (listener: () => void): (() => void) => {
     const receive = (): void => listener()

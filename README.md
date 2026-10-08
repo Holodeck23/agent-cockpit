@@ -35,6 +35,10 @@ curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/insta
 
 It downloads the newest release, checks it against the release's `SHA256SUMS`, and puts Cockpit in Applications. Installed this way, Cockpit opens on the first try, with no Gatekeeper block ([what it does](install.sh)). Run the same line again to update, after quitting Cockpit.
 
+## Crash reports
+
+From v0.1.6, Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), so problems get fixed without anyone having to file them. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. The reporting project does not store IP addresses. Error text can still name a project or file. The first launch says so once; **Settings → Crash and error reports** turns them off, at once and for good. Development and test builds never send any.
+
 ## Download
 
 Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.5-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.5/Cockpit-0.1.5-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).

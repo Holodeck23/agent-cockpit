@@ -18,6 +18,7 @@ import { ReplyContext, type CommitOutcome } from './markdown/reply.tsx'
 import type { FileTarget } from './markdown/file-links.ts'
 import { TroubleshootingLink } from './components/TroubleshootingLink.tsx'
 import { checkForUpdateNotice } from './update-notice.ts'
+import { ReportsNotice } from './components/ReportsNotice.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
@@ -270,12 +271,12 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }
 
   if (local && director === undefined) return <div className="app first-run"><main className="first-run-body" role="status">Opening Cockpit…</main></div>
-  if (local && director) return <FirstRun onDone={() => { setDirector(false); void projects.refresh(); cockpit.refresh() }} onCreated={(meta) => {
+  if (local && director) return <><FirstRun onDone={() => { setDirector(false); void projects.refresh(); cockpit.refresh() }} onCreated={(meta) => {
     void projects.open(meta.projectPath)
     cockpit.refresh()
     cockpit.select(meta.id)
     setDirector(false)
-  }} />
+  }} /><ReportsNotice /></>
 
   // The selector sits under the conversation list title; Files and Processes say which workspace they show.
   const workspaceSlot = !phone && projects.active?.projectId ? (
@@ -342,6 +343,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <button type="button" onClick={() => setUpdated(undefined)} aria-label="Dismiss">×</button>
         </div>
       ) : null}
+      {local && !updated && !cockpit.error && !settingsOpen ? <ReportsNotice /> : null}
       {releaseNotes ? <ReleaseNotes lead={releaseNotes.lead} onClose={() => setReleaseNotes(undefined)} /> : null}
       {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} /> : null}
       {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} notify={notify} onNotify={setNotify} onClose={() => setSettingsOpen(false)} /> : null}
