@@ -32,8 +32,3 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .toast.update-toast { align-items: center; border-color: var(--border); }
 .toast .update-toast-notes { font-size: 13px; color: var(--link); padding: 0 4px; }
 .troubleshooting-link { margin-left: 4px; color: var(--link); white-space: nowrap; }
-.toast.reports-toast { align-items: center; gap: 10px; border-color: var(--border); max-width: min(560px, calc(100vw - 32px)); }
-.toast.reports-toast span { font-size: 13px; line-height: 1.4; }
-/* `.toast button` is the bare × style; these two are real buttons again. */
-.toast.reports-toast .button-primary { font-size: 13px; padding: 6px 12px; white-space: nowrap; background: var(--project-fill, var(--blue)); color: #fff; }
-.toast.reports-toast .button-soft { font-size: 13px; padding: 6px 12px; white-space: nowrap; border: 1px solid var(--input-border); background: var(--panel); color: var(--strong); }
