@@ -1,8 +1,23 @@
 # Release acceptance
 
-## Unreleased since v0.1.4 — 2026-10-06
+## v0.1.6 published prerelease — 2026-10-08
 
-Main carries parity waves 2–7, the wave 6.5 repairs, the composer scanner and wave 9, each accepted by its own packaged gate (three runs on one frozen package). None of it is released. The next release is one batched release after waves 10–12, combined acceptance (cumulative packaged suite three times on one package), an install by an independent person on another Apple-silicon Mac and a release-build core-flow check without the debugger. Until then the published v0.1.4 below is the build testers have.
+Waves 11 and 12 (the phone live preview on its own origin; account profiles per project and agent; worktrees with their lifecycle, merge back and two agents at once), the handoff preview before an agent switch, Report a bug / Send feedback, the one-line Terminal install, and crash and error reports through Sentry as a condition of the beta (`BETA-TERMS.md`, no off switch). First release that sends anything to the developer.
+
+- Artifact: `Cockpit-0.1.6-arm64.dmg`, 128,416,765 bytes, arm64, ad-hoc signed, not notarized. SHA-256 `87da74b2cbd2ff4569aa1c0000308fe8d57efc4fc74fc5c1ad542bf5489bfd2e`.
+- `npm run verify`: 1198 tests. `check:installers`: the three official installers match their pinned reviews. Landing render (390/768/1280) and local landing checks passed.
+- Release-stage proofs on a proof build of the release commit: startup (7 scenarios), recovery (6), legacy recovery (6), window-key (21). `proof:startup` was updated in this release: it still expected the missing-CLI wording that D14 (`58c40a5`) replaced, and no gate runs it.
+- The DMG's app, copied to an isolated location: reports v0.1.6, signature ok, `app.asar` matches the packaged build (`e84d408e…`), debug flags refused and window-only API (release lockdown PASS). Its main process is a release build (`IS_RELEASE_BUILD = true`) carrying the EU Sentry project.
+- Gate: the 11 wave 12 gate proofs plus `proof:reports` and `proof:opencode`, three times each on one frozen package from main `26511d6` (the release commit adds the version, docs and the proof fix above): every case passed 3/3 except CROSS-02, 5/6 (one typed character missing from a new workflow's instructions; not reproduced in 100 targeted trials, at full and human speed, idle and under load). Evidence is kept in the maintainer's private release archive.
+- Open: an independent person on their own Mac (the [tester checklist](user/tester-checklist.md)), physical-phone push, OpenCode's live OpenRouter path.
+
+## v0.1.5 published prerelease — 2026-10-07
+
+Everything since v0.1.4: parity waves 2–7 and 9, the wave 6.5 repairs, the audit and red-team fixes, the composer scanner and wave 10 (truthful CLI capabilities; install, update and sign-in from the picker through the official installers; updates that wait for idle). Each wave was accepted by its own packaged gate (three runs on one frozen package).
+
+- Artifact: `Cockpit-0.1.5-arm64.dmg`, 128,147,537 bytes, arm64, ad-hoc signed, not notarized. SHA-256 `9deb00629074ff850a7bfc1facbb7e0040e7fe6013f33544f14f8257ebee31e6`. Tag `v0.1.5` at `a9ca62e`.
+- `npm run verify`: 966 tests. `check:installers` matched the three pinned installers. Live, through Cockpit's own install code in an isolated home folder: Claude Code, Codex and Antigravity installed, Claude Code and Codex updated and signed in, a two-turn session with resume on each.
+- The DMG's app, copied to an isolated location: v0.1.5, signature ok, `app.asar` matched the packaged build (`27957391…`), startup, recovery and window-only API proofs passed, debug flags refused.
 
 ## v0.1.4 published prerelease — 2026-10-03
 
