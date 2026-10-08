@@ -1,0 +1,22 @@
+/* Report a bug / Send feedback: the toolbar button and its dialog (FeedbackDialog.tsx). */
+.feedback-button {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; margin-right: 4px;
+  border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--secondary); font-size: 13px; cursor: default;
+}
+.feedback-button:hover { background: var(--field); color: var(--strong); }
+.feedback-button .icon { width: 16px; height: 16px; }
+.feedback-dialog { width: min(560px, 100%); }
+.feedback-kind { display: flex; gap: 8px; flex-wrap: wrap; }
+.feedback-kind-option {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--border);
+  border-radius: 999px; font-size: 13px; color: var(--secondary);
+}
+.feedback-kind-option.chosen { border-color: var(--blue); color: var(--strong); background: var(--field); }
+.feedback-kind-option input { margin: 0; }
+.feedback-dialog .field textarea {
+  padding: 8px 10px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel);
+  color: var(--strong); font: inherit; font-size: 14px; resize: vertical; min-height: 120px;
+}
+.feedback-dialog .field input { width: 100%; }
+/* A narrow window keeps the toolbar to the icon. */
+@media (max-width: 760px) { .feedback-button span { display: none; } .feedback-button { padding: 0 8px; } }

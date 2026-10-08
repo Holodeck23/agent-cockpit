@@ -36,6 +36,8 @@ export type TranscriptItem =
       key: string
       requestId: string
       agent: AgentId
+      /** The workspace whose agent asks, once the conversation has more than one (W12-15). */
+      workspace?: string
       toolName: string
       detail: string
       /** What the asker says this is (Cockpit's own cards always say). */
@@ -58,7 +60,7 @@ export type TranscriptItem =
   /** A failed turn or an agent error (J10): plain title, the agent's words, your message to retry. */
   | { type: 'failure'; key: string; title: string; detail: string; raw: string; retryText?: string; retryImages?: readonly { file: string; name?: string }[] }
   /** The agent's questions with choices (J6); `answers` once you answered, `dismissed` once you closed them. */
-  | { type: 'question'; key: string; requestId: string; agent: AgentId; questions: readonly AgentQuestion[]; answers?: Readonly<Record<string, string>>; dismissed?: boolean }
+  | { type: 'question'; key: string; requestId: string; agent: AgentId; questions: readonly AgentQuestion[]; answers?: Readonly<Record<string, string>>; dismissed?: boolean; workspace?: string }
   /** The agent summarising earlier context to make room (J3); tokens as it reported them. */
   | { type: 'compaction'; key: string; state: 'running' | 'done' | 'failed'; startedAt: string; endedAt?: string; preTokens?: number; postTokens?: number }
   /** A helper agent (J7): what it was asked, what it did, what it said back. */
@@ -388,6 +390,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           key,
           requestId: event.requestId,
           agent,
+          ...(workspaceOf?.[index] ? { workspace: workspaceOf[index] } : {}),
           toolName: friendlyToolName(event.toolName),
           detail: toolDetail(event.input),
           ...(event.description ? { note: revealHidden(event.description) } : {}),
@@ -399,7 +402,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         return
       case 'question':
         approvals.set(event.requestId, items.length)
-        items.push({ type: 'question', key, requestId: event.requestId, agent, questions: event.questions })
+        // Two agents can ask at once (W12-15): the card says whose question it is.
+        items.push({ type: 'question', key, requestId: event.requestId, agent, questions: event.questions, ...(workspaceOf?.[index] ? { workspace: workspaceOf[index] } : {}) })
         return
       case 'question_answered': {
         const at = approvals.get(event.requestId)

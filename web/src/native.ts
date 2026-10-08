@@ -23,6 +23,8 @@ export interface CockpitBridge {
   setActivity(activity: { working: number; needs: number }): void
   onPreviewOpen(listener: (preview: PreviewOpen) => void): () => void
   copyText(text: string): void
+  /** Report a bug / Send feedback: opens a filled-in GitHub issue in the browser; the Mac's details are added here only when asked. */
+  reportIssue?(report: { kind: 'bug' | 'feedback'; title: string; details: string; includeInfo: boolean }): void
   /** A native notification; clicking it brings Cockpit forward and reports the conversation id. */
   notify(notification: { threadId: string; title: string; body: string }): void
   onOpenThread(listener: (threadId: string) => void): () => void

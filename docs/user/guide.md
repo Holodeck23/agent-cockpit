@@ -129,6 +129,7 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 
 -   **Help → Release Notes** shows what changed in the version you're running, inside Cockpit. Notes come from the same GitHub release list as Check for Updates and are shown as plain text.
 -   **Help → Cockpit Guide** and **Troubleshooting** open these pages in your browser.
+-   **Feedback** (top right of the window) reports a bug or sends an idea: type a title and what happened, and Cockpit opens a filled-in GitHub issue in your browser for you to check, add screenshots to and submit. Your Cockpit and macOS versions go in only while *Include* is ticked; nothing else, and nothing is sent until you submit it on GitHub. The issue is public, so leave out anything private.
 -   **Help → Report a Problem…** opens a new GitHub issue with only your Cockpit and macOS versions filled in. Nothing else is sent; add what happened yourself.
 -   Errors that look like a network problem (an agent that can't reach its provider, a failed update check) link to [Network problems](troubleshooting.md#network-problems).
 

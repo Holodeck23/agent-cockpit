@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HELP, issueUrl, looksLikeConnectionError } from '../server/help-links.ts'
+import { FEEDBACK_DETAILS_MAX, feedbackUrl, HELP, issueUrl, looksLikeConnectionError } from '../server/help-links.ts'
 import { notesBlocks } from '../web/src/notes-text.ts'
 
 describe('Help links', () => {
@@ -14,6 +14,26 @@ describe('Help links', () => {
     expect(body).toContain('Cockpit 0.1.5')
     expect(body).toContain('macOS 26.0 (arm64)')
     expect(body).not.toMatch(/\/Users\//)
+  })
+})
+
+describe('Report a bug / Send feedback', () => {
+  const info = { version: '0.1.6', macos: '26.0', arch: 'arm64' }
+  const parts = (url: string) => { const u = new URL(url); return { at: `${u.origin}${u.pathname}`, title: u.searchParams.get('title'), body: u.searchParams.get('body') ?? '', labels: u.searchParams.get('labels') } }
+
+  it('opens a new issue titled by kind, with the words as written and the version only when included', () => {
+    const bug = parts(feedbackUrl({ kind: 'bug', title: ' Stop does nothing ', details: 'Clicked Stop twice.', info }))
+    expect(bug).toMatchObject({ at: 'https://github.com/Holodeck23/agent-cockpit/issues/new', title: 'Bug: Stop does nothing', labels: 'bug' })
+    expect(bug.body).toBe('Clicked Stop twice.\n\n---\nCockpit 0.1.6 · macOS 26.0 (arm64)')
+    const idea = parts(feedbackUrl({ kind: 'feedback', title: 'Darker tabs', details: 'Please.' }))
+    expect(idea).toMatchObject({ title: 'Feedback: Darker tabs', body: 'Please.', labels: 'enhancement' })
+  })
+
+  it('gives an empty bug report the usual prompts, and shortens what a link cannot carry', () => {
+    expect(parts(feedbackUrl({ kind: 'bug', title: 'x', details: '  ' })).body).toMatch(/^\*\*What happened\?\*\*/)
+    const long = parts(feedbackUrl({ kind: 'feedback', title: 'x', details: 'a'.repeat(FEEDBACK_DETAILS_MAX + 500) })).body
+    expect(long.length).toBeLessThan(FEEDBACK_DETAILS_MAX + 100)
+    expect(long).toMatch(/shortened: paste the rest here\)$/)
   })
 })
 

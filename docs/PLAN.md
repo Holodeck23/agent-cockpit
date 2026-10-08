@@ -77,7 +77,7 @@ Each checkpoint is its own commit with a packaged-app proof, pushed when green.
 
 Order from here (2026-10-01): finish U9, then U12 and U13 (daily use first), then U10, with U11 last as before.
 
-Left out, as features that only make sense for a hosted service: Google sign-in, team invites, a keychain for API keys (Cockpit stores none; it uses each CLI's own login), feedback and testimonial forms, community links.
+Left out, as features that only make sense for a hosted service: Google sign-in, team invites, a keychain for API keys (Cockpit stores none; it uses each CLI's own login), testimonial forms, community links. (Feedback itself was added 2026-10-08 at David's request, without a service: the toolbar's Feedback opens a filled-in public GitHub issue in the browser.)
 
 **Proposed, not adopted:** let desktop P0 completion gate Phase 7 and track physical-phone push as a separate acceptance item. Phase 7 below keeps its current gate until this is decided.
 

@@ -7,6 +7,11 @@
 # message containing START-PROC starts a process through Cockpit's MCP API, like a real agent. A
 # message containing HOLD keeps its turn running for 60 s (two worktrees can then work at once)
 # until Cockpit's Stop interrupts it. A message containing LINK names notes.txt in the reply.
+# Messages that arrive while a HOLD turn runs wait in a queue, as the real CLI's do (they carry a
+# uuid): they are taken, oldest first, when the turn ends or is stopped (replayed with isReplay and
+# that uuid, which Cockpit reads as user_taken), and each reply says took=<its QUEUE-* word>.
+# A message containing ASK asks one question (AskUserQuestion, naming this folder) and replies
+# with the answer it got: answered=[...] in cwd=..., so a reply shows which agent was answered.
 # Like the real CLI it stays alive between turns and exits on stdin EOF.
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 12 fixture)"; exit 0; }
 session=""; resumed=0; previous=""; context=""
@@ -26,6 +31,18 @@ done
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave12-fixture"}\n' "$session"
 turn=0
 hold=""
+queue=$(mktemp)
+# Takes every waiting message, oldest first: replayed with its uuid, answered, its turn ended.
+drain() {
+  while [ -s "$queue" ]; do
+    first=$(head -n 1 "$queue"); tail -n +2 "$queue" > "$queue.next"; mv "$queue.next" "$queue"
+    uuid=${first%%	*}; text=${first#*	}
+    took=$(printf '%s' "$text" | grep -o 'QUEUE-[A-Za-z0-9]*' | head -n 1)
+    printf '{"type":"user","isReplay":true,"uuid":"%s","message":{"role":"user","content":[{"type":"text","text":"%s"}]}}\n' "$uuid" "$text"
+    printf '{"type":"assistant","message":{"id":"wave12-q-%s","role":"assistant","content":[{"type":"text","text":"cwd=%s took=%s"}]}}\n' "$uuid" "$(pwd -P)" "$took"
+    printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'
+  done
+}
 while IFS= read -r line; do
   case "$line" in
     *'"subtype":"interrupt"'*)
@@ -33,9 +50,24 @@ while IFS= read -r line; do
         # The held turn's subshell exits on TERM before it can report success; its sleep goes with it.
         kill -TERM "$hold" 2>/dev/null; hold=""
         printf '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"stopped","total_cost_usd":0,"duration_ms":5}\n'
+        # Like the real CLI, still-waiting messages survive a Stop and run next.
+        drain
       fi
       continue ;;
-    *'"type":"user"'*) ;;
+    *'"type":"control_response"'*)
+      answers=$(printf '%s' "$line" | sed -n 's/.*"answers":{\([^}]*\)}.*/\1/p' | sed 's/"//g')
+      case "$line" in *'"behavior":"deny"'*) answers="dismissed" ;; esac
+      printf '{"type":"assistant","message":{"id":"wave12-a-%s-%s","role":"assistant","content":[{"type":"text","text":"cwd=%s answered=[%s]"}]}}\n' "$session" "$turn" "$(pwd -P)" "$answers"
+      printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'
+      continue ;;
+    *'"type":"user"'*)
+      # Mid-turn: the message waits (its uuid is how Cockpit knows when it is taken).
+      if [ -n "$hold" ] && kill -0 "$hold" 2>/dev/null; then
+        uuid=$(printf '%s' "$line" | sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p')
+        text=$(printf '%s' "$line" | sed -n 's/.*"text":"\([^"]*\)".*/\1/p')
+        printf '%s\t%s\n' "$uuid" "$text" >> "$queue"
+        continue
+      fi ;;
     *) continue ;;
   esac
   turn=$((turn + 1))
@@ -57,9 +89,13 @@ while IFS= read -r line; do
   case "$line" in *LINK*) text="$text. See \`notes.txt:1\`." ;; esac
   printf '{"type":"assistant","message":{"id":"wave12-%s-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$session" "$turn" "$text"
   case "$line" in
+    *ASK*)
+      folder=$(basename "$(pwd -P)")
+      printf '{"type":"control_request","request_id":"ask-%s-%s","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"question":"Which bed in %s?","header":"Bed","multiSelect":false,"options":[{"label":"Red","description":"Roses"},{"label":"Blue","description":"Irises"}]}]},"tool_use_id":"tq-%s-%s","requires_user_interaction":true}}\n' "$session" "$turn" "$folder" "$session" "$turn" ;;
     *HOLD*)
       ( sleeper=""; trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM; sleep 60 & sleeper=$!; wait "$sleeper"
-        printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n' ) &
+        printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'
+        drain ) &
       hold=$! ;;
     *) printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n' ;;
   esac

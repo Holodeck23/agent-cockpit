@@ -3,7 +3,8 @@
 // starts a process through Cockpit's MCP API; LINK names notes.txt in its reply).
 //
 //   W12-15  one conversation, two agents at once (main checkout and Rose bed): Stop one, Stop all,
-//           Complete blocked until both are idle (queued input per workspace: unit-tested).
+//           Complete blocked until both are idle; input sent mid-turn waits in its own workspace's
+//           queue and is taken by that workspace's agent; two questions at once, each answer to its own agent.
 //   W12-12  removal refused for untracked, ignored, unmerged-commit and running-process worktrees;
 //           archive keeps everything; restore.
 //   W12-13  a clean merged worktree is removed with Git (branch kept); its conversation's file link
@@ -19,7 +20,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from 'playwright-core'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { messageBox, openProject } from './lib/ui.ts'
@@ -127,19 +128,57 @@ try {
   check('W12-15 the header offers Stop for the focused workspace and Stop all', await page.getByRole('button', { name: 'Stop Rose bed' }).count() === 1)
   check('W12-15 messages are labelled by the workspace they ran in', await page.locator('.author-where', { hasText: 'Rose bed' }).count() >= 1 && await page.locator('.author-where', { hasText: 'Main checkout' }).count() >= 1)
   await shot(page, '15-two-running')
-  // Queueing mid-turn input into one workspace's agent is proven in tests/concurrent-workspaces.test.ts:
-  // the stand-in answers every message at once instead of queueing like a real CLI.
+  // Input sent mid-turn waits in the focused workspace's queue, like the real CLI's (stand-in: uuid + replay).
+  await messageBox(page).fill('QUEUE-rose after the sketch')
+  await messageBox(page).press('Enter')
+  const waiting = page.locator('.message.waiting')
+  check('W12-15 a message sent to Rose bed while it works waits there', Boolean(await until('waiting', async () => (await waiting.filter({ hasText: 'QUEUE-rose' }).count()) === 1)))
   const completeEarly = await call(page, 'POST', `/api/threads/${threadId}/completed`, { completed: true })
   check('W12-15 Complete is refused while either agent works', completeEarly.status === 409, completeEarly.error ?? '')
   await page.getByRole('button', { name: 'Stop Rose bed' }).click()
   const oneLeft = await until('rose stopped', async () => { const w = await workingIn(page, threadId); return w.length === 1 && w[0] === primary.id })
   check('W12-15 Stop for Rose bed stops only Rose bed; the main checkout keeps working', Boolean(oneLeft))
+  const tookIn = async (word: string) => (await get<Detail>(page, `/api/threads/${threadId}/events`)).events
+    .filter((e) => e.event.kind === 'assistant_text' && e.event.text?.includes(`took=${word}`))
+  const took = await until('queued taken', async () => { const t = await tookIn('QUEUE-rose'); return t.length ? t : false })
+  check('W12-15 after the Stop, Rose bed\'s own agent takes the waiting message, in its folder', took?.length === 1
+    && took[0]!.workspaceId === rose.id && took[0]!.event.text?.includes(`cwd=${rose.cwd} `) === true, JSON.stringify(took?.map((e) => [e.workspaceId, e.event.text])))
+  check('W12-15 the main checkout\'s agent never receives it, and is still working', (await waiting.count()) === 0
+    && (await workingIn(page, threadId)).join() === primary.id)
   await shot(page, '15-one-stopped')
   await page.getByRole('button', { name: 'Stop', exact: true }).click()
   await until('all stopped', async () => (await workingIn(page, threadId)).length === 0)
   const d2 = await get<Detail>(page, `/api/threads/${threadId}/events`)
   const stoppedByWorkspace = d2.events.filter((e) => e.event.kind === 'result' && e.event.stopped).map((e) => e.workspaceId).sort()
   check('W12-15 each workspace\'s run ends as stopped, on its own record', stoppedByWorkspace.join() === [primary.id, rose.id].sort().join(), stoppedByWorkspace.join())
+  // Two agents ask at once; answering one card answers that agent only (no cross-resolved question).
+  step('W12-15 a question in each workspace')
+  await choose(page, /Main checkout/)
+  await messageBox(page).fill('ASK main')
+  await messageBox(page).press('Enter')
+  await choose(page, /Rose bed/)
+  await messageBox(page).fill('ASK rose')
+  await messageBox(page).press('Enter')
+  const card = (folder: string): Locator => page.locator('.question-card').filter({ hasText: `Which bed in ${basename(folder)}?` })
+  const bothAsked = await until('two questions', async () => (await card(garden).count()) === 1 && (await card(rose.cwd).count()) === 1)
+  check('W12-15 both agents\' questions are shown, one card each', Boolean(bothAsked))
+  const named = [await card(rose.cwd).locator('.author-where').textContent(), await card(garden).locator('.author-where').textContent()]
+  check('W12-15 each question card names the workspace whose agent asks', named.join('|') === 'Rose bed|Main checkout', named.join('|'))
+  await shot(page, '15-two-questions')
+  await card(rose.cwd).getByRole('radio', { name: /^Red/ }).check()
+  await card(rose.cwd).getByRole('button', { name: 'Send answers' }).click()
+  const answered = async (folder: string) => (await get<Detail>(page, `/api/threads/${threadId}/events`)).events
+    .filter((e) => e.event.kind === 'assistant_text' && e.event.text?.startsWith(`cwd=${folder} answered=`)).map((e) => e.event.text ?? '')
+  const roseAnswer = await until('rose answered', async () => { const a = await answered(rose.cwd); return a.length ? a : false })
+  check('W12-15 answering Rose bed\'s card answers Rose bed\'s agent', roseAnswer?.join() === `cwd=${rose.cwd} answered=[Which bed in ${basename(rose.cwd)}?:Red]`, roseAnswer?.join())
+  await new Promise((r) => setTimeout(r, 500))
+  const mainOpen = { replies: (await answered(garden)).length, answers: await card(garden).locator('.question-answer').count(), choosable: await card(garden).getByRole('radio', { name: /^Blue/ }).isEnabled() }
+  check('W12-15 the main checkout\'s question is still open and its agent got nothing', mainOpen.replies === 0 && mainOpen.answers === 0 && mainOpen.choosable, JSON.stringify(mainOpen))
+  await card(garden).getByRole('radio', { name: /^Blue/ }).check()
+  await card(garden).getByRole('button', { name: 'Send answers' }).click()
+  const mainAnswer = await until('main answered', async () => { const a = await answered(garden); return a.length ? a : false })
+  check('W12-15 then the main checkout\'s own answer reaches its own agent', mainAnswer?.join() === `cwd=${garden} answered=[Which bed in ${basename(garden)}?:Blue]`, mainAnswer?.join())
+  await until('idle after answers', async () => (await workingIn(page, threadId)).length === 0)
   const completed = await call(page, 'POST', `/api/threads/${threadId}/completed`, { completed: true })
   check('W12-15 Complete is allowed once both are idle', completed.status === 200)
   check('W12-15 no held agent process is left', sleepers().filter((p) => !before.includes(p)).length === 0)

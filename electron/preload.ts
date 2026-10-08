@@ -60,6 +60,7 @@ const cockpit = {
     },
   },
   copyText: (text: string): void => ipcRenderer.send('cockpit:copy-text', text),
+  reportIssue: (report: { kind: 'bug' | 'feedback'; title: string; details: string; includeInfo: boolean }): void => ipcRenderer.send('cockpit:report-issue', report),
   notify: (notification: { threadId: string; title: string; body: string }): void => ipcRenderer.send('cockpit:notify', notification),
   onOpenThread: (listener: (threadId: string) => void): (() => void) => {
     const receive = (_event: IpcRendererEvent, id: unknown): void => { if (typeof id === 'string') listener(id) }

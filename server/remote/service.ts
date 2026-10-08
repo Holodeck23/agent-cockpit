@@ -47,7 +47,7 @@ const pairBody = z.object({ name: z.string().max(80).default('Phone') })
 const ticketBody = z.object({ processId: z.string().min(1).max(200) })
 
 /** What phone access tells phone previews (preview/control.ts) about. */
-export type PreviewHooks = Pick<PhonePreviews, 'ticket' | 'started' | 'stopped' | 'deviceRevoked'>
+export type PreviewHooks = Pick<PhonePreviews, 'ticket' | 'started' | 'stopped' | 'turnedOff' | 'deviceRevoked'>
 
 export function createRemoteAccess({ store, tailscale, serveStatic, port: portOverride, push, sendPush = webPushSender }: RemoteAccessOptions) {
   let api: ApiHandler | undefined
@@ -213,6 +213,9 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
       const hostname = self?.hostname ?? (await tailscale.self()).hostname
       const { httpsPort } = store.read()
       if ((await tailscale.serveTarget(hostname, httpsPort)) === `http://127.0.0.1:${port}`) await tailscale.unserve(httpsPort)
+      // The phone previews' entries were added by Cockpit too; turning off takes them away (Quit does not).
+      const left = (await previews?.turnedOff(hostname)) ?? []
+      if (left.length) throw new TailscaleError(`the phone preview entries on HTTPS ${left.join(', ')} could not be removed. Remove them with \`tailscale serve --https=<port> off\``)
       error = undefined
     } catch (err) {
       error = `Phone access is off, but Tailscale could not be updated: ${err instanceof Error ? err.message : String(err)}`
