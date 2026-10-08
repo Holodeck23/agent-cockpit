@@ -1,5 +1,5 @@
 import type { ModelOption } from '../../server/agents/capabilities/types.ts'
-import { defaultAgyLevel, groupAgyModels, locateAgyModel, type AgyLevel, type AgyModel } from '../../server/agents/antigravity/models.ts'
+import { defaultAgyLevel, groupAgyModels, locateAgyModel, resolveAgyModel, type AgyLevel, type AgyModel } from '../../server/agents/antigravity/models.ts'
 
 export interface ModelChoice {
   readonly value: string
@@ -35,4 +35,17 @@ export function agyMenus(listed: readonly ModelOption[], model: string, effort: 
 export function agyEffortFor(model: AgyModel | undefined, effort: string): string {
   if (!model || model.levels.length === 0) return ''
   return model.levels.find((l) => l === effort) ?? defaultAgyLevel(model.levels) ?? ''
+}
+
+/**
+ * The composer chip's words for an Antigravity choice: the model agy will run, by name, and its
+ * effort ("Gemini 3.8 Flash · Low"), resolved the way the launch resolves it. None when agy does not
+ * list the model or would refuse the effort; the chip then shows the stored value as it is.
+ */
+export function agyChoiceLabel(listed: readonly ModelOption[], model: string, effort: string): string | undefined {
+  const resolved = resolveAgyModel(model, effort || undefined, listed)
+  if (!('id' in resolved)) return undefined
+  const found = locateAgyModel(groupAgyModels(listed), resolved.id)
+  if (!found) return undefined
+  return found.level ? `${found.group.label} · ${found.level.charAt(0).toUpperCase()}${found.level.slice(1)}` : found.group.label
 }

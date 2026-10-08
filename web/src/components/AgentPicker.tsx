@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
+import type { ModelOption } from '../../../server/agents/capabilities/types.ts'
 import { api, type AccountView, type AgentCapabilities, type AgentStatus, type HandoffPreview, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
-import { agyEffortFor, agyMenus } from '../model-choices.ts'
+import { agyChoiceLabel, agyEffortFor, agyMenus } from '../model-choices.ts'
 import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
@@ -38,7 +39,10 @@ export { PERMISSION_LABEL } from '../permission-labels.ts'
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
 
-export function choiceSummary(choice: AgentChoice): string {
+export function choiceSummary(choice: AgentChoice, agyListed?: readonly ModelOption[]): string {
+  // Antigravity's model by name and effort, once agy has listed them; its ids are not for reading.
+  const named = choice.agent === 'antigravity' && choice.model && agyListed?.length ? agyChoiceLabel(agyListed, choice.model, choice.effort) : undefined
+  if (named) return named
   // Provider/model names (openrouter/…) are shown as typed; OpenCode has no effort setting of its own.
   const model = choice.model ? (choice.model.includes('/') ? choice.model : capitalize(choice.model)) : 'Default model'
   return choice.agent === 'opencode' ? model : `${model} · ${choice.effort ? capitalize(choice.effort) : 'Default effort'}`
@@ -213,6 +217,18 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const [review, setReview] = useState<{ preview?: HandoffPreview; error?: string; starting?: boolean } | undefined>(undefined)
   const [account, setAccount] = useState<AccountView | undefined>(undefined)
 
+  // The chip names an Antigravity model from agy's last listing. Reading it never runs agy; the phone
+  // is refused capabilities, and without a listing the chip shows the stored value as it is.
+  const [agyListed, setAgyListed] = useState<readonly ModelOption[] | undefined>(undefined)
+  useEffect(() => {
+    if (value.agent !== 'antigravity' || document.documentElement.classList.contains('phone')) return
+    let live = true
+    api.agentCapabilities('antigravity').then(
+      (next) => { if (live && next.models.state === 'supported') setAgyListed(next.models.value) },
+      () => { if (live) setAgyListed(undefined) })
+    return () => { live = false }
+  }, [value.agent])
+
   // Checked each time the panel opens: cheap, and never polled in the background.
   useEffect(() => {
     if (!open) return
@@ -251,6 +267,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const phone = typeof document !== 'undefined' && document.documentElement.classList.contains('phone')
   const listedChoices = shownCaps?.models.state === 'supported' && (shownCaps.models.value ?? []).length > 0 ? shownCaps.models.value : undefined
   const listedModels = listedChoices?.map((m) => m.id)
+  const chipListed = (current.agent === 'antigravity' ? listedChoices : undefined) ?? agyListed
   // Antigravity, once agy has listed its models: a model by name, then the efforts that model offers.
   const agy = current.agent === 'antigravity' && listedChoices ? agyMenus(listedChoices, current.model, current.effort) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
@@ -308,7 +325,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
           <AgentGlyph author={value.agent} />
           <span className="picker-text">
             <span className="picker-name">{agentName(value.agent)}</span>
-            <span className="picker-sub">{choiceSummary(value)}</span>
+            <span className="picker-sub">{choiceSummary(value, chipListed)}</span>
           </span>
           <ChevronDownIcon className="chevron" />
         </button>
@@ -322,7 +339,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             <div className="presets" role="group" aria-label="Presets">
               {presets.map((preset) => (
                 <span key={preset.name} className={`preset-chip${matches(preset) ? ' active' : ''}`}>
-                  <button type="button" aria-pressed={matches(preset)} title={`${agentName(preset.agent)} · ${choiceSummary(preset)} · ${permissionLabel(preset.agent, preset.permissionMode)}`}
+                  <button type="button" aria-pressed={matches(preset)} title={`${agentName(preset.agent)} · ${choiceSummary(preset, chipListed)} · ${permissionLabel(preset.agent, preset.permissionMode)}`}
                     onClick={() => { set({ agent: preset.agent, model: preset.model, effort: preset.effort, permissionMode: preset.permissionMode }); if (closeAfter && !existing) close() }}>
                     {preset.name}
                   </button>

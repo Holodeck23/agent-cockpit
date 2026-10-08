@@ -55,6 +55,8 @@ try {
   await chooseAgent(page, { agent: 'antigravity', model: 'gemini-3.8-flash', permissions: 'manual' })
 
   await page.getByRole('button', { name: 'New conversation' }).click()
+  const chip = (await page.getByRole('button', { name: 'Agent settings' }).locator('.picker-sub').innerText()).trim()
+  check('the composer chip names the model and its effort, not agy\'s id', chip === 'Gemini 3.8 Flash · Low', chip)
   await messageBox(page).fill('Read the project and report')
   await messageBox(page).press('Enter')
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
