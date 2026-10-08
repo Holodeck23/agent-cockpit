@@ -5,6 +5,7 @@ import { api, type AccountView, type AgentCapabilities, type AgentStatus, type H
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
+import { modelChoices } from '../model-choices.ts'
 import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
@@ -248,7 +249,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const shownCaps = caps?.agent === current.agent ? caps : undefined
   // Install, update and sign-in run on this Mac only; the phone is refused them (W10.2).
   const phone = typeof document !== 'undefined' && document.documentElement.classList.contains('phone')
-  const listedModels = shownCaps?.models.state === 'supported' ? (shownCaps.models.value ?? []).map((m) => m.id) : undefined
+  const listedChoices = shownCaps?.models.state === 'supported' && (shownCaps.models.value ?? []).length > 0 ? shownCaps.models.value : undefined
+  const listedModels = listedChoices?.map((m) => m.id)
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
 
   const set = (next: AgentChoice): void => {
@@ -366,17 +368,27 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
             <label className="field">
               Model
-              <input
-                list={`models-${current.agent}`}
-                value={current.model}
-                placeholder="Default model"
-                onChange={(e) => patch({ model: e.target.value.trim() })}
-              />
-              <datalist id={`models-${current.agent}`}>
-                {modelOptions.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
+              {current.agent === 'antigravity' && listedChoices ? (
+                <select value={current.model} onChange={(e) => patch({ model: e.target.value })}>
+                  {modelChoices(listedChoices, current.model).map((m) => (
+                    <option key={m.value || 'default'} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <input
+                    list={`models-${current.agent}`}
+                    value={current.model}
+                    placeholder="Default model"
+                    onChange={(e) => patch({ model: e.target.value.trim() })}
+                  />
+                  <datalist id={`models-${current.agent}`}>
+                    {modelOptions.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                </>
+              )}
             </label>
             {current.agent === 'antigravity' && shownCaps && shownCaps.models.state !== 'supported' ? (
               <p className="picker-note">{shownCaps.models.reason ?? 'Refresh to list the models this Antigravity offers.'}</p>
