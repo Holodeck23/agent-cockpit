@@ -192,6 +192,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
               <div key={item.key} className={`approval${open ? ' open' : ''}`}>
                 <div className="approval-title">
                   <strong>{agentName(item.agent)}</strong> wants to use <strong>{item.toolName}</strong>
+                  {item.workspace && workspaceName ? <span className="author-where" title="The workspace this agent works in">{workspaceName(item.workspace)}</span> : null}
                 </div>
                 {item.note ? <p className="approval-note">{item.note}</p> : null}
                 {item.flags?.length ? (
@@ -229,7 +230,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
             )
           }
           case 'question':
-            return <QuestionCard key={item.key} item={item} open={openApprovals.has(item.requestId)} onAnswer={(answers) => onAnswer(item.requestId, answers)} />
+            return <QuestionCard key={item.key} item={item} where={item.workspace && workspaceName ? workspaceName(item.workspace) : undefined} open={openApprovals.has(item.requestId)} onAnswer={(answers) => onAnswer(item.requestId, answers)} />
           case 'failure':
             return (
               <div key={item.key} className="failure" role="alert">

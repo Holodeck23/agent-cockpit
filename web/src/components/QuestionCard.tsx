@@ -10,6 +10,8 @@ interface QuestionCardProps {
   open: boolean
   /** Undefined closes the questions without answers. */
   onAnswer: (answers: Record<string, string> | undefined) => void
+  /** The workspace whose agent asks, once the conversation has run in more than one. */
+  where?: string
 }
 
 /** One answer per question: the picked choices (", "-joined when several are allowed), or your own words. */
@@ -20,7 +22,7 @@ export function answerOf(question: AgentQuestion, picked: readonly string[], oth
 }
 
 /** The agent's questions (J6), grouped in one card; once answered it keeps what you said. */
-export function QuestionCard({ item, open, onAnswer }: QuestionCardProps) {
+export function QuestionCard({ item, open, onAnswer, where }: QuestionCardProps) {
   const [picked, setPicked] = useState<Record<string, string[]>>({})
   const [other, setOther] = useState<Record<string, string>>({})
   const [sending, setSending] = useState(false)
@@ -36,8 +38,11 @@ export function QuestionCard({ item, open, onAnswer }: QuestionCardProps) {
   }
 
   return (
-    <section className={`question-card${open && !settled ? ' open' : ''}`} aria-label={`${agentName(item.agent)} asks`}>
-      <div className="question-card-title"><strong>{agentName(item.agent)}</strong> asks {item.questions.length === 1 ? 'a question' : `${item.questions.length} questions`}</div>
+    <section className={`question-card${open && !settled ? ' open' : ''}`} aria-label={`${agentName(item.agent)} asks${where ? ` in ${where}` : ''}`}>
+      <div className="question-card-title">
+        <strong>{agentName(item.agent)}</strong> asks {item.questions.length === 1 ? 'a question' : `${item.questions.length} questions`}
+        {where ? <span className="author-where" title="The workspace this agent works in">{where}</span> : null}
+      </div>
       {item.questions.map((q) => (
         <fieldset key={q.id} className="question" disabled={!open || settled || sending}>
           <legend>{q.header ? <span className="question-header">{q.header}</span> : null}{q.question}</legend>
