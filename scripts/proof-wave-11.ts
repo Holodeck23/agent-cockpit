@@ -232,7 +232,8 @@ try {
   if (!a1) throw new Error('View app did not open app A')
   const tabA = a1.tab
   const consoleA: string[] = []
-  tabA.on('console', (m) => { consoleA.push(`${m.type()}: ${m.text()}`) })
+  const clock = (): string => new Date().toISOString().slice(11, 23)
+  tabA.on('console', (m) => { consoleA.push(`${clock()} ${m.type()}: ${m.text()}`) })
   check('W11-01 View app opens A on its own HTTPS origin; the control page stays on the control origin',
     new URL(tabA.url()).origin === ORIGIN_A && new URL(phone.url()).origin === CONTROL, `${tabA.url()} (${a1.how})`)
   await tabA.getByRole('heading', { name: 'Service A' }).waitFor()
@@ -256,8 +257,12 @@ try {
   check('W11-03 an SPA deep link serves the app', await tabA.getByRole('heading', { name: 'Service A' }).isVisible(), tabA.url())
   await tabA.goto(`${ORIGIN_A}/`)
   await tabA.getByText('logged in, count 1').waitFor()
-  const hmr = await until('the HMR socket', async () => sockets.find((ws) => ws.url().startsWith(ORIGIN_A.replace('https', 'wss')) && !ws.isClosed()), 10_000)
+  // This page's socket, past Vite's "connected" frame. A socket the browser has only opened may not
+  // reach Vite yet, and Vite does not replay an update to a client that connects after it (gate
+  // 10-08 fc295d6 run 2: Vite logged the update, the page never got it, no reload).
+  const hmr = await until('the HMR socket', async () => sockets.find((ws) => owner.get(ws) === tabA && live.has(ws) && ws.url().startsWith(ORIGIN_A.replace('https', 'wss'))), 10_000)
   await tabA.evaluate(() => { (window as unknown as { proofMarker: string }).proofMarker = 'kept' })
+  const editedAt = clock()
   writeFileSync(join(project, 'src/msg.js'), "export const msg = 'Hello from A (version 2, edited on the Mac)'\n")
   const updated = await until('the HMR update', async () => (await tabA.locator('#msg').textContent()) === 'Hello from A (version 2, edited on the Mac)', 15_000)
   const kept = await tabA.evaluate(() => (window as unknown as { proofMarker?: string }).proofMarker)
@@ -265,7 +270,7 @@ try {
   // its Vite log was lost): the server's own output, the page's console and the socket's frames.
   if (!(hmr && updated && kept === 'kept')) {
     const viteOut = await getJson<unknown>(page, `/api/processes/${site!.id}/output?tail=2000`).catch((e: unknown) => String(e))
-    writeFileSync(join(PROOF_DIR, 'w11-03-miss.json'), JSON.stringify({ at: new Date().toISOString(), socket: hmr?.url() ?? null, socketClosed: hmr?.isClosed() ?? null,
+    writeFileSync(join(PROOF_DIR, 'w11-03-miss.json'), JSON.stringify({ at: new Date().toISOString(), editedAt, socket: hmr?.url() ?? null, socketClosed: hmr?.isClosed() ?? null,
       updated: Boolean(updated), kept, page: await tabA.locator('#msg').textContent().catch(() => null), console: consoleA, vite: viteOut }, null, 2))
   }
   check('W11-03 HMR: an edit on the Mac updates the page without a reload', Boolean(hmr) && Boolean(updated) && kept === 'kept',
