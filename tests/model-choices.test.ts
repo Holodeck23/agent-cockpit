@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agyEffortFor, agyMenus } from '../web/src/model-choices.ts'
+import { agyChoiceLabel, agyEffortFor, agyMenus } from '../web/src/model-choices.ts'
 
 const listed = [
   { id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
@@ -41,5 +41,20 @@ describe('the Antigravity Model menu, shaped like Antigravity\'s own', () => {
     expect(agyEffortFor(pro, 'medium')).toBe('high')
     expect(agyEffortFor(agyMenus(listed, 'gpt-oss-120b', '').model, 'high')).toBe('medium')
     expect(agyEffortFor(undefined, 'high')).toBe('')
+  })
+})
+
+describe('the composer chip for an Antigravity choice', () => {
+  it('names the model agy will run, with its effort, never the id', () => {
+    expect(agyChoiceLabel(listed, 'gemini-3.8-flash-low', '')).toBe('Gemini 3.8 Flash · Low')
+    expect(agyChoiceLabel(listed, 'gemini-3.1-pro', 'low')).toBe('Gemini 3.1 Pro · Low')
+    expect(agyChoiceLabel(listed, 'gemini-3.1-pro', '')).toBe('Gemini 3.1 Pro · High')
+    expect(agyChoiceLabel(listed, 'gpt-oss-120b', '')).toBe('GPT-OSS 120B · Medium')
+  })
+
+  it('has no name for a model agy no longer lists, or an effort it would refuse', () => {
+    expect(agyChoiceLabel(listed, 'gemini-2-ultra', '')).toBeUndefined()
+    expect(agyChoiceLabel(listed, 'gemini-3.1-pro', 'medium')).toBeUndefined()
+    expect(agyChoiceLabel([], 'gemini-3.1-pro', 'low')).toBeUndefined()
   })
 })

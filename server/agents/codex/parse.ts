@@ -95,6 +95,10 @@ function itemCompleted(item: z.infer<typeof itemSchema>): NormalizedEvent[] {
   if (item.type === 'agentMessage' && typeof item.text === 'string' && item.text.length > 0) {
     return [{ kind: 'assistant_text', messageId: item.id, text: item.text }]
   }
+  // A command or patch you refused never ran: it is a refused step, not a quiet success.
+  if ((item.type === 'commandExecution' || item.type === 'fileChange') && item.status === 'declined') {
+    return [{ kind: 'tool_result', toolUseId: item.id, content: 'declined', isError: true }]
+  }
   if (item.type === 'commandExecution') {
     const failed = typeof item.exitCode === 'number' && item.exitCode !== 0
     const output = typeof item.aggregatedOutput === 'string' ? item.aggregatedOutput : ''

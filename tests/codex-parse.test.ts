@@ -36,6 +36,13 @@ describe('parseCodexNotification on a real app-server turn', () => {
 })
 
 describe('codex turn outcomes and policy', () => {
+  it('reports a declined command or patch as a refused step, not a quiet success', () => {
+    for (const type of ['commandExecution', 'fileChange']) {
+      expect(parseCodexNotification('item/completed', { item: { type, id: 'c1', status: 'declined', exitCode: null, aggregatedOutput: null } }))
+        .toEqual([{ kind: 'tool_result', toolUseId: 'c1', content: 'declined', isError: true }])
+    }
+  })
+
   it('marks an interrupted turn as stopped', () => {
     expect(parseCodexNotification('turn/completed', { turn: { status: 'interrupted' } })).toEqual([
       { kind: 'result', ok: false, stopped: true },

@@ -105,6 +105,56 @@ describe('buildTranscript', () => {
     expect(items[0]).toMatchObject({ error: 'exit 1' })
     expect(items[1]).toMatchObject({ type: 'failure', title: 'The turn failed' })
   })
+
+  it('says a denied step was not allowed instead of still reading as under way', () => {
+    const denials = [
+      'Denied from Agent Cockpit',
+      'permission check failed for write_file "/p/index.html": user denied permission for write_file(/p/index.html)',
+      'Permission to use Bash has been denied.',
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).",
+      'declined',
+      'Browser action denied by the user',
+    ]
+    for (const content of denials) {
+      const items = buildTranscript(
+        [
+          at(0, { kind: 'tool_use', id: 't', name: 'Shell', input: { command: 'git push' } }),
+          at(1, { kind: 'tool_result', toolUseId: 't', content, isError: true }),
+        ],
+        'codex',
+      )
+      expect(items[0], content).toMatchObject({ type: 'step', label: 'Not allowed: running git push', denied: true })
+    }
+  })
+
+  it('takes a failed step after a card you denied as not allowed, whatever the agent calls it', () => {
+    const items = buildTranscript(
+      [
+        at(0, { kind: 'tool_use', id: 't', name: 'Bash', input: { command: 'npm test' } }),
+        at(1, { kind: 'approval_request', requestId: 'r', toolName: 'Bash', input: { command: 'npm test' }, suggestions: [] }),
+        at(2, { kind: 'approval_resolved', requestId: 'r', behavior: 'deny' }),
+        at(3, { kind: 'tool_result', toolUseId: 't', content: 'Permission denied', isError: true }),
+        at(4, { kind: 'tool_use', id: 'u', name: 'Bash', input: { command: 'cat x' } }),
+        at(5, { kind: 'tool_result', toolUseId: 'u', content: 'cat: x: Permission denied', isError: true }),
+      ],
+      'opencode',
+    )
+    const steps = items.filter((i) => i.type === 'step')
+    expect(steps[0]).toMatchObject({ label: 'Not allowed: running npm test', denied: true })
+    expect(steps[1]).toMatchObject({ label: 'Running cat x' })
+  })
+
+  it('keeps the label of a step that failed on its own, including an OS "Permission denied"', () => {
+    const items = buildTranscript(
+      [
+        at(0, { kind: 'tool_use', id: 't', name: 'Shell', input: { command: 'cat /etc/sudoers' } }),
+        at(1, { kind: 'tool_result', toolUseId: 't', content: 'cat: /etc/sudoers: Permission denied', isError: true }),
+      ],
+      'codex',
+    )
+    expect(items[0]).toMatchObject({ label: 'Running cat /etc/sudoers', error: 'cat: /etc/sudoers: Permission denied' })
+    expect(items[0]).not.toHaveProperty('denied')
+  })
 })
 
 describe('failed turns as error cards (J10)', () => {
