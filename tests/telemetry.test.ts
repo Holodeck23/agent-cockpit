@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Envelope } from '@sentry/core'
-import { readChoice, reportEnvelope, reportingDsn, scrubEvent, SENTRY_DSN, writeChoice } from '../electron/telemetry-choice.ts'
+import { BETA_TERMS_VERSION, readTerms, reportEnvelope, reportingDsn, scrubEvent, SENTRY_DSN, writeTerms } from '../electron/telemetry-choice.ts'
 
 describe('where reports go', () => {
   it('a release build reports to Cockpit\'s project, whatever the environment says', () => {
@@ -19,19 +19,26 @@ describe('where reports go', () => {
   })
 })
 
-describe('the person\'s choice', () => {
-  it('is unanswered until written, and a damaged file counts as unanswered', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cockpit-telemetry-'))
-    const file = join(dir, 'reports.json')
-    expect(readChoice(file)).toBeUndefined()
-    writeFileSync(file, '{"reports":"yes"}')
-    expect(readChoice(file)).toBeUndefined()
-    const saved = writeChoice(file, true, new Date('2026-10-08T13:00:00Z'))
-    expect(saved).toEqual({ reports: true, decidedAt: '2026-10-08T13:00:00.000Z' })
-    expect(readChoice(file)).toEqual(saved)
-    writeChoice(file, false)
-    expect(readChoice(file)?.reports).toBe(false)
-    expect(JSON.parse(readFileSync(file, 'utf8')).reports).toBe(false)
+describe('the beta terms', () => {
+  it('are not accepted until written, and a damaged or older acceptance does not count', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cockpit-terms-'))
+    const file = join(dir, 'beta-terms.json')
+    expect(readTerms(file)).toBeUndefined()
+    writeFileSync(file, '{"version":"1"}')
+    expect(readTerms(file)).toBeUndefined()
+    writeFileSync(file, JSON.stringify({ version: BETA_TERMS_VERSION - 1, acceptedAt: '2026-10-08T13:00:00.000Z', via: 'app' }))
+    expect(readTerms(file)).toBeUndefined()
+    const saved = writeTerms(file, 'app', new Date('2026-10-08T13:00:00Z'))
+    expect(saved).toEqual({ version: BETA_TERMS_VERSION, acceptedAt: '2026-10-08T13:00:00.000Z', via: 'app' })
+    expect(readTerms(file)).toEqual(saved)
+  })
+
+  it('accepts what install.sh writes', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cockpit-terms-'))
+    const file = join(dir, 'beta-terms.json')
+    writeFileSync(file, `{"version":${BETA_TERMS_VERSION},"acceptedAt":"2026-10-08T14:00:00Z","via":"installer"}\n`)
+    expect(readTerms(file)).toEqual({ version: BETA_TERMS_VERSION, acceptedAt: '2026-10-08T14:00:00Z', via: 'installer' })
+    expect(JSON.parse(readFileSync(file, 'utf8')).via).toBe('installer')
   })
 })
 

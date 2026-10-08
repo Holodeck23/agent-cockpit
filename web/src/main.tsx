@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App.tsx'
 import { api, type PageMode } from './api.ts'
+import { BetaTermsGate } from './components/BetaTerms.tsx'
 import { PairPhone } from './components/PairPhone.tsx'
 import { native } from './native.ts'
 import { trackWindowChrome } from './window-chrome.ts'
@@ -23,7 +24,7 @@ if (!root) throw new Error('Missing #root element')
 if (native) {
   document.documentElement.classList.add('in-app')
   trackWindowChrome(native)
-  // Uncaught page errors go to a crash report (dropped when reports are turned off in Settings).
+  // Uncaught page errors go to a crash report (sent once the beta terms are accepted).
   const report = native.pageError?.bind(native)
   if (report) {
     window.addEventListener('error', (event) => {
@@ -44,7 +45,7 @@ async function boot(container: HTMLElement): Promise<void> {
   if (page.mode === 'remote') document.documentElement.classList.add('phone')
   createRoot(container).render(
     <StrictMode>
-      {page.mode === 'remote' && !page.paired ? <PairPhone login={page.login} /> : <App page={page} />}
+      {page.mode === 'remote' && !page.paired ? <PairPhone login={page.login} /> : page.mode === 'remote' ? <App page={page} /> : <BetaTermsGate><App page={page} /></BetaTermsGate>}
     </StrictMode>,
   )
 }

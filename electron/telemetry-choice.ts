@@ -20,28 +20,37 @@ export function reportingDsn(releaseBuild: boolean, env: NodeJS.ProcessEnv): str
   return proof && /^http:\/\/[^@/]+@127\.0\.0\.1:\d+\/\d+$/.test(proof) ? proof : undefined
 }
 
-export interface ReportsChoice {
-  /** True only after the person said yes. */
-  readonly reports: boolean
-  readonly decidedAt: string
+/**
+ * The beta's terms (BETA-TERMS.md): using the beta means crash and error reports are sent, with no
+ * switch to turn them off (David 2026-10-08). Raise this when the terms change, so everyone accepts
+ * the new ones; install.sh writes the same version.
+ */
+export const BETA_TERMS_VERSION = 1
+
+export interface TermsAcceptance {
+  readonly version: number
+  readonly acceptedAt: string
+  /** Where it was accepted: the Terminal installer or the app's first launch. */
+  readonly via: 'installer' | 'app'
 }
 
-/** The stored choice; undefined until the person has answered (a damaged file counts as unanswered). */
-export function readChoice(file: string): ReportsChoice | undefined {
+/** Accepted terms of the current version; undefined otherwise (a damaged file counts as not accepted). */
+export function readTerms(file: string): TermsAcceptance | undefined {
   try {
-    const value = JSON.parse(readFileSync(file, 'utf8')) as Partial<ReportsChoice>
-    return typeof value.reports === 'boolean' && typeof value.decidedAt === 'string' ? { reports: value.reports, decidedAt: value.decidedAt } : undefined
+    const value = JSON.parse(readFileSync(file, 'utf8')) as Partial<TermsAcceptance>
+    if (typeof value.version !== 'number' || value.version < BETA_TERMS_VERSION || typeof value.acceptedAt !== 'string') return undefined
+    return { version: value.version, acceptedAt: value.acceptedAt, via: value.via === 'installer' ? 'installer' : 'app' }
   } catch {
     return undefined
   }
 }
 
-export function writeChoice(file: string, reports: boolean, now: Date = new Date()): ReportsChoice {
-  const choice: ReportsChoice = { reports, decidedAt: now.toISOString() }
+export function writeTerms(file: string, via: TermsAcceptance['via'], now: Date = new Date()): TermsAcceptance {
+  const accepted: TermsAcceptance = { version: BETA_TERMS_VERSION, acceptedAt: now.toISOString(), via }
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
-  writeFileSync(`${file}.tmp`, `${JSON.stringify(choice)}\n`, { mode: 0o600 })
+  writeFileSync(`${file}.tmp`, `${JSON.stringify(accepted)}\n`, { mode: 0o600 })
   renameSync(`${file}.tmp`, file)
-  return choice
+  return accepted
 }
 
 /** Default integrations a report never uses: they would add local variables, logs or a request trail. */

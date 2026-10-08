@@ -65,9 +65,9 @@ if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
 // the single-instance lock (and window state) never collide with the installed app.
 if (process.env.COCKPIT_HOME) app.setPath('userData', join(process.env.COCKPIT_HOME, 'electron'))
 
-// Crash and error reports (electron/telemetry.ts): started before the app is ready, after the crash
-// guard and the profile path; on unless turned off in Settings.
-const telemetry = startTelemetry({ dsn: reportingDsn(IS_RELEASE_BUILD, process.env), choiceFile: join(defaultRoot(), 'reports.json'),
+// Crash and error reports (electron/telemetry.ts), a condition of the beta: started before the app
+// is ready, after the crash guard and the profile path; nothing is sent until the terms are accepted.
+const telemetry = startTelemetry({ dsn: reportingDsn(IS_RELEASE_BUILD, process.env), termsFile: join(defaultRoot(), 'beta-terms.json'),
   version: app.getVersion(), releaseBuild: IS_RELEASE_BUILD })
 
 if (!app.requestSingleInstanceLock()) {
@@ -508,11 +508,13 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
     return app.getVersion()
   })
-  // Crash and error reports: whether this build sends them, and the Settings switch.
-  ipcMain.handle('cockpit:reports', (event, value: unknown) => {
+  // The beta terms: whether this build has them and they are accepted; accept them, or decline and quit.
+  ipcMain.handle('cockpit:beta-terms', (event, value: unknown) => {
     if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame
       || new URL(event.senderFrame.url).origin !== origin) return undefined
-    return typeof value === 'boolean' ? telemetry.set(value) : telemetry.status()
+    if (value === 'accept') return telemetry.accept()
+    if (value === 'decline') { app.quit(); return telemetry.status() }
+    return telemetry.status()
   })
   ipcMain.on('cockpit:page-error', (event, value: unknown) => {
     if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame

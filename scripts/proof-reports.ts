@@ -1,14 +1,16 @@
-// Crash and error reports, PACKAGED app, against a stand-in collector on this Mac (never the real
-// project). On by default (David 2026-10-08): the first launch says so once, with no question; page
-// and main-process errors arrive without the home folder, the machine name, page queries or a
-// breadcrumb trail; a main-process error leaves Cockpit running; Settings turns reports off, at
-// once and across a restart.
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+// Crash and error reports and the beta terms, PACKAGED app, against a stand-in collector on this
+// Mac (never the real project). The beta is conditional on its terms (BETA-TERMS.md, David
+// 2026-10-08): a first launch shows them before anything else, Quit ends the app, and nothing is
+// sent until they are accepted. Then page and main-process errors arrive without the home folder,
+// the machine name, page queries or a breadcrumb trail, with no switch to turn reports off; a
+// main-process error leaves Cockpit running; terms accepted by install.sh are not asked again.
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage } from 'node:http'
 import { homedir, hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { ElectronApplication, Page } from 'playwright-core'
+import { BETA_TERMS_VERSION } from '../electron/telemetry-choice.ts'
 import { checker, launchPackagedApp, PROOF_DIR } from './lib/launch-app.ts'
 
 const home = mkdtempSync(join(tmpdir(), 'cockpit-reports-proof-'))
@@ -46,8 +48,8 @@ async function until(read: () => boolean, ms: number): Promise<boolean> {
   return read()
 }
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await launchPackagedApp(env)
+async function launch(stateDir = state): Promise<{ app: ElectronApplication; page: Page }> {
+  const app = await launchPackagedApp({ ...env, COCKPIT_HOME: stateDir })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
   page.setDefaultTimeout(15_000)
@@ -72,58 +74,72 @@ const { check, finish } = checker()
 mkdirSync(PROOF_DIR, { recursive: true })
 let { app, page } = await launch()
 try {
-  const notice = page.getByRole('status', { name: 'Crash reports' })
-  await notice.waitFor()
-  const said = await notice.innerText()
-  check('first launch says once that crash reports are sent, what they hold and where to turn them off',
-    said.includes('sends crash reports') && said.includes('home folder is hidden') && said.includes('Settings'), said.slice(0, 160))
-  check('it is a notice, not a question: OK is the only button', (await notice.getByRole('button').allInnerTexts()).join('|') === 'OK')
-  await page.screenshot({ path: join(PROOF_DIR, 'proof-reports-notice.png') })
+  const terms = page.getByRole('dialog', { name: 'Cockpit beta terms' })
+  await terms.waitFor()
+  const said = await terms.innerText()
+  check('a first launch shows the beta terms before anything else', said.includes('crash and error reports') && said.includes('cannot be turned off')
+    && await page.getByRole('button', { name: 'Skip for now' }).count() === 0, said.slice(0, 160))
+  check('the terms offer Agree and continue, or Quit, and nothing else', (await terms.getByRole('button').allInnerTexts()).join('|') === 'Agree and continue|Quit')
+  await page.screenshot({ path: join(PROOF_DIR, 'proof-reports-terms.png') })
 
-  await throwBoth(app, page, 'default')
-  const arrived = await until(() => events().filter((e) => JSON.stringify(e).includes('default')).length >= 2, 15_000)
-  const sent = events().filter((e) => JSON.stringify(e).includes('default'))
+  await throwBoth(app, page, 'unaccepted')
+  await settle(4000)
+  check('nothing is sent before the terms are accepted', events().length === 0, `${events().length} events`)
+
+  const closed = new Promise<boolean>((resolve) => { app.once('close', () => resolve(true)); setTimeout(() => resolve(false), 15_000) })
+  await terms.getByRole('button', { name: 'Quit' }).click()
+  check('Quit ends Cockpit', await closed)
+  check('declining stores no acceptance', !existsSync(join(state, 'beta-terms.json')))
+
+  ;({ app, page } = await launch())
+  const again = page.getByRole('dialog', { name: 'Cockpit beta terms' })
+  await again.waitFor()
+  check('after Quit the next launch shows the terms again', true)
+  await again.getByRole('button', { name: 'Agree and continue' }).click()
+  await page.getByRole('button', { name: 'Skip for now' }).waitFor()
+  check('Agree and continue opens Cockpit', true)
+  check('the acceptance is stored with the state', JSON.parse(readFileSync(join(state, 'beta-terms.json'), 'utf8')).via === 'app')
+
+  await throwBoth(app, page, 'accepted')
+  const arrived = await until(() => events().filter((e) => JSON.stringify(e).includes('accepted')).length >= 2, 15_000)
+  const sent = events().filter((e) => JSON.stringify(e).includes('accepted'))
   writeFileSync(join(PROOF_DIR, 'proof-reports-events.json'), JSON.stringify(sent, null, 2))
-  check('with nothing chosen, the page error and the main-process error both arrive', arrived
+  check('once accepted, the page error and the main-process error both arrive', arrived
     && sent.some((e) => JSON.stringify(e).includes('proof page error')) && sent.some((e) => JSON.stringify(e).includes('proof main error')), `${sent.length} events`)
   const text = JSON.stringify(sent)
   const user = homedir().split('/').pop() ?? ''
   check('no report holds the home folder or the user name', !text.includes(homedir()) && (user.length < 3 || !text.includes(user)) && text.includes('~/repos/client-x/notes.md'))
   check('no report holds the machine name', !text.includes(hostname()) && !text.includes(hostname().replace(/\.local$/, '')))
-  check('no report holds the page\'s key or a breadcrumb trail', !text.includes('window-secret') && !text.includes('breadcrumb-canary') && sent.every((e) => e.breadcrumbs === undefined))
+  check('no report holds the page\'s key, a breadcrumb trail or the boot time', !text.includes('window-secret') && !text.includes('breadcrumb-canary')
+    && !text.includes('boot_time') && sent.every((e) => e.breadcrumbs === undefined))
   check('each report names the version and the proof environment', sent.length > 0 && sent.every((e) => typeof e.release === 'string' && (e.release as string).startsWith('cockpit@') && e.environment === 'proof'),
     sent.map((e) => `${String(e.release)} ${String(e.environment)}`).join(', '))
 
-  await notice.getByRole('button', { name: 'OK' }).click()
-  await notice.waitFor({ state: 'detached' })
   await page.getByRole('button', { name: 'Skip for now' }).click()
   await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
-  check('after OK the notice does not come back in the app', await page.getByRole('status', { name: 'Crash reports' }).count() === 0)
   check('a main-process error leaves Cockpit running', await page.getByRole('button', { name: 'Settings', exact: true }).isVisible())
-
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const settings = page.getByRole('dialog', { name: 'Settings' })
-  const box = settings.getByRole('checkbox', { name: /Send crash and error reports/ })
-  check('Settings shows reports on', await box.isChecked())
-  await box.click()
-  const off = await (async () => { for (let i = 0; i < 20; i++) { if (!(await box.isChecked())) return true; await settle(250) } return false })()
-  check('Settings turns them off', off)
+  await settings.waitFor()
+  check('Settings has no switch to turn reports off', !(await settings.innerText()).toLowerCase().includes('crash'))
   await settings.getByRole('button', { name: 'Done' }).click()
-  const before = events().length
-  await throwBoth(app, page, 'turned-off')
-  await settle(4000)
-  check('once off, nothing more is sent', events().length === before, `${events().length - before} new events`)
-  check('the setting is stored with the state', JSON.parse(readFileSync(join(state, 'reports.json'), 'utf8')).reports === false)
 
   await app.close()
   ;({ app, page } = await launch())
   await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
-  await settle(2000)
-  check('a restart shows no notice', await page.getByRole('status', { name: 'Crash reports' }).count() === 0)
-  const afterRestart = events().length
-  await throwBoth(app, page, 'still-off')
-  await settle(4000)
-  check('still off after a restart: nothing is sent', events().length === afterRestart, `${events().length - afterRestart} new events`)
+  check('a restart does not ask again', await page.getByRole('dialog', { name: 'Cockpit beta terms' }).count() === 0)
+  const before = events().length
+  await throwBoth(app, page, 'restarted')
+  check('reports keep coming after a restart', await until(() => events().length >= before + 2, 15_000), `${events().length - before} new events`)
+  await app.close()
+
+  // Accepted in Terminal by install.sh (the same file and version): the app does not ask.
+  const installed = join(home, 'installed-state')
+  mkdirSync(installed, { recursive: true })
+  writeFileSync(join(installed, 'beta-terms.json'), `{"version":${BETA_TERMS_VERSION},"acceptedAt":"2026-10-08T14:39:00Z","via":"installer"}\n`)
+  ;({ app, page } = await launch(installed))
+  await page.getByRole('button', { name: 'Skip for now' }).waitFor()
+  check('terms accepted by install.sh are not asked again', await page.getByRole('dialog', { name: 'Cockpit beta terms' }).count() === 0)
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {
