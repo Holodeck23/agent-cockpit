@@ -72,7 +72,8 @@ function scrubValue(value: Json, home: string): Json {
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, home))
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value)
-      .filter(([key]) => !['vars', 'pre_context', 'context_line', 'post_context'].includes(key))
+      // Source excerpts and local variables; boot_time, which with the hardware nearly names the Mac.
+      .filter(([key]) => !['vars', 'pre_context', 'context_line', 'post_context', 'boot_time'].includes(key))
       .map(([key, item]) => [scrubString(key, home), scrubValue(item, home)]))
   }
   return value

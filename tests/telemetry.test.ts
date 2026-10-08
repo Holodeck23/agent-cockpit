@@ -44,7 +44,7 @@ describe('what a report keeps', () => {
     request: { url: 'http://127.0.0.1:5173/?key=secret-window-key' },
     breadcrumbs: [{ message: 'console: the prompt text' }],
     exception: { values: [{ value: 'failed at http://127.0.0.1:5173/api/threads?key=abc#x', stacktrace: { frames: [{ abs_path: '/Users/someone/Applications/Cockpit.app/x.js' }] } }] },
-    contexts: { os: { name: 'macOS', version: '26.5' } },
+    contexts: { os: { name: 'macOS', version: '26.5' }, device: { arch: 'arm64', boot_time: '2026-09-13T11:24:11.016Z' } },
     release: 'cockpit@0.1.6',
   }
 
@@ -53,7 +53,7 @@ describe('what a report keeps', () => {
     expect(scrubbed).toEqual({
       message: 'ENOENT: no such file, open \'~/repos/client-x/notes.md\'',
       exception: { values: [{ value: 'failed at http://127.0.0.1:5173/api/threads', stacktrace: { frames: [{ abs_path: '~/Applications/Cockpit.app/x.js' }] } }] },
-      contexts: { os: { name: 'macOS', version: '26.5' } },
+      contexts: { os: { name: 'macOS', version: '26.5' }, device: { arch: 'arm64' } },
       release: 'cockpit@0.1.6',
     })
     expect(JSON.stringify(scrubbed)).not.toMatch(/someone|secret|MacBook|prompt text/)

@@ -34,6 +34,10 @@ Cockpit is currently not notarized by Apple. When you first open it, macOS Gatek
 *   **Alternative:** Open the Terminal and run this exact command to remove the quarantine flag:
     `xattr -dr com.apple.quarantine /Applications/Cockpit.app`
 
+## Crash reports
+
+From v0.1.6, Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), so problems get fixed without anyone having to file them. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. The reporting project does not store IP addresses. Error text can still name a project or file. The first launch says so once; **Settings → Crash and error reports** turns them off, at once and for good. Development and test builds never send any.
+
 ## Installing Agents
 
 Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions. Cockpit automatically resolves your login-shell `PATH` and checks fallback directories (like Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder.
