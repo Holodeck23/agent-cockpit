@@ -91,7 +91,8 @@
     "proof:crash-guard": "tsx scripts/proof-crash-guard.ts",
     "proof:conversation-style": "tsx scripts/proof-conversation-style.ts",
     "proof:style-screens": "tsx scripts/proof-style-screens.ts",
-    "proof:reports": "tsx scripts/proof-reports.ts"
+    "proof:reports": "tsx scripts/proof-reports.ts",
+    "proof:approvals-live": "tsx scripts/proof-approvals-live.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",
