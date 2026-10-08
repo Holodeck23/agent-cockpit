@@ -52,7 +52,7 @@ describe('update while agents work (W10-07, CROSS-06)', () => {
     ctx.busy.antigravity = 2
     const op = await lifecycle.start('antigravity', 'update')
     expect(op.state).toBe('waiting_for_idle')
-    expect(lifecycle.get(op.id)?.message).toMatch(/2 conversations/)
+    expect(lifecycle.get(op.id)?.message).toMatch(/Waiting for 2 running Antigravity sessions to finish/)
     expect(lifecycle.launchBlock('antigravity')).toMatch(/waiting to update/)
     expect(lifecycle.launchBlock('claude')).toBeUndefined()
     ctx.busy.antigravity = 1
