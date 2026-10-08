@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -32,13 +32,17 @@ describe('Stop on an Antigravity turn', () => {
         if (event.kind === 'exit') resolve()
       }, { executable })
       session.send('Run sleep 30')
-      setTimeout(() => session.interrupt(), 500)
+      // Stop once the command is running (under a loaded suite, the stand-in can take a while to start it).
+      const started = Date.now()
+      const poll = setInterval(() => {
+        if (existsSync(join(dir, 'child.pid')) || Date.now() - started > 10_000) { clearInterval(poll); session.interrupt() }
+      }, 50)
     })
     await exited
     const results = events.filter((e) => e.kind === 'result')
     expect(results).toEqual([{ kind: 'result', ok: false, stopped: true }])
     expect(events.filter((e) => e.kind === 'error')).toEqual([])
-    const child = Number((await import('node:fs')).readFileSync(join(dir, 'child.pid'), 'utf8'))
+    const child = Number(readFileSync(join(dir, 'child.pid'), 'utf8'))
     await new Promise((r) => setTimeout(r, 200))
     expect(alive(child)).toBe(false)
   }, 15_000)
