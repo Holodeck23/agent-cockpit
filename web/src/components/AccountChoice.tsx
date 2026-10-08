@@ -47,6 +47,7 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
   // Read each time the agent or project changes; a late answer for another one is dropped.
   useEffect(() => {
     let live = true
+    setSelected(undefined)
     setError('')
     setNote('')
     setAdding(false)
@@ -64,6 +65,7 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
 
   const mine = (view?.accounts ?? []).filter((a) => a.agent === agent)
   const current = mine.find((a) => a.id === selected)
+  const loading = (!view || selected === undefined) && !error
   useEffect(() => { reported.current?.(current) }, [current?.id, current?.generation])
 
   const support = view?.support[agent]
@@ -89,8 +91,11 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
     <div className="account-choice" role="group" aria-label="Account">
       <label className="field">
         Account
-        <select aria-label="Account" value={adding ? ADD : selected ?? ''} disabled={!view || busy}
+        <select aria-label="Account" value={adding ? ADD : loading ? '' : selected ?? ''} disabled={loading || busy} aria-busy={loading}
           onChange={(e) => { if (e.target.value === ADD) { setAdding(true); setRemoving(false) } else { setAdding(false); choose(e.target.value) } }}>
+          {/* Until both answers arrive nothing matches, and a select would show its first option
+              ("Add an account…") as if it were the account (proof:accounts, first launch 2026-10-08). */}
+          {loading ? <option value="">Checking…</option> : null}
           {mine.map((account) => (
             <option key={account.id} value={account.id}>{account.mode === 'default' ? `Use CLI default${account.identity?.state === 'known' ? ` · ${account.identity.hint}` : account.identity ? ' · account unknown' : ''}` : accountName(account)}</option>
           ))}

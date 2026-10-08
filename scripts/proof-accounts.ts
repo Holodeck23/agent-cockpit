@@ -35,7 +35,8 @@ const chosen = (page: Page): Promise<string> => accountBox(page).evaluate((s: HT
 const openPicker = async (page: Page): Promise<void> => {
   if (await picker(page).count() === 0) await page.getByRole('button', { name: 'Agent settings' }).click()
   await accountBox(page).waitFor()
-  await until('accounts loaded', async () => (await chosen(page)).length > 0)
+  // Ready = both answers in: the box is enabled and no longer says Checking….
+  await until('accounts loaded', async () => await accountBox(page).isEnabled() && (await chosen(page)) !== 'Checking…')
 }
 const closePicker = async (page: Page): Promise<void> => { if (await picker(page).count()) await page.keyboard.press('Escape') }
 // An agent without a CLI here is labelled "<name> Unavailable": match the start of the name.
