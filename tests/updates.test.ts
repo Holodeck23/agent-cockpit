@@ -232,10 +232,13 @@ describe('createUpdateChecker', () => {
 })
 
 describe('updateDialog', () => {
-  it('offers Download Update with manual replacement guidance', () => {
+  it('offers the install command first (it opens without Gatekeeper), the browser download second', () => {
     const result = selectUpdate(FEED, '0.1.1', 'prerelease')
     const dialog = updateDialog(result)
-    expect(dialog.buttons).toEqual(['Download Update', 'Later'])
+    expect(dialog.buttons).toEqual(['Copy Install Command', 'Download in Browser', 'Later'])
+    expect(dialog.copyText).toBe('curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh')
+    expect(dialog.detail).toMatch(/Terminal/)
+    expect(dialog.detail).toMatch(/Privacy & Security/)
     expect(dialog.message).toContain('0.1.2')
     expect(dialog.detail).toContain('You have 0.1.1')
     expect(dialog.detail).toContain('Notes for v0.1.2')
@@ -253,6 +256,7 @@ describe('updateDialog', () => {
       const dialog = updateDialog(result)
       expect(`${dialog.message} ${dialog.detail}`).not.toMatch(/you're up to date/i)
       expect(dialog.downloadUrl).toBeUndefined()
+      expect(dialog.copyText).toBeUndefined()
       expect(dialog.buttons[0]).toBe('OK')
     }
     expect(updateDialog({ state: 'unavailable', current: '0.1.2', reason: 'x' }).detail).toMatch(/does not mean/i)

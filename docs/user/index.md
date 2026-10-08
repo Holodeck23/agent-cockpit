@@ -10,7 +10,17 @@ Agent Cockpit is built exclusively for macOS running on Apple Silicon. Other pla
 
 ## Installation
 
-1. Download the latest `Cockpit-0.1.4-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+The quickest way, and the one macOS does not block, is one line in Terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
+```
+
+It downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
+
+Or install the DMG by hand:
+
+1. Download the latest `Cockpit-<version>-arm64.dmg` from the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 2. Open the `.dmg` file.
 3. Drag **Cockpit.app** to your **Applications** folder.
 

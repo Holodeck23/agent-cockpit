@@ -1,6 +1,6 @@
 // The words shown for each update-check outcome. Kept apart from Electron so every outcome
 // can be tested; a failed check must never read as "up to date".
-import { HELP } from '../server/help-links.ts'
+import { HELP, INSTALL_COMMAND } from '../server/help-links.ts'
 import type { UpdateCheck } from './updates.ts'
 
 export interface UpdateDialog {
@@ -8,7 +8,9 @@ export interface UpdateDialog {
   readonly message: string
   readonly detail: string
   readonly buttons: readonly string[]
-  /** Set only when the first button downloads; the caller re-validates it before opening. */
+  /** Set when the first button copies this install command for Terminal. */
+  readonly copyText?: string
+  /** Set only when the second button downloads; the caller re-validates it before opening. */
   readonly downloadUrl?: string
   /** Set when the second button opens this troubleshooting page; Escape stays on OK. */
   readonly helpUrl?: string
@@ -17,9 +19,10 @@ export interface UpdateDialog {
 const NOT_UP_TO_DATE = 'This does not mean Cockpit is up to date.'
 
 const REPLACE_STEPS =
-  'Download Update opens the installer in your browser. When the download finishes, finish or stop any running agents, ' +
-  'quit Cockpit, open the downloaded file and drag Cockpit to Applications to replace this copy. ' +
-  'Your conversations and settings are stored outside the app and are kept.'
+  'Copy Install Command copies one line for Terminal. Finish or stop any running agents, quit Cockpit, then paste it ' +
+  'into Terminal and press Return: it checks the download, replaces this copy, and the new one opens without macOS blocking it. ' +
+  'Download in Browser gets the installer instead; macOS then blocks its first launch until you choose Open Anyway in ' +
+  'System Settings > Privacy & Security. Your conversations and settings are stored outside the app and are kept.'
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -34,7 +37,8 @@ export function updateDialog(result: UpdateCheck): UpdateDialog {
         type: 'info',
         message: `Cockpit ${update.version} is available`,
         detail: `You have ${result.current}.${notes}\n\n${REPLACE_STEPS}`,
-        buttons: ['Download Update', 'Later'],
+        buttons: ['Copy Install Command', 'Download in Browser', 'Later'],
+        copyText: INSTALL_COMMAND,
         downloadUrl: update.downloadUrl,
       }
     }
