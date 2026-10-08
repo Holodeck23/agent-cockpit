@@ -37,7 +37,7 @@ async function until<T>(label: string, read: () => Promise<T | undefined | false
   return undefined
 }
 const pids = (pattern: string): number[] => {
-  try { return execFileSync('/usr/bin/pgrep', ['-f', pattern], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number) } catch { return [] }
+  try { return execFileSync('/usr/bin/pgrep', ['-f', '--', pattern], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number) } catch { return [] }
 }
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true } catch { return false } }
 const get = <T>(page: Page, path: string): Promise<T> => page.evaluate(async (p) => ((await (await fetch(p)).json()) as { data: unknown }).data, path) as Promise<T>
