@@ -1,7 +1,7 @@
 // Turns a thread's raw event log into what the thread view draws: messages with
 // author rows, tool calls collapsed into one activity line each, approvals as
 // cards, and small notes. Pure, so it's unit-tested without a browser.
-import type { AgentId, AgentQuestion, ApprovalBehavior, WorkflowSnapshot } from '../../server/agents/types.ts'
+import type { AgentId, AgentQuestion, ApprovalOutcome, WorkflowSnapshot } from '../../server/agents/types.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
@@ -49,7 +49,11 @@ export type TranscriptItem =
       canAllowForSession: boolean
       /** The wider Allow's own words when the asker defines its scope ("Allow on example.com for this run"). */
       allowWiderLabel?: string
-      resolution?: ApprovalBehavior
+      resolution?: ApprovalOutcome
+      cwd?: string
+      expiresAt?: string
+      input?: unknown
+      rawToolName?: string
     }
   /** `runId`: the note ends that run, whose changes can be opened from it. */
   | { type: 'note'; key: string; text: string; tone: 'plain' | 'error'; runId?: string }
@@ -417,6 +421,10 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           agent,
           ...(workspaceOf?.[index] ? { workspace: workspaceOf[index] } : {}),
           toolName: friendlyToolName(event.toolName),
+          rawToolName: event.toolName,
+          ...(event.cwd ? { cwd: event.cwd } : {}),
+          input: event.input,
+          ...(event.expiresAt ? { expiresAt: event.expiresAt } : {}),
           detail: toolDetail(event.input),
           ...(event.description ? { note: revealHidden(event.description) } : {}),
           ...(riskFlags(event.input).length ? { flags: riskFlags(event.input) } : {}),
@@ -439,7 +447,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       case 'approval_resolved': {
         const at = approvals.get(event.requestId)
         const card = at === undefined ? undefined : items[at]
-        if (at !== undefined && card?.type === 'approval') replace(at, { ...card, resolution: event.behavior })
+        if (at !== undefined && card?.type === 'approval') replace(at, { ...card, resolution: event.outcome ?? event.behavior })
         if (event.behavior === 'deny') deniedCards += 1
         return
       }

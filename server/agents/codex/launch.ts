@@ -71,7 +71,7 @@ const APPROVAL_METHODS = new Set([
   ELICITATION_METHOD,
 ])
 
-function describeApproval(request: ServerRequest): { toolName: string; input: unknown; description?: string } {
+function describeApproval(request: ServerRequest): { toolName: string; input: unknown; description?: string; toolUseId?: string } {
   const params = (request.params ?? {}) as Record<string, unknown>
   if (request.method === ELICITATION_METHOD) {
     const message = typeof params.message === 'string' ? params.message : 'An MCP server is asking to continue'
@@ -80,6 +80,7 @@ function describeApproval(request: ServerRequest): { toolName: string; input: un
   const isFile = request.method.includes('fileChange') || request.method === 'applyPatchApproval'
   return {
     toolName: isFile ? 'Edit' : 'Shell',
+    ...(typeof params.itemId === 'string' ? { toolUseId: params.itemId } : {}),
     input: isFile ? { file_path: params.grantRoot ?? params.reason ?? 'file change' } : { command: params.command },
     description: typeof params.reason === 'string' ? params.reason : undefined,
   }

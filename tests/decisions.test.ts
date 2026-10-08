@@ -19,7 +19,12 @@ describe('decision lines', () => {
 
   it('summarises one decision by its answer and several by counts', () => {
     expect(decisionSummary([approval('1', 'allow_session')])).toBe('1 decision · Allowed for this session')
-    expect(decisionSummary([approval('1', 'allow'), approval('2', 'allow_session'), approval('3', 'deny')])).toBe('3 decisions · 2 allowed, 1 denied')
-    expect(decisionSummary([approval('1', 'deny'), approval('2', 'deny')])).toBe('2 decisions · 2 denied')
+    expect(decisionSummary([approval('1', 'allow'), approval('2', 'allow_session'), approval('3', 'deny')])).toBe('3 decisions · 2 allowed, 1 denied by you')
+    expect(decisionSummary([approval('1', 'deny'), approval('2', 'deny')])).toBe('2 decisions · 2 denied by you')
   })
+})
+
+it('does not count expiration or cancellation as a human denial or an allowance', () => {
+  expect(decisionSummary([approval('1', 'expired'), approval('2', 'canceled'), approval('3', 'deny')]))
+    .toBe('3 decisions · 1 expired, 1 canceled, 1 denied by you')
 })

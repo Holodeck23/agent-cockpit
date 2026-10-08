@@ -1,11 +1,12 @@
 // Turns a thread's stored events into the activity pane's rows: one per tool call,
 // with its state, input, output and timing. Pure, so it's unit-tested without a browser.
 // Only recorded events are used; nothing is inferred beyond pairing calls with results.
+import { toolDecisions } from './approval-records.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeTool, friendlyToolName } from './transcript.ts'
 
 /** interrupted: the turn or process ended before the tool reported back. */
-export type ActivityState = 'running' | 'done' | 'error' | 'interrupted'
+export type ActivityState = 'running' | 'done' | 'error' | 'interrupted' | 'deny' | 'expired' | 'canceled'
 
 export interface ActivityRow {
   readonly id: string
@@ -41,9 +42,10 @@ const ENDS_TOOL_CALLS = new Set(['result', 'exit', 'session_boundary', 'agent_sw
  * never reported back then shows as interrupted rather than running forever.
  */
 export function buildActivity(events: readonly StoredEvent[], turnRunning = true): ActivityRow[] {
+  const decisions = toolDecisions(events)
   const rows: ActivityRow[] = []
   const open = new Map<string, number>()
-  for (const { ts, event } of events) {
+  for (const { ts, event, workspaceId } of events) {
     if (event.kind === 'tool_use') {
       open.set(event.id, rows.length)
       rows.push({
@@ -59,7 +61,9 @@ export function buildActivity(events: readonly StoredEvent[], turnRunning = true
       const row = at === undefined ? undefined : rows[at]
       if (at === undefined || !row) continue
       open.delete(event.toolUseId)
-      rows[at] = { ...row, state: event.isError ? 'error' : 'done', output: bounded(event.content), endedAt: ts }
+      const decision = decisions.get(`${workspaceId ?? ''}\n${event.toolUseId}`)
+      const refused = decision === 'deny' || decision === 'expired' || decision === 'canceled'
+      rows[at] = { ...row, state: event.isError ? refused ? decision : 'error' : 'done', output: bounded(event.content), endedAt: ts }
     } else if (ENDS_TOOL_CALLS.has(event.kind)) {
       for (const at of open.values()) {
         const row = rows[at]
@@ -91,4 +95,7 @@ export const ACTIVITY_STATE_LABEL: Record<ActivityState, string> = {
   done: 'Done',
   error: 'Failed',
   interrupted: 'Interrupted',
+  deny: 'Denied by you',
+  expired: 'Expired',
+  canceled: 'Canceled',
 }

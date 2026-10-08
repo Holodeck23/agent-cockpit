@@ -1,4 +1,4 @@
-import type { ApprovalBehavior } from '../../server/agents/types.ts'
+import type { ApprovalOutcome } from '../../server/agents/types.ts'
 import type { TranscriptItem } from './transcript.ts'
 
 // Answered approvals are history: the transcript shows them as one short, expandable
@@ -8,10 +8,12 @@ export type ApprovalItem = Extract<TranscriptItem, { type: 'approval' }>
 export interface DecisionGroup { readonly type: 'decisions'; readonly key: string; readonly entries: readonly ApprovalItem[] }
 export type ShownItem = TranscriptItem | DecisionGroup
 
-export const RESOLVED: Record<ApprovalBehavior, string> = {
+export const RESOLVED: Record<ApprovalOutcome, string> = {
   allow: 'Allowed',
   allow_session: 'Allowed for this session',
-  deny: 'Denied',
+  deny: 'Denied by you',
+  expired: 'Expired',
+  canceled: 'Canceled',
 }
 
 /** How an answer reads; a wider Allow the asker named ("Allow on example.com for this run") keeps its own words. */
@@ -36,8 +38,10 @@ export function groupDecisions(items: readonly TranscriptItem[], open: ReadonlyS
 /** "1 decision · Allowed", "3 decisions · 2 allowed, 1 denied". */
 export function decisionSummary(entries: readonly ApprovalItem[]): string {
   if (entries.length === 1) return `1 decision · ${resolvedLabel(entries[0]!)}`
-  const allowed = entries.filter((e) => e.resolution !== 'deny').length
-  const denied = entries.length - allowed
-  const parts = [allowed ? `${allowed} allowed` : '', denied ? `${denied} denied` : ''].filter(Boolean)
-  return `${entries.length} decisions · ${parts.join(', ')}`
+  const counts = new Map<string, number>()
+  for (const entry of entries) {
+    const label = entry.resolution === 'allow_session' ? 'allowed' : RESOLVED[entry.resolution!].toLowerCase()
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+  return `${entries.length} decisions · ${[...counts].map(([label, count]) => `${count} ${label}`).join(', ')}`
 }

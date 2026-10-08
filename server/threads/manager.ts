@@ -633,7 +633,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
         pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
-        record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
+        record(meta.id, { ...event, requestId: publicId, cwd }, workspaceId ?? '')
       } else if (event.kind === 'question') {
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
@@ -655,6 +655,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
       } else {
         if (event.kind === 'result' || event.kind === 'exit') {
+          for (const requestId of pending.keys()) record(meta.id, { kind: 'approval_resolved', requestId, behavior: 'deny', outcome: 'canceled' }, workspaceId ?? '')
           pending.clear()
           questions.clear()
           requestIds.clear()
