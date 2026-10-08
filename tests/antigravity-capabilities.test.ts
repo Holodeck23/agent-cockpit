@@ -93,6 +93,22 @@ describe('Antigravity launch validation (W10-01, W10-02)', () => {
     session.close()
   })
 
+  it('sends a model and its effort as the one id agy lists, without --effort (1.3.1 refuses both together)', async () => {
+    const agy = fakeAgy()
+    const listed: AgentCapabilities['models'] = { state: 'supported', source: 'agy models', value: [
+      { id: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro (High)' }, { id: 'gemini-3.1-pro-low', label: 'Gemini 3.1 Pro (Low)' },
+    ] }
+    const { events, session } = run({ cwd: agy.dir, model: 'gemini-3.1-pro', effort: 'low' }, async () => record(agy.exe, listed))
+    session.send('hi')
+    await expect.poll(() => events.some((e) => e.kind === 'result'), { timeout: 10_000 }).toBe(true)
+    expect(agy.launched()).toContain('gemini-3.1-pro-low')
+    expect(agy.launched()).not.toContain('--effort')
+    session.close()
+    const refused = run({ cwd: agy.dir, model: 'gemini-3.1-pro', effort: 'medium' }, async () => record(agy.exe, listed))
+    await expect.poll(() => refused.events.some((e) => e.kind === 'exit')).toBe(true)
+    expect(refused.events.find((e) => e.kind === 'error')).toMatchObject({ message: expect.stringMatching(/Gemini 3\.1 Pro offers Low or High effort, not Medium/) })
+  })
+
   it('leaves the model to agy when its list could not be read', async () => {
     const agy = fakeAgy()
     const { events, session } = run({ cwd: agy.dir, model: 'gemini-new' }, async () => record(agy.exe, { state: 'unavailable', reason: 'agy models timed out' }))

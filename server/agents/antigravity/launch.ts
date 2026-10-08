@@ -9,6 +9,7 @@ import { guardStdin } from '../stdin.ts'
 import type { AgentSession, EventSink, NormalizedEvent, OutgoingImage } from '../types.ts'
 import type { AgentCapabilities } from '../capabilities/types.ts'
 import { withImagePaths } from '../image-input.ts'
+import { resolveAgyModel } from './models.ts'
 import { parseAntigravityLine } from './parse.ts'
 
 const inputSchema = z.object({
@@ -30,8 +31,8 @@ function antigravityEffort(effort: (typeof EFFORTS)[number] | undefined): string
 }
 
 /**
- * Antigravity headless mode cannot pause for a host approval. Its default policy
- * auto-allows workspace file operations and soft-denies commands that need a prompt.
+ * Antigravity headless mode cannot pause for a host approval: what its policy would ask about is
+ * denied (1.3.1 defaults: file writes denied, read-only commands such as git status allowed).
  * Auto-like modes use the CLI's explicit all-tools flag; plan mode remains read-only.
  */
 export function buildAntigravityArgs(input: AntigravityLaunchInput): string[] {
@@ -61,16 +62,21 @@ export interface AntigravityLaunchDeps {
   readonly check?: () => Promise<AgentCapabilities>
 }
 
-/** The executable to run, or why not to start. A model list agy could not give is left to agy. */
-export function antigravityLaunchTarget(caps: AgentCapabilities, model: string | undefined): { readonly executable: string } | { readonly refused: string } {
+/**
+ * The executable to run and the one model id to pass, or why not to start. With a listed model the
+ * effort travels inside the id (`--effort` is then left out). A model list agy could not give is left to agy.
+ */
+export function antigravityLaunchTarget(caps: AgentCapabilities, model: string | undefined, effort?: string): { readonly executable: string; readonly model?: string; readonly effortInModel?: boolean } | { readonly refused: string } {
   const { executable } = caps
   if (executable.state === 'missing') return { refused: `Antigravity is not installed: ${executable.reason}. Install it, then retry. Your conversation has been kept; no agent turn was started.` }
   if (executable.state === 'unavailable') return { refused: `Antigravity at ${executable.identity.path} did not answer (${executable.reason}). Check it in Terminal, then retry. Your conversation has been kept; no agent turn was started.` }
   const listed = caps.models.state === 'supported' ? caps.models.value ?? [] : undefined
-  if (model && listed && !listed.some((m) => m.id === model)) {
-    return { refused: `This Antigravity (${executable.identity.version ?? 'version unknown'}) does not offer the model ${model}. Pick one it lists, or leave the model blank for its default. Your conversation has been kept; no agent turn was started.` }
+  if (!model || !listed) return { executable: executable.identity.path, ...(model ? { model } : {}) }
+  const resolved = resolveAgyModel(model, effort, listed)
+  if ('refused' in resolved) {
+    return { refused: `This Antigravity (${executable.identity.version ?? 'version unknown'}) ${resolved.refused}. Pick one it lists, or leave the model blank for its default. Your conversation has been kept; no agent turn was started.` }
   }
-  return { executable: executable.identity.path }
+  return { executable: executable.identity.path, model: resolved.id, effortInModel: true }
 }
 
 export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventSink, deps: AntigravityLaunchDeps = {}): AgentSession {
@@ -90,9 +96,10 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
   }
   const ready = Promise.resolve().then(() => (ended ? undefined : check())).then((caps) => {
     if (ended || !caps) return
-    const target = antigravityLaunchTarget(caps, value.model)
+    const target = antigravityLaunchTarget(caps, value.model, antigravityEffort(value.effort))
     if ('refused' in target) { finish(target.refused); return }
-    session = spawnAntigravity(value, onEvent, target.executable, deps.env)
+    const resolved = target.effortInModel ? { ...value, model: target.model, effort: undefined } : value
+    session = spawnAntigravity(resolved, onEvent, target.executable, deps.env)
     for (const message of pending) session.send(message.text, message.queuedId, message.images)
     pending = []
   }, (error: unknown) => finish(`Could not check Antigravity before starting it (${error instanceof Error ? error.message : String(error)}). Retry, or Refresh it in the agent picker. No agent turn was started.`))
