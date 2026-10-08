@@ -419,7 +419,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {current.agent === 'antigravity' ? (
               <p className="picker-note">
                 {current.permissionMode === 'manual'
-                  ? 'Follows your Antigravity settings. Antigravity cannot pause for approval: workspace edits proceed, commands that would need one are denied.'
+                  ? 'Follows your Antigravity settings. Antigravity cannot pause for approval, so whatever those settings would ask about is refused. With agy\'s defaults that includes file edits; read-only commands such as git status still run. Allow more under permissions.allow in agy\'s settings.json, or choose Bypass permissions.'
                   : current.permissionMode === 'bypassPermissions'
                     ? 'Antigravity cannot pause for approval, so it runs without asking. Use Plan for read-only work.'
                     : 'Read-only: Antigravity plans and makes no changes.'}
