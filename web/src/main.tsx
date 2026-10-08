@@ -23,6 +23,18 @@ if (!root) throw new Error('Missing #root element')
 if (native) {
   document.documentElement.classList.add('in-app')
   trackWindowChrome(native)
+  // Uncaught page errors go to a crash report, which is sent only after the person said yes.
+  const report = native.pageError?.bind(native)
+  if (report) {
+    window.addEventListener('error', (event) => {
+      const error: unknown = event.error
+      report({ message: error instanceof Error ? error.message : String(event.message), ...(error instanceof Error && error.stack ? { stack: error.stack } : {}) })
+    })
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason: unknown = event.reason
+      report({ message: reason instanceof Error ? reason.message : String(reason), ...(reason instanceof Error && reason.stack ? { stack: reason.stack } : {}) })
+    })
+  }
 }
 
 // The same page runs in the Mac's window and on a paired phone. An unpaired phone

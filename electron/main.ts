@@ -20,6 +20,8 @@ import { createProjectFolder, type NewProject } from './new-project.ts'
 import { createWindowKey, installWindowKey } from './window-key.ts'
 import { debugSwitches, IS_RELEASE_BUILD } from './debug-flags.ts'
 import { installCrashGuard } from './crash-guard.ts'
+import { startTelemetry } from './telemetry.ts'
+import { reportingDsn } from './telemetry-choice.ts'
 import type { PreviewCapture, PreviewOpen } from '../server/preview/types.ts'
 import { originClass } from '../server/browser/agent-policy.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
@@ -62,6 +64,11 @@ if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
 // A separate state folder is a separate cockpit: give it its own Electron profile, so
 // the single-instance lock (and window state) never collide with the installed app.
 if (process.env.COCKPIT_HOME) app.setPath('userData', join(process.env.COCKPIT_HOME, 'electron'))
+
+// Crash and error reports (electron/telemetry.ts): started before the app is ready, after the crash
+// guard and the profile path, and silent until the person says yes.
+const telemetry = startTelemetry({ dsn: reportingDsn(IS_RELEASE_BUILD, process.env), choiceFile: join(defaultRoot(), 'reports.json'),
+  version: app.getVersion(), releaseBuild: IS_RELEASE_BUILD })
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -500,6 +507,17 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   ipcMain.handle('cockpit:app-version', (event) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
     return app.getVersion()
+  })
+  // Crash and error reports: whether this build sends them, and the person's answer.
+  ipcMain.handle('cockpit:reports', (event, value: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
+    return typeof value === 'boolean' ? telemetry.set(value) : telemetry.status()
+  })
+  ipcMain.on('cockpit:page-error', (event, value: unknown) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    const error = value as { message?: unknown; stack?: unknown } | undefined
+    if (typeof error?.message !== 'string') return
+    telemetry.pageError({ message: error.message, ...(typeof error.stack === 'string' ? { stack: error.stack } : {}) })
   })
   // Help → Release Notes: this version's notes from the same (cached) feed as Check for Updates.
   ipcMain.handle('cockpit:release-notes', async (event) => {
