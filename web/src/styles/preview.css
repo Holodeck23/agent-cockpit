@@ -76,9 +76,10 @@
 /* A narrow pane keeps the address readable: the origin badge goes before the address does. */
 @container (max-width: 420px) { .browser-origin { display: none; } .browser-toolbar { gap: 4px; padding: 0 6px; } }
 
-/* At laptop widths each pane gets the available width; the native browser remains mounted. */
+/* Narrow windows (below the 1280 px default) get Workspace / Preview tabs instead of a thin conversation
+   strip; at the default size the two stay side by side. The native browser remains mounted. */
 .workspace-preview-tabs { display: none; }
-@media (max-width: 1280px) {
+@media (max-width: 1100px) {
   .workspace.has-preview { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .workspace-preview-tabs { display: flex; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
   .workspace-preview-tabs button { padding: 6px 12px; border: 0; border-radius: 6px; color: var(--secondary); background: transparent; }

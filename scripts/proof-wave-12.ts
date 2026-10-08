@@ -22,6 +22,12 @@ import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts
 import { messageBox, openProject } from './lib/ui.ts'
 
 const { check, finish } = checker()
+/** Enter, after the one-time tick that continuing a conversation in another checkout now needs (persona audit item 3). */
+async function sendNow(page: Page): Promise<void> {
+  const tick = page.locator('.workspace-confirm input[type=checkbox]')
+  if (await tick.isVisible().catch(() => false)) await tick.check()
+  await messageBox(page).press('Enter')
+}
 const FIX = join(ROOT, 'scripts/fixtures')
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 
@@ -246,7 +252,7 @@ try {
   await choose(page, /Main checkout/)
   await page.getByRole('button', { name: 'New conversation' }).click()
   await messageBox(page).fill('MARK-P1 plan the beds')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   await page.getByRole('heading', { level: 1, name: /MARK-P1/ }).waitFor()
   const threadId = await until('conversation id', async () => (await get<Array<{ meta: Meta }>>(page, '/api/threads')).find((t) => t.meta.projectPath === garden)?.meta.id)
   if (!threadId) throw new Error('no conversation')
@@ -271,7 +277,13 @@ try {
   await messageBox(page).fill('MARK-W1 continue in the rose bed')
   await pasteImage(page, 'rose.png')
   await shot(page, '07-move-note')
-  await messageBox(page).press('Enter')
+  // Continuing in another checkout is confirmed once with a tick (persona audit, item 3): Send stays off until then.
+  const tick = page.locator('.workspace-confirm input[type=checkbox]')
+  check('W12-07 moving the conversation needs a tick first, naming where it goes',
+    await tick.isVisible() && /Continue this conversation in Rose bed/.test((await page.locator('.workspace-confirm').textContent()) ?? '')
+    && await page.locator('.composer button.send').isDisabled(), (await page.locator('.workspace-confirm').textContent().catch(() => '')) ?? 'no tick')
+  await tick.check()
+  await sendNow(page)
   const r2 = await reply(page, threadId, 2)
   const s2 = field(r2, 'session')
   check('W12-07 turn 2 runs in Rose bed in its own new session, handed the conversation so far',
@@ -283,12 +295,13 @@ try {
   await choose(page, /Main checkout/)
   const kept = await until('main checkout draft', async () => await messageBox(page).inputValue() === 'MARK-P2 back home' && (await chips(page)).join() === 'home.png', 5000)
   check('W12-07 the main checkout\'s draft text and image chip are as they were left', kept === true, `${await messageBox(page).inputValue()} | ${(await chips(page)).join()}`)
-  await messageBox(page).press('Enter')
+  if (await tick.isVisible()) await tick.check()
+  await sendNow(page)
   const r3 = await reply(page, threadId, 3)
   check('W12-07 turn 3 resumes the main checkout\'s own session with only what happened since (Rose bed\'s turn)',
     field(r3, 'cwd') === garden && field(r3, 'resumed') === '1' && field(r3, 'session') === s1 && saw(r3).includes('MARK-W1') && saw(r3).includes('MARK-P2') && !saw(r3).includes('MARK-P1'), r3)
   await messageBox(page).fill('a plain follow-up')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   const r4 = await reply(page, threadId, 4)
   check('W12-07 the catch-up is not sent twice', field(r4, 'session') === s1 && saw(r4).length === 0, r4)
 
@@ -353,7 +366,7 @@ try {
   await section(page, 'Conversations')
   await page.locator('.card', { hasText: 'MARK-P1' }).click()
   await messageBox(page).fill('START-PROC please')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   const approval = page.locator('.approval.open')
   await approval.waitFor({ timeout: 30_000 })
   await approval.getByRole('button', { name: 'Allow', exact: true }).click()

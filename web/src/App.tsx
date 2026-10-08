@@ -127,12 +127,15 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const inAppBrowser = local && Boolean(native?.browser)
   const [layouts, setLayouts] = useState<LayoutMap>(() => (inAppBrowser ? loadLayouts() : {}))
   const [openNonce, setOpenNonce] = useState(0)
+  // Narrow windows show Workspace or Preview (preview.css). Only a page YOU open takes the view: an
+  // agent's preview leaves the conversation, and any approval it asks for next, in sight.
+  const [previewFocused, setPreviewFocused] = useState(false)
   useEffect(() => { if (inAppBrowser) saveLayouts(layouts) }, [inAppBrowser, layouts])
   const showPage = useCallback((preview: PreviewOpen) => {
     if (inAppBrowser) {
       setLayouts((current) => openPage(current, previewKey(preview), preview.url))
       // The host already loaded an agent's preview in that page; asking again would load it twice.
-      if (!preview.loaded) setOpenNonce((n) => n + 1)
+      if (!preview.loaded) { setOpenNonce((n) => n + 1); setPreviewFocused(true) }
     }
     else setPreviews((current) => rememberPreview(current, preview))
   }, [inAppBrowser])
@@ -255,9 +258,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const activePageKey = previewTarget ? previewKey(previewTarget) : undefined
   const activeLayout = inAppBrowser && activePageKey ? layouts[activePageKey] : undefined
   const browserOpen = Boolean(activeLayout?.visible && previewTarget)
-  const [previewFocused, setPreviewFocused] = useState(false)
   const hasPreview = Boolean((local && activePreviewUrl && !inAppBrowser) || browserOpen)
-  useEffect(() => { if (hasPreview) setPreviewFocused(true) }, [hasPreview, activePreviewUrl, openNonce])
+  useEffect(() => { if (!hasPreview) setPreviewFocused(false) }, [hasPreview])
   const changeLayout = useCallback((change: Partial<PaneLayout>) => {
     if (activePageKey) setLayouts((current) => updatePage(current, activePageKey, change))
   }, [activePageKey])
