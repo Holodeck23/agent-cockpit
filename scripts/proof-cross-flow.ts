@@ -201,6 +201,17 @@ try {
   await shot(page, '02-scheduled-run-preview')
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
+  // What the page showed when it stopped: a miss is read before it is rerun (gate 10-08 run 3).
+  const page = app ? await app.firstWindow().catch(() => undefined) : undefined
+  if (page) {
+    await shot(page, 'failure').catch(() => undefined)
+    const seen = await page.evaluate(() => ({
+      status: [...document.querySelectorAll('.thread-status .status-text')].map((el) => el.textContent),
+      title: document.querySelector('.thread-head h1')?.textContent,
+    })).catch((e: unknown) => ({ error: String(e) }))
+    const threads = await get<unknown>(page, '/api/threads').catch((e: unknown) => String(e))
+    writeFileSync(join(PROOF_DIR, 'cross-flow-failure.json'), JSON.stringify({ seen, threads }, null, 2))
+  }
 } finally {
   await app?.close().catch(() => undefined)
 }
