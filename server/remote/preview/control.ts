@@ -260,6 +260,24 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
         if (target === expected) await open(service).catch((error: unknown) => options.log?.(`preview ${service.slot} not reopened: ${error instanceof Error ? error.message : String(error)}`))
       }
     },
+    /**
+     * The person turned phone access off: the Serve entries Cockpit added for previews go too, so
+     * nothing it set up stays on the tailnet. Only an entry still pointing at its own listener is
+     * removed; one changed to anything else is left. (Quit keeps them: that is `stopped`.)
+     * Returns the HTTPS ports it could not remove.
+     */
+    async turnedOff(hostname: string): Promise<number[]> {
+      const failed: number[] = []
+      for (const service of services.list()) {
+        const { httpsPort } = slotPorts(service.slot)
+        try {
+          if ((await tailscale.serveTarget(hostname, httpsPort)) === `http://127.0.0.1:${listenPortOf(service)}`) await tailscale.unserve(httpsPort)
+        } catch {
+          failed.push(httpsPort)
+        }
+      }
+      return failed
+    },
     /** Phone access went off (or Cockpit is closing): every preview listener, session and app cookie ends. Tailscale is left as it is. */
     async stopped(): Promise<void> {
       for (const id of gateway.openIds()) await close(id)

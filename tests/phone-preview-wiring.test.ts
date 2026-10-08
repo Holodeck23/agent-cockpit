@@ -251,25 +251,46 @@ describe('phone preview access ends (14c revocation)', () => {
     expect((await ctx.phone('/api/phone/preview-tickets', { processId: id })).status).toBe(401)
   }, 30_000)
 
-  it('phone access off closes previews without touching their Serve entries; back on, access starts over', async () => {
+  it('phone access off closes previews and removes the Serve entries Cockpit added; back on, Enable asks again', async () => {
     const ctx = await setup(await freePort())
     const id = await startApp(ctx.s, ctx.root)
     const a = await signIn(ctx, id)
     const stream = await openStream(a.gw, a.headers)
+    expect(ctx.ts.table.get(443)).toBeDefined()
     await ctx.local('/api/remote', { enabled: false })
     await settle()
     expect(stream.ended()).toBe(true)
     await expect(call(a.gw, '/', { headers: a.headers })).rejects.toThrow()
-    expect(ctx.ts.table.get(8443)).toBe(`http://127.0.0.1:${a.gw}`)
-    expect(ctx.ts.calls.filter((c) => c.includes('8443'))).toEqual([`serve 8443 -> ${a.gw}`])
+    // Turn off takes away everything it set up on the tailnet: the phone page and the preview (finding 2026-10-07).
+    expect([...ctx.ts.table.keys()]).toEqual([])
+    expect(ctx.ts.calls.filter((c) => c.includes('8443'))).toEqual([`serve 8443 -> ${a.gw}`, 'off 8443'])
+    expect(JSON.parse((await ctx.local('/api/remote')).body).data.error).toBeUndefined()
 
     await ctx.local('/api/remote', { enabled: true })
     const back = JSON.parse((await ctx.local('/api/phone/previews')).body).data.services[0]
-    expect(back).toMatchObject({ open: true, tailscale: 'cockpit' })
-    const old = await call(a.gw, '/', { headers: a.headers })
-    expect([old.status, old.headers['x-cockpit-preview']]).toEqual([401, 'expired'])
-    const fresh = await signIn(ctx, id, false)
+    expect(back).toMatchObject({ open: false })
+    expect(ctx.ts.table.has(8443)).toBe(false)
+    const old = await call(a.gw, '/', { headers: a.headers }).catch(() => undefined)
+    expect(old === undefined || old.status === 401).toBe(true)
+    const fresh = await signIn(ctx, id)
     expect((await call(fresh.gw, '/', { headers: fresh.headers })).body).toContain('fixture')
+  }, 30_000)
+
+  it('phone access off leaves a preview port that now serves something else, and Quit leaves Cockpit\'s entries', async () => {
+    const ctx = await setup(await freePort())
+    const id = await startApp(ctx.s, ctx.root)
+    const a = await signIn(ctx, id)
+    ctx.ts.table.set(8443, 'http://127.0.0.1:1')
+    await ctx.local('/api/remote', { enabled: false })
+    expect(ctx.ts.table.get(8443)).toBe('http://127.0.0.1:1')
+    expect(ctx.ts.calls).not.toContain('off 8443')
+
+    ctx.ts.table.set(8443, `http://127.0.0.1:${a.gw}`)
+    await ctx.local('/api/remote', { enabled: true })
+    await server!.close()
+    server = undefined
+    expect(ctx.ts.table.get(8443)).toBe(`http://127.0.0.1:${a.gw}`)
+    expect(ctx.ts.table.get(443)).toBeDefined()
   }, 30_000)
 
   it('turning phone access off returns at once and closes a live WebSocket (an upgraded socket must not hold the listener open)', async () => {
