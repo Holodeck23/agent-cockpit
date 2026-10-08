@@ -9,6 +9,7 @@
 #   "suggest"   replies, then (only when launched with --prompt-suggestions) suggests a next prompt (J2);
 #   "flaky"     fails with a usage-limit result the first time, then replies "Recovered.";
 #   "worklag"   as "work" for 3 s, but takes waiting messages only 4 s after its result;
+#   START-WEB   (anywhere) starts a python http.server through Cockpit's MCP process API;
 #   "work"      works for 12 s; messages sent meanwhile wait in a queue (they carry a uuid), can be
 #               taken back with cancel_async_message, and run after the turn or after a Stop;
 #   anything else replies "ok".
@@ -141,6 +142,15 @@ while IFS= read -r line; do
       done_turn
       # Claude sends its prediction after the turn's result (2.1.289 binary: type prompt_suggestion).
       [ -n "$suggests" ] && printf '{"type":"prompt_suggestion","suggestion":"Run the parser tests","uuid":"w5-s%s","session_id":"%s"}\n' "$turn" "$session"
+      ;;
+    *START-WEB*)
+      # Like a real agent: start the project's site through Cockpit's MCP process API (the person
+      # approves it on the card), then say so (proof:cross-flow CROSS-02).
+      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$COCKPIT_MCP_URL/api/mcp/processes" \
+        -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' \
+        -d '{"command":"python3 -u -m http.server 0 --bind 127.0.0.1","name":"garden-site"}')
+      say "$turn" "Started the garden site (process=$code)."
+      done_turn
       ;;
     *) say "$turn" "ok"; done_turn ;;
   esac
