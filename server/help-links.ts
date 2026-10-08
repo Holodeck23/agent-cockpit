@@ -11,6 +11,12 @@ export const HELP = {
   releases: `${REPO}/releases`,
 } as const
 
+/**
+ * Installs or updates Cockpit from Terminal (install.sh). curl does not quarantine what it downloads,
+ * so the app opens without the Gatekeeper block a browser download gets: Cockpit is not notarized.
+ */
+export const INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh'
+
 /** A new GitHub issue with the version and Mac filled in. No paths, logs or project names. */
 export function issueUrl(info: { version: string; macos: string; arch: string }): string {
   const body = [

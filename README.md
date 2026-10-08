@@ -25,16 +25,26 @@ Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the 
 - [Troubleshooting](docs/user/troubleshooting.md)
 - [Developer Guide](docs/user/developer.md)
 
+## Install
+
+Paste this into Terminal on an Apple Silicon Mac:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
+```
+
+It downloads the newest release, checks it against the release's `SHA256SUMS`, and puts Cockpit in Applications. Installed this way, Cockpit opens on the first try, with no Gatekeeper block ([what it does](install.sh)). Run the same line again to update, after quitting Cockpit.
+
 ## Download
 
-Releases are provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.5-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.5/Cockpit-0.1.5-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.5-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.5/Cockpit-0.1.5-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
 >
 > Alternatively, you can run `xattr -dr com.apple.quarantine /Applications/Cockpit.app` in your terminal to allow the app to launch.
 
-**Updating:** v0.1.3 and later include **Cockpit → Check for Updates…**. It shows the newest release and its notes, and **Download Update** opens the official DMG in your browser. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
+**Updating:** v0.1.3 and later include **Cockpit → Check for Updates…**. It shows the newest release and its notes. From the next release, **Copy Install Command** copies the install line above for Terminal; before that, **Download Update** opens the official DMG in your browser. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
 
 See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.5) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
 

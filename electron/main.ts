@@ -570,8 +570,9 @@ function menuTemplate(): MenuItemConstructorOptions[] {
 }
 
 /**
- * User-initiated only. Shows the outcome natively; Download Update opens the official DMG in
- * the browser. Replacing the app stays manual, so running agents are never stopped from here.
+ * User-initiated only. Shows the outcome natively; Copy Install Command puts install.sh's one line
+ * on the clipboard, Download in Browser opens the official DMG. Replacing the app stays manual, so
+ * running agents are never stopped from here.
  */
 async function checkForUpdates(): Promise<void> {
   const content = updateDialog(await updates.check(app.getVersion(), UPDATE_CHANNEL))
@@ -586,7 +587,8 @@ async function checkForUpdates(): Promise<void> {
   }
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
   const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
-  if (response === 0 && content.downloadUrl && isOfficialDownload(content.downloadUrl)) await shell.openExternal(content.downloadUrl)
+  if (response === 0 && content.copyText) clipboard.writeText(content.copyText)
+  if (response === 1 && content.downloadUrl && isOfficialDownload(content.downloadUrl)) await shell.openExternal(content.downloadUrl)
   if (response === 1 && content.helpUrl) await shell.openExternal(content.helpUrl)
 }
 
