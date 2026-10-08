@@ -105,6 +105,39 @@ describe('buildTranscript', () => {
     expect(items[0]).toMatchObject({ error: 'exit 1' })
     expect(items[1]).toMatchObject({ type: 'failure', title: 'The turn failed' })
   })
+
+  it('says a denied step was not allowed instead of still reading as under way', () => {
+    const denials = [
+      'Denied from Agent Cockpit',
+      'permission check failed for write_file "/p/index.html": user denied permission for write_file(/p/index.html)',
+      'Permission to use Bash has been denied.',
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).",
+      'declined',
+      'Browser action denied by the user',
+    ]
+    for (const content of denials) {
+      const items = buildTranscript(
+        [
+          at(0, { kind: 'tool_use', id: 't', name: 'Shell', input: { command: 'git push' } }),
+          at(1, { kind: 'tool_result', toolUseId: 't', content, isError: true }),
+        ],
+        'codex',
+      )
+      expect(items[0], content).toMatchObject({ type: 'step', label: 'Not allowed: running git push', denied: true })
+    }
+  })
+
+  it('keeps the label of a step that failed on its own, including an OS "Permission denied"', () => {
+    const items = buildTranscript(
+      [
+        at(0, { kind: 'tool_use', id: 't', name: 'Shell', input: { command: 'cat /etc/sudoers' } }),
+        at(1, { kind: 'tool_result', toolUseId: 't', content: 'cat: /etc/sudoers: Permission denied', isError: true }),
+      ],
+      'codex',
+    )
+    expect(items[0]).toMatchObject({ label: 'Running cat /etc/sudoers', error: 'cat: /etc/sudoers: Permission denied' })
+    expect(items[0]).not.toHaveProperty('denied')
+  })
 })
 
 describe('failed turns as error cards (J10)', () => {

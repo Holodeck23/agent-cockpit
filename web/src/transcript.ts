@@ -30,7 +30,7 @@ export type TranscriptItem =
       /** The workspace it was sent in or came from, once the conversation has more than one (W12-15). */
       workspace?: string
     }
-  | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string }
+  | { type: 'step'; key: string; label: string; startedAt: string; endedAt?: string; error?: string; denied?: true }
   | {
       type: 'approval'
       key: string
@@ -219,6 +219,20 @@ function grantLabel(suggestions: readonly unknown[]): string | undefined {
   return grant?.label.slice(0, 120)
 }
 
+/**
+ * A tool result that says you (or the agent's own permission policy) refused the call, in each
+ * agent's words: Cockpit's card, Claude Code, Antigravity, ACP, Codex's `declined`. An OS
+ * "Permission denied" from a command that did run is not one.
+ */
+export function isDenial(content: string): boolean {
+  return /^(denied|declined)$|denied from agent cockpit|denied permission|has been denied|denied by the user|doesn't want to proceed|tool use was rejected/i.test(content.trim())
+}
+
+/** "Running x" → "running x", leaving an acronym ("NPM …") as it is. */
+function lowerFirst(text: string): string {
+  return /^[A-Z][^A-Z]/.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text
+}
+
 /** A plain-words activity line for a tool call: "Reading README.md", "Running npm test". */
 export function describeTool(name: string, input: unknown): string {
   const path = firstField(input, 'file_path', 'path', 'AbsolutePath')
@@ -379,7 +393,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         const at = steps.get(event.toolUseId)
         const step = at === undefined ? undefined : items[at]
         if (at !== undefined && step?.type === 'step') {
-          replace(at, { ...step, endedAt: ts, ...(event.isError ? { error: clip(event.content, 300) } : {}) })
+          const denied = event.isError && isDenial(event.content)
+          replace(at, {
+            ...step,
+            endedAt: ts,
+            ...(denied ? { label: `Not allowed: ${lowerFirst(step.label)}`, denied: true as const } : {}),
+            ...(event.isError ? { error: clip(event.content, 300) } : {}),
+          })
         }
         return
       }
