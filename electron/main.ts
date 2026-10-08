@@ -510,11 +510,13 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
   })
   // Crash and error reports: whether this build sends them, and the person's answer.
   ipcMain.handle('cockpit:reports', (event, value: unknown) => {
-    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame
+      || new URL(event.senderFrame.url).origin !== origin) return undefined
     return typeof value === 'boolean' ? telemetry.set(value) : telemetry.status()
   })
   ipcMain.on('cockpit:page-error', (event, value: unknown) => {
-    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame
+      || new URL(event.senderFrame.url).origin !== origin) return
     const error = value as { message?: unknown; stack?: unknown } | undefined
     if (typeof error?.message !== 'string') return
     telemetry.pageError({ message: error.message, ...(typeof error.stack === 'string' ? { stack: error.stack } : {}) })

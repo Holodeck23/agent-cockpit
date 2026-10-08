@@ -82,12 +82,16 @@ try {
 
   await ask.getByRole('button', { name: 'No thanks' }).click()
   await ask.waitFor({ state: 'detached' })
+  // A first launch opens on the first-run screen, where the question is asked; then on into the app.
+  await page.getByRole('button', { name: 'Skip for now' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
+  check('after the first-run screen the question does not come back', await page.getByRole('dialog', { name: 'Crash reports' }).count() === 0)
   await throwBoth(app, page, 'declined')
   await settle(4000)
   check('nothing is sent after "No thanks"', events().length === 0, `${events().length} events`)
-  check('a main-process error leaves Cockpit running', await page.getByRole('button', { name: 'Settings' }).isVisible())
+  check('a main-process error leaves Cockpit running', await page.getByRole('button', { name: 'Settings', exact: true }).isVisible())
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const settings = page.getByRole('dialog', { name: 'Settings' })
   const box = settings.getByRole('checkbox', { name: /Send crash and error reports/ })
   check('Settings shows the answer, off', !(await box.isChecked()))
@@ -110,10 +114,10 @@ try {
 
   await app.close()
   ;({ app, page } = await launch())
-  await page.getByRole('button', { name: 'Settings' }).waitFor()
+  await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
   await settle(2000)
   check('a restart does not ask again', await page.getByRole('dialog', { name: 'Crash reports' }).count() === 0)
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const again = page.getByRole('dialog', { name: 'Settings' }).getByRole('checkbox', { name: /Send crash and error reports/ })
   check('Settings still shows yes after a restart', await again.isChecked())
   await again.uncheck()

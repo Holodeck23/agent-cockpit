@@ -2,7 +2,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { readChoice, reportingDsn, scrubEvent, SENTRY_DSN, writeChoice } from '../electron/telemetry-choice.ts'
+import type { Envelope } from '@sentry/core'
+import { readChoice, reportEnvelope, reportingDsn, scrubEvent, SENTRY_DSN, writeChoice } from '../electron/telemetry-choice.ts'
 
 describe('where reports go', () => {
   it('a release build reports to Cockpit\'s project, whatever the environment says', () => {
@@ -62,5 +63,36 @@ describe('what a report keeps', () => {
     const before = JSON.stringify(event)
     expect(scrubEvent(event, home)).not.toBe(event)
     expect(JSON.stringify(event)).toBe(before)
+  })
+
+  it('drops source excerpts and local variables even if an integration supplies them', () => {
+    const frame = { filename: 'main.cjs', lineno: 12, context_line: 'private file text', pre_context: ['private'], post_context: ['private'], vars: { prompt: 'private' } }
+    expect(scrubEvent({ exception: { values: [{ stacktrace: { frames: [frame] } }] } }, home)).toEqual({
+      exception: { values: [{ stacktrace: { frames: [{ filename: 'main.cjs', lineno: 12 }] } }] },
+    })
+  })
+})
+
+describe('the complete transport payload', () => {
+  // Sentry's Envelope type allows one item family per envelope literal; a crash envelope mixes them.
+  const envelope = (value: unknown): Envelope => value as Envelope
+  it('retains crash metadata while removing native memory dumps and all other attachments', () => {
+    const input = envelope([{ event_id: 'crash' }, [
+      [{ type: 'event' }, { platform: 'native', level: 'fatal' }],
+      [{ type: 'attachment', length: 3, filename: 'crash.dmp', attachment_type: 'event.minidump' }, new Uint8Array([1, 2, 3])],
+      [{ type: 'attachment', length: 13, filename: 'private.txt' }, 'file contents'],
+    ]])
+    expect(reportEnvelope(input)).toEqual([{ event_id: 'crash' }, [[{ type: 'event' }, { platform: 'native', level: 'fatal' }]]])
+    expect(input[1]).toHaveLength(3)
+  })
+
+  it('retains versioned session counts, but drops logs and attachment-only payloads', () => {
+    const session = envelope([{}, [[{ type: 'session' }, {
+      sid: 'test', init: true, timestamp: '2026-10-08T00:00:00Z', started: '2026-10-08T00:00:00Z',
+      status: 'ok', errors: 0, attrs: { release: 'cockpit@0.1.5' },
+    }]]])
+    expect(reportEnvelope(session)).toEqual(session)
+    expect(reportEnvelope(envelope([{}, [[{ type: 'attachment', length: 13, filename: 'private.txt' }, 'file contents']]]))).toBeUndefined()
+    expect(reportEnvelope(envelope([{}, [[{ type: 'log', item_count: 1, content_type: 'application/vnd.sentry.items.log+json' }, { items: [] }]]]))).toBeUndefined()
   })
 })

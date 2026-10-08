@@ -2,6 +2,7 @@
 // of each report first. Kept apart from Electron and the SDK so every rule here can be tested.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import type { Envelope } from '@sentry/core'
 
 /**
  * Cockpit's Sentry project (David's, EU region). A DSN only lets a client send reports to the
@@ -44,7 +45,19 @@ export function writeChoice(file: string, reports: boolean, now: Date = new Date
 }
 
 /** Default integrations a report never uses: they would add local variables, logs or a request trail. */
-export const DROPPED_INTEGRATIONS: ReadonlySet<string> = new Set(['LocalVariables', 'Console', 'ElectronBreadcrumbs', 'ElectronNet', 'Screenshots'])
+export const DROPPED_INTEGRATIONS: ReadonlySet<string> = new Set([
+  'LocalVariables', 'ContextLines', 'Console', 'ElectronBreadcrumbs', 'ElectronNet',
+  'Screenshots', 'PreloadInjection', 'RendererEventLoopBlock',
+])
+
+/** Native minidumps contain process memory and bypass beforeSend's event scrubber. Never upload
+ * attachments (or profiles, logs, replay, etc.); retain only error/crash metadata and sessions.
+ * Apply before the offline queue as well as at its transport boundary. */
+export function reportEnvelope<T extends Envelope>(envelope: T): T | undefined {
+  const items = envelope[1].filter(([header]) => header.type === 'event' || header.type === 'session')
+  // Removing items preserves the incoming envelope family and its matching header.
+  return items.length ? [envelope[0], items] as T : undefined
+}
 
 type Json = string | number | boolean | null | undefined | Json[] | { [key: string]: Json }
 
@@ -58,7 +71,9 @@ function scrubValue(value: Json, home: string): Json {
   if (typeof value === 'string') return scrubString(value, home)
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, home))
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [scrubString(key, home), scrubValue(item, home)]))
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !['vars', 'pre_context', 'context_line', 'post_context'].includes(key))
+      .map(([key, item]) => [scrubString(key, home), scrubValue(item, home)]))
   }
   return value
 }

@@ -26,11 +26,19 @@ const SOUNDS: ReadonlyArray<{ id: SoundKind; label: string; detail: string }> = 
 export function AppSettings({ sounds, onSounds, notify, onNotify, onClose }: AppSettingsProps) {
   // Crash and error reports: shown only in a build that sends them.
   const [reports, setReports] = useState<boolean | undefined>(undefined)
+  const [savingReports, setSavingReports] = useState(false)
+  const [reportsError, setReportsError] = useState<string>()
   useEffect(() => {
     void native?.reports?.().then((status) => { if (status?.available) setReports(status.reports) }, () => undefined)
   }, [])
   const answerReports = (on: boolean): void => {
-    void native?.reports?.(on).then((status) => { if (status?.available) setReports(status.reports) }, () => undefined)
+    setSavingReports(true)
+    setReportsError(undefined)
+    void native?.reports?.(on).then((status) => {
+      if (!status?.available || status.reports !== on) throw new Error('Choice was not accepted')
+      setReports(status.reports)
+    }).catch(() => setReportsError('Could not change crash reporting. Please try again.'))
+      .finally(() => setSavingReports(false))
   }
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -79,10 +87,11 @@ export function AppSettings({ sounds, onSounds, notify, onNotify, onClose }: App
             <h3 id="settings-reports">Crash and error reports</h3>
             <div className="settings-row">
               <label className="check">
-                <input type="checkbox" checked={reports} onChange={(e) => answerReports(e.target.checked)} />
+                <input type="checkbox" checked={reports} disabled={savingReports} onChange={(e) => answerReports(e.target.checked)} />
                 <span><strong>Send crash and error reports to Cockpit's developer</strong><small>{REPORTS_WHAT}</small></span>
               </label>
             </div>
+            {reportsError ? <p className="modal-note" role="alert">{reportsError}</p> : null}
           </section>
         ) : null}
         <section className="settings-section" aria-labelledby="settings-elsewhere">

@@ -5,7 +5,7 @@
 import type { Transport } from '@sentry/core'
 import * as Sentry from '@sentry/electron/main'
 import { homedir } from 'node:os'
-import { DROPPED_INTEGRATIONS, readChoice, scrubEvent, writeChoice } from './telemetry-choice.ts'
+import { DROPPED_INTEGRATIONS, readChoice, reportEnvelope, scrubEvent, writeChoice } from './telemetry-choice.ts'
 
 export interface ReportsStatus {
   /** False in builds that do not report at all (development, proofs without a collector). */
@@ -38,7 +38,10 @@ export function startTelemetry(options: { dsn: string | undefined; choiceFile: s
   const allowed = (): boolean => choice?.reports === true
   const home = homedir()
   const gate = (inner: Transport): Transport => ({
-    send: (envelope) => (allowed() ? inner.send(envelope) : Promise.resolve({})),
+    send: (envelope) => {
+      const filtered = allowed() ? reportEnvelope(envelope) : undefined
+      return filtered ? inner.send(filtered) : Promise.resolve({})
+    },
     flush: (timeout) => inner.flush(timeout),
   })
   const offline = Sentry.makeElectronOfflineTransport((transportOptions) => gate(Sentry.makeElectronTransport(transportOptions)))
@@ -51,6 +54,9 @@ export function startTelemetry(options: { dsn: string | undefined; choiceFile: s
     serverName: 'cockpit',
     sendDefaultPii: false,
     attachScreenshot: false,
+    // Cockpit already has an origin- and window-scoped error bridge. Do not install the SDK's
+    // renderer IPC/protocol surface or a preload into browsers/previews sharing Electron sessions.
+    ipcMode: 0 as Sentry.IPCMode,
     integrations: (defaults) => defaults.filter((integration) => !DROPPED_INTEGRATIONS.has(integration.name)),
     beforeBreadcrumb: () => null,
     beforeSend: (event) => scrubEvent(event, home),

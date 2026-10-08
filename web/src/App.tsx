@@ -18,7 +18,7 @@ import { ReplyContext, type CommitOutcome } from './markdown/reply.tsx'
 import type { FileTarget } from './markdown/file-links.ts'
 import { TroubleshootingLink } from './components/TroubleshootingLink.tsx'
 import { checkForUpdateNotice } from './update-notice.ts'
-import { REPORTS_WHAT } from './reports-copy.ts'
+import { ReportsAsk } from './components/ReportsAsk.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
@@ -181,15 +181,6 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   useEffect(() => local ? native?.onShowReleaseNotes(() => setReleaseNotes({})) : undefined, [local])
   const [updated, setUpdated] = useState<string>()
   useEffect(() => { if (local && native) void checkForUpdateNotice(native.appVersion).then(setUpdated) }, [local])
-  // Crash and error reports are asked about once, in a build that sends them; Settings changes it later.
-  const [askReports, setAskReports] = useState(false)
-  useEffect(() => {
-    if (local) void native?.reports?.().then((status) => setAskReports(Boolean(status?.available && !status.decided)), () => undefined)
-  }, [local])
-  const answerReports = (on: boolean): void => {
-    setAskReports(false)
-    void native?.reports?.(on).catch(() => undefined)
-  }
   useEffect(() => local ? native?.onPreviewOpen(showPage) : undefined, [local, showPage])
   // A clicked Mac notification opens its conversation, in whichever project it belongs to.
   const threadsRef = useRef(cockpit.threads)
@@ -280,12 +271,12 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }
 
   if (local && director === undefined) return <div className="app first-run"><main className="first-run-body" role="status">Opening Cockpit…</main></div>
-  if (local && director) return <FirstRun onDone={() => { setDirector(false); void projects.refresh(); cockpit.refresh() }} onCreated={(meta) => {
+  if (local && director) return <><FirstRun onDone={() => { setDirector(false); void projects.refresh(); cockpit.refresh() }} onCreated={(meta) => {
     void projects.open(meta.projectPath)
     cockpit.refresh()
     cockpit.select(meta.id)
     setDirector(false)
-  }} />
+  }} /><ReportsAsk /></>
 
   // The selector sits under the conversation list title; Files and Processes say which workspace they show.
   const workspaceSlot = !phone && projects.active?.projectId ? (
@@ -352,13 +343,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <button type="button" onClick={() => setUpdated(undefined)} aria-label="Dismiss">×</button>
         </div>
       ) : null}
-      {askReports && !updated && !cockpit.error ? (
-        <div className="toast reports-toast" role="dialog" aria-label="Crash reports">
-          <span><strong>Send crash reports to Cockpit's developer?</strong> {REPORTS_WHAT}</span>
-          <button type="button" className="button-primary" onClick={() => answerReports(true)}>Send reports</button>
-          <button type="button" className="button-soft" onClick={() => answerReports(false)}>No thanks</button>
-        </div>
-      ) : null}
+      {local && !updated && !cockpit.error && !settingsOpen ? <ReportsAsk /> : null}
       {releaseNotes ? <ReleaseNotes lead={releaseNotes.lead} onClose={() => setReleaseNotes(undefined)} /> : null}
       {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} /> : null}
       {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} notify={notify} onNotify={setNotify} onClose={() => setSettingsOpen(false)} /> : null}
