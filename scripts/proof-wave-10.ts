@@ -137,8 +137,8 @@ try {
   check('6 Antigravity is not run just to show the picker', before.includes('Not checked yet'), before)
   await details(page).getByRole('button', { name: 'Refresh' }).click()
   check('6 Refresh checks it', await until('refreshed', async () => { const now = await text(details(page)); return /Checked \d/.test(now) && now.includes('Antigravity installer') }), `${before} → ${await text(details(page))}`)
-  const models = await picker(page).locator('datalist#models-antigravity option').evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value))
-  check('6 and its models come from agy itself', models.includes('gemini-3.8-flash-low') && models.includes('gemini-3.1-pro-high'), models.join(', '))
+  const models = await picker(page).getByLabel('Model').locator('option').evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value))
+  check('6 and its models come from agy itself, each one in the Model menu', models.includes('gemini-3.8-flash') && models.includes('gemini-3.1-pro'), models.join(', '))
   await page.keyboard.press('Escape')
 
   // 7. P3: Cockpit's tools for Antigravity, in this project only, on and off.

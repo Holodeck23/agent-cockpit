@@ -5,6 +5,7 @@ import { api, type AccountView, type AgentCapabilities, type AgentStatus, type H
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
+import { agyEffortFor, agyMenus } from '../model-choices.ts'
 import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
@@ -248,7 +249,10 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const shownCaps = caps?.agent === current.agent ? caps : undefined
   // Install, update and sign-in run on this Mac only; the phone is refused them (W10.2).
   const phone = typeof document !== 'undefined' && document.documentElement.classList.contains('phone')
-  const listedModels = shownCaps?.models.state === 'supported' ? (shownCaps.models.value ?? []).map((m) => m.id) : undefined
+  const listedChoices = shownCaps?.models.state === 'supported' && (shownCaps.models.value ?? []).length > 0 ? shownCaps.models.value : undefined
+  const listedModels = listedChoices?.map((m) => m.id)
+  // Antigravity, once agy has listed its models: a model by name, then the efforts that model offers.
+  const agy = current.agent === 'antigravity' && listedChoices ? agyMenus(listedChoices, current.model, current.effort) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
 
   const set = (next: AgentChoice): void => {
@@ -366,17 +370,30 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
             <label className="field">
               Model
-              <input
-                list={`models-${current.agent}`}
-                value={current.model}
-                placeholder="Default model"
-                onChange={(e) => patch({ model: e.target.value.trim() })}
-              />
-              <datalist id={`models-${current.agent}`}>
-                {modelOptions.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
+              {agy && listedChoices ? (
+                <select value={agy.selected} onChange={(e) => {
+                  const model = e.target.value
+                  patch({ model, effort: model ? agyEffortFor(agyMenus(listedChoices, model, '').model, current.effort) : current.effort })
+                }}>
+                  {agy.models.map((m) => (
+                    <option key={m.value || 'default'} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <input
+                    list={`models-${current.agent}`}
+                    value={current.model}
+                    placeholder="Default model"
+                    onChange={(e) => patch({ model: e.target.value.trim() })}
+                  />
+                  <datalist id={`models-${current.agent}`}>
+                    {modelOptions.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                </>
+              )}
             </label>
             {current.agent === 'antigravity' && shownCaps && shownCaps.models.state !== 'supported' ? (
               <p className="picker-note">{shownCaps.models.reason ?? 'Refresh to list the models this Antigravity offers.'}</p>
@@ -384,14 +401,25 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {current.agent === 'opencode' ? null : (
               <label className="field">
                 Effort
-                <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
-                  <option value="">Default</option>
-                  {effortsFor(current.agent, current.model).map((effort) => (
-                    <option key={effort} value={effort}>
-                      {capitalize(effort)}
-                    </option>
-                  ))}
-                </select>
+                {agy?.model && agy.model.levels.length > 0 ? (
+                  // The efforts this Antigravity model comes in; a stored id moves to its model with the effort chosen.
+                  <select value={agy.level ?? ''} onChange={(e) => patch({ model: agy.model!.base, effort: e.target.value })}>
+                    {agy.model.levels.map((level) => (
+                      <option key={level} value={level}>
+                        {capitalize(level)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
+                    <option value="">Default</option>
+                    {effortsFor(current.agent, current.model).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {capitalize(effort)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
             )}
             <label className="field">
@@ -407,7 +435,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {current.agent === 'antigravity' ? (
               <p className="picker-note">
                 {current.permissionMode === 'manual'
-                  ? 'Follows your Antigravity settings. Antigravity cannot pause for approval: workspace edits proceed, commands that would need one are denied.'
+                  ? 'Follows your Antigravity settings. Antigravity cannot pause for approval, so whatever those settings would ask about is refused. With agy\'s defaults that includes file edits; read-only commands such as git status still run. Allow more under permissions.allow in agy\'s settings.json, or choose Bypass permissions.'
                   : current.permissionMode === 'bypassPermissions'
                     ? 'Antigravity cannot pause for approval, so it runs without asking. Use Plan for read-only work.'
                     : 'Read-only: Antigravity plans and makes no changes.'}

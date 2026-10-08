@@ -100,3 +100,6 @@ while IFS= read -r line; do
     *) printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n' ;;
   esac
 done
+# stdin closed (Cockpit quit or closed the session): the held turn goes too, so no copy of this stand-in outlives it.
+[ -n "$hold" ] && kill -TERM "$hold" 2>/dev/null
+exit 0
