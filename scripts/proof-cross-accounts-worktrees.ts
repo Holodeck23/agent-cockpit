@@ -61,7 +61,7 @@ const call = <T>(page: Page, method: string, path: string, body?: unknown): Prom
   return { status: res.status, data: json.data, error: json.error }
 }, [method, path, body] as const) as Promise<Answer<T>>
 const get = async <T>(page: Page, path: string): Promise<T> => (await call<T>(page, 'GET', path)).data as T
-interface Ev { event: { kind: string; text?: string; account?: { id: string }; to?: { id?: string } }; workspaceId?: string }
+interface Ev { event: { kind: string; text?: string; runId?: string; account?: { id: string }; to?: { id?: string } }; workspaceId?: string }
 const events = async (page: Page, id: string): Promise<Ev[]> => (await get<{ events: Ev[] }>(page, `/api/threads/${id}/events`)).events
 const replies = async (page: Page, id: string): Promise<string[]> => (await events(page, id)).filter((e) => e.event.kind === 'assistant_text').map((e) => e.event.text ?? '')
 const status = async (page: Page, id: string): Promise<string> => (await get<{ status: string }>(page, `/api/threads/${id}/events`)).status
@@ -141,6 +141,12 @@ try {
   check('CROSS-04 P\'s history stays attributed: the first session was account A in worktree A, the change is recorded',
     boundaries[0]?.event.account?.id === 'default-claude' && boundaries[0]?.workspaceId === bedA.id && boundaries.at(-1)?.event.account?.id === workB
       && pEvents.some((e) => e.event.kind === 'account_changed') && pEvents.some((e) => e.event.kind === 'assistant_text' && e.event.text === 'Done as alice@example.com'))
+  // Evidence too: each run's result card names the account its session ran on, after the switch.
+  const pRuns = pEvents.filter((e) => e.event.kind === 'user_text' && e.event.runId).map((e) => e.event.runId as string)
+  const accountOfRun = async (runId: string) => (await get<{ identity: { account: string | { id: string } } }>(page, `/api/runs/${runId}/result?threadId=${pThread}`)).identity.account
+  const firstAccount = await accountOfRun(pRuns[0]!), lastAccount = await accountOfRun(pRuns.at(-1)!)
+  check('CROSS-04 P\'s results stay with their account: the first run\'s is the CLI default (A), the last run\'s is Work B',
+    firstAccount === 'default' && typeof lastAccount === 'object' && lastAccount.id === workB, JSON.stringify([firstAccount, lastAccount]))
   await openProject(page, P, 'Plot')
   // P's conversation ran only in its worktrees: it is listed under them.
   await page.getByRole('button', { name: /^Workspace:/ }).first().click()

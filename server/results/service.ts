@@ -35,8 +35,12 @@ export interface ResultView {
     readonly bindingId: string
     readonly agent: string
     readonly model?: string
-    /** No account profiles yet: the agent's own signed-in default. */
-    readonly account: 'default'
+    /**
+     * The account the run's session was launched on (order 16), as its session boundary recorded it;
+     * 'default' for the CLI's own sign-in and for runs from before account profiles. Kept per run, so
+     * evidence stays with the account that produced it after the project moves to another (CROSS-04).
+     */
+    readonly account: 'default' | { readonly id: string; readonly generation: number }
     readonly profile: 'standard'
   }
   readonly request: { readonly eventIndex: number; readonly operationId?: string; readonly excerpt: string; readonly at: string }
@@ -79,6 +83,19 @@ function agentAt(meta: ThreadMeta, events: readonly StoredEvent[], index: number
   let agent: string = switches[0]?.from ?? meta.settings.agent
   for (const { event } of events.slice(0, index)) if (event.kind === 'agent_switch') agent = event.to
   return agent
+}
+
+/** The account of the session that served this binding: its last boundary at or before the run, else the first after. */
+function accountAt(events: readonly StoredEvent[], index: number, bindingId: string): ResultView['identity']['account'] {
+  let before: ResultView['identity']['account'] | undefined
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i]!.event
+    if (e.kind !== 'session_boundary' || e.bindingId !== bindingId) continue
+    const account = e.account && !e.account.id.startsWith('default-') ? { id: e.account.id, generation: e.account.generation } : 'default'
+    if (i <= index) before = account
+    else return before ?? account
+  }
+  return before ?? 'default'
 }
 
 function bindingAt(meta: ThreadMeta, events: readonly StoredEvent[], index: number): string {
@@ -184,12 +201,13 @@ export function createResultService(deps: ResultDeps) {
       else if (p.assessments.at(-1)!.verdict === 'looks-wrong') gaps.push('A preview was marked as looking wrong.')
     }
 
+    const binding = bindingAt(meta, events, run.index)
     return {
       version: RESULT_VERSION, runId, threadId: meta.id,
       identity: {
         projectPath: meta.projectPath, ...(runWorkspace ? { workspaceId: runWorkspace } : {}),
-        bindingId: bindingAt(meta, events, run.index), agent: agentAt(meta, events, run.index),
-        ...(meta.settings.model ? { model: meta.settings.model } : {}), account: 'default', profile: 'standard',
+        bindingId: binding, agent: agentAt(meta, events, run.index),
+        ...(meta.settings.model ? { model: meta.settings.model } : {}), account: accountAt(events, run.index, binding), profile: 'standard',
       },
       request: { eventIndex: run.index, ...(requestEvent?.operation?.id ? { operationId: requestEvent.operation.id } : {}), excerpt: (requestEvent?.text ?? '').slice(0, 200), at: request.ts },
       provider, complete: meta.completed, changes, checks, previews,
