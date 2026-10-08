@@ -190,7 +190,8 @@ export function createLifecycle(options: LifecycleOptions) {
     const label = AGENT_LABEL[agent]
     const busy = options.sessions?.activity(agent).busy ?? 0
     if (busy > 0) {
-      update(id, { message: `Waiting for ${busy} conversation${busy === 1 ? '' : 's'} using ${label} to finish. New ${label} sessions wait until the update is done.` })
+      // Counted per running session: one conversation working in two workspaces is two (W12-15).
+      update(id, { message: `Waiting for ${busy} running ${label} session${busy === 1 ? '' : 's'} to finish. New ${label} sessions wait until the update is done.` })
       return
     }
     update(id, { state: 'updating', message: `Closing idle ${label} sessions, then updating.` })

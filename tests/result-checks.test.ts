@@ -201,3 +201,29 @@ describe('freshness and evidence (W7-09, CROSS-08)', () => {
     expect(readFileSync(join(s.state, 'results', 'run-1.json'), 'utf8')).toBe('{oops')
   })
 })
+
+describe('whose run a result is (CROSS-04 evidence attribution)', () => {
+  const ACC = '0f1e2d3c-4b5a-4968-8776-655443322110'
+  const run = (n: number, binding: string, account?: { id: string; generation: number }): StoredEvent[] => [
+    // As the manager records them: the launch's boundary, then the message that started it.
+    { ts: `2026-10-05T10:0${n}:00.000Z`, event: { kind: 'session_boundary', generation: n, bindingId: binding, ...(account ? { account } : {}) } },
+    { ts: `2026-10-05T10:0${n}:01.000Z`, event: { kind: 'user_text', text: `run ${n}`, runId: `run-${n}` } },
+    { ts: `2026-10-05T10:0${n}:02.000Z`, event: { kind: 'result', ok: true, runId: `run-${n}` } },
+  ]
+
+  it('names the account its session ran on, and keeps it after the project moves to another account', async () => {
+    const s = setup()
+    const service = createResultService({ store: s.store, checks: s.checks })
+    const history = [...run(1, 'b-default', { id: 'default-claude', generation: 0 }), ...run(2, 'b-work', { id: ACC, generation: 3 }), ...run(3, 'b-default2', { id: 'default-claude', generation: 0 })]
+    const m = { ...meta(s.project), bindingId: 'b-default2' } as ThreadMeta
+    expect((await service.view(m, history, 'run-1', false)).identity.account).toBe('default')
+    expect((await service.view(m, history, 'run-2', false)).identity.account).toEqual({ id: ACC, generation: 3 })
+    expect((await service.view(m, history, 'run-3', false)).identity.account).toBe('default')
+  })
+
+  it('reads a run from before account profiles as the default', async () => {
+    const s = setup()
+    const service = createResultService({ store: s.store, checks: s.checks })
+    expect((await service.view(meta(s.project), events(), 'run-1', false)).identity.account).toBe('default')
+  })
+})

@@ -231,6 +231,8 @@ try {
   const a1 = await viewApp('site', ORIGIN_A)
   if (!a1) throw new Error('View app did not open app A')
   const tabA = a1.tab
+  const consoleA: string[] = []
+  tabA.on('console', (m) => { consoleA.push(`${m.type()}: ${m.text()}`) })
   check('W11-01 View app opens A on its own HTTPS origin; the control page stays on the control origin',
     new URL(tabA.url()).origin === ORIGIN_A && new URL(phone.url()).origin === CONTROL, `${tabA.url()} (${a1.how})`)
   await tabA.getByRole('heading', { name: 'Service A' }).waitFor()
@@ -259,6 +261,13 @@ try {
   writeFileSync(join(project, 'src/msg.js'), "export const msg = 'Hello from A (version 2, edited on the Mac)'\n")
   const updated = await until('the HMR update', async () => (await tabA.locator('#msg').textContent()) === 'Hello from A (version 2, edited on the Mac)', 15_000)
   const kept = await tabA.evaluate(() => (window as unknown as { proofMarker?: string }).proofMarker)
+  // A miss is captured before Quit takes the dev server with it (run 1 of the 10-07 gate missed once and
+  // its Vite log was lost): the server's own output, the page's console and the socket's frames.
+  if (!(hmr && updated && kept === 'kept')) {
+    const viteOut = await getJson<unknown>(page, `/api/processes/${site!.id}/output?tail=2000`).catch((e: unknown) => String(e))
+    writeFileSync(join(PROOF_DIR, 'w11-03-miss.json'), JSON.stringify({ at: new Date().toISOString(), socket: hmr?.url() ?? null, socketClosed: hmr?.isClosed() ?? null,
+      updated: Boolean(updated), kept, page: await tabA.locator('#msg').textContent().catch(() => null), console: consoleA, vite: viteOut }, null, 2))
+  }
   check('W11-03 HMR: an edit on the Mac updates the page without a reload', Boolean(hmr) && Boolean(updated) && kept === 'kept',
     `socket ${hmr ? new URL(hmr.url()).pathname + (new URL(hmr.url()).searchParams.has('token') ? ' (Vite token passed through)' : '') : 'none'}`)
   await shot(tabA, 'phone-app-a')
@@ -359,8 +368,10 @@ try {
   await page.getByRole('button', { name: 'Turn off phone access' }).click()
   await until('phone access off', async () => !(await getJson<{ running: boolean }>(page, '/api/remote')).running)
   const offChanges = changes().slice(changesBefore.length)
-  check('W11-06 turning phone access off removes only the control entry; preview entries stay as the person set them',
-    offChanges.join(' | ') === `serve --https=${CONTROL_HTTPS} off`, offChanges.join(' | '))
+  // Turn off takes away what Cockpit added to Tailscale: the control entry and each preview entry
+  // still pointing at Cockpit (the 10-07 finding: preview entries were left behind).
+  check('W11-06 turning phone access off removes what Cockpit added: the control entry and each preview entry',
+    offChanges.join(' | ') === `serve --https=${CONTROL_HTTPS} off | serve --https=8443 off | serve --https=8444 off`, offChanges.join(' | '))
   const offTab = a2!.tab
   step('reload a preview tab while phone access is off')
   const offResponse = await offTab.reload({ timeout: 10_000 }).catch(() => undefined)
@@ -368,14 +379,22 @@ try {
   step('phone access on again')
   await page.getByRole('button', { name: 'Turn on phone access' }).click()
   await page.locator('.phone-qr').waitFor()
-  await until('previews reopened', async () => (await getJson<{ services: { open: boolean }[] }>(page, '/api/phone/previews')).services.filter((s) => s.open).length === 2)
+  await new Promise((r) => setTimeout(r, 1500))
+  const onChanges = changes().slice(changesBefore.length + offChanges.length)
+  const previewsOn = (await getJson<{ services: { name: string; open: boolean; tailscale: string }[] }>(page, '/api/phone/previews')).services
+  check('W11-06 back on, only the control entry returns: no hidden Tailscale change, no preview served, no app started',
+    onChanges.join(' | ') === `serve --bg --https=${CONTROL_HTTPS} http://127.0.0.1:${phonePort}` && previewsOn.every((v) => !v.open && v.tailscale === 'none')
+      && (await procs(page)).filter((p) => p.status === 'running').length === processesBefore, `${onChanges.join(' | ')} ${JSON.stringify(previewsOn)}`)
+  // The person turns A's preview on again, as the panel shows it: exactly that one command runs.
+  await row(panel, '.preview-row', '.device-name', 'site').getByRole('button', { name: 'Run this command' }).click()
+  await row(panel, '.preview-row', '.device-name', 'site').locator('.preview-on').waitFor()
+  check('W11-06 turning A on again runs exactly its command, nothing else', changes().slice(changesBefore.length + offChanges.length + onChanges.length).join(' | ') === 'serve --bg --https=8443 http://127.0.0.1:47822',
+    changes().slice(changesBefore.length + offChanges.length + onChanges.length).join(' | '))
+  await until('Serve on 8443 again', async () => serve.ports().includes(8443))
   const ended = await offTab.reload()
   check('W11-06 back on, an old tab needs fresh access (its sign-in is not revived)', ended?.headers()['x-cockpit-preview'] === 'expired'
     && await offTab.getByRole('link', { name: 'Back to Cockpit' }).isVisible())
   await shot(offTab, 'phone-state-expired')
-  const onChanges = changes().slice(changesBefore.length + offChanges.length)
-  check('W11-06 no hidden Tailscale change and no app started by retrying', onChanges.join(' | ') === `serve --bg --https=${CONTROL_HTTPS} http://127.0.0.1:${phonePort}`
-    && (await procs(page)).filter((p) => p.status === 'running').length === processesBefore, onChanges.join(' | '))
   await phone.reload()
   await phone.getByText(PROMPT).first().click()
   const a3 = await viewApp('site', ORIGIN_A)

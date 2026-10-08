@@ -86,6 +86,8 @@
     "proof:wave-12-lifecycle": "tsx scripts/proof-wave-12-lifecycle.ts",
     "proof:cross-accounts-worktrees": "tsx scripts/proof-cross-accounts-worktrees.ts",
     "proof:feedback": "tsx scripts/proof-feedback.ts",
+    "proof:cross-flow": "tsx scripts/proof-cross-flow.ts",
+    "proof:cross-lifecycle": "tsx scripts/proof-cross-lifecycle.ts",
     "proof:crash-guard": "tsx scripts/proof-crash-guard.ts",
     "proof:conversation-style": "tsx scripts/proof-conversation-style.ts",
     "proof:style-screens": "tsx scripts/proof-style-screens.ts"
