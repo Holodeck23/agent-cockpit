@@ -18,7 +18,7 @@ import { ReplyContext, type CommitOutcome } from './markdown/reply.tsx'
 import type { FileTarget } from './markdown/file-links.ts'
 import { TroubleshootingLink } from './components/TroubleshootingLink.tsx'
 import { checkForUpdateNotice } from './update-notice.ts'
-import { ReportsAsk } from './components/ReportsAsk.tsx'
+import { ReportsNotice } from './components/ReportsNotice.tsx'
 import { ThreadView } from './components/ThreadView.tsx'
 import { useTheme } from './theme.ts'
 import { useAppearance } from './appearance.ts'
@@ -276,7 +276,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     cockpit.refresh()
     cockpit.select(meta.id)
     setDirector(false)
-  }} /><ReportsAsk /></>
+  }} /><ReportsNotice /></>
 
   // The selector sits under the conversation list title; Files and Processes say which workspace they show.
   const workspaceSlot = !phone && projects.active?.projectId ? (
@@ -343,7 +343,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
           <button type="button" onClick={() => setUpdated(undefined)} aria-label="Dismiss">×</button>
         </div>
       ) : null}
-      {local && !updated && !cockpit.error && !settingsOpen ? <ReportsAsk /> : null}
+      {local && !updated && !cockpit.error && !settingsOpen ? <ReportsNotice /> : null}
       {releaseNotes ? <ReleaseNotes lead={releaseNotes.lead} onClose={() => setReleaseNotes(undefined)} /> : null}
       {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} /> : null}
       {settingsOpen ? <AppSettings sounds={sounds} onSounds={setSounds} notify={notify} onNotify={setNotify} onClose={() => setSettingsOpen(false)} /> : null}

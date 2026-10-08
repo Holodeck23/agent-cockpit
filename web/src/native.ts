@@ -29,9 +29,9 @@ export interface CockpitBridge {
   notify(notification: { threadId: string; title: string; body: string }): void
   onOpenThread(listener: (threadId: string) => void): () => void
   appVersion(): Promise<string | undefined>
-  /** Crash and error reports: read the answer, or give it. Absent in builds before 0.1.6. */
-  reports?(answer?: boolean): Promise<{ available: boolean; decided: boolean; reports: boolean } | undefined>
-  /** An uncaught page error, for a crash report (dropped unless the person said yes). */
+  /** Crash and error reports (on by default): read the setting, or change it. Absent in builds before 0.1.6. */
+  reports?(on?: boolean): Promise<{ available: boolean; reports: boolean } | undefined>
+  /** An uncaught page error, for a crash report (dropped when reports are turned off). */
   pageError?(error: { message: string; stack?: string }): void
   /** This version's published notes (untrusted Markdown), from the release feed. */
   releaseNotes(): Promise<ReleaseNotes>

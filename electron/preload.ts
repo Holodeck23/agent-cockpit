@@ -69,9 +69,9 @@ const cockpit = {
     return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
   },
   appVersion: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:app-version') as Promise<string | undefined>,
-  /** Crash and error reports: read the answer, or give it (true sends, false never sends). */
-  reports: (answer?: boolean): Promise<ReportsStatus | undefined> => ipcRenderer.invoke('cockpit:reports', answer) as Promise<ReportsStatus | undefined>,
-  /** An uncaught page error, for a crash report; sent on only after the person said yes. */
+  /** Crash and error reports (on by default): read the setting, or change it (false stops them). */
+  reports: (on?: boolean): Promise<ReportsStatus | undefined> => ipcRenderer.invoke('cockpit:reports', on) as Promise<ReportsStatus | undefined>,
+  /** An uncaught page error, for a crash report (dropped when reports are turned off). */
   pageError: (error: { message: string; stack?: string }): void => ipcRenderer.send('cockpit:page-error', error),
   releaseNotes: (): Promise<ReleaseNotes> => ipcRenderer.invoke('cockpit:release-notes') as Promise<ReleaseNotes>,
   onShowReleaseNotes: (listener: () => void): (() => void) => {

@@ -66,7 +66,7 @@ if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
 if (process.env.COCKPIT_HOME) app.setPath('userData', join(process.env.COCKPIT_HOME, 'electron'))
 
 // Crash and error reports (electron/telemetry.ts): started before the app is ready, after the crash
-// guard and the profile path, and silent until the person says yes.
+// guard and the profile path; on unless turned off in Settings.
 const telemetry = startTelemetry({ dsn: reportingDsn(IS_RELEASE_BUILD, process.env), choiceFile: join(defaultRoot(), 'reports.json'),
   version: app.getVersion(), releaseBuild: IS_RELEASE_BUILD })
 
@@ -508,7 +508,7 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return undefined
     return app.getVersion()
   })
-  // Crash and error reports: whether this build sends them, and the person's answer.
+  // Crash and error reports: whether this build sends them, and the Settings switch.
   ipcMain.handle('cockpit:reports', (event, value: unknown) => {
     if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame
       || new URL(event.senderFrame.url).origin !== origin) return undefined

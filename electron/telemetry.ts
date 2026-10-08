@@ -1,7 +1,7 @@
-// Crash and error reports to Sentry, sent only after the person says yes (asked once, on first
-// launch; changed later in Settings). The SDK starts before the app is ready, as it must to catch
-// native crashes, but its only way out is the gate below: until the answer is yes, every report,
-// crash dump and session is dropped on this Mac, never queued or sent.
+// Crash and error reports to Sentry, on by default (David 2026-10-08: no question at first launch).
+// The first launch says so once; Settings turns them off. The SDK starts before the app is ready,
+// as it must to catch native crashes, and its only way out is the gate below: once turned off,
+// every report and session is dropped on this Mac, never queued or sent.
 import type { Transport } from '@sentry/core'
 import * as Sentry from '@sentry/electron/main'
 import { homedir } from 'node:os'
@@ -10,8 +10,6 @@ import { DROPPED_INTEGRATIONS, readChoice, reportEnvelope, scrubEvent, writeChoi
 export interface ReportsStatus {
   /** False in builds that do not report at all (development, proofs without a collector). */
   readonly available: boolean
-  /** True once the person has answered, either way. */
-  readonly decided: boolean
   readonly reports: boolean
 }
 
@@ -26,8 +24,8 @@ export interface Telemetry {
 const PAGE_ERRORS_PER_RUN = 20
 
 const OFF: Telemetry = {
-  status: () => ({ available: false, decided: false, reports: false }),
-  set: () => ({ available: false, decided: false, reports: false }),
+  status: () => ({ available: false, reports: false }),
+  set: () => ({ available: false, reports: false }),
   pageError: () => undefined,
 }
 
@@ -35,7 +33,8 @@ export function startTelemetry(options: { dsn: string | undefined; choiceFile: s
   const { dsn, choiceFile, version, releaseBuild } = options
   if (!dsn) return OFF
   let choice = readChoice(choiceFile)
-  const allowed = (): boolean => choice?.reports === true
+  // On unless the person turned reports off in Settings.
+  const allowed = (): boolean => choice?.reports !== false
   const home = homedir()
   const gate = (inner: Transport): Transport => ({
     send: (envelope) => {
@@ -68,7 +67,7 @@ export function startTelemetry(options: { dsn: string | undefined; choiceFile: s
     transport: (transportOptions) => gate(offline(transportOptions)),
   })
 
-  const status = (): ReportsStatus => ({ available: true, decided: choice !== undefined, reports: allowed() })
+  const status = (): ReportsStatus => ({ available: true, reports: allowed() })
   let pageErrors = 0
   return {
     status,
@@ -84,7 +83,7 @@ export function startTelemetry(options: { dsn: string | undefined; choiceFile: s
       try {
         choice = writeChoice(choiceFile, reports)
       } catch (error) {
-        // Unsaved, the answer still holds for this run; the question comes back next launch.
+        // Unsaved, the setting still holds for this run; the next launch starts from the default.
         console.error('[cockpit] could not save the crash-report choice:', error)
         choice = { reports, decidedAt: new Date().toISOString() }
       }

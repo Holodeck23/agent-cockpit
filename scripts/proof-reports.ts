@@ -1,7 +1,8 @@
 // Crash and error reports, PACKAGED app, against a stand-in collector on this Mac (never the real
-// project): asked once on first launch; nothing leaves before a yes or after "No thanks"; after a
-// yes in Settings, page and main-process errors arrive without the home folder, the machine name,
-// page queries or a breadcrumb trail; a main-process error leaves Cockpit running; the answer is kept.
+// project). On by default (David 2026-10-08): the first launch says so once, with no question; page
+// and main-process errors arrive without the home folder, the machine name, page queries or a
+// breadcrumb trail; a main-process error leaves Cockpit running; Settings turns reports off, at
+// once and across a restart.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage } from 'node:http'
 import { homedir, hostname, tmpdir } from 'node:os'
@@ -71,61 +72,58 @@ const { check, finish } = checker()
 mkdirSync(PROOF_DIR, { recursive: true })
 let { app, page } = await launch()
 try {
-  const ask = page.getByRole('dialog', { name: 'Crash reports' })
-  await ask.waitFor()
-  check('first launch asks once whether to send crash reports, and says what they hold', (await ask.innerText()).includes('Never your conversations'))
-  await page.screenshot({ path: join(PROOF_DIR, 'proof-reports-ask.png') })
+  const notice = page.getByRole('status', { name: 'Crash reports' })
+  await notice.waitFor()
+  const said = await notice.innerText()
+  check('first launch says once that crash reports are sent, what they hold and where to turn them off',
+    said.includes('sends crash reports') && said.includes('home folder is hidden') && said.includes('Settings'), said.slice(0, 160))
+  check('it is a notice, not a question: OK is the only button', (await notice.getByRole('button').allInnerTexts()).join('|') === 'OK')
+  await page.screenshot({ path: join(PROOF_DIR, 'proof-reports-notice.png') })
 
-  await throwBoth(app, page, 'unanswered')
-  await settle(4000)
-  check('nothing is sent before the person answers', events().length === 0, `${events().length} events`)
-
-  await ask.getByRole('button', { name: 'No thanks' }).click()
-  await ask.waitFor({ state: 'detached' })
-  // A first launch opens on the first-run screen, where the question is asked; then on into the app.
-  await page.getByRole('button', { name: 'Skip for now' }).click()
-  await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
-  check('after the first-run screen the question does not come back', await page.getByRole('dialog', { name: 'Crash reports' }).count() === 0)
-  await throwBoth(app, page, 'declined')
-  await settle(4000)
-  check('nothing is sent after "No thanks"', events().length === 0, `${events().length} events`)
-  check('a main-process error leaves Cockpit running', await page.getByRole('button', { name: 'Settings', exact: true }).isVisible())
-
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  const settings = page.getByRole('dialog', { name: 'Settings' })
-  const box = settings.getByRole('checkbox', { name: /Send crash and error reports/ })
-  check('Settings shows the answer, off', !(await box.isChecked()))
-  await box.check()
-  await settings.getByRole('button', { name: 'Done' }).click()
-  await throwBoth(app, page, 'allowed')
-  const arrived = await until(() => events().filter((e) => JSON.stringify(e).includes('allowed')).length >= 2, 15_000)
-  const sent = events().filter((e) => JSON.stringify(e).includes('allowed'))
+  await throwBoth(app, page, 'default')
+  const arrived = await until(() => events().filter((e) => JSON.stringify(e).includes('default')).length >= 2, 15_000)
+  const sent = events().filter((e) => JSON.stringify(e).includes('default'))
   writeFileSync(join(PROOF_DIR, 'proof-reports-events.json'), JSON.stringify(sent, null, 2))
-  check('after a yes, both the page error and the main-process error arrive', arrived
+  check('with nothing chosen, the page error and the main-process error both arrive', arrived
     && sent.some((e) => JSON.stringify(e).includes('proof page error')) && sent.some((e) => JSON.stringify(e).includes('proof main error')), `${sent.length} events`)
   const text = JSON.stringify(sent)
   const user = homedir().split('/').pop() ?? ''
   check('no report holds the home folder or the user name', !text.includes(homedir()) && (user.length < 3 || !text.includes(user)) && text.includes('~/repos/client-x/notes.md'))
   check('no report holds the machine name', !text.includes(hostname()) && !text.includes(hostname().replace(/\.local$/, '')))
   check('no report holds the page\'s key or a breadcrumb trail', !text.includes('window-secret') && !text.includes('breadcrumb-canary') && sent.every((e) => e.breadcrumbs === undefined))
-  check('each report names the version and the proof environment', sent.every((e) => typeof e.release === 'string' && (e.release as string).startsWith('cockpit@') && e.environment === 'proof'),
+  check('each report names the version and the proof environment', sent.length > 0 && sent.every((e) => typeof e.release === 'string' && (e.release as string).startsWith('cockpit@') && e.environment === 'proof'),
     sent.map((e) => `${String(e.release)} ${String(e.environment)}`).join(', '))
-  check('the answer is stored with the state', JSON.parse(readFileSync(join(state, 'reports.json'), 'utf8')).reports === true)
+
+  await notice.getByRole('button', { name: 'OK' }).click()
+  await notice.waitFor({ state: 'detached' })
+  await page.getByRole('button', { name: 'Skip for now' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
+  check('after OK the notice does not come back in the app', await page.getByRole('status', { name: 'Crash reports' }).count() === 0)
+  check('a main-process error leaves Cockpit running', await page.getByRole('button', { name: 'Settings', exact: true }).isVisible())
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const settings = page.getByRole('dialog', { name: 'Settings' })
+  const box = settings.getByRole('checkbox', { name: /Send crash and error reports/ })
+  check('Settings shows reports on', await box.isChecked())
+  await box.click()
+  const off = await (async () => { for (let i = 0; i < 20; i++) { if (!(await box.isChecked())) return true; await settle(250) } return false })()
+  check('Settings turns them off', off)
+  await settings.getByRole('button', { name: 'Done' }).click()
+  const before = events().length
+  await throwBoth(app, page, 'turned-off')
+  await settle(4000)
+  check('once off, nothing more is sent', events().length === before, `${events().length - before} new events`)
+  check('the setting is stored with the state', JSON.parse(readFileSync(join(state, 'reports.json'), 'utf8')).reports === false)
 
   await app.close()
   ;({ app, page } = await launch())
   await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
   await settle(2000)
-  check('a restart does not ask again', await page.getByRole('dialog', { name: 'Crash reports' }).count() === 0)
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  const again = page.getByRole('dialog', { name: 'Settings' }).getByRole('checkbox', { name: /Send crash and error reports/ })
-  check('Settings still shows yes after a restart', await again.isChecked())
-  await again.uncheck()
-  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Done' }).click()
-  const before = events().length
-  await throwBoth(app, page, 'turned-off')
+  check('a restart shows no notice', await page.getByRole('status', { name: 'Crash reports' }).count() === 0)
+  const afterRestart = events().length
+  await throwBoth(app, page, 'still-off')
   await settle(4000)
-  check('turning it off in Settings stops reports at once', events().length === before, `${events().length - before} new events`)
+  check('still off after a restart: nothing is sent', events().length === afterRestart, `${events().length - afterRestart} new events`)
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
 } finally {

@@ -23,7 +23,7 @@ if (!root) throw new Error('Missing #root element')
 if (native) {
   document.documentElement.classList.add('in-app')
   trackWindowChrome(native)
-  // Uncaught page errors go to a crash report, which is sent only after the person said yes.
+  // Uncaught page errors go to a crash report (dropped when reports are turned off in Settings).
   const report = native.pageError?.bind(native)
   if (report) {
     window.addEventListener('error', (event) => {
