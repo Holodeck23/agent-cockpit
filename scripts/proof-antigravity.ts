@@ -48,10 +48,11 @@ try {
   await panel.getByText('1.2.14 (Cockpit Antigravity fixture)').waitFor()
   check('the picker offers Antigravity and detects agy', true)
   const menu = await panel.getByLabel('Model').locator('option').evaluateAll((os) => os.map((o) => `${(o as HTMLOptionElement).value}=${o.textContent}`))
-  check('the Model menu lists agy\'s models by name', menu.join('|') === '=Default model|gemini-3.8-flash-low=Gemini 3.8 Flash (Low)|gemini-3.1-pro-high=Gemini 3.1 Pro (High)', menu.join(' | '))
+  check('the Model menu lists agy\'s models once each, by name', menu.join('|') === '=Default model|gemini-3.8-flash=Gemini 3.8 Flash|gemini-3.1-pro=Gemini 3.1 Pro', menu.join(' | '))
   check('the picker explains the headless approval limitation', (await panel.innerText()).includes('cannot pause for approval'))
   await page.keyboard.press('Escape')
-  await chooseAgent(page, { agent: 'antigravity', model: MODEL, permissions: 'manual' })
+  // By name; its one listed effort (Low) makes the id agy gets: gemini-3.8-flash-low.
+  await chooseAgent(page, { agent: 'antigravity', model: 'gemini-3.8-flash', permissions: 'manual' })
 
   await page.getByRole('button', { name: 'New conversation' }).click()
   await messageBox(page).fill('Read the project and report')

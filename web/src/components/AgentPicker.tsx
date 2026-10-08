@@ -5,7 +5,7 @@ import { api, type AccountView, type AgentCapabilities, type AgentStatus, type H
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
-import { modelChoices } from '../model-choices.ts'
+import { agyEffortFor, agyMenus } from '../model-choices.ts'
 import { permissionLabel } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
@@ -251,6 +251,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const phone = typeof document !== 'undefined' && document.documentElement.classList.contains('phone')
   const listedChoices = shownCaps?.models.state === 'supported' && (shownCaps.models.value ?? []).length > 0 ? shownCaps.models.value : undefined
   const listedModels = listedChoices?.map((m) => m.id)
+  // Antigravity, once agy has listed its models: a model by name, then the efforts that model offers.
+  const agy = current.agent === 'antigravity' && listedChoices ? agyMenus(listedChoices, current.model, current.effort) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
 
   const set = (next: AgentChoice): void => {
@@ -368,9 +370,12 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {phone ? null : <AgentLifecycle agent={current.agent} caps={shownCaps} onChanged={refresh} />}
             <label className="field">
               Model
-              {current.agent === 'antigravity' && listedChoices ? (
-                <select value={current.model} onChange={(e) => patch({ model: e.target.value })}>
-                  {modelChoices(listedChoices, current.model).map((m) => (
+              {agy && listedChoices ? (
+                <select value={agy.selected} onChange={(e) => {
+                  const model = e.target.value
+                  patch({ model, effort: model ? agyEffortFor(agyMenus(listedChoices, model, '').model, current.effort) : current.effort })
+                }}>
+                  {agy.models.map((m) => (
                     <option key={m.value || 'default'} value={m.value}>{m.label}</option>
                   ))}
                 </select>
@@ -396,14 +401,25 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {current.agent === 'opencode' ? null : (
               <label className="field">
                 Effort
-                <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
-                  <option value="">Default</option>
-                  {effortsFor(current.agent, current.model).map((effort) => (
-                    <option key={effort} value={effort}>
-                      {capitalize(effort)}
-                    </option>
-                  ))}
-                </select>
+                {agy?.model && agy.model.levels.length > 0 ? (
+                  // The efforts this Antigravity model comes in; a stored id moves to its model with the effort chosen.
+                  <select value={agy.level ?? ''} onChange={(e) => patch({ model: agy.model!.base, effort: e.target.value })}>
+                    {agy.model.levels.map((level) => (
+                      <option key={level} value={level}>
+                        {capitalize(level)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={current.effort} onChange={(e) => patch({ effort: e.target.value })}>
+                    <option value="">Default</option>
+                    {effortsFor(current.agent, current.model).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {capitalize(effort)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
             )}
             <label className="field">

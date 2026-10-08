@@ -21,7 +21,7 @@ export async function openProject(page: Page, dir: string, name?: string): Promi
 }
 
 /** Sets the new-conversation agent picker (remembered for later conversations). */
-export async function chooseAgent(page: Page, choice: { agent?: 'claude' | 'codex' | 'antigravity' | 'opencode'; model?: string; permissions?: string }): Promise<void> {
+export async function chooseAgent(page: Page, choice: { agent?: 'claude' | 'codex' | 'antigravity' | 'opencode'; model?: string; effort?: string; permissions?: string }): Promise<void> {
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const panel = page.getByRole('dialog', { name: 'Agent settings' })
   if (choice.agent) await panel.getByRole('radio', { name: { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity', opencode: 'OpenCode' }[choice.agent], exact: true }).click()
@@ -31,6 +31,7 @@ export async function chooseAgent(page: Page, choice: { agent?: 'claude' | 'code
     if (await model.evaluate((el) => el.tagName === 'SELECT')) await model.selectOption(choice.model)
     else await model.fill(choice.model)
   }
+  if (choice.effort !== undefined) await panel.getByLabel('Effort').selectOption(choice.effort)
   if (choice.permissions) await panel.getByLabel('Permissions').selectOption(choice.permissions)
   await page.keyboard.press('Escape')
 }
