@@ -95,7 +95,8 @@
     "proof:approvals-live": "tsx scripts/proof-approvals-live.ts",
     "proof:antigravity-images-live": "tsx scripts/proof-antigravity-images-live.ts",
     "proof:live-pair": "tsx scripts/proof-live-pair.ts",
-    "proof:live-model-swap": "tsx scripts/proof-live-model-swap.ts"
+    "proof:live-model-swap": "tsx scripts/proof-live-model-swap.ts",
+    "proof:interruption": "tsx scripts/proof-interruption.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",
