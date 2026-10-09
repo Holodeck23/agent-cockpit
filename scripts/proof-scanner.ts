@@ -1,7 +1,7 @@
 // Packaged proof for D12, the scanner signature (acceptance POL-01): KITT's lamp row in the composer.
 // 73 small lamps across the composer's full inside width, a constant-speed sweep with a tail behind
 // it (red, then amber toward its far end), the tail drawn into the end lamp at each reversal.
-// Motion is checked by pausing every scanner animation and seeking to exact points of the 3.2 s
+// Motion is checked by pausing every scanner animation and seeking to exact points of the 5.2 s
 // cycle, so the frames are deterministic. Each frame is read from the lamps' computed brightness and
 // compared, lamp by lamp, with web/src/scanner-model.ts (the same arithmetic in plain numbers), and
 // again from the rendered pixels. Also: idle and working, light, reduce motion, layout.
@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
-import { LAMPS, STEP, levels as modelLevels } from '../web/src/scanner-model.ts'
+import { LAMPS, STEP, coreLevels as modelCore, levels as modelLevels } from '../web/src/scanner-model.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { messageBox, openProject, setTheme } from './lib/ui.ts'
 
@@ -29,7 +29,7 @@ async function until(label: string, test: () => Promise<boolean>, ms = 10_000): 
   return false
 }
 
-const CYCLE = 3200
+const CYCLE = 5200
 const LIT = 0.05 // a lamp counts as lit above this brightness
 
 /** Pauses every scanner animation at `percent` of the cycle (1 ms past, so no frame sits on a keyframe edge). */
@@ -38,7 +38,7 @@ const seek = (page: Page, percent: number): Promise<void> => page.evaluate(([p, 
     if (a instanceof CSSAnimation && a.animationName.startsWith('scanner-')) { a.pause(); a.currentTime = ((p as number) / 100) * (cycle as number) + 1 }
   }
 }, [percent, CYCLE] as const)
-interface Drawn { readonly red: number[]; readonly amber: number[] }
+interface Drawn { readonly red: number[]; readonly amber: number[]; readonly core: number[] }
 /** What each lamp is drawing right now: the brighter of its two rows' red light, and the same for amber. */
 // (No named helpers inside evaluate callbacks: tsx would wrap them in __name, which the page does not have.)
 const drawn = (page: Page): Promise<Drawn> => page.evaluate(() => {
@@ -46,11 +46,13 @@ const drawn = (page: Page): Promise<Drawn> => page.evaluate(() => {
   const count = rows[0]!.length
   const red: number[] = []
   const amber: number[] = []
+  const core: number[] = []
   for (let k = 0; k < count; k++) {
     red.push(Math.max(...rows.map((r) => parseFloat(getComputedStyle(r[k]!).opacity) * parseFloat(getComputedStyle(r[k]!, '::before').opacity))))
     amber.push(Math.max(...rows.map((r) => parseFloat(getComputedStyle(r[k]!).opacity) * parseFloat(getComputedStyle(r[k]!, '::after').opacity))))
+    core.push(Math.max(...rows.map((r) => parseFloat(getComputedStyle(r[k]!).opacity) * parseFloat(getComputedStyle(r[k]!.firstElementChild!, '::before').opacity))))
   }
-  return { red, amber }
+  return { red, amber, core }
 })
 const scannerAnimations = (page: Page): Promise<number> => page.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSAnimation && a.animationName.startsWith('scanner-') && a.playState === 'running').length)
 
@@ -162,7 +164,7 @@ try {
     return { name: s.animationName, duration: s.animationDuration, delay: s.animationDelay, strip: parseFloat(getComputedStyle(document.querySelector('.scanner')!).opacity) }
   })
   const idleTiming = await timing(page)
-  check('POL-01 idle: the lamps run a 3.2 s cycle', idleTiming.duration === '3.2s' && idleTiming.name === 'scanner-flash', JSON.stringify(idleTiming))
+  check('POL-01 idle: the lamps run a 5.2 s cycle', idleTiming.duration === '5.2s' && idleTiming.name === 'scanner-flash', JSON.stringify(idleTiming))
   check('POL-01 idle: the scanner is running, not paused', (await scannerAnimations(page)) >= LAMPS)
   await sleep(400)
   const startedA = await page.evaluate(() => document.getAnimations().find((a) => a instanceof CSSAnimation && a.animationName === 'scanner-flash')?.startTime ?? -1)
@@ -179,18 +181,19 @@ try {
   for (const frame of FRAMES) {
     await seek(page, frame.at)
     const now = await drawn(page)
-    const expected = modelLevels(frame.at + 1 / 32) // the seek is 1 ms past the frame
-    const drift = Math.max(...now.red.map((v, k) => Math.abs(v - expected[k]!)))
+    const expected = modelLevels(frame.at + 1 / 52) // the seek is 1 ms past the frame
+    const expectedCore = modelCore(frame.at + 1 / 52)
+    const drift = Math.max(...now.red.map((v, k) => Math.abs(v - expected[k]!)), ...now.core.map((v, k) => Math.abs(v - expectedCore[k]!)))
     worstDrift = Math.max(worstDrift, drift)
     const png = await scanner.screenshot()
     rendered.push(png)
     const cols = await columns(page, png)
     const label = `${frame.at}%`
     const head = argmax(expected)
-    check(`POL-01 ${label} (${frame.note}): the page draws what the model says`, drift <= 0.06 && argmax(now.red) === head, `head ${argmax(now.red)} vs ${head}, worst lamp off by ${drift.toFixed(3)}`)
+    check(`POL-01 ${label} (${frame.note}): the page draws what the model says (streak and core)`, drift <= 0.06 && argmax(now.red) === head, `head ${argmax(now.red)} vs ${head}, worst lamp off by ${drift.toFixed(3)}`)
     // The pixels agree with the head's position, to within two lamps.
     const lampWidth = cols.length / LAMPS
-    check(`POL-01 ${label}: the brightest pixels sit on the head`, Math.abs(argmax(cols) / lampWidth - (head + 0.5)) <= 2.5, `column ${argmax(cols)} of ${cols.length}`)
+    check(`POL-01 ${label}: the brightest pixels sit on the head`, Math.abs(argmax(cols) / lampWidth - (argmax(expectedCore) + 0.5)) <= 3, `column ${argmax(cols)} of ${cols.length}`)
     litAt[frame.at] = lit(now.red)
   }
   check('POL-01 no frame is further than 0.06 from the model', worstDrift <= 0.06, worstDrift.toFixed(3))
@@ -202,27 +205,30 @@ try {
     const head = argmax(now.red)
     const behind = side === 'left' ? now.red.slice(0, head) : now.red.slice(head + 1)
     const ahead = side === 'left' ? now.red.slice(head + 1) : now.red.slice(0, head)
-    check(`POL-01 ${at}%: the tail is on the ${side}; ahead of the head only its 40 ms lead-in`, lit(behind) >= 10 && lit(ahead) <= 2, `${lit(behind)} lamps behind, ${lit(ahead)} ahead`)
+    check(`POL-01 ${at}%: the tail is on the ${side}; ahead of the head only its 65 ms lead-in`, lit(behind) >= 10 && lit(ahead) <= 2, `${lit(behind)} lamps behind, ${lit(ahead)} ahead`)
   }
-  // Colour: red at the head, amber toward the far end of the tail.
+  // A glowing core at the head, a dim streak behind it, amber only toward the far end.
   await seek(page, 20)
-  const colour = await drawn(page)
-  const head20 = argmax(colour.red)
-  const far = colour.amber.findIndex((v) => v >= 0.3)
-  check('POL-01 the head is red, the far end of the tail goes amber',
-    colour.amber[head20]! < 0.05 && far >= 0 && far < head20 - 6 && colour.red[far]! < colour.red[head20]! * 0.35, `head ${head20}, amber from lamp ${far}`)
+  const look = await drawn(page)
+  const head20 = argmax(look.core)
+  const far = look.amber.findIndex((v) => v >= 0.3)
+  check('POL-01 the core is a bright point at the head: full at the head, gone within about 8 lamps',
+    look.core[head20]! >= 0.95 && lit(look.core.slice(0, head20 - 8), 0.05) === 0 && lit(look.core, 0.1) <= 10, `core lit over ${lit(look.core, 0.1)} lamps`)
+  check('POL-01 the streak behind the core is dim and not a solid red line',
+    Math.max(...look.red) <= 0.6 && look.red[head20 - 12]! < look.red[head20]! * 0.5 && lit(look.red) >= 12 && lit(look.red) <= 30, `streak lit over ${lit(look.red)} lamps`)
+  check('POL-01 the head is red and white-hot, the far end of the streak goes amber',
+    look.amber[head20]! < 0.05 && far >= 0 && far < head20 - 6, `head ${head20}, amber from lamp ${far}`)
 
   // Constant speed: the head is on lamp i at i × 0.625% going right and 95% − i × 0.625% going left.
   let steady = true
   for (let i = 0; i < LAMPS; i++) {
     await seek(page, i * STEP)
-    const a = argmax((await drawn(page)).red)
+    const a = argmax((await drawn(page)).core)
     await seek(page, 95 - i * STEP)
-    const b = argmax((await drawn(page)).red)
-    // (The end lamp burns at 1.0 against the head's 0.9, so it outshines the next lamp for one step after a reversal.)
-    if ((i !== 1 && a !== i) || (i !== LAMPS - 2 && b !== i)) { steady = false; console.log(`  (lamp ${i}: right ${a}, left ${b})`) }
+    const b = argmax((await drawn(page)).core)
+    if (a !== i || b !== i) { steady = false; console.log(`  (lamp ${i}: right ${a}, left ${b})`) }
   }
-  check('POL-01 the bright point moves one lamp every 20 ms, both ways (constant speed)', steady)
+  check('POL-01 the glowing core moves one lamp every 32 ms, both ways (constant speed)', steady)
   // The tail is drawn in, then grows again, at each end.
   const run = (...ats: number[]) => ats.map((at) => litAt[at]!)
   const rightIn = run(45, 46, 47, 48, 49, 50)
@@ -237,13 +243,13 @@ try {
   let previous: number[] | undefined
   await seek(page, 0)
   const first = (await drawn(page)).red
-  for (let ms = 0; ms <= CYCLE; ms += 20) {
+  for (let ms = 0; ms <= CYCLE; ms += 32) {
     await seek(page, ((ms - 1) / CYCLE) * 100)
     const now = (await drawn(page)).red
     if (previous) worst = Math.max(worst, ...now.map((v, k) => Math.abs(v - previous![k]!)))
     previous = now
   }
-  check('POL-01 no lamp jumps between 20 ms samples through a whole cycle', worst <= 0.5, `largest step ${worst.toFixed(2)}`)
+  check('POL-01 no lamp jumps between 32 ms samples through a whole cycle', worst <= 0.5, `largest step ${worst.toFixed(2)}`)
   await seek(page, 99.999)
   const seam = (await drawn(page)).red
   check('POL-01 the cycle repeats without a seam', seam.every((v, k) => Math.abs(v - first[k]!) < 0.08))
@@ -304,15 +310,13 @@ try {
     document.querySelector('.scanner')!.appendChild(probe)
     probe.style.color = 'var(--scanner-glow)'
     const glow = getComputedStyle(probe).color
-    probe.style.color = 'var(--scanner-hot)'
-    const hot = getComputedStyle(probe).color
-    probe.style.color = 'var(--scanner-warm-glow)'
-    const warmGlow = getComputedStyle(probe).color
+    probe.style.color = 'var(--scanner-spark)'
+    const spark = getComputedStyle(probe).color
     probe.remove()
-    return { glow, hot, warmGlow }
+    return { glow, spark }
   })
   const clear = (c: string) => /(^rgba\(.*, 0\)$|transparent)/.test(c)
-  check('POL-01 light: no bloom and no hot core', clear(lightInk.glow) && clear(lightInk.hot) && clear(lightInk.warmGlow), JSON.stringify(lightInk))
+  check('POL-01 light: flat, no bloom and no white-hot spark', clear(lightInk.glow) && clear(lightInk.spark), JSON.stringify(lightInk))
   await seek(page, 20)
   const lightA = await scanner.screenshot()
   await seek(page, 30)

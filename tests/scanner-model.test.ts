@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { CONTRACT, LAMPS, LEFT_END, RIGHT_END, STEP, TAIL, levels } from '../web/src/scanner-model.ts'
+import { CONTRACT, CORE_DECAY, DECAY, LAMPS, LEFT_END, RIGHT_END, STEP, TAIL, coreLevels, levels } from '../web/src/scanner-model.ts'
 
 const head = (v: readonly number[]): number => v.indexOf(Math.max(...v))
 const litCount = (v: readonly number[]): number => v.filter((x) => x >= 0.05).length
 
 describe('D12 scanner model', () => {
-  it('moves the head one lamp per step, both ways', () => {
-    // (The end lamp burns at 1.0 against the head's 0.9, so it outshines the next lamp for one step after a reversal.)
+  it('moves the head (its core) one lamp per step, both ways', () => {
     for (let i = 0; i < LAMPS; i++) {
-      if (i !== 1) expect(head(levels(i * STEP + 0.01))).toBe(i)
-      if (i !== LAMPS - 2) expect(head(levels(LEFT_END - i * STEP + 0.01))).toBe(i)
+      expect(head(coreLevels(i * STEP + 0.01))).toBe(i)
+      expect(head(coreLevels(LEFT_END - i * STEP + 0.01))).toBe(i)
     }
   })
   it('puts the tail behind the head', () => {
@@ -29,8 +28,16 @@ describe('D12 scanner model', () => {
       expect(litCount(levels(end + CONTRACT + 3))).toBeGreaterThan(litCount(levels(end + CONTRACT + 0.5)))
     }
   })
+  it('has a glowing core at the head, short beside the streak', () => {
+    const core = coreLevels(20)
+    expect(Math.max(...core)).toBeGreaterThan(0.95)
+    expect(core.indexOf(Math.max(...core))).toBe(32)
+    expect(core.filter((v) => v >= 0.1).length).toBeLessThanOrEqual(10)
+    expect(CORE_DECAY).toBeLessThan(DECAY / 2)
+    expect(Math.max(...levels(20))).toBeLessThanOrEqual(0.6)
+  })
   it('has a tail that fits the decay', () => {
-    expect(TAIL).toBeGreaterThan(10)
-    expect(TAIL * STEP).toBeLessThan(12.5)
+    expect(TAIL).toBeGreaterThan(15)
+    expect(TAIL * STEP).toBeLessThan(DECAY)
   })
 })
