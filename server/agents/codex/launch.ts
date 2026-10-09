@@ -106,6 +106,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   // Stop pressed after turn/start went out but before Codex named the turn: interrupt it on arrival.
   let interruptOnStart = false
   let turnStarting = false
+  let stopGeneration = 0
   const stream = createCodexStreamState()
   // Helper threads' running turns, so Stop stops the helpers too (J7).
   const childTurns = new Map<string, string>()
@@ -162,10 +163,13 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       return
     }
     const input = codexInput(text, images)
+    const generation = stopGeneration
     // A level the model does not have (a saved Ultra on a model without it) becomes its highest (R7).
     const effort = codexEffort(opts.model, opts.effort)
     const fail = (error: unknown): void => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) }
     const start = (): Promise<unknown> => {
+      // A late steering failure must not restart work canceled by Stop or session close.
+      if (exited || generation !== stopGeneration) return Promise.resolve()
       turnStarting = true
       return rpc.request('turn/start', { threadId, input, ...(effort ? { effort } : {}) })
     }
@@ -245,6 +249,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       onEvent({ kind: 'question_answered', requestId: question.requestId, answers: answers ?? {}, ...(answers ? {} : { dismissed: true }) })
     },
     interrupt() {
+      stopGeneration++
       if (threadId && currentTurnId) {
         rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
       } else if (queued.length > 0) {
@@ -256,7 +261,10 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
         rpc.request('turn/interrupt', { threadId: helper, turnId }).catch(() => undefined)
       }
     },
-    close: () => stopChild(child, () => !exited),
+    close() {
+      stopGeneration++
+      return stopChild(child, () => !exited)
+    },
     alive: () => !exited,
   }
 }
