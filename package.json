@@ -92,7 +92,10 @@
     "proof:conversation-style": "tsx scripts/proof-conversation-style.ts",
     "proof:style-screens": "tsx scripts/proof-style-screens.ts",
     "proof:reports": "tsx scripts/proof-reports.ts",
-    "proof:approvals-live": "tsx scripts/proof-approvals-live.ts"
+    "proof:approvals-live": "tsx scripts/proof-approvals-live.ts",
+    "proof:antigravity-images-live": "tsx scripts/proof-antigravity-images-live.ts",
+    "proof:live-pair": "tsx scripts/proof-live-pair.ts",
+    "proof:live-model-swap": "tsx scripts/proof-live-model-swap.ts"
   },
   "author": "",
   "license": "SEE LICENSE IN LICENSE",

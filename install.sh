@@ -42,6 +42,9 @@ to stop them, stop using Cockpit.
 
   - A report holds the error message and stack trace, Cockpit's version, and the
     macOS version and kind of Mac.
+  - Cockpit also sends a short record when it starts and stops, so the developer can
+    count how many people run each version and how often it crashes. It holds nothing
+    about your work.
   - Your home folder is replaced with ~. Your machine name, user, screenshots,
     recordings, crash memory dumps and file contents are never sent. Error text can
     still name a project or file.

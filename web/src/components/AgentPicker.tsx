@@ -7,7 +7,7 @@ import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
 import { agyChoiceLabel, agyEffortFor, agyMenus } from '../model-choices.ts'
-import { permissionLabel } from '../permission-labels.ts'
+import { permissionLabel, permissionDescription, needsPermissionConfirmation } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
 import { AccountChoice } from './AccountChoice.tsx'
@@ -199,6 +199,7 @@ function HandoffReview({ agent, preview, error, starting, missing, onBack, onSta
 
 export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff, lockedReason, projectPath }: AgentPickerProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
+  const [permissionConfirm, setPermissionConfirm] = useState<AgentChoice>()
   const existing = onSwitch !== undefined || onApply !== undefined
   const [draft, setDraft] = useState<AgentChoice>(value)
   const current = existing ? draft : value
@@ -272,14 +273,19 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const agy = current.agent === 'antigravity' && listedChoices ? agyMenus(listedChoices, current.model, current.effort) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
 
-  const set = (next: AgentChoice): void => {
+  const commitChoice = (next: AgentChoice): void => {
     const remembered = remember(memory, next)
     setMemory(remembered)
     saveMemory(remembered)
     if (existing) setDraft(next)
     else onChange?.(next)
   }
-  const patch = (change: Partial<AgentChoice>): void => set({ ...current, ...change })
+  const set = (next: AgentChoice): boolean => {
+    if (needsPermissionConfirmation(current, next)) { setPermissionConfirm(next); return false }
+    commitChoice(next)
+    return true
+  }
+  const patch = (change: Partial<AgentChoice>): void => { set({ ...current, ...change }) }
   const close = (): void => { setOpen(false); focusComposer(ref.current) }
 
   // Named settings: one click applies them (in a conversation, Apply/Switch still confirms).
@@ -291,7 +297,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   const matches = (p: Preset): boolean => p.agent === current.agent && p.model === current.model && p.effort === current.effort && p.permissionMode === current.permissionMode
 
   const toggle = (): void => {
-    if (!open) { setDraft(value); setReview(undefined) }
+    if (!open) { setDraft(value); setReview(undefined); setPermissionConfirm(undefined) }
     setOpen(!open)
   }
 
@@ -319,8 +325,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   }
 
   return (
-    <div className="picker-group">
-      <div className="picker" ref={ref}>
+    <div className="picker-group" ref={ref}>
+      <div className="picker">
         <button type="button" className="picker-button" aria-label="Agent settings" aria-expanded={open} onClick={toggle}>
           <AgentGlyph author={value.agent} />
           <span className="picker-text">
@@ -331,7 +337,15 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
         </button>
         {open ? (
           <div className="picker-panel" role="dialog" aria-label="Agent settings">
-            {review ? (
+            {permissionConfirm ? (
+              <section className="permission-confirm" role="alert" aria-label="Confirm permission change">
+                <strong>{permissionLabel(permissionConfirm.agent, permissionConfirm.permissionMode)}?</strong>
+                <p>{permissionDescription(permissionConfirm.agent, permissionConfirm.permissionMode)}</p>
+                <p>Cockpit’s own approval gates still apply. {existing ? 'Apply these settings afterwards to use them on the next message.' : 'This becomes the mode for your new conversation.'}</p>
+                <button type="button" className="button-soft" autoFocus onClick={() => setPermissionConfirm(undefined)}>Keep current permissions</button>
+                <button type="button" className="button-danger" onClick={() => { commitChoice(permissionConfirm); setPermissionConfirm(undefined) }}>Use these permissions</button>
+              </section>
+            ) : review ? (
               <HandoffReview agent={draft.agent} preview={review.preview} error={review.error} starting={review.starting === true}
                 missing={statuses?.find((s) => s.id === draft.agent)?.installation.installed === false}
                 onBack={() => setReview(undefined)} onStart={startHandoff} />
@@ -340,7 +354,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
               {presets.map((preset) => (
                 <span key={preset.name} className={`preset-chip${matches(preset) ? ' active' : ''}`}>
                   <button type="button" aria-pressed={matches(preset)} title={`${agentName(preset.agent)} · ${choiceSummary(preset, chipListed)} · ${permissionLabel(preset.agent, preset.permissionMode)}`}
-                    onClick={() => { set({ agent: preset.agent, model: preset.model, effort: preset.effort, permissionMode: preset.permissionMode }); if (closeAfter && !existing) close() }}>
+                    onClick={() => { if (set({ agent: preset.agent, model: preset.model, effort: preset.effort, permissionMode: preset.permissionMode }) && closeAfter && !existing) close() }}>
                     {preset.name}
                   </button>
                   <button type="button" className="preset-remove" aria-label={`Remove preset ${preset.name}`} onClick={() => savePresets(presets.filter((p) => p !== preset))}>×</button>
@@ -368,8 +382,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                   aria-checked={current.agent === agent}
                   onClick={() => {
                     // Switching back to an agent restores what it was last set to on this Mac.
-                    set(agent === current.agent ? current : recall(memory, agent))
-                    if (closeAfter && !existing) close()
+                    if (set(agent === current.agent ? current : recall(memory, agent)) && closeAfter && !existing) close()
                   }}
                 >
                   <AgentGlyph author={agent} />
@@ -441,7 +454,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             )}
             <label className="field">
               Permissions
-              <select value={current.permissionMode} onChange={(e) => patch({ permissionMode: e.target.value as AgentChoice['permissionMode'] })}>
+              <select data-permissions value={current.permissionMode} onChange={(e) => patch({ permissionMode: e.target.value as AgentChoice['permissionMode'] })}>
                 {permissionModesFor(current.agent).map((mode) => (
                   <option key={mode} value={mode}>
                     {permissionLabel(current.agent, mode)}
@@ -449,6 +462,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                 ))}
               </select>
             </label>
+            <p className="picker-note">{permissionDescription(current.agent, current.permissionMode)}</p>
             {current.agent === 'antigravity' ? (
               <p className="picker-note">
                 {current.permissionMode === 'manual'
@@ -487,6 +501,10 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
           </div>
         ) : null}
       </div>
+      <button type="button" className={`permission-chip${value.permissionMode === 'bypassPermissions' || value.permissionMode === 'dontAsk' ? ' permissive' : ''}`} title={permissionDescription(value.agent, value.permissionMode)} aria-label={`Permissions: ${permissionLabel(value.agent, value.permissionMode)}`} onClick={() => {
+        setDraft(value); setPermissionConfirm(undefined); setReview(undefined); setOpen(true)
+        requestAnimationFrame(() => ref.current?.querySelector<HTMLSelectElement>('select[data-permissions]')?.focus())
+      }}>{permissionLabel(value.agent, value.permissionMode)}</button>
       <EffortButton value={value} disabled={existing ? lockedReason : undefined} onPick={pickEffort} />
     </div>
   )

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { ApprovalBehavior, NormalizedEvent } from '../agents/types.ts'
+import type { ApprovalBehavior, ApprovalOutcome, NormalizedEvent } from '../agents/types.ts'
 
 export interface HostActionOptions {
   readonly timeoutMs?: number
@@ -27,7 +27,7 @@ export interface HostActionOptions {
  * directly), so every Cockpit-side mutation an agent asks for is approved here, on the server.
  */
 export function createHostActions(record: (threadId: string, event: NormalizedEvent, workspaceId?: string) => void) {
-  const pending = new Map<string, { threadId: string; workspaceId: string; sessionKey?: string; finish: (behavior: ApprovalBehavior, error?: string) => void }>()
+  const pending = new Map<string, { threadId: string; workspaceId: string; sessionKey?: string; finish: (behavior: ApprovalBehavior, error?: string, outcome?: ApprovalOutcome) => void }>()
   const allowedForSession = new Set<string>()
   // One agent session per conversation and workspace: what it was allowed lives and ends with it.
   const sessionOf = (threadId: string, workspaceId = ''): string => `${threadId}\n${workspaceId}\n`
@@ -41,14 +41,14 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
       if (signal?.aborted) return Promise.reject(new Error(`${label} disconnected`))
       return new Promise((resolve, reject) => {
         const requestId = randomUUID()
-        const abort = () => finish('deny', `${label} disconnected`)
-        const timer = setTimeout(() => finish('deny', `${label} approval expired; request it again${label === 'Conversation action' ? ' with a new request_key' : ''}`), timeoutMs)
-        const finish = (behavior: ApprovalBehavior, error?: string) => {
+        const abort = () => finish('deny', `${label} disconnected`, 'canceled')
+        const timer = setTimeout(() => finish('deny', `${label} approval expired; request it again${label === 'Conversation action' ? ' with a new request_key' : ''}`, 'expired'), timeoutMs)
+        const finish = (behavior: ApprovalBehavior, error?: string, outcome?: ApprovalOutcome) => {
           if (!pending.delete(requestId)) return
           clearTimeout(timer); signal?.removeEventListener('abort', abort)
           if (behavior === 'allow_session' && sessionKey) allowedForSession.add(`${sessionOf(threadId, workspaceId)}${sessionKey}`)
           const chosen = behavior === 'deny' ? 'deny' : behavior === 'allow_session' && (sessionKey || grant) ? 'allow_session' : 'allow'
-          record(threadId, { kind: 'approval_resolved', requestId, behavior: chosen }, workspaceId || undefined)
+          record(threadId, { kind: 'approval_resolved', requestId, behavior: chosen, ...(outcome ? { outcome } : {}) }, workspaceId || undefined)
           if (chosen === 'deny') reject(new Error(error ?? `${label} denied by the user`))
           else resolve(chosen)
         }
@@ -56,7 +56,7 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
         signal?.addEventListener('abort', abort, { once: true })
         // A non-empty suggestion list is what makes the card offer Allow for this session.
         const suggestions = grant ? [{ type: 'cockpitGrant', label: grant.label }] : sessionKey ? [{ type: 'cockpitSession', key: sessionKey }] : []
-        record(threadId, { kind: 'approval_request', requestId, toolName, input, suggestions, description }, workspaceId || undefined)
+        record(threadId, { kind: 'approval_request', requestId, toolName, input, suggestions, description, expiresAt: new Date(Date.now() + timeoutMs).toISOString() }, workspaceId || undefined)
       })
     },
     approve(threadId: string, requestId: string, behavior: ApprovalBehavior): boolean {
@@ -70,7 +70,7 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
       for (const action of [...pending.values()]) {
         if (threadId && action.threadId !== threadId) continue
         if (workspaceId !== undefined && action.workspaceId !== workspaceId) continue
-        action.finish('deny', 'The calling turn ended; the Cockpit action was canceled')
+        action.finish('deny', 'The calling turn ended; the Cockpit action was canceled', 'canceled')
       }
     },
     /** An agent session ended: what it was allowed for the session no longer applies (every workspace's without `workspaceId`). */

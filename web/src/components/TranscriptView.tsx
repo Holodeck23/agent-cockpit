@@ -13,6 +13,7 @@ import { ConversationImages } from './ConversationImage.tsx'
 import { api } from '../api.ts'
 import { linesOf, peekText } from '../file-text.ts'
 import { labelTarget } from '../../../server/files/references.ts'
+import { outsideWorkspace, requestedEdit, sessionScope } from '../approval-details.ts'
 import { ResultCard } from './ResultCard.tsx'
 
 interface TranscriptViewProps {
@@ -82,7 +83,7 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
   const lastFailure = shown.findLastIndex((i) => i.type === 'failure' && Boolean(i.retryText))
   const retryIndex = !running && lastFailure > shown.findLastIndex((i) => i.type === 'message' && i.author === 'you') ? lastFailure : -1
   const liveStep = running && lastStepIndex >= 0 && lastStepIndex === shown.length - 1 && !streaming
-  const now = useTick(liveStep || shown.some((i) => i.type === 'compaction' && i.state === 'running'))
+  const now = useTick(liveStep || shown.some((i) => (i.type === 'compaction' && i.state === 'running') || (i.type === 'approval' && Boolean(i.expiresAt) && openApprovals.has(i.requestId))))
   const last = shown.at(-1)
   const streamingShowsAuthor = !(last?.type === 'message' && last.author === streamingAuthor)
 
@@ -188,12 +189,23 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
             )
           case 'approval': {
             const open = openApprovals.has(item.requestId)
+            const remaining = item.expiresAt ? Math.max(0, Math.ceil((Date.parse(item.expiresAt) - now) / 1000)) : undefined
+            const expired = remaining === 0
+            const edit = requestedEdit(item.input)
             return (
               <div key={item.key} className={`approval${open ? ' open' : ''}`}>
                 <div className="approval-title">
                   <strong>{agentName(item.agent)}</strong> wants to use <strong>{item.toolName}</strong>
                   {item.workspace && workspaceName ? <span className="author-where" title="The workspace this agent works in">{workspaceName(item.workspace)}</span> : null}
                 </div>
+                {remaining !== undefined && open ? <p className="approval-countdown">{expired ? 'Time expired. Waiting for the host to close this request…' : `${remaining}s remaining to decide`}</p> : null}
+                {outsideWorkspace(item.input, item.cwd) ? <p className="approval-scope-warning">Path outside this workspace</p> : null}
+                {edit ? <section className="approval-edit" aria-label="Proposed edit">
+                  <p>{edit.all ? 'Replace every matching occurrence' : 'Replace the matching text'}</p>
+                  <div><strong>Remove</strong><pre className="edit-before">{edit.before || '(empty)'}</pre></div>
+                  <div><strong>Add</strong><pre className="edit-after">{edit.after || '(empty)'}</pre></div>
+                  <small>Requested text replacement; the agent checks whether the file still matches when it runs.</small>
+                </section> : null}
                 {item.note ? <p className="approval-note">{item.note}</p> : null}
                 {item.flags?.length ? (
                   <ul className="approval-flags" aria-label="Also asks for">
@@ -209,17 +221,18 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                     <pre>{item.fullInput}</pre>
                   </details>
                 ) : null}
+                {open && item.canAllowForSession ? <p className="approval-session-scope">{item.allowWiderLabel ?? sessionScope(item.agent, item.rawToolName ?? item.toolName)}</p> : null}
                 {open ? (
                   <div className="approval-actions">
-                    <button type="button" className="button-primary" onClick={() => onApprove(item.requestId, 'allow')}>
+                    <button type="button" className="button-primary" disabled={expired} onClick={() => onApprove(item.requestId, 'allow')}>
                       Allow
                     </button>
                     {item.canAllowForSession ? (
-                      <button type="button" className="button-soft" onClick={() => onApprove(item.requestId, 'allow_session')}>
+                      <button type="button" className="button-soft" disabled={expired} onClick={() => onApprove(item.requestId, 'allow_session')}>
                         {item.allowWiderLabel ?? 'Allow for this session'}
                       </button>
                     ) : null}
-                    <button type="button" className="button-soft" onClick={() => onApprove(item.requestId, 'deny')}>
+                    <button type="button" className="button-soft" disabled={expired} onClick={() => onApprove(item.requestId, 'deny')}>
                       Deny
                     </button>
                   </div>

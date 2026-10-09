@@ -34,7 +34,7 @@ export function ResultCard({ threadId, runId, onOpenChanges }: { threadId: strin
     return () => { current = false }
   }, [load])
   useEffect(() => {
-    if (!result?.checks.some((check) => check.phase !== 'terminal')) return
+    if (!result || (result.changes.state !== 'running' && !result.checks.some((check) => check.phase !== 'terminal'))) return
     const timer = setInterval(() => { void load().catch(() => undefined) }, 500)
     return () => clearInterval(timer)
   }, [load, result])
@@ -72,7 +72,7 @@ export function ResultCard({ threadId, runId, onOpenChanges }: { threadId: strin
   const changed = result.changes.comparison?.files.filter((file) => file.change !== 'unchanged') ?? []
   return (
     <details className="result-card">
-      <summary><strong>{outcomeLabel(result.provider.state)}</strong><span>{result.complete ? 'Conversation complete' : 'Conversation open'} · {changed.length} changed path{changed.length === 1 ? '' : 's'} · {result.checks.length} host check{result.checks.length === 1 ? '' : 's'}</span></summary>
+      <summary><strong>{outcomeLabel(result.provider.state)}</strong><span>{result.complete ? 'Conversation complete' : 'Conversation open'} · {result.changes.state === 'running' ? 'Checking changes…' : result.changes.state !== 'recorded' ? 'Changes unavailable' : `${changed.length} changed path${changed.length === 1 ? '' : 's'}`}  · {result.checks.length} host check{result.checks.length === 1 ? '' : 's'}</span></summary>
       {error ? <p className="result-inline-error" role="status">{error}</p> : null}
       <div className="result-grid">
         <section><h4>Changes</h4>

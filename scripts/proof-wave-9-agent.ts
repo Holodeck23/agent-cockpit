@@ -539,6 +539,9 @@ addEventListener('mouseup', () => { drag = null })
     check('W9-10 at 980×640 the capacity list’s buttons are inside the window', await insideWindow(page, list.getByRole('button').last()))
     await list.locator('li', { hasText: 'Controlled app p3' }).getByRole('button', { name: 'Discard typing and close' }).click()
     check('W9-10 closing one makes room and the new page opens', await until('p4 open', async () => (await viewAt(app, `${LOCAL}/p4`))?.visible === true))
+    // Back to a wide window: below 1100 px the page you just opened takes the view (Workspace / Preview tabs).
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1360, 860))
+    await sleep(300)
     // The run ends: p1 is idle now, is unloaded, and comes back visibly reloaded.
     await card(page, 'p1 agent').click()
     await p1.end()

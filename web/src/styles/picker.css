@@ -55,3 +55,20 @@
 .image-chip { padding-left: 3px; }
 .image-chip img { width: 22px; height: 22px; flex: none; border-radius: 999px; object-fit: cover; }
 .composer-card.dropping { border-color: var(--link); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Keep words intact; controls wrap as units when space is limited. */
+.composer-foot { flex-wrap: wrap; }
+.picker-group { flex: 1 1 240px; flex-wrap: wrap; gap: 4px; }
+.picker-group > .picker:first-child { flex: 1 1 130px; min-width: 0; }
+.picker-button { min-width: 0; max-width: 100%; }
+.picker-text { min-width: 0; }
+.picker-name, .picker-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-button > .agent-glyph, .picker-button > .chevron { flex: none; }
+.permission-chip { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; background: var(--field); color: var(--secondary); font-size: 12px; }
+.permission-chip.permissive { color: var(--danger); border-color: var(--danger); }
+.permission-confirm { padding: 8px; line-height: 1.5; }
+.permission-confirm button { margin: 6px 6px 0 0; }
+.composer-destination { padding: 5px 14px; font-size: 12px; color: var(--secondary); overflow-wrap: anywhere; }
+.workspace-confirm { display: flex; gap: 8px; align-items: center; padding: 8px 12px; font-size: 13px; color: var(--strong); }
+.composer .send { flex: none; }
+.composer textarea { width: 100%; min-width: 0; }

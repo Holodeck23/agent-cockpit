@@ -94,3 +94,17 @@ describe('duration', () => {
     expect(duration(start, Date.parse('2026-09-30T10:01:05.000Z'))).toBe('1:05')
   })
 })
+
+it('pairs refusals with their tool, without hiding unrelated execution failures', () => {
+  for (const outcome of ['deny', 'expired', 'canceled'] as const) {
+    const rows = buildActivity([
+      at(0, { kind: 'tool_use', id: 'a', name: 'Bash', input: { command: 'touch private' } }),
+      at(1, { kind: 'tool_use', id: 'b', name: 'Bash', input: { command: 'npm test' } }),
+      at(2, { kind: 'approval_request', requestId: 'r', toolUseId: 'a', toolName: 'Bash', input: {}, suggestions: [] }),
+      at(3, { kind: 'approval_resolved', requestId: 'r', behavior: 'deny', outcome }),
+      at(4, { kind: 'tool_result', toolUseId: 'b', content: 'Tests failed', isError: true }),
+      at(5, { kind: 'tool_result', toolUseId: 'a', content: 'Refused', isError: true }),
+    ])
+    expect(rows.map((row) => row.state)).toEqual([outcome, 'error'])
+  }
+})

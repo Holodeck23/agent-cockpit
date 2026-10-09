@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
 import { z } from 'zod'
 import { EFFORTS, PERMISSION_MODES } from '../claude/flags.ts'
@@ -9,6 +10,7 @@ import { guardStdin } from '../stdin.ts'
 import type { AgentSession, EventSink, NormalizedEvent, OutgoingImage } from '../types.ts'
 import type { AgentCapabilities } from '../capabilities/types.ts'
 import { withImagePaths } from '../image-input.ts'
+import { brainDir, newTurnImages } from './images.ts'
 import { resolveAgyModel } from './models.ts'
 import { parseAntigravityLine } from './parse.ts'
 
@@ -139,6 +141,19 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
   // Set by Stop until the next message: what agy reports about the stopped turn is not shown as a failure.
   let stopping = false
   const stderrTail: string[] = []
+  // Images agy's image-generator saved during a turn are shown at its end, each once (images.ts).
+  const home = env?.HOME ?? process.env.HOME ?? homedir()
+  let conversationId: string | undefined
+  let turnStartedAt = Date.now()
+  const shownImages = new Set<string>()
+  const turnImages = (): NormalizedEvent[] => {
+    const dir = conversationId ? brainDir(home, conversationId) : undefined
+    if (!dir) return []
+    // A second of slack: a file system's modification times can be coarser than the clock.
+    const paths = newTurnImages(dir, turnStartedAt - 1000, shownImages)
+    for (const path of paths) shownImages.add(path)
+    return paths.map((path): NormalizedEvent => ({ kind: 'image_data', source: { path } }))
+  }
   guardStdin(child, () => { if (!exited) onEvent({ kind: 'error', message: 'Antigravity stopped taking input; that message was not delivered' }) })
 
   createInterface({ input: child.stdout }).on('line', (line) => {
@@ -148,8 +163,13 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
       onEvent({ kind: 'error', message: `Could not read Antigravity output: ${error instanceof Error ? error.message : String(error)}` })
       return
     }
-    // After Stop the turn has already ended as stopped: agy's own "interrupted" result is not a failure.
-    for (const event of events) if (!(stopping && (event.kind === 'result' || event.kind === 'error'))) onEvent(event)
+    for (const event of events) {
+      if (event.kind === 'session') conversationId = event.sessionId
+      // After Stop the turn has already ended as stopped: agy's own "interrupted" result is not a failure.
+      if (stopping && (event.kind === 'result' || event.kind === 'error')) continue
+      if (event.kind === 'result') for (const image of turnImages()) onEvent(image)
+      onEvent(event)
+    }
   })
   createInterface({ input: child.stderr }).on('line', (line) => {
     stderrTail.push(line)
@@ -187,6 +207,7 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
         : message
       firstTurn = false
       stopping = false
+      turnStartedAt = Date.now()
       child.stdin.write(`${JSON.stringify({ event: 'user', message: { content } })}\n`)
     },
     respondApproval() {

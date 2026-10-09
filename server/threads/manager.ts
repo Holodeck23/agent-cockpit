@@ -24,6 +24,7 @@ import type { ThreadStore } from './store.ts'
 import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
 import { bindingIdOf, inputHash, unfinishedRun } from './identity.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
+import { titleFromText } from './title.ts'
 
 export interface LaunchRequest {
   readonly cwd: string
@@ -633,7 +634,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
         pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
-        record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
+        record(meta.id, { ...event, requestId: publicId, cwd }, workspaceId ?? '')
       } else if (event.kind === 'question') {
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
@@ -655,6 +656,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         record(meta.id, { ...event, requestId: publicId }, workspaceId ?? '')
       } else {
         if (event.kind === 'result' || event.kind === 'exit') {
+          for (const requestId of pending.keys()) record(meta.id, { kind: 'approval_resolved', requestId, behavior: 'deny', outcome: 'canceled' }, workspaceId ?? '')
           pending.clear()
           questions.clear()
           requestIds.clear()
@@ -758,7 +760,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         id: randomUUID(),
         workflowId, workflowTrigger,
         ...(createdByThreadId ? { createdByThreadId, delegationDepth } : {}),
-        title: title?.trim() || text.slice(0, 60),
+        title: title?.trim() || titleFromText(text),
         projectPath,
         settings,
         sessionId: randomUUID(),
