@@ -24,6 +24,7 @@ import type { ThreadStore } from './store.ts'
 import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
 import { bindingIdOf, inputHash, unfinishedRun } from './identity.ts'
 import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
+import { titleFromText } from './title.ts'
 
 export interface LaunchRequest {
   readonly cwd: string
@@ -758,7 +759,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         id: randomUUID(),
         workflowId, workflowTrigger,
         ...(createdByThreadId ? { createdByThreadId, delegationDepth } : {}),
-        title: title?.trim() || text.slice(0, 60),
+        title: title?.trim() || titleFromText(text),
         projectPath,
         settings,
         sessionId: randomUUID(),
