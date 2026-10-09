@@ -6,6 +6,7 @@ import { ContextPicker } from './ContextPicker.tsx'
 import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
 import { ArrowUpIcon } from './icons.tsx'
+import { Scanner } from './Scanner.tsx'
 import { chipToSend, useComposerAttach } from '../useComposerAttach.ts'
 import type { MessageImage } from '../api.ts'
 
@@ -33,7 +34,7 @@ interface ComposerProps {
   draftKey: string
   placeholder: string
   disabled?: boolean
-  /** A turn is running: the composer's edge shows the scanner (D12, styles/scanner.css). */
+  /** A turn is running: the composer's scanner burns brighter (D12, styles/scanner.css). */
   working?: boolean
   /** The agent picker, shown in the bottom row. */
   picker: ReactNode
@@ -173,7 +174,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
       {attach.note ? <p className="workflow-notice" role="status">{attach.note}</p> : null}
       {blocked ? <p className="workflow-notice" role="alert">{blocked}</p> : note ? <p className="workspace-note" role="status">{note}</p> : null}
       {confirmDestination ? <label className="workspace-confirm"><input type="checkbox" checked={!needsDestination} onChange={(e) => setConfirmedDestination(e.target.checked ? destinationKey : undefined)} />Continue this conversation in {confirmDestination}</label> : null}
-      <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}`} {...attach.dropProps}>
+      <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}${disabled ? ' disabled' : ''}`} {...attach.dropProps}>
         {mentions.menu}
         {attach.images.length ? (
           <ul className="reference-chips image-chips" aria-label="Images to send">
@@ -217,6 +218,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             <ArrowUpIcon />
           </button>
         </div>
+        <Scanner />
       </div>
     </form>
   )

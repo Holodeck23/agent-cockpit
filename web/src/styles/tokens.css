@@ -46,13 +46,15 @@
   --diff-add-bg: light-dark(#e6f4ea, #1d3326);
   --diff-del-bg: light-dark(#fdecea, #3a2220);
 
-  /* D12 scanner (styles/scanner.css): KITT red; light is a darker solid red with no glow */
-  --scanner: light-dark(#cc0000, #ff1a1a);
-  --scanner-ink: light-dark(#c00000, #ff5c5c);
-  --scanner-track: light-dark(#cc000038, #ff1a1a3d);
-  --scanner-glow: light-dark(transparent, #ff1a1a80);
-  --scanner-led-gap: light-dark(#000, transparent);
-  --scanner-thick: light-dark(transparent, #000);
+  /* D12 scanner (styles/scanner.css): KITT's lamp row. Dark is a lit red lamp over a smoked-black recess;
+     light is a flat darker red with no glow. --scanner is the lead lamp, --scanner-deep its rim and the
+     trail's ruby, --scanner-hot the white-hot centre of the lead lamp. */
+  --scanner: light-dark(#cc0000, #ff3030);
+  --scanner-deep: light-dark(#a80f1c, #c81924);
+  --scanner-hot: light-dark(transparent, #ffd9d2);
+  --scanner-glow: light-dark(transparent, #ff303073);
+  --scanner-recess: light-dark(#e4dedb, #050404);
+  --scanner-recess-edge: light-dark(#0000001a, #ffffff0d);
 
   /* "needs you" */
   --needs-bg: light-dark(#fff1df, #342b23);
