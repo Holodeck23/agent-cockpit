@@ -25,6 +25,17 @@ describe('buildAntigravityArgs', () => {
 })
 
 describe('parseAntigravityLine', () => {
+  it('shows a subagent hand-off (agy 1.3.1 image request, captured live) as a step', () => {
+    const base = { conversation_id: '10ffd1da-3c48-4cdb-ab97-d2cfa4ab1c0b', step_index: 2, step_type: 'subagent', tool_name: 'invoke_subagent' }
+    const sub = { type_name: 'image-generator', role: 'Image Generator', initial_prompt: 'Generate an image of a small blue square.' }
+    expect(parseAntigravityLine(line({ event: 'step_update', step_update: { ...base, state: 'ACTIVE', subagent_info: { subagents: [sub] } } }))).toEqual([
+      { kind: 'tool_use', id: 'antigravity:10ffd1da-3c48-4cdb-ab97-d2cfa4ab1c0b:2', name: 'invoke_subagent', input: { subagents: [{ role: 'Image Generator', prompt: 'Generate an image of a small blue square.' }] } },
+    ])
+    expect(parseAntigravityLine(line({ event: 'step_update', step_update: { ...base, state: 'DONE', duration_seconds: 0.03, subagent_info: { subagents: [sub] } } }))).toEqual([
+      { kind: 'tool_result', toolUseId: 'antigravity:10ffd1da-3c48-4cdb-ab97-d2cfa4ab1c0b:2', content: 'Image Generator handed the work back', isError: false },
+    ])
+  })
+
   it('parses session metadata and streaming text', () => {
     expect(parseAntigravityLine(line({
       event: 'init', conversation_id: '055a398f-db14-4c5f-abbb-1bf03f8120a7',
