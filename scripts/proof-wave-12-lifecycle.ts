@@ -94,6 +94,13 @@ const workingIn = async (page: Page, id: string): Promise<string[]> => (await ru
 
 const launch = (extra: Record<string, string> = {}): Promise<ElectronApplication> => launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave12-agent'), ...extra })
 
+/** Enter, after the one-time tick that continuing a conversation in another checkout now needs (persona audit item 3). */
+async function sendNow(page: Page): Promise<void> {
+  const tick = page.locator('.workspace-confirm input[type=checkbox]')
+  if (await tick.isVisible().catch(() => false)) await tick.check()
+  await messageBox(page).press('Enter')
+}
+
 let app: ElectronApplication | undefined
 try {
   app = await launch()
@@ -115,13 +122,13 @@ try {
   await choose(page, /Main checkout/)
   await page.getByRole('button', { name: 'New conversation' }).click()
   await messageBox(page).fill('HOLD the main checkout plan')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   await page.getByRole('heading', { level: 1, name: /HOLD the main checkout/ }).waitFor()
   const threadId = (await until('conversation', async () => (await get<Array<{ meta: { id: string; projectPath: string } }>>(page, '/api/threads')).find((t) => t.meta.projectPath === garden)?.meta.id))!
   await until('main working', async () => (await workingIn(page, threadId)).includes(primary.id))
   await choose(page, /Rose bed/)
   await messageBox(page).fill('HOLD the rose bed sketch')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   const both = await until('both working', async () => (await workingIn(page, threadId)).length === 2)
   check('W12-15 one conversation runs two agents at once, one per workspace', Boolean(both), (await workingIn(page, threadId)).join(','))
   await page.getByRole('button', { name: 'Stop all' }).waitFor()
@@ -130,7 +137,7 @@ try {
   await shot(page, '15-two-running')
   // Input sent mid-turn waits in the focused workspace's queue, like the real CLI's (stand-in: uuid + replay).
   await messageBox(page).fill('QUEUE-rose after the sketch')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   const waiting = page.locator('.message.waiting')
   check('W12-15 a message sent to Rose bed while it works waits there', Boolean(await until('waiting', async () => (await waiting.filter({ hasText: 'QUEUE-rose' }).count()) === 1)))
   const completeEarly = await call(page, 'POST', `/api/threads/${threadId}/completed`, { completed: true })
@@ -155,10 +162,10 @@ try {
   step('W12-15 a question in each workspace')
   await choose(page, /Main checkout/)
   await messageBox(page).fill('ASK main')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   await choose(page, /Rose bed/)
   await messageBox(page).fill('ASK rose')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   const card = (folder: string): Locator => page.locator('.question-card').filter({ hasText: `Which bed in ${basename(folder)}?` })
   const bothAsked = await until('two questions', async () => (await card(garden).count()) === 1 && (await card(rose.cwd).count()) === 1)
   check('W12-15 both agents\' questions are shown, one card each', Boolean(bothAsked))
@@ -207,7 +214,7 @@ try {
   await choose(page, /Pond/)
   await page.getByRole('button', { name: 'New conversation' }).click()
   await messageBox(page).fill('START-PROC in the pond')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   const approval = page.locator('.approval.open')
   await approval.waitFor({ timeout: 30_000 })
   await approval.getByRole('button', { name: 'Allow', exact: true }).click()
@@ -237,7 +244,7 @@ try {
   await choose(page, /Tidy/)
   await page.getByRole('button', { name: 'New conversation' }).click()
   await messageBox(page).fill('LINK tidy the notes')
-  await messageBox(page).press('Enter')
+  await sendNow(page)
   await page.locator('.file-link[data-path="notes.txt"]').first().waitFor({ timeout: 30_000 })
   const tidyThread = (await get<Array<{ meta: { id: string; title: string } }>>(page, '/api/threads')).find((t) => t.meta.title.startsWith('LINK tidy'))!.meta.id
   dialog = await manage(page)

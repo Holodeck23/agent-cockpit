@@ -180,6 +180,7 @@ function parseControlRequest(raw: Record<string, unknown>): NormalizedEvent[] {
       request: z.looseObject({
         subtype: z.string(),
         tool_name: z.string().optional(),
+        tool_use_id: z.string().optional(),
         input: z.unknown(),
         description: z.string().optional(),
         permission_suggestions: z.array(z.unknown()).optional(),
@@ -194,6 +195,7 @@ function parseControlRequest(raw: Record<string, unknown>): NormalizedEvent[] {
     {
       kind: 'approval_request',
       requestId: request_id,
+      ...(request.tool_use_id ? { toolUseId: request.tool_use_id } : {}),
       toolName: request.tool_name ?? 'unknown',
       input: request.input,
       description: request.description,

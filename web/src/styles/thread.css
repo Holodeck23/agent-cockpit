@@ -394,3 +394,12 @@
   .new-conversation .suggestion { padding: 5px 9px 5px 12px; font-size: 13px; }
   .new-conversation .suggestion-go { width: 26px; height: 26px; }
 }
+
+/* Decisions must remain readable at a narrow conversation width. */
+.approval-countdown, .approval-scope-warning { font-weight: 650; color: var(--warning, var(--strong)); }
+.approval-session-scope { font-size: 12.5px; line-height: 1.5; color: var(--secondary); }
+.approval-edit { min-width: 0; margin-block: 12px; }
+.approval-edit pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px; font: 12px/1.5 var(--mono); }
+.approval-edit small { color: var(--secondary); }
+.edit-before { background: color-mix(in srgb, var(--danger) 10%, var(--panel)); }
+.edit-after { background: color-mix(in srgb, var(--success) 10%, var(--panel)); }

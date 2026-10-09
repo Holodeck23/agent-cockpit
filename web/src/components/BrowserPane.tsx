@@ -103,6 +103,7 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
     const report = (): void => {
       if (hidden) { browser.place(pageKey, null); return }
       const r = el.getBoundingClientRect()
+      if (r.width <= 0 || r.height <= 0) { browser.place(pageKey, null); return }
       browser.place(pageKey, { x: r.left, y: r.top, width: r.width, height: r.height })
     }
     report()

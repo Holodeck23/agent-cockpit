@@ -39,3 +39,22 @@ describe('Cockpit host actions', () => {
     await expect(again).rejects.toThrow(/Cockpit action approval expired/)
   })
 })
+
+it('records deadlines, expiry and cancellation separately from a person denying', async () => {
+  const events: NormalizedEvent[] = []
+  const actions = createHostActions((_id, event) => events.push(event))
+  const expires = actions.request('t', 'Read', {}, undefined, { timeoutMs: 10 })
+  expect(events[0]).toMatchObject({ kind: 'approval_request', expiresAt: expect.any(String) })
+  await expect(expires).rejects.toThrow('expired')
+  expect(events.at(-1)).toMatchObject({ behavior: 'deny', outcome: 'expired' })
+  const controller = new AbortController()
+  const canceled = actions.request('t', 'Read', {}, controller.signal)
+  controller.abort()
+  await expect(canceled).rejects.toThrow('disconnected')
+  expect(events.at(-1)).toMatchObject({ behavior: 'deny', outcome: 'canceled' })
+  const denied = actions.request('t', 'Read', {})
+  const request = events.at(-1) as Extract<NormalizedEvent, { kind: 'approval_request' }>
+  actions.approve('t', request.requestId, 'deny')
+  await expect(denied).rejects.toThrow('denied by the user')
+  expect(events.at(-1)).toEqual({ kind: 'approval_resolved', requestId: request.requestId, behavior: 'deny' })
+})

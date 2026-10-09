@@ -75,3 +75,17 @@
 @media (max-width: 1120px) { .browser-pane { min-width: 340px; } }
 /* A narrow pane keeps the address readable: the origin badge goes before the address does. */
 @container (max-width: 420px) { .browser-origin { display: none; } .browser-toolbar { gap: 4px; padding: 0 6px; } }
+
+/* Narrow windows (below the 1280 px default) get Workspace / Preview tabs instead of a thin conversation
+   strip; at the default size the two stay side by side. The native browser remains mounted. */
+.workspace-preview-tabs { display: none; }
+@media (max-width: 1100px) {
+  .workspace.has-preview { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .workspace-preview-tabs { display: flex; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+  .workspace-preview-tabs button { padding: 6px 12px; border: 0; border-radius: 6px; color: var(--secondary); background: transparent; }
+  .workspace-preview-tabs button[aria-selected='true'] { color: var(--strong); background: var(--field); }
+  .workspace.has-preview > .preview-pane { width: 100% !important; max-width: none; min-width: 0; border-left: 0; }
+  .workspace.has-preview:not(.preview-focused) > .preview-pane { display: none; }
+  .workspace.has-preview.preview-focused > .workspace-main { display: none; }
+  .workspace.has-preview > .preview-pane .preview-resizer { display: none; }
+}

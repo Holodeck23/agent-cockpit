@@ -226,6 +226,13 @@ try {
   // ---------- W9-01 at 980×640, light and dark ----------
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(980, 640))
   await sleep(400)
+  // Below 1100 px the conversation and the page are tabs (persona audit item 4). Coming back to a
+  // conversation whose page the agent opened keeps Workspace in view; the pane is one tab away.
+  const tabs = page.getByRole('tablist', { name: 'Workspace and preview' })
+  check('W9-01 at 980×640 Workspace and Preview are tabs, and the conversation stays in view', await tabs.isVisible()
+    && await tabs.getByRole('tab', { name: 'Workspace' }).getAttribute('aria-selected') === 'true')
+  await tabs.getByRole('tab', { name: 'Preview' }).click()
+  await until('page on Preview', async () => Boolean(await shown(app)), 5000)
   const controls = ['Back', 'Forward', 'Reload', 'Mobile width', 'Expand', 'Open in browser', 'Close browser']
   let reachable = true
   for (const name of controls) {
@@ -233,8 +240,13 @@ try {
     if (!b || b.x < 0 || b.x + b.width > 980 || b.y + b.height > 640) { reachable = false; console.log(`  (${name} out of reach: ${JSON.stringify(b)})`) }
   }
   check('W9-01 at 980×640 every pane control is inside the window', reachable)
+  await tabs.getByRole('tab', { name: 'Workspace' }).click()
+  await until('conversation width', async () => ((await page.locator('.thread').first().boundingBox())?.width ?? 0) >= 379, 5000)
   const chat = (await page.locator('.thread').first().boundingBox())?.width ?? 0
-  check('W9-01 at 980×640 the conversation keeps at least 380 px beside the list and the pane', chat >= 379, `${Math.round(chat)} px`)
+  const hiddenPage = await until('page out of view', async () => !(await shown(app)), 5000)
+  check('W9-01 at 980×640 the Workspace tab gives the conversation at least 380 px and takes the page out of view', chat >= 379 && hiddenPage === true, `${Math.round(chat)} px`)
+  await tabs.getByRole('tab', { name: 'Preview' }).click()
+  await until('page back on Preview', async () => Boolean(await shown(app)), 5000)
   const small = (await shown(app))!
   check('W9-01 at 980×640 the page stays inside the window', small.bounds.x + small.bounds.width <= 980 && small.bounds.y + small.bounds.height <= 640, JSON.stringify(small.bounds))
   await shot(page, 'light-980')

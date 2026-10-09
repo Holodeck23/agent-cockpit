@@ -26,6 +26,8 @@ interface ComposerProps {
   blocked?: string
   /** A line explaining where the next message goes. */
   note?: string
+  destination?: string
+  confirmDestination?: string
   /** Set in a conversation (not on New conversation). */
   threadId?: string
   draftKey: string
@@ -68,8 +70,11 @@ export function draftAfterSend(current: string, sent: string): string {
   return current.trim() === sent ? '' : current
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
+  const [confirmedDestination, setConfirmedDestination] = useState<string>()
+  const destinationKey = `${draftKey}:${confirmDestination ?? ''}`
+  const needsDestination = Boolean(confirmDestination) && confirmedDestination !== destinationKey
   const [sending, setSending] = useState(false)
   const [submitError, setSubmitError] = useState<string>()
   // Where the caret is while the box has focus; drives the inline @ list.
@@ -132,7 +137,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
   const submit = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault()
     const trimmed = text.trim()
-    if (!trimmed || sending || disabled || blocked) return
+    if (!trimmed || sending || disabled || blocked || needsDestination) return
     setSending(true)
     setSubmitError(undefined)
     const sentFrom = draftKey
@@ -167,6 +172,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
       {submitError ? <p className="workflow-notice" role="alert">{submitError}</p> : null}
       {attach.note ? <p className="workflow-notice" role="status">{attach.note}</p> : null}
       {blocked ? <p className="workflow-notice" role="alert">{blocked}</p> : note ? <p className="workspace-note" role="status">{note}</p> : null}
+      {confirmDestination ? <label className="workspace-confirm"><input type="checkbox" checked={!needsDestination} onChange={(e) => setConfirmedDestination(e.target.checked ? destinationKey : undefined)} />Continue this conversation in {confirmDestination}</label> : null}
       <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}`} {...attach.dropProps}>
         {mentions.menu}
         {attach.images.length ? (
@@ -198,6 +204,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             onPaste={attach.onPaste}
           />
         </div>
+        {destination ? <div className="composer-destination" title={workspaceFolder ?? projectPath}>Send to: {destination}</div> : null}
         <div className="composer-foot">
           {projectPath ? (
             <ContextPicker projectPath={projectPath} workspaceId={workspaceId} attached={attached} filesFull={filesFull}
@@ -206,7 +213,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
           {picker}
           {projectPath ? <BranchPicker key={workspaceId ?? 'main'} projectPath={projectPath} workspaceId={workspaceId} threadId={threadId} refreshKey={branchRefreshKey} /> : null}
           <span className="composer-spacer" />
-          <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || sending || !text.trim()}>
+          <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
             <ArrowUpIcon />
           </button>
         </div>

@@ -13,6 +13,8 @@ export interface AccountRef {
 
 /** allow_session also applies the agent's own suggested rule for the rest of the session. */
 export type ApprovalBehavior = 'allow' | 'allow_session' | 'deny'
+/** Why an approval closed; wire responses still use ApprovalBehavior. */
+export type ApprovalOutcome = ApprovalBehavior | 'expired' | 'canceled'
 
 export interface PendingApproval {
   readonly requestId: string
@@ -124,8 +126,12 @@ export type NormalizedEvent =
       input: unknown
       description?: string
       suggestions: unknown[]
+      /** Actual workspace folder, supplied by the host. */
+      cwd?: string
+      expiresAt?: string
+      toolUseId?: string
     }
-  | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior }
+  | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior; outcome?: ApprovalOutcome }
   /** usedPercent only when the provider reports one; status stays the provider's own word. */
   | { kind: 'usage'; limitType: string; status: string; resetsAt?: number; usedPercent?: number }
   /** `interrupted`: Cockpit stopped running (a crash) before the agent finished; recorded at the next start. */

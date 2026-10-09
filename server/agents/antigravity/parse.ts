@@ -20,6 +20,18 @@ const toolStepSchema = z.looseObject({
   }),
 })
 
+// agy hands some work (e.g. image requests) to a subagent and reports it as its own step type (1.3.1).
+const subagentStepSchema = z.looseObject({
+  conversation_id: z.string(),
+  step_index: z.number(),
+  state: z.string(),
+  step_type: z.literal('subagent'),
+  tool_name: z.string().optional(),
+  subagent_info: z.looseObject({
+    subagents: z.array(z.looseObject({ role: z.string().optional(), type_name: z.string().optional(), initial_prompt: z.string().optional() })).optional(),
+  }).optional(),
+})
+
 const responseStepSchema = z.looseObject({
   step_type: z.literal('agent_response'),
   text_delta: z.string().optional(),
@@ -71,6 +83,19 @@ function parseStep(value: unknown): NormalizedEvent[] {
   if (response.success) {
     const text = response.data.text_delta
     return text ? [{ kind: 'text_delta', text }] : []
+  }
+
+  const subagent = subagentStepSchema.safeParse(value)
+  if (subagent.success) {
+    const { data } = subagent
+    const id = `antigravity:${data.conversation_id}:${data.step_index}`
+    const agents = data.subagent_info?.subagents ?? []
+    if (data.state === 'ACTIVE') {
+      return [{ kind: 'tool_use', id, name: data.tool_name ?? 'invoke_subagent', input: { subagents: agents.map((a) => ({ role: a.role ?? a.type_name, prompt: a.initial_prompt })) } }]
+    }
+    if (data.state !== 'DONE' && data.state !== 'ERROR') return []
+    const roles = agents.map((a) => a.role ?? a.type_name).filter(Boolean).join(', ')
+    return [{ kind: 'tool_result', toolUseId: id, content: roles ? `${roles} handed the work back` : 'Subagent finished', isError: data.state === 'ERROR' }]
   }
 
   const tool = toolStepSchema.safeParse(value)
