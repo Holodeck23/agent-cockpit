@@ -1,34 +1,37 @@
-/* D12 scanner signature: KITT's red scanner, a row of ten lamps in a smoked-black recess along the
-   composer's bottom edge. The recess is the foot's own 6px bottom padding, so the composer's size is
-   unchanged; it is paint only and takes no pointer events.
+/* D12 scanner signature: KITT's red scanner, a long row of small lamps in a smoked-black recess along
+   the composer's bottom edge, as wide as the composer's inside. The recess is the foot's own 6px bottom
+   padding, so the composer's size is unchanged; it is paint only and takes no pointer events.
 
-   How it moves: no lamp moves. Each lamp lights quickly and fades slowly, and lamps are timed one
-   after another, so the bright point travels at a constant speed with a fading tail behind it,
-   the way incandescent lamps behave. All of it is opacity keyframes with a per-lamp delay.
+   How it moves: no lamp moves. Each lamp lights quickly and fades slowly, and the lamps are timed one
+   after another, so the bright point travels at a constant speed with a fading tail behind it, the way
+   incandescent lamps behave. All of it is opacity keyframes; each lamp's start time is its --at
+   (scanner-model.ts, which holds the same arithmetic and is what proof:scanner checks this against).
 
-   One cycle (--scanner-cycle, 3.2 s) is 100%; a lamp step is 5% (160 ms):
-     0 → 45%    sweep right, head on lamp 0 → 9
-     45 → 50%   contract: the tail is drawn into the right end lamp, farthest lamp out first, the
-                end lamp ending at full strength (the two lamps next to the end use a cut-short fall)
-     50 → 95%   sweep left, head on lamp 9 → 0, the tail now on its right
-     95 → 100%  contract into the left end lamp, then the sweep right again
+   Two rows of lamps lie over each other: one lights going right, one going left. A lamp has two
+   lights: the red one, and an amber one that comes up as the red dies, so a tail runs red → orange →
+   a faint yellow at its far end.
+
+   One cycle (--scanner-cycle, 3.2 s) is 100%; the head crosses the row in 45%:
+     0 → 45%    sweep right
+     45 → 50%   the tail is drawn into the right end lamp, farthest lamp out first, the end lamp
+                climbing to full strength (the lamps in the tail carry .cut: a short damper on
+                the lamp, which dims only that row's light)
+     50 → 95%   sweep left, the tail now on its right
+     95 → 100%  the same at the left end, then right again
    Idle burns low; a turn running (.working) burns brighter. Speed never changes.
-   Dark: lit lamps with a soft bloom. Light: flat lamps, no bloom. Reduce motion: nothing moves, two
-   centre lamps stay lit. Colours: --scanner-* in tokens.css. */
+   Dark: soft bloom. Light: flat lamps, no bloom. Reduce motion: nothing moves, the middle stays lit.
+   Colours: --scanner-* in tokens.css. */
 
 .scanner {
   --scanner-cycle: 3200ms;   /* a full left-right-left cycle; the one-way sweep is half of it */
-  --scanner-width: 300px;    /* the lamp row; shrinks to fit a narrow composer */
   --scanner-peak: 0.9;       /* the head lamp's brightness (before the idle/working level) */
   --scanner-peak-end: 1;     /* an end lamp, as the tail collapses into it */
-  --scanner-level: 0.5;      /* idle brightness; .working raises it, nothing else changes */
+  --scanner-warm-peak: 0.8;  /* how strong the orange/amber of the tail is */
+  --scanner-level: 0.55;     /* idle brightness; .working raises it, nothing else changes */
   position: absolute;
-  inset-inline: 0;
+  inset-inline: var(--r-lg);
   bottom: 0;
   height: 6px;
-  width: min(var(--scanner-width), calc(100% - 2 * var(--r-lg)));
-  margin-inline: auto;
-  display: flex;
   overflow: hidden;
   border-radius: 3px;
   background: var(--scanner-recess);
@@ -47,111 +50,125 @@
   background: linear-gradient(to bottom, #ffffff0f, transparent 50%);
 }
 
+.scanner-row { position: absolute; inset: 0; display: flex; pointer-events: none; }
 .scanner-lamp { position: relative; flex: 1; pointer-events: none; }
-/* Two light layers per lamp: ::before is its pass going right, ::after its pass going left. Each is the
-   lamp itself: a rounded bar, red with a deep rim, a small hot centre, and a bloom (the box-shadow)
-   that the recess clips. */
+/* A lamp's two lights, drawn a little wider than its cell so neighbours run into each other:
+   ::before the red (a deep rim, a red body, a hotter red core, a bloom the recess clips),
+   ::after the amber that comes up in the tail. */
 .scanner-lamp::before,
 .scanner-lamp::after {
   content: '';
   position: absolute;
   inset-block: 1px;
-  left: calc(50% - 13px);
-  width: 26px;
+  left: -55%;
+  right: -55%;
   border-radius: 2px;
   opacity: 0;
   pointer-events: none;
-  will-change: opacity;
-  background:
-    radial-gradient(ellipse 4px 0.9px at 50% 50%, var(--scanner-hot), transparent),
-    linear-gradient(90deg, var(--scanner-deep), var(--scanner) 28% 72%, var(--scanner-deep));
-  box-shadow: 0 0 6px 1px var(--scanner-glow);
 }
-
-.scanner-lamp:nth-child(1) { --i: 0; }
-.scanner-lamp:nth-child(2) { --i: 1; }
-.scanner-lamp:nth-child(3) { --i: 2; }
-.scanner-lamp:nth-child(4) { --i: 3; }
-.scanner-lamp:nth-child(5) { --i: 4; }
-.scanner-lamp:nth-child(6) { --i: 5; }
-.scanner-lamp:nth-child(7) { --i: 6; }
-.scanner-lamp:nth-child(8) { --i: 7; }
-.scanner-lamp:nth-child(9) { --i: 8; }
-.scanner-lamp:nth-child(10) { --i: 9; }
+.scanner-lamp::before {
+  background:
+    radial-gradient(ellipse 28% 0.9px at 50% 50%, var(--scanner-hot), transparent),
+    linear-gradient(90deg, transparent, var(--scanner-deep) 22%, var(--scanner) 42% 58%, var(--scanner-deep) 78%, transparent);
+  box-shadow: 0 0 5px 1px var(--scanner-glow);
+}
+.scanner-lamp::after {
+  background: linear-gradient(90deg, transparent, var(--scanner-warm) 30% 70%, transparent);
+  box-shadow: 0 0 3px var(--scanner-warm-glow);
+}
+/* A row never lights these: the end lamp belongs to the other row's longer flash. */
+.scanner-lamp.dead::before, .scanner-lamp.dead::after { display: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   /* Every delay is negative, so the cycle is already running when the page first paints. */
   .scanner-lamp::before {
     animation: scanner-flash var(--scanner-cycle) linear infinite;
-    animation-delay: calc(var(--scanner-cycle) * (var(--i) * 0.05 - 1.0125));
+    animation-delay: calc(var(--scanner-cycle) * (var(--at) - 1));
   }
   .scanner-lamp::after {
-    animation: scanner-flash var(--scanner-cycle) linear infinite;
-    animation-delay: calc(var(--scanner-cycle) * (-0.0625 - var(--i) * 0.05));
+    animation: scanner-warm var(--scanner-cycle) linear infinite;
+    animation-delay: calc(var(--scanner-cycle) * (var(--at) - 1));
   }
-  /* The end lamps hold one longer flash through the contraction instead of the two passes. */
-  .scanner-lamp:last-child::before { animation-name: scanner-end; animation-delay: calc(var(--scanner-cycle) * -0.5625); }
-  .scanner-lamp:last-child::after { animation: none; }
-  .scanner-lamp:first-child::before { animation-name: scanner-end; animation-delay: calc(var(--scanner-cycle) * -0.0625); }
-  .scanner-lamp:first-child::after { animation: none; }
-  /* The two lamps beside each end are put out early, in turn and farthest first, as the tail is drawn
-     into the end lamp: the right end on the way right (::before), the left end on the way left (::after). */
-  .scanner-lamp:nth-child(8)::before,
-  .scanner-lamp:nth-child(3)::after { animation-name: scanner-flash-2; }
-  .scanner-lamp:nth-child(9)::before,
-  .scanner-lamp:nth-child(2)::after { animation-name: scanner-flash-1; }
+  .scanner-lamp.end::before { animation-name: scanner-end; }
+  .scanner-lamp.end::after { animation-name: scanner-end-warm; }
+  /* The lamps in a tail go out in turn, farthest first, as it is drawn into the end lamp. */
+  .scanner-lamp.cut {
+    animation: scanner-cut var(--scanner-cycle) linear infinite;
+    animation-delay: calc(var(--scanner-cycle) * (var(--cut) - 1));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Nothing moves: the two centre lamps stay lit. */
-  .scanner-lamp:is(:nth-child(5), :nth-child(6))::before { opacity: 0.6; }
+  /* Nothing moves: the middle of the row stays lit, red with a little amber either side. */
+  .scanner-row:first-child .scanner-lamp:nth-child(n + 33):nth-child(-n + 41)::before { opacity: 0.6; }
 }
 
-/* One pass of one lamp: 40 ms to the peak, then a slow fall to dark over ~560 ms. Stops are % of the
-   cycle, from 40 ms before the head arrives (1.25% = 40 ms). */
+/* A lamp's red: 40 ms up to the peak, then a fall to dark over 400 ms. Stops are % of the cycle from
+   the moment the lamp starts to light (1.25% = 40 ms). */
 @keyframes scanner-flash {
   0% { opacity: 0; }
   1.25% { opacity: var(--scanner-peak); }
-  3.75% { opacity: calc(var(--scanner-peak) * 0.79); }
-  6.25% { opacity: calc(var(--scanner-peak) * 0.6); }
-  8.75% { opacity: calc(var(--scanner-peak) * 0.43); }
-  11.25% { opacity: calc(var(--scanner-peak) * 0.28); }
-  13.75% { opacity: calc(var(--scanner-peak) * 0.15); }
-  16.25% { opacity: calc(var(--scanner-peak) * 0.054); }
-  18.75%, 100% { opacity: 0; }
+  2.5% { opacity: calc(var(--scanner-peak) * 0.854); }
+  3.75% { opacity: calc(var(--scanner-peak) * 0.716); }
+  5% { opacity: calc(var(--scanner-peak) * 0.586); }
+  6.25% { opacity: calc(var(--scanner-peak) * 0.465); }
+  7.5% { opacity: calc(var(--scanner-peak) * 0.354); }
+  8.75% { opacity: calc(var(--scanner-peak) * 0.253); }
+  10% { opacity: calc(var(--scanner-peak) * 0.164); }
+  11.25% { opacity: calc(var(--scanner-peak) * 0.089); }
+  12.5% { opacity: calc(var(--scanner-peak) * 0.032); }
+  13.75%, 100% { opacity: 0; }
 }
-/* An end lamp: the head arrives (1.25%), the tail collapses into it while it climbs to full
-   strength (6.25%), then it is the first, brightest lamp of the new tail. */
+/* The amber: none near the head, strongest near the far end of the tail, gone at the end. */
+@keyframes scanner-warm {
+  0% { opacity: 0; }
+  1.25% { opacity: 0; }
+  2.5% { opacity: 0; }
+  3.75% { opacity: 0; }
+  5% { opacity: calc(var(--scanner-warm-peak) * 0.045); }
+  6.25% { opacity: calc(var(--scanner-warm-peak) * 0.129); }
+  7.5% { opacity: calc(var(--scanner-warm-peak) * 0.244); }
+  8.75% { opacity: calc(var(--scanner-warm-peak) * 0.38); }
+  10% { opacity: calc(var(--scanner-warm-peak) * 0.488); }
+  11.25% { opacity: calc(var(--scanner-warm-peak) * 0.494); }
+  12.5% { opacity: calc(var(--scanner-warm-peak) * 0.301); }
+  13.75%, 100% { opacity: 0; }
+}
+/* An end lamp: the head arrives (1.25%), the tail collapses into it while it climbs to full strength
+   (6.25%), then it is the first, brightest lamp of the new tail. */
 @keyframes scanner-end {
   0% { opacity: 0; }
   1.25% { opacity: var(--scanner-peak); }
   6.25% { opacity: var(--scanner-peak-end); }
-  8.75% { opacity: calc(var(--scanner-peak-end) * 0.79); }
-  11.25% { opacity: calc(var(--scanner-peak-end) * 0.6); }
-  13.75% { opacity: calc(var(--scanner-peak-end) * 0.43); }
-  16.25% { opacity: calc(var(--scanner-peak-end) * 0.28); }
-  18.75% { opacity: calc(var(--scanner-peak-end) * 0.15); }
-  21.25% { opacity: calc(var(--scanner-peak-end) * 0.054); }
-  23.75%, 100% { opacity: 0; }
+  7.5% { opacity: calc(var(--scanner-peak-end) * 0.854); }
+  8.75% { opacity: calc(var(--scanner-peak-end) * 0.716); }
+  10% { opacity: calc(var(--scanner-peak-end) * 0.586); }
+  11.25% { opacity: calc(var(--scanner-peak-end) * 0.465); }
+  12.5% { opacity: calc(var(--scanner-peak-end) * 0.354); }
+  13.75% { opacity: calc(var(--scanner-peak-end) * 0.253); }
+  15% { opacity: calc(var(--scanner-peak-end) * 0.164); }
+  16.25% { opacity: calc(var(--scanner-peak-end) * 0.089); }
+  17.5% { opacity: calc(var(--scanner-peak-end) * 0.032); }
+  18.75%, 100% { opacity: 0; }
 }
-/* The fall of a lamp that sits 2 (flash-2) or 1 (flash-1) lamps from an end the head has just reached:
-   the same fall as scanner-flash until the contraction starts, then out within 40 ms. */
-@keyframes scanner-flash-2 {
+@keyframes scanner-end-warm {
   0% { opacity: 0; }
-  1.25% { opacity: var(--scanner-peak); }
-  3.75% { opacity: calc(var(--scanner-peak) * 0.79); }
-  6.25% { opacity: calc(var(--scanner-peak) * 0.6); }
-  8.75% { opacity: calc(var(--scanner-peak) * 0.43); }
-  11.25% { opacity: calc(var(--scanner-peak) * 0.28); }
-  13.75% { opacity: calc(var(--scanner-peak) * 0.15); }
-  15%, 100% { opacity: 0; }
+  6.25% { opacity: 0; }
+  7.5% { opacity: 0; }
+  8.75% { opacity: 0; }
+  10% { opacity: calc(var(--scanner-warm-peak) * 0.045); }
+  11.25% { opacity: calc(var(--scanner-warm-peak) * 0.129); }
+  12.5% { opacity: calc(var(--scanner-warm-peak) * 0.244); }
+  13.75% { opacity: calc(var(--scanner-warm-peak) * 0.38); }
+  15% { opacity: calc(var(--scanner-warm-peak) * 0.488); }
+  16.25% { opacity: calc(var(--scanner-warm-peak) * 0.494); }
+  17.5% { opacity: calc(var(--scanner-warm-peak) * 0.301); }
+  18.75%, 100% { opacity: 0; }
 }
-@keyframes scanner-flash-1 {
-  0% { opacity: 0; }
-  1.25% { opacity: var(--scanner-peak); }
-  3.75% { opacity: calc(var(--scanner-peak) * 0.79); }
-  6.25% { opacity: calc(var(--scanner-peak) * 0.6); }
-  8.75% { opacity: calc(var(--scanner-peak) * 0.43); }
-  10% { opacity: calc(var(--scanner-peak) * 0.355); }
-  11.25%, 100% { opacity: 0; }
+/* Put a lamp out within one step, keep it out through the rest of its fall, and bring it back long
+   before its own next pass. */
+@keyframes scanner-cut {
+  0% { opacity: 1; }
+  0.625%, 14% { opacity: 0; }
+  14.625%, 100% { opacity: 1; }
 }

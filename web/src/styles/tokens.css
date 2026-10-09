@@ -46,13 +46,15 @@
   --diff-add-bg: light-dark(#e6f4ea, #1d3326);
   --diff-del-bg: light-dark(#fdecea, #3a2220);
 
-  /* D12 scanner (styles/scanner.css): KITT's lamp row. Dark is a lit red lamp over a smoked-black recess;
-     light is a flat darker red with no glow. --scanner is the lead lamp, --scanner-deep its rim and the
-     trail's ruby, --scanner-hot the white-hot centre of the lead lamp. */
-  --scanner: light-dark(#cc0000, #ff3030);
-  --scanner-deep: light-dark(#a80f1c, #c81924);
-  --scanner-hot: light-dark(transparent, #ffd9d2);
-  --scanner-glow: light-dark(transparent, #ff303073);
+  /* D12 scanner (styles/scanner.css): a deep crimson lamp row over a smoked-black recess, the tail
+     warming to amber. Light is flat darker red with no glow. --scanner is a lamp's body,
+     --scanner-deep its rim, --scanner-hot its core, --scanner-warm the tail's amber. */
+  --scanner: light-dark(#b30000, #c40d1a);
+  --scanner-deep: light-dark(#8a0a14, #6e0810);
+  --scanner-hot: light-dark(transparent, #f2162a);
+  --scanner-glow: light-dark(transparent, #d10f2273);
+  --scanner-warm: light-dark(#d9730d, #ff8f1a);
+  --scanner-warm-glow: light-dark(transparent, #ff8f1a59);
   --scanner-recess: light-dark(#e4dedb, #050404);
   --scanner-recess-edge: light-dark(#0000001a, #ffffff0d);
 
