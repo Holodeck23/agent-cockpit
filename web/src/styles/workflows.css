@@ -18,7 +18,7 @@
 .workflow-row strong { color: var(--strong); font-size: 15px; overflow-wrap: anywhere; }
 .workflow-row span { color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .workflow-row .workflow-status { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--field); color: var(--secondary); font-size: 11px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
-.workflow-row .workflow-status.scheduled { color: var(--success); background: color-mix(in srgb, var(--success) 13%, var(--field)); }
+.workflow-row .workflow-status.scheduled { color: var(--strong); background: none; box-shadow: inset 0 0 0 1px var(--border); }
 .workflow-row .workflow-status.workflow-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, var(--field)); }
 .workflow-row .workflow-frequency { color: var(--secondary); font-size: 12px; }
 .workflow-editor { padding: 30px clamp(24px, 4vw, 64px); overflow: auto; background: var(--content); }
