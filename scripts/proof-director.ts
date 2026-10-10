@@ -81,12 +81,21 @@ try {
   await page.screenshot({ path: join(PROOF_DIR, 'phase-9-director-approval.png') })
   await approval.getByRole('button', { name: 'Allow', exact: true }).click()
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
-  await page.getByRole('complementary', { name: 'App preview' }).waitFor()
-  assert.equal(await page.getByText('inspected its PNG: yes', { exact: false }).isVisible(), true)
-  const frame = page.frameLocator('.preview-pane iframe')
-  await frame.getByRole('heading', { name: 'Your first flight.' }).waitFor()
-  await frame.getByRole('button', { name: 'Count a launch' }).click()
-  await frame.getByText('1 launch', { exact: true }).waitFor()
+  // Since wave 9 the sample opens in the in-app browser: a host-drawn page (not an iframe), read and
+  // clicked through its own webContents, as proof:wave-9 does.
+  await page.getByRole('complementary', { name: 'Browser' }).waitFor()
+  assert.equal(await page.locator('.bubble').getByText('inspected its PNG: yes', { exact: false }).first().isVisible(), true)
+  const inSample = async <T>(code: string): Promise<T | undefined> => app.evaluate(({ BrowserWindow }, js) => {
+    const view = BrowserWindow.getAllWindows().flatMap((w) => w.contentView.children).find((v) => v.getVisible())
+    return view ? (view as unknown as { webContents: Electron.WebContents }).webContents.executeJavaScript(js, true) : undefined
+  }, code) as Promise<T | undefined>
+  const untilIn = async (code: string): Promise<boolean> => {
+    for (const end = Date.now() + 15_000; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) if (await inSample<boolean>(code).catch(() => false)) return true
+    return false
+  }
+  assert.equal(await untilIn(`[...document.querySelectorAll('h1,h2')].some((h) => h.textContent.trim() === 'Your first flight.')`), true, 'sample heading')
+  await inSample(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Count a launch').click(), true`)
+  assert.equal(await untilIn(`document.body.innerText.includes('1 launch')`), true, 'sample counts the click')
   assert.equal(await page.getByText(/Use Cockpit's start_process tool with command/).count(), 0)
   pass('sample renders, responds to a click, and the agent receives a real PNG')
   assert.equal(await page.locator('.thread').evaluate((thread) => {

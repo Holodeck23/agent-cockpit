@@ -365,17 +365,20 @@ try {
   const login = threads.find((t) => t.meta.title === 'Login work')!
   const docs = threads.find((t) => t.meta.title === 'Docs work')!
   const conversations = p2.getByRole('navigation', { name: 'Conversations' })
-  check('W7.3 previews opened by background conversations do not replace the workspace pane', await p2.getByRole('complementary', { name: 'App preview' }).count() === 0)
+  // Since wave 9 the desktop shows previews in the in-app browser (aside "Browser"), one page per conversation.
+  const browserPane = p2.getByRole('complementary', { name: 'Browser' })
+  check('W7.3 previews opened by background conversations do not replace the workspace pane', await browserPane.count() === 0)
   await conversations.getByText('Login work', { exact: true }).first().click()
-  const previewAddress = p2.locator('.preview-address code')
-  check('W7.3 selecting a conversation reveals only its own preview', await until('Login preview', async () => (await previewAddress.textContent())?.endsWith('/login') === true))
+  const previewAddress = browserPane.getByRole('textbox', { name: 'Address' })
+  const address = async (): Promise<string> => ((await previewAddress.count()) ? previewAddress.inputValue() : '')
+  check('W7.3 selecting a conversation reveals only its own preview', await until('Login preview', async () => (await address()).endsWith('/login')))
   await shot(p2, 'preview-owner-login')
   await apiPost(p2, `/api/threads/${docs.meta.id}/messages`, { text: 'start the dev server docs-updated-preview' })
   await approveProcessStart(docs.meta.id, 'Docs updated preview')
   check('W7.3 a background conversation can update its preview', await until('Docs updated preview', async () => (await lastReply('Docs work')).includes('docs-updated')))
-  check('W7.3 that background update never replaces the visible conversation preview', (await previewAddress.textContent())?.endsWith('/login') === true)
+  check('W7.3 that background update never replaces the visible conversation preview', (await address()).endsWith('/login'))
   await conversations.getByText('Docs work', { exact: true }).first().click()
-  check('W7.3 the updated preview is waiting when its owner comes on screen', await until('updated Docs preview', async () => (await previewAddress.textContent())?.endsWith('/docs-updated') === true))
+  check('W7.3 the updated preview is waiting when its owner comes on screen', await until('updated Docs preview', async () => (await address()).endsWith('/docs-updated')))
   await shot(p2, 'preview-owner-docs')
 
   await p2.getByRole('button', { name: /^Processes/ }).click()
@@ -384,7 +387,8 @@ try {
   check('W7-06 the row names the owner and who else uses it', await p2.getByText('Started by “Login work” · also used by “Docs work”').isVisible())
   await p2.getByRole('button', { name: 'Open site', exact: true }).click()
   check('W7.3 Open site routes to the process owner conversation', await until('owner conversation', async () => (await p2.locator('.thread-head h1').textContent())?.trim() === 'Login work'))
-  check('W7.3 Open site replaces only that owner’s preview', (await previewAddress.textContent()) === (await running(procs))[0]?.url)
+  check('W7.3 Open site replaces only that owner’s preview', await until('owner page', async () => (await address()) === (await running(procs))[0]?.url),
+    `${await address()} vs ${(await running(procs))[0]?.url}`)
   await p2.getByRole('button', { name: /^Processes/ }).click()
   await shot(p2, 'processes-owned')
   await p2.getByRole('button', { name: 'Stop', exact: true }).click()

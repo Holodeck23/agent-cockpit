@@ -72,6 +72,23 @@ describe('what a report keeps', () => {
     expect(JSON.stringify(event)).toBe(before)
   })
 
+  // The contexts @sentry/electron 7.20.0 attached to a real page error (proof:reports, 2026-10-08):
+  // the terms promise the kind of Mac, not its time zone, language, screen or graphics chip.
+  it('keeps the kind of Mac but drops time zone, language, screen and graphics chip', () => {
+    const contexts = {
+      os: { name: 'macOS', version: '26.5.1', build: '25F80' },
+      device: { arch: 'arm64', memory_size: 17179869184, processor_count: 10, cpu_description: 'Apple M5', family: 'Desktop', screen_density: 2, screen_resolution: '3024x1964' },
+      culture: { locale: 'en-US', timezone: 'Europe/Vienna' },
+      gpu: { name: 'GPU', vendor_id: '0x106b' },
+      app: { app_name: 'Cockpit', app_version: '0.1.7' },
+    }
+    expect(scrubEvent({ contexts }, home)).toEqual({ contexts: {
+      os: contexts.os,
+      device: { arch: 'arm64', memory_size: 17179869184, processor_count: 10, cpu_description: 'Apple M5', family: 'Desktop' },
+      app: contexts.app,
+    } })
+  })
+
   it('drops source excerpts and local variables even if an integration supplies them', () => {
     const frame = { filename: 'main.cjs', lineno: 12, context_line: 'private file text', pre_context: ['private'], post_context: ['private'], vars: { prompt: 'private' } }
     expect(scrubEvent({ exception: { values: [{ stacktrace: { frames: [frame] } }] } }, home)).toEqual({

@@ -2,7 +2,7 @@
 
 Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your existing subscriptions or provider setup. Supported agents include Claude Code, Codex, Google Antigravity, and OpenCode (OpenRouter is accessed through OpenCode).
 
-> **v0.1.6 prerelease · 2026-10-08:** Worktrees (an agent works on its own copy of the project, then merges back), account profiles so a project can use a different Claude Code or Codex account, a handoff you see before switching agents, the live preview on your phone, Report a bug and Send feedback, and the one-line Terminal install below, which opens without the Gatekeeper block. It is the first build that sends crash reports: the beta is conditional on its [terms](BETA-TERMS.md). Not notarized; Apple-silicon Macs only.
+> **v0.1.7 prerelease:** Clearer approvals (a countdown, one plain outcome per request: Allowed, Denied by you, Expired or Canceled), the permission level visible in the composer, an explicit send destination, images Antigravity generates shown in the conversation, a Codex fix so Stop cannot be undone by a late retry, titles cut at a word, Idle instead of Waiting for a conversation with nothing running, and two fixes for clicks that went missing (Open site from Processes, the first click after typing in a document). Crash reports now carry only what the [beta terms](BETA-TERMS.md) name. Built on v0.1.6's worktrees, account profiles, handoff review, phone live preview and one-line Terminal install. Not notarized; Apple-silicon Macs only.
 
 ## Pick up where you left off
 
@@ -14,7 +14,7 @@ Three automated runs with fresh Cockpit state and real Claude sessions reached a
 
 ## Supported Platforms
 
-Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the supported Agent CLIs to be installed on your system.
+Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It supports Claude Code, Codex, Google Antigravity and OpenCode. Each CLI must be installed and signed in with your own account or provider configuration. Claude Code and Codex have the fullest guided setup and recent-session recovery. OpenCode's packaged ACP path is verified, but live OpenRouter use remains an open acceptance check. Antigravity has a verified live resume path, but its headless CLI cannot receive Cockpit approval cards or the per-session preview tools.
 
 ## Quick Links
 
@@ -37,11 +37,11 @@ It shows the [beta terms](BETA-TERMS.md) and installs only after you type `agree
 
 ## Crash reports
 
-Cockpit is in beta, and the beta is conditional on its [terms](BETA-TERMS.md): Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), with no setting to turn them off. You accept the terms when installing from Terminal, or when Cockpit first opens. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Cockpit also sends a short record when it starts and stops, so the developer can see how many people run each version and how often it crashes. It carries the same version and Mac details and nothing about your work. Your home folder is replaced with `~`, and the machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. Error text can still name a project or file. Development and test builds never send any.
+Cockpit is in beta, and the beta is conditional on its [terms](BETA-TERMS.md): Cockpit sends crash and error reports to its developer through [Sentry](https://sentry.io) (EU region), with no setting to turn them off. You accept the terms when installing from Terminal, or when Cockpit first opens. A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac. Cockpit also sends a short record when it starts and stops, so the developer can see how many people run each version and how often it crashes. It carries the same version and Mac details and nothing about your work. Your home folder is replaced with `~`, and the machine name, user, time zone, language, screen, screenshots, recordings, crash memory dumps and file contents are never sent. Error text can still name a project or file. Development and test builds never send any.
 
 ## Download
 
-Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.6-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.6/Cockpit-0.1.6-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.7-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.7/Cockpit-0.1.7-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
@@ -50,7 +50,7 @@ Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can fi
 
 **Updating:** v0.1.3 and later include **Cockpit → Check for Updates…**. It shows the newest release and its notes. From the next release, **Copy Install Command** copies the install line above for Terminal; before that, **Download Update** opens the official DMG in your browser. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
 
-See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.6) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
+See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.7) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
 
 ## How it works
 

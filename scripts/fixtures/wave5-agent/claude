@@ -34,6 +34,19 @@ turn=0
 helper_pid=""
 work_pid=""
 queue=$(mktemp)
+stop_tree() {
+  [ -n "$1" ] || return 0
+  for child in $(pgrep -P "$1" 2>/dev/null); do stop_tree "$child"; done
+  kill "$1" 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
+}
+cleanup() {
+  trap - EXIT HUP INT TERM
+  for job in $(jobs -p); do stop_tree "$job"; done
+  rm -f "$queue" "$queue.next"
+}
+trap cleanup EXIT
+trap 'cleanup; exit 143' HUP INT TERM
 # Runs every message still in the queue, oldest first: taken (replayed with its uuid), answered.
 drain() {
   while [ -s "$queue" ]; do
@@ -57,13 +70,14 @@ while IFS= read -r line; do
       fi
       continue ;;
     *'"subtype":"interrupt"'*)
-      if [ -n "$work_pid" ] && kill "$work_pid" 2>/dev/null; then
+      if [ -n "$work_pid" ] && kill -0 "$work_pid" 2>/dev/null; then
+        stop_tree "$work_pid"
         work_pid=""
         printf '{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":5}\n'
         drain
       fi
       if [ -n "$helper_pid" ]; then
-        kill "$helper_pid" 2>/dev/null
+        stop_tree "$helper_pid"
         helper_pid=""
         printf '{"type":"system","subtype":"task_notification","task_id":"task-h2","tool_use_id":"h2","status":"stopped","summary":""}\n'
       fi

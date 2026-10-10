@@ -39,7 +39,7 @@ import { WorkspaceSelector } from './components/WorkspaceSelector.tsx'
 import { currentWorkspaceOf, folderOf, isActiveWorktree, isUsable, labelOf, MAIN_CHECKOUT, saveSelected, sendTarget, threadsIn, type ThreadWorkspace } from './workspaces.ts'
 import { PreviewPane } from './components/PreviewPane.tsx'
 import { BrowserPane } from './components/BrowserPane.tsx'
-import { loadLayouts, openPage, saveLayouts, updatePage, type LayoutMap, type PaneLayout } from './browser-layout.ts'
+import { loadLayouts, openPage, requestOpen, saveLayouts, updatePage, type LayoutMap, type OpenRequests, type PaneLayout } from './browser-layout.ts'
 import { forgetPreview, previewKey, previewUrl, rememberPreview, type PreviewMap } from './preview-owner.ts'
 import type { PreviewOpen } from '../../server/preview/types.ts'
 
@@ -126,7 +126,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   // The in-app browser (wave 9) where the desktop app has one; the iframe preview otherwise.
   const inAppBrowser = local && Boolean(native?.browser)
   const [layouts, setLayouts] = useState<LayoutMap>(() => (inAppBrowser ? loadLayouts() : {}))
-  const [openNonce, setOpenNonce] = useState(0)
+  const [openRequests, setOpenRequests] = useState<OpenRequests>({})
   // Narrow windows show Workspace or Preview (preview.css). Only a page YOU open takes the view: an
   // agent's preview leaves the conversation, and any approval it asks for next, in sight.
   const [previewFocused, setPreviewFocused] = useState(false)
@@ -135,7 +135,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     if (inAppBrowser) {
       setLayouts((current) => openPage(current, previewKey(preview), preview.url))
       // The host already loaded an agent's preview in that page; asking again would load it twice.
-      if (!preview.loaded) { setOpenNonce((n) => n + 1); setPreviewFocused(true) }
+      if (!preview.loaded) { setOpenRequests((current) => requestOpen(current, previewKey(preview))); setPreviewFocused(true) }
     }
     else setPreviews((current) => rememberPreview(current, preview))
   }, [inAppBrowser])
@@ -450,7 +450,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
       )}
         </div>
         {browserOpen && activeLayout && activePageKey && previewTarget ? (
-          <BrowserPane key={activePageKey} pageKey={activePageKey} projectPath={previewTarget.cwd ?? previewTarget.projectPath} layout={activeLayout} openNonce={openNonce}
+          <BrowserPane key={activePageKey} pageKey={activePageKey} projectPath={previewTarget.cwd ?? previewTarget.projectPath} layout={activeLayout} openNonce={openRequests[activePageKey] ?? 0}
             onLayout={changeLayout} onClose={() => changeLayout({ visible: false })} />
         ) : null}
         {!inAppBrowser && local && activePreviewUrl && previewTarget ? <PreviewPane url={activePreviewUrl}

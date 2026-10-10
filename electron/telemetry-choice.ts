@@ -88,12 +88,24 @@ function scrubValue(value: Json, home: string): Json {
   return value
 }
 
+/** The SDK's contexts that go beyond the kind of Mac the terms name: time zone and language, the
+ * graphics chip, and the screen. */
+function withoutPersonalContexts(contexts: unknown): unknown {
+  if (!contexts || typeof contexts !== 'object' || Array.isArray(contexts)) return contexts
+  const { culture: _culture, gpu: _gpu, device, ...rest } = contexts as Record<string, unknown>
+  if (!device || typeof device !== 'object' || Array.isArray(device)) return device === undefined ? rest : { ...rest, device }
+  const { screen_resolution: _resolution, screen_density: _density, screen_dpi: _dpi, ...kind } = device as Record<string, unknown>
+  return { ...rest, device: kind }
+}
+
 /**
  * What leaves the Mac: the error and its stack, versions and the kind of Mac. The home folder
- * becomes ~, page addresses lose their query, and the machine name, user, request and trail are
- * removed. Returns a new event; the one given is not changed.
+ * becomes ~, page addresses lose their query, and the machine name, user, request, trail, time
+ * zone, language, screen and graphics chip are removed. Returns a new event; the one given is not
+ * changed.
  */
 export function scrubEvent<T extends object>(event: T, home: string): T {
-  const { server_name: _server, user: _user, request: _request, breadcrumbs: _trail, ...rest } = event as T & Record<string, unknown>
-  return scrubValue(rest as Json, home) as T
+  const { server_name: _server, user: _user, request: _request, breadcrumbs: _trail, contexts, ...rest } = event as T & Record<string, unknown>
+  const kept = contexts === undefined ? rest : { ...rest, contexts: withoutPersonalContexts(contexts) }
+  return scrubValue(kept as Json, home) as T
 }

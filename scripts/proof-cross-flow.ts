@@ -155,9 +155,26 @@ try {
   const instructions = 'START-WEB: serve the garden folder so it can be looked at.'
   // Instructions are a document (as in proof:wave-6.5 R2): typed into, then ⌘S at once.
   await page.locator('.workflow-doc .ProseMirror').click()
+  // Diagnostics for the unexplained 10-08 miss (one typed character absent from the saved text, not
+  // reproduced in 100 trials): record every key and the document after it, so a recurrence shows
+  // whether the editor lost it (here) or the save did (the check after ⌘S).
+  await page.evaluate(() => {
+    const doc = document.querySelector('.workflow-doc .ProseMirror')!
+    const log: Array<{ t: number; type: string; key?: string; text: string }> = []
+    ;(window as unknown as { proofTyping: typeof log }).proofTyping = log
+    for (const type of ['keydown', 'beforeinput', 'input'] as const) {
+      doc.addEventListener(type, (e) => log.push({ t: performance.now(), type, ...(e instanceof KeyboardEvent ? { key: e.key } : {}), text: (doc as HTMLElement).innerText }), true)
+    }
+  })
   await page.keyboard.type(instructions)
+  const typed = (await page.locator('.workflow-doc .ProseMirror').innerText()).trim()
+  check('CROSS-02 the document holds every typed character before ⌘S', typed === instructions, typed)
   await page.keyboard.press('Meta+s')
   const savedOnce = await until('one save', async () => saves.length === 1 && saves)
+  if (typed !== instructions || !saves.join('').includes(JSON.stringify(instructions).slice(1, -1))) {
+    writeFileSync(join(PROOF_DIR, 'cross02-typing.json'), JSON.stringify({ instructions, typed, saves,
+      keys: await page.evaluate(() => (window as unknown as { proofTyping: unknown[] }).proofTyping) }, null, 2))
+  }
   await page.waitForTimeout(800)
   const flows = await get<Array<{ name: string; title: string; instructions?: string; body?: string }>>(page, `/api/workflows?projectPath=${encodeURIComponent(garden)}`)
   const flow = flows.find((f) => f.name === 'garden-site')

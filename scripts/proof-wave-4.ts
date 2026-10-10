@@ -151,10 +151,10 @@ try {
   await docList.getByRole('searchbox', { name: 'Search documents' }).fill('beta')
   const hit = (name: string) => docList.locator('.file-row', { hasText: name })
   check('F5 searching finds current and archived documents by a word inside', await until('hits', async () => (await hit('launch-plan.md').count()) === 1 && (await hit('old-pricing.md').count()) === 1 && (await hit('groceries.txt').count()) === 0))
-  check('F5 an archived match says so and shows the matching line', (await hit('old-pricing.md').locator('.doc-archived-tag').innerText()) === 'Archived'
+  check('F5 an archived match says so and shows the matching line', (await hit('old-pricing.md').locator('.file-row-status').innerText()) === 'Archived'
     && (await hit('launch-plan.md').locator('.doc-excerpt').innerText()) === 'Ship the beta on Friday.')
   check('F5 while searching, the Current/Archived switch and New file step aside', !(await docList.getByRole('tab', { name: /^Archived/ }).isVisible()))
-  check('F5 the Archived tag is a small label, not a stretched bar', ((await hit('old-pricing.md').locator('.doc-archived-tag').boundingBox())?.width ?? 999) < 90)
+  check('F5 the Archived tag is a small label, not a stretched bar', ((await hit('old-pricing.md').locator('.file-row-status').boundingBox())?.width ?? 999) < 90)
   await shot(page, 'f5-search')
   await hit('old-pricing.md').click()
   check('F5 a match opens like any document', await until('opened', async () => (await activeTab.innerText()).startsWith('old-pricing.md')))
@@ -300,6 +300,23 @@ try {
   await page.getByRole('button', { name: 'Document', exact: true }).click()
   const doc = page.locator('.doc-surface .ProseMirror')
   await doc.waitFor()
+  // F15 (frozen backlog, existing behaviour): the caret is visible in the dark document editor. The
+  // caret is the text colour unless caret-color says otherwise; it must stand out from the page.
+  await setTheme(page, 'Dark')
+  // A plain string: tsx would otherwise inject its __name helper, which the page does not have.
+  const caret = await page.evaluate(`(() => {
+    const el = document.querySelector('.doc-surface .ProseMirror')
+    const rgb = (value) => (value.match(/[\\d.]+/g) || []).slice(0, 3).map(Number)
+    const lum = (c) => { const v = c.map((x) => { const s = x / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2] }
+    const style = getComputedStyle(el)
+    let back = 'rgba(0, 0, 0, 0)'
+    for (let node = el; node && /rgba\\(0, 0, 0, 0\\)|transparent/.test(back); node = node.parentElement) back = getComputedStyle(node).backgroundColor
+    const caretValue = style.caretColor === 'auto' ? style.color : style.caretColor
+    const a = lum(rgb(caretValue)), b = lum(rgb(back))
+    return { caret: caretValue, back, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) }
+  })()`) as { caret: string; back: string; contrast: number }
+  check('F15 the caret is visible in the dark document editor', caret.contrast >= 4.5, `${caret.caret} on ${caret.back}, ${caret.contrast.toFixed(1)}:1`)
+  await setTheme(page, 'Light')
   await doc.click()
   await page.keyboard.press('Meta+Alt+f')
   check('F9 the Document view finds too', await until('doc bar', async () => (await bar.isVisible())))
@@ -318,6 +335,7 @@ try {
   await page.keyboard.press('Meta+ArrowDown')
   await page.keyboard.type(' Typed last.')
   await page.getByRole('button', { name: 'Source', exact: true }).click()
+  await shot(page, 'f9-typed-then-source')
   check('F9/F12 typing then switching to Source at once loses nothing', await until('flushed', async () => (await area.inputValue()).includes('Typed last.')), JSON.stringify(await area.inputValue().catch(() => '')))
   await page.getByRole('button', { name: 'Document', exact: true }).click()
   await page.getByRole('button', { name: 'Close launch-plan.md' }).click()

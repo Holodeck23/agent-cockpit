@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHAT_MIN_WIDTH, DEFAULT_PANE_WIDTH, MIN_PANE_WIDTH, openPage, paneWidth, parseLayouts, updatePage } from '../web/src/browser-layout.ts'
+import { CHAT_MIN_WIDTH, DEFAULT_PANE_WIDTH, MIN_PANE_WIDTH, openPage, paneWidth, parseLayouts, pendingOpen, requestOpen, updatePage } from '../web/src/browser-layout.ts'
 import { addressToUrl, originLabel } from '../server/browser/address.ts'
 
 describe('browser pane layout per page (W9.1)', () => {
@@ -42,6 +42,24 @@ describe('browser pane layout per page (W9.1)', () => {
     // 980 px window less a 260 px list: both minimums do not fit, so the chat keeps 380 and the pane 340.
     expect(paneWidth(layouts['thread:a']!, 720)).toBe(340)
     expect(paneWidth(updatePage(layouts, 'thread:a', { expanded: true })['thread:a']!, 720)).toBe(340)
+  })
+})
+
+// Processes → Open site on a conversation whose page is not on screen: the pane for that page mounts
+// afterwards, and must still load what was asked for instead of showing the page as it was (W7.3).
+describe('open requests survive the pane mounting later', () => {
+  it('counts requests per page, so another page\'s request is not this page\'s', () => {
+    const once = requestOpen({}, 'thread-a')
+    expect(requestOpen(once, 'thread-a')).toEqual({ 'thread-a': 2 })
+    expect(requestOpen(once, 'thread-b')).toEqual({ 'thread-a': 1, 'thread-b': 1 })
+    expect(once).toEqual({ 'thread-a': 1 })
+  })
+
+  it('a request the page has not carried out is pending, whenever its pane mounts', () => {
+    expect(pendingOpen(1, undefined)).toBe(true)
+    expect(pendingOpen(1, 1)).toBe(false)
+    expect(pendingOpen(2, 1)).toBe(true)
+    expect(pendingOpen(0, undefined)).toBe(false)
   })
 })
 

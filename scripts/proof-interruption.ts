@@ -107,7 +107,11 @@ const openFirstRow = async (page: Page): Promise<void> => {
   console.log(`  · B recorded: status "${after[0]?.status}", open cards ${open}, answer buttons ${buttons}`)
   check('B: the old card cannot be answered (no open card, no Allow/Deny)', open === 0 && buttons === 0, `open ${open}, buttons ${buttons}`)
   check('B: the conversation does not claim it needs you', after[0]?.status !== 'needs_input', after[0]?.status ?? '')
-  check('B: the old card says why it cannot be answered', /No longer waiting/.test((await page.locator('.approval').first().innerText().catch(() => '')) ?? ''))
+  // Since PR #46 (via #52) an ended request is not left as a card: it joins the decision record with
+  // one resolution word, here Canceled, and expanding the record names the tool it was for.
+  const record = page.locator('details.decisions').first()
+  check('B: the old request says why it cannot be answered (Canceled in the decision record)', /\bCanceled\b/.test((await record.locator('summary').innerText().catch(() => '')) ?? ''),
+    await record.locator('summary').innerText().catch(() => 'no decision record'))
   await page.screenshot({ path: join(PROOF_DIR, 'interruption-B-reopened.png') })
   await messageBox(page).fill('Try again')
   await messageBox(page).press('Enter')

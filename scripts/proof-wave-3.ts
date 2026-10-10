@@ -96,8 +96,10 @@ try {
   check('G1 raw HTML shows as text, never as elements', (await bubble.locator('script, img, iframe').count()) === 0 && (await bubble.innerText()).includes('<script>alert(1)</script>'))
   check('G1 an unsafe link is only its words', (await bubble.locator('a', { hasText: 'bad' }).count()) === 0 && (await bubble.getByText('bad').count()) > 0)
   check('G1 a remote image is never fetched; its alt text links out', (await bubble.locator('a.reply-image').getAttribute('href')) === 'https://tracker.example/p.png')
-  await bubble.getByRole('link', { name: 'docs' }).click()
-  check('G1 web links open in the browser', await until('docs opened', async () => (await opened()).includes('https://example.com/docs')))
+  // Since wave 9 a plain click opens the page beside the chat (G5, proof:wave-9 W9-03); ⌘-click
+  // still hands it to the default browser.
+  await bubble.getByRole('link', { name: 'docs' }).click({ modifiers: ['Meta'] })
+  check('G1 ⌘-clicking a web link opens it in the browser', await until('docs opened', async () => (await opened()).includes('https://example.com/docs')))
   await shot(page, 'g1-reply-light')
   await setTheme(page, 'Dark')
   await shot(page, 'g1-reply-dark')
@@ -146,9 +148,14 @@ try {
   // A8: peek into a sent message's clips.
   await open('Clips')
   const chip = page.locator('.message-clips [title="src/app.ts"]')
-  await chip.hover()
   const peek = page.locator('.peek-panel')
-  check('A8 hovering a file clip shows its first lines', await until('peek', async () => (await peek.locator('.peek-text').innerText()).includes('export const total = a + 1')))
+  // Re-opening the transcript scrolls the clip under the pointer. Move away and re-enter until the
+  // browser has delivered a real hover, rather than assuming one pointer position change is enough.
+  const hoverFile = async (): Promise<boolean> => {
+    if ((await peek.count()) === 0) { await page.mouse.move(5, 5); await chip.hover() }
+    return (await peek.locator('.peek-text').innerText({ timeout: 500 })).includes('export const total = a + 1')
+  }
+  check('A8 hovering a file clip shows its first lines', await until('peek', hoverFile))
   const panelBox = await peek.boundingBox()
   const viewBox = await page.locator('.thread .events').boundingBox()
   check('A8 the peek is fully inside the conversation view', !!panelBox && !!viewBox && panelBox.y >= viewBox.y, `${panelBox?.y} vs ${viewBox?.y}`)

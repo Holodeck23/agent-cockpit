@@ -57,10 +57,12 @@ try {
   const box = (await handle.boundingBox())!
   await page.mouse.move(box.x + 5, box.y + box.height / 2)
   await page.mouse.down()
-  await page.mouse.move(box.x - 100, box.y + box.height / 2)
+  // Narrower, not wider: the default pane already takes all the room the conversation's minimum
+  // width leaves (CHAT_MIN_WIDTH, PR #46), so a wider drag is correctly capped.
+  await page.mouse.move(box.x + 100, box.y + box.height / 2)
   await page.mouse.up()
   const after = (await pane.boundingBox())!.width
-  check('the pane resizes from its left edge', after > before + 70, `${before} -> ${after}`)
+  check('the pane resizes from its left edge', after < before - 70 && after >= 360, `${before} -> ${after}`)
 
   await pane.getByRole('button', { name: 'Reload' }).click()
   check('reload keeps the local app visible', await showsApp())

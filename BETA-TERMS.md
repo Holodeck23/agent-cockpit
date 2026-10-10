@@ -9,21 +9,21 @@ Cockpit is in beta. You can use the beta on one condition: **Cockpit sends crash
 When something goes wrong in Cockpit, a report is sent with:
 
 - the error message and its stack trace (where in Cockpit's code it happened);
-- Cockpit's version;
-- the macOS version and the kind of Mac (processor and memory).
+- Cockpit's version, with the Electron, Chromium and Node.js versions it is built on;
+- the macOS version and the kind of Mac (processor and memory, and how much memory is free and in use).
 
 Cockpit also sends a short record when it starts and stops, so the developer can see how many people run each version and how often it crashes.
 
 ## What is not sent
 
 - Your home folder is replaced with `~` in every report.
-- Your machine name and macOS user are never sent.
+- Your machine name, macOS user, time zone, language and screen are never sent.
 - Screenshots, screen recordings, crash memory dumps and attachments are never sent.
 - Your conversations, prompts and the contents of your files are never sent on purpose. The text of an error can still name a project, a file or a folder inside your home folder.
 
 ## Where it goes
 
-Reports go to [Sentry](https://sentry.io), in its EU region, in a project only the developer can see. Sentry deletes them after its retention period. The project is set not to store IP addresses.
+Reports go to [Sentry](https://sentry.io), in its EU region, in a project only the developer can see. Sentry deletes them after its retention period. Reports carry no IP address of their own and ask Sentry not to record the one they arrive from.
 
 ## Turning it off
 

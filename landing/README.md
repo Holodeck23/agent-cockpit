@@ -2,7 +2,7 @@
 
 `index.html` is the self-contained release landing page, including the interactive demo,
 inline styles/scripts, Cockpit mark and four packaged-app screenshots. It opens from disk
-or any static host. The Mac download currently points to the published v0.1.6 prerelease.
+or any static host. The Mac download points to the v0.1.7 prerelease.
 
 ## The interactive demo
 
@@ -50,7 +50,7 @@ node landing/build-demo.mjs
 The build preserves release copy and screenshot data in `index.html`. Commit the generated
 HTML with its source. No build command is needed at the static host. Rebuild intentionally
 when production components change, then verify the resulting demo again.
-The feature directory describes the v0.1.5 build; v0.1.6 additions are in its release notes until the directory is updated. Check additions against
+The feature directory describes the v0.1.5 build; v0.1.6 and v0.1.7 additions are in their release notes until the directory is updated. Check additions against
 the tagged user guide and release notes before changing it; features only on development
 branches belong in a later release's directory.
 

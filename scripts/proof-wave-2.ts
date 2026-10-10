@@ -170,7 +170,7 @@ try {
   await page.reload()
   await page.locator('.card').filter({ hasText: 'Offline turn' }).click()
   await page.getByRole('heading', { level: 1, name: 'Offline turn' }).waitFor()
-  const sendFill = () => page.getByRole('button', { name: 'Send' }).evaluate((el) => getComputedStyle(el).backgroundColor)
+  const sendFill = () => page.getByRole('button', { name: 'Send', exact: true }).evaluate((el) => getComputedStyle(el).backgroundColor)
   await messageBox(page).fill('x')
   check('E1 the send button takes the project tint', (await sendFill()) === 'rgb(181, 50, 112)', await sendFill())
   const newFill = await page.getByRole('button', { name: 'New conversation' }).evaluate((el) => getComputedStyle(el).backgroundColor)

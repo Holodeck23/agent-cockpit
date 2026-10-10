@@ -1,5 +1,17 @@
 # Release acceptance
 
+## v0.1.7 candidate — 2026-10-10 (not published)
+
+Everything merged since v0.1.6 (approval outcomes and countdown, visible permission level and send destination, Antigravity images, the Codex Stop/steer race fix, word-boundary titles), plus crash reports limited to what the beta terms name, Idle for a conversation with nothing running, and two lost-click fixes (Processes → Open site; the first click after typing in a document).
+
+- Artifact: `Cockpit-0.1.7-arm64.dmg`, 128,443,014 bytes, arm64, ad-hoc signed, not notarized. SHA-256 `fcd9a6ff04780591a6ca13915576d57ec9722e3f5e2f733727eee0981bbce8a1`. Built from `85447b7` after the release-evidence and process-cleanup review fixes.
+- `npm run verify`: 1,252 tests. CI green. `check:installers` and the landing checks passed.
+- **Cumulative gate** (`scripts/gate.ts`): 36 deterministic packaged suites covering waves 1–12, CROSS-01–10, startup, recovery, window key, handoff, interruption, reports, session states, first run and find-and-inspect, three consecutive passes on one proof package (package `a49bd25b…`, `app.asar` `8fadb911…`, both unchanged throughout): 108/108, no owned process left behind. Its first run on main found nine proofs stale against UI merged since 10-08 and two product regressions, all fixed before this build.
+- The DMG's app, copied to an isolated location: v0.1.7, signature ok, full package `9e8e3247…` and `app.asar` `29f9c8f7…` match the packaged build; release lockdown PASS.
+- `candidate-binding.json` binds source `85447b7`, the exact proof and production package hashes, installer hash/version and qualifying gate hash. Publication recomputes those identities and rejects a missing, stale or mixed-build record; only post-build Markdown and `landing/` changes remain allowed.
+- Startup (feature D11): six launches of the proof package showed the UI within 0.8 s, so no loading screen.
+- Open: production-build manual flow, an independent person on their own Mac (the [tester checklist](user/tester-checklist.md)), two hours of real use, the live Chrome connected path, the full in-app second-account flow, physical-phone push, OpenCode's live OpenRouter path, and confirming the Sentry project's IP setting.
+
 ## v0.1.6 published prerelease — 2026-10-08
 
 Waves 11 and 12 (the phone live preview on its own origin; account profiles per project and agent; worktrees with their lifecycle, merge back and two agents at once), the handoff preview before an agent switch, Report a bug / Send feedback, the one-line Terminal install, and crash and error reports through Sentry as a condition of the beta (`BETA-TERMS.md`, no off switch). First release that sends anything to the developer.

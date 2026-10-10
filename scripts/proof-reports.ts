@@ -112,6 +112,13 @@ try {
   check('no report holds the machine name', !text.includes(hostname()) && !text.includes(hostname().replace(/\.local$/, '')))
   check('no report holds the page\'s key, a breadcrumb trail or the boot time', !text.includes('window-secret') && !text.includes('breadcrumb-canary')
     && !text.includes('boot_time') && sent.every((e) => e.breadcrumbs === undefined))
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  check('no report holds the time zone, language, screen or graphics chip', !text.includes(zone)
+    && sent.every((e) => { const c = (e.contexts ?? {}) as Record<string, Record<string, unknown> | undefined>
+      return !c.culture && !c.gpu && c.device?.screen_resolution === undefined && c.device?.screen_density === undefined }),
+    `time zone ${zone}`)
+  check('each report still names the kind of Mac', sent.every((e) => { const d = ((e.contexts ?? {}) as Record<string, Record<string, unknown> | undefined>).device
+    return typeof d?.cpu_description === 'string' && typeof d?.memory_size === 'number' }))
   check('each report names the version and the proof environment', sent.length > 0 && sent.every((e) => typeof e.release === 'string' && (e.release as string).startsWith('cockpit@') && e.environment === 'proof'),
     sent.map((e) => `${String(e.release)} ${String(e.environment)}`).join(', '))
 

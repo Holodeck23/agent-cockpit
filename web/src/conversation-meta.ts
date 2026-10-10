@@ -90,7 +90,8 @@ export function filterConversations(input: FilterInput, filter: ListFilter): { c
 }
 
 export const STATUS_LABEL: Record<ThreadStatus, string> = {
-  idle: 'Waiting',
+  // Nothing running and nothing asked of you (after Stop, or reopened after a restart).
+  idle: 'Idle',
   // The agent's process is launched and has not reported back yet.
   starting: 'Starting',
   working: 'Working',

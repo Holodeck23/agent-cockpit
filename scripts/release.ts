@@ -2,10 +2,13 @@
 // can be re-run after a failure without repeating the ones before it.
 //
 //   npm run release -- prepare 0.1.4   bump package.json + release links; list prose to rewrite
-//   npm run release -- build 0.1.4     verify, landing checks, proofs on a proof build of this commit,
-//                                      package to release/v0.1.4, SHA256SUMS, isolated install check,
+//   npm run release -- build 0.1.4     verify, landing checks, the cumulative gate (scripts/gate.ts,
+//                                      3 passes) on a proof build of this commit, package to
+//                                      release/v0.1.4, SHA256SUMS, isolated install check,
 //                                      installed copy: debug flags refused, window-only API
-//   npm run release -- publish 0.1.4 --notes notes.md   GitHub prerelease from a pushed main
+//                                      (--gate-runs N for a dry run; publish needs 3)
+//   npm run release -- publish 0.1.4 --notes notes.md   GitHub prerelease from a pushed main;
+//                                      refuses without a passed 3-run gate for this source
 //   npm run release -- deploy 0.1.4    Vercel landing deploy, live page check, live update feed
 //
 // --evidence <dir> collects logs and screenshots (default release/v<version>/evidence).
@@ -17,6 +20,15 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bumpReleaseLinks, isNewerVersion, landingSizeLabel, parseVersion, staleMentions, withLandingSize } from './lib/release.ts'
+import {
+  createReleaseCandidateRecord,
+  isAllowedPostBuildChange,
+  releaseCandidateBindingErrors,
+  type CandidateArtifactFacts,
+  type CandidateGateRecord,
+  type CandidateInstallVerification,
+} from './lib/release-candidate.ts'
+import { hashPackageTree } from './lib/package-hash.ts'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const REPO = 'Holodeck23/agent-cockpit'
@@ -46,6 +58,12 @@ const SUMS = join(OUT, 'SHA256SUMS')
 const EVIDENCE = resolve(flag('evidence') ?? join(OUT, 'evidence'))
 const INSTALLED = join(OUT, 'installed', 'Cockpit.app')
 const PROOF_APP = join(OUT, 'proof', 'mac-arm64', 'Cockpit.app')
+const PRODUCTION_APP = join(OUT, 'mac-arm64', 'Cockpit.app')
+const GATE = join(EVIDENCE, 'gate')
+const CANDIDATE_BINDING = join(EVIDENCE, 'candidate-binding.json')
+// Three consecutive passes is the release gate (ACCEPTANCE REL-02). Fewer is a dry run publish refuses.
+const GATE_RUNS = Number(flag('gate-runs') ?? 3)
+const REQUIRED_GATE_RUNS = 3
 // Node ignores --inspect and NODE_OPTIONS in the release app. RunAsNode stays on: each agent's
 // cockpit MCP server runs on the app's own binary with ELECTRON_RUN_AS_NODE (electron/main.ts).
 const RELEASE_FUSES = ['-c.electronFuses.enableNodeCliInspectArguments=false', '-c.electronFuses.enableNodeOptionsEnvironmentVariable=false']
@@ -57,6 +75,11 @@ const git = (...args: string[]): string => {
 }
 const packageVersion = (): string => (JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }).version
 const sha256 = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
+const appVersion = (app: string): string => {
+  const result = spawnSync('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', join(app, 'Contents/Info.plist')], { encoding: 'utf8' })
+  if (result.status !== 0) fail(`cannot read version from ${app}: ${result.stderr.trim()}`)
+  return result.stdout.trim()
+}
 
 /** Runs a command with output streamed to the terminal and to <evidence>/<log>. */
 function run(log: string, command: string, args: readonly string[], env: Readonly<Record<string, string>> = {}): Promise<string> {
@@ -126,11 +149,11 @@ async function build(): Promise<void> {
   // The release build refuses debuggers (electron/debug-flags.ts), and Playwright drives the app
   // through one, so the Playwright proofs run on a proof build of the same commit, made first.
   await run('package-proof.log', 'npx', ['electron-builder', '--mac', 'dir', '--arm64', `-c.directories.output=release/v${version}/proof`])
-  const proofEnv = (name: string) => ({ COCKPIT_APP: PROOF_APP, COCKPIT_PROOF_DIR: join(EVIDENCE, name) })
-  await run('proof-startup.log', 'npx', ['tsx', 'scripts/proof-startup.ts'], proofEnv('proof-startup'))
-  await run('proof-recovery.log', 'npx', ['tsx', 'scripts/proof-recovery.ts'], proofEnv('proof-recovery'))
-  await run('proof-recovery-legacy.log', 'npx', ['tsx', 'scripts/proof-recovery.ts', '--legacy'], proofEnv('proof-recovery-legacy'))
-  await run('proof-window-key.log', 'npx', ['tsx', 'scripts/proof-window-key.ts'], proofEnv('proof-window-key'))
+  // The cumulative gate (REL-02): every required deterministic proof, GATE_RUNS passes in a row on
+  // this one proof package (scripts/lib/gate-suites.ts). It replaces the four proofs this stage used to
+  // run, which are in it. publish refuses without a passed gate for this commit.
+  rmSync(GATE, { recursive: true, force: true })
+  await run('gate.log', 'npx', ['tsx', 'scripts/gate.ts', '--app', PROOF_APP, '--out', GATE, '--runs', String(GATE_RUNS)])
 
   await run('build-electron-release.log', 'npm', ['run', 'build:electron'], { COCKPIT_RELEASE_BUILD: '1' })
   await run('package.log', 'npx', ['electron-builder', '--mac', '--arm64', `-c.directories.output=release/v${version}`, ...RELEASE_FUSES])
@@ -140,11 +163,12 @@ async function build(): Promise<void> {
 
   const verification = installCheck(dmgSha)
   writeFileSync(join(EVIDENCE, 'install-verification.json'), `${JSON.stringify(verification, null, 2)}\n`)
-  if (verification.version !== version || verification.signature !== 'ok' || !verification.asar_match) {
+  if (verification.version !== version || verification.signature !== 'ok' || !verification.asar_match || !verification.package_match) {
     fail(`install check failed: ${JSON.stringify(verification)}`)
   }
   console.log(`install check: v${verification.version}, signature ok, app.asar matches the packaged build`)
   await run('installed-lockdown.log', 'npx', ['tsx', 'scripts/check-release-lockdown.ts', INSTALLED])
+  writeCandidateBinding(verification)
 
   const bytes = readFileSync(DMG).length
   const landing = readFileSync(LANDING, 'utf8')
@@ -156,13 +180,8 @@ async function build(): Promise<void> {
   }
 }
 
-interface InstallVerification {
-  version: string; signature: string; asar_installed: string; asar_packaged: string
-  asar_match: boolean; dmg_sha256: string; dmg_bytes: number
-}
-
 /** Mounts the DMG read-only, copies the app to an isolated folder and checks what a user gets. */
-function installCheck(dmgSha: string): InstallVerification {
+function installCheck(dmgSha: string): CandidateInstallVerification {
   const mount = mkdtempSync(join(tmpdir(), 'cockpit-release-mount-'))
   const sh = (command: string, args: string[]): { ok: boolean; out: string } => {
     const result = spawnSync(command, args, { encoding: 'utf8' })
@@ -182,15 +201,62 @@ function installCheck(dmgSha: string): InstallVerification {
   const signature = sh('codesign', ['--verify', '--deep', '--strict', INSTALLED])
   const asarInstalled = sha256(join(INSTALLED, 'Contents/Resources/app.asar'))
   const asarPackaged = sha256(join(OUT, 'mac-arm64/Cockpit.app/Contents/Resources/app.asar'))
+  const packageInstalled = hashPackageTree(INSTALLED)
+  const packagePackaged = hashPackageTree(PRODUCTION_APP)
   return {
     version: plist.out,
     signature: signature.ok ? 'ok' : signature.out,
     asar_installed: asarInstalled,
     asar_packaged: asarPackaged,
     asar_match: asarInstalled === asarPackaged,
+    package_installed: packageInstalled,
+    package_packaged: packagePackaged,
+    package_match: packageInstalled === packagePackaged,
     dmg_sha256: dmgSha,
     dmg_bytes: readFileSync(DMG).length,
   }
+}
+
+function candidateFacts(verification: CandidateInstallVerification): CandidateArtifactFacts {
+  const gateFile = join(GATE, 'gate.json')
+  const required = [
+    gateFile,
+    join(PROOF_APP, 'Contents/Resources/app.asar'),
+    join(PRODUCTION_APP, 'Contents/Resources/app.asar'),
+    join(INSTALLED, 'Contents/Resources/app.asar'),
+  ]
+  for (const path of required) if (!existsSync(path)) fail(`missing candidate artifact ${path}: re-run build`)
+  return {
+    version: version!,
+    proofPackage: {
+      path: `release/v${version}/proof/mac-arm64/Cockpit.app`,
+      packageSha256: hashPackageTree(PROOF_APP),
+      appAsarSha256: sha256(join(PROOF_APP, 'Contents/Resources/app.asar')),
+      version: appVersion(PROOF_APP),
+    },
+    productionPackage: {
+      path: `release/v${version}/mac-arm64/Cockpit.app`,
+      packageSha256: hashPackageTree(PRODUCTION_APP),
+      appAsarSha256: sha256(join(PRODUCTION_APP, 'Contents/Resources/app.asar')),
+      version: appVersion(PRODUCTION_APP),
+    },
+    installer: { path: `release/v${version}/Cockpit-${version}-arm64.dmg`, sha256: sha256(DMG), bytes: readFileSync(DMG).length },
+    installedAppPackageSha256: hashPackageTree(INSTALLED),
+    installedAppAsarSha256: sha256(join(INSTALLED, 'Contents/Resources/app.asar')),
+    installVerification: verification,
+    gate: JSON.parse(readFileSync(gateFile, 'utf8')) as CandidateGateRecord,
+    gatePath: gateFile,
+    gateSha256: sha256(gateFile),
+  }
+}
+
+function writeCandidateBinding(verification: CandidateInstallVerification): void {
+  const facts = candidateFacts(verification)
+  const record = createReleaseCandidateRecord(facts)
+  const errors = releaseCandidateBindingErrors(record, facts, REQUIRED_GATE_RUNS)
+  if (errors.length) fail(`candidate binding is inconsistent:\n- ${errors.join('\n- ')}`)
+  writeFileSync(CANDIDATE_BINDING, `${JSON.stringify(record, null, 2)}\n`)
+  console.log(`candidate binding: ${CANDIDATE_BINDING} (source ${record.sourceRevision.slice(0, 12)})`)
 }
 
 async function publish(): Promise<void> {
@@ -206,8 +272,20 @@ async function publish(): Promise<void> {
   if (!existsSync(DMG) || !existsSync(SUMS)) fail(`missing ${DMG} or SHA256SUMS: run build first`)
   const dmgSha = sha256(DMG)
   if (!readFileSync(SUMS, 'utf8').startsWith(dmgSha)) fail('SHA256SUMS does not match the DMG')
-  const verified = JSON.parse(readFileSync(join(EVIDENCE, 'install-verification.json'), 'utf8')) as InstallVerification
-  if (verified.dmg_sha256 !== dmgSha || !verified.asar_match) fail('install-verification.json is for a different DMG: re-run build')
+  const installFile = join(EVIDENCE, 'install-verification.json')
+  const gateFile = join(GATE, 'gate.json')
+  for (const path of [installFile, gateFile, CANDIDATE_BINDING]) if (!existsSync(path)) fail(`missing ${path}: re-run build`)
+  const verified = JSON.parse(readFileSync(installFile, 'utf8')) as CandidateInstallVerification
+  const facts = candidateFacts(verified)
+  const binding = JSON.parse(readFileSync(CANDIDATE_BINDING, 'utf8')) as unknown
+  const bindingErrors = releaseCandidateBindingErrors(binding, facts, REQUIRED_GATE_RUNS)
+  if (bindingErrors.length) fail(`candidate binding is missing, stale or mismatched:\n- ${bindingErrors.join('\n- ')}`)
+  const sourceRevision = (binding as { sourceRevision: string }).sourceRevision
+  // After the gate only what never reaches the app may change: the landing page (its DMG size) and
+  // Markdown (the release record with this build's hashes). Anything else is untested source.
+  const since = git('diff', '--name-only', sourceRevision, head).split('\n').filter(Boolean)
+  const untested = since.filter((file) => !isAllowedPostBuildChange(file))
+  if (untested.length) fail(`source changed since the bound commit ${sourceRevision.slice(0, 12)}: ${untested.join(', ')}`)
   if (!readFileSync(LANDING, 'utf8').includes(`· DMG · ${landingSizeLabel(readFileSync(DMG).length)}`)) {
     fail('landing/index.html does not state this DMG size: commit the build stage change')
   }

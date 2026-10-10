@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.7 prerelease.** See the [user guide](guide.md) for what this version does.
 
 When issues occur, Cockpit is designed to fail safely and preserve your work.
 
