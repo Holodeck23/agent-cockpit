@@ -64,7 +64,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const compacting = useMemo(() => running && compactingNow(events), [events, running])
   const turn = useMemo(() => latestTurn(events), [events])
   const now = useNow(isWorking(shown))
-  const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
+  const items = useMemo(() => buildTranscript(events, meta.settings.agent, meta.settings.permissionMode), [events, meta.settings.agent, meta.settings.permissionMode])
   // J2: a click puts the text in the box to edit; sending uses whatever the picker says then.
   const followUps = useMemo(() => followUpSuggestions(events), [events])
   const activity = useMemo(() => buildActivity(events, running), [events, running])

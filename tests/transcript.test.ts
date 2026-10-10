@@ -412,3 +412,56 @@ describe('runs interrupted by a crash (ID-07)', () => {
     expect(items[2]).toMatchObject({ type: 'result', runId: 'r1', outcome: 'interrupted' })
   })
 })
+
+describe('a turn that ended without a reply after a refused step', () => {
+  const refused = 'permission check failed for unsandboxed "npm run typecheck": user denied permission to run command:\nnpm run typecheck'
+  const silentTurn = (start: number): StoredEvent[] => [
+    at(start, { kind: 'user_text', text: 'look for bugs' }),
+    at(start + 1, { kind: 'tool_use', id: `t${start}`, name: 'run_command', input: { CommandLine: 'npm run typecheck' } }),
+    at(start + 2, { kind: 'tool_result', toolUseId: `t${start}`, content: refused, isError: true }),
+    at(start + 3, { kind: 'result', ok: true, text: '' }),
+  ]
+  const lastNote = (items: ReturnType<typeof buildTranscript>) => items.filter((i) => i.type === 'note').at(-1)
+
+  it('says why, names the Plan mode it ran in, and what to switch to from Plan', () => {
+    const note = lastNote(buildTranscript(silentTurn(0), 'antigravity', 'plan'))
+    expect(note).toMatchObject({ tone: 'error' })
+    const text = note?.type === 'note' ? note.text : ''
+    expect(text).toContain('Antigravity stopped without replying')
+    expect(text).toContain('npm run typecheck')
+    expect(text).toContain('“Plan only, no changes”')
+    expect(text).toContain('switch to “Bypass permissions”')
+    expect(text).not.toContain('Turn finished')
+  })
+
+  it('gives each mode its own way out', () => {
+    const text = (agent: Parameters<typeof buildTranscript>[1], mode: Parameters<typeof buildTranscript>[2]): string => {
+      const note = lastNote(buildTranscript(silentTurn(0), agent, mode))
+      return note?.type === 'note' ? note.text : ''
+    }
+    expect(text('antigravity', 'manual')).toContain('“Configured permissions (Antigravity settings)”')
+    expect(text('antigravity', 'bypassPermissions')).toContain('switching permissions will not change it')
+    expect(text('codex', 'plan')).toContain('Switch to “Ask before acting”')
+    expect(text('codex', 'manual')).toContain('“Bypass all permissions” runs it without the sandbox')
+    expect(text('claude', 'dontAsk')).toContain('Switch to “Ask before acting” so Claude Code can ask')
+  })
+
+  it('uses the mode logged before an earlier turn, not the current one', () => {
+    const events = [
+      at(0, { kind: 'settings_changed', permissionMode: 'plan' }),
+      ...silentTurn(1),
+      at(10, { kind: 'settings_changed', permissionMode: 'bypassPermissions' }),
+    ]
+    const note = buildTranscript(events, 'antigravity', 'bypassPermissions').find((i) => i.type === 'note' && i.tone === 'error')
+    expect(note?.type === 'note' ? note.text : '').toContain('“Plan only, no changes”')
+  })
+
+  it('does not name a mode it cannot know, and leaves a turn that replied alone', () => {
+    const unknown = [at(0, { kind: 'agent_switch', from: 'claude', to: 'antigravity' }), ...silentTurn(1), at(10, { kind: 'settings_changed', permissionMode: 'manual' })]
+    const note = buildTranscript(unknown, 'antigravity', 'manual').find((i) => i.type === 'note' && i.tone === 'error')
+    expect(note?.type === 'note' ? note.text : '').toContain('Check this conversation’s permissions')
+
+    const replied = [...silentTurn(0).slice(0, 3), at(3, { kind: 'assistant_text', messageId: 'm', text: 'I could not run it.' }), at(4, { kind: 'result', ok: true })]
+    expect(lastNote(buildTranscript(replied, 'antigravity', 'plan'))).toMatchObject({ tone: 'plain', text: 'Turn finished' })
+  })
+})
