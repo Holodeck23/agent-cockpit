@@ -54,6 +54,11 @@ try {
   await expectState('Needs you', 'Check question state')
 
   await start(page, 'Check ready state')
+  // J9 (frozen backlog): the Working indicator clears on the final reply, not some time later.
+  await page.locator('.bubble.reply').filter({ hasText: 'Done. Nothing else to do.' }).waitFor()
+  const replyShown = Date.now()
+  await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
+  check('J9 the Working indicator clears with the final reply (within 1 s)', Date.now() - replyShown <= 1000, `${Date.now() - replyShown} ms`)
   await expectState('Ready', 'Check ready state')
 
   await start(page, 'Check error state')

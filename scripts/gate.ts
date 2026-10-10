@@ -40,11 +40,22 @@ for (const suite of suites) {
 const sha256 = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const git = (...args: string[]): string => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' }).stdout.trim()
 
+/** This gate and the processes that started it, whose command lines name the app too (--app). */
+function ownAncestry(): Set<number> {
+  const parents = new Map(spawnSync('ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8' }).stdout.trim().split('\n')
+    .map((line) => line.trim().split(/\s+/).map(Number) as [number, number]))
+  const own = new Set<number>()
+  for (let pid: number | undefined = process.pid; pid && pid > 1 && !own.has(pid); pid = parents.get(pid)) own.add(pid)
+  return own
+}
+
 /** Cockpit proof processes, dev servers and stand-ins still running; recorded, never killed. */
 function leftovers(): string[] {
+  const own = ownAncestry()
   const ps = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' }).stdout
-  return ps.split('\n').filter((line) => line.includes(app) || /scripts\/fixtures\//.test(line))
-    .map((line) => line.trim().slice(0, 200))
+  return ps.split('\n').map((line) => line.trim())
+    .filter((line) => (line.includes(app) || /scripts\/fixtures\//.test(line)) && !own.has(Number(line.split(/\s+/)[0])))
+    .map((line) => line.slice(0, 200))
 }
 
 function runSuite(suite: (typeof GATE_SUITES)[number], run: number): Promise<SuiteResult> {

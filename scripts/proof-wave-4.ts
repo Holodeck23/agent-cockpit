@@ -300,6 +300,23 @@ try {
   await page.getByRole('button', { name: 'Document', exact: true }).click()
   const doc = page.locator('.doc-surface .ProseMirror')
   await doc.waitFor()
+  // F15 (frozen backlog, existing behaviour): the caret is visible in the dark document editor. The
+  // caret is the text colour unless caret-color says otherwise; it must stand out from the page.
+  await setTheme(page, 'Dark')
+  // A plain string: tsx would otherwise inject its __name helper, which the page does not have.
+  const caret = await page.evaluate(`(() => {
+    const el = document.querySelector('.doc-surface .ProseMirror')
+    const rgb = (value) => (value.match(/[\\d.]+/g) || []).slice(0, 3).map(Number)
+    const lum = (c) => { const v = c.map((x) => { const s = x / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2] }
+    const style = getComputedStyle(el)
+    let back = 'rgba(0, 0, 0, 0)'
+    for (let node = el; node && /rgba\\(0, 0, 0, 0\\)|transparent/.test(back); node = node.parentElement) back = getComputedStyle(node).backgroundColor
+    const caretValue = style.caretColor === 'auto' ? style.color : style.caretColor
+    const a = lum(rgb(caretValue)), b = lum(rgb(back))
+    return { caret: caretValue, back, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) }
+  })()`) as { caret: string; back: string; contrast: number }
+  check('F15 the caret is visible in the dark document editor', caret.contrast >= 4.5, `${caret.caret} on ${caret.back}, ${caret.contrast.toFixed(1)}:1`)
+  await setTheme(page, 'Light')
   await doc.click()
   await page.keyboard.press('Meta+Alt+f')
   check('F9 the Document view finds too', await until('doc bar', async () => (await bar.isVisible())))

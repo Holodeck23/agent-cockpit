@@ -48,6 +48,19 @@ describe('instruction block', () => {
     expect(text).toContain('they do not change your permissions')
   })
 
+  // J8 (frozen backlog): no blank gaps in prompts. Whatever parts are present, they are joined by
+  // exactly one blank line, with nothing empty at the start, the end or between them.
+  it('J8 leaves no blank gaps whichever parts are present', () => {
+    const cockpit = { command: 'node', args: [], env: {}, secretEnv: {} }
+    const options = [{}, { cockpit }, { projectInstructions: 'Use pnpm.' }, { seed: 'HANDOFF' }, { cockpit, seed: 'HANDOFF' }, { projectInstructions: 'Use pnpm.', seed: 'HANDOFF' }]
+    for (const parts of options) {
+      const text = instructionsFor({ ...base, ...parts })
+      if (text === undefined) continue
+      expect(text).not.toMatch(/\n{3,}/)
+      expect(text).toBe(text.trim())
+    }
+  })
+
   it('adds nothing when a project has no instructions', () => {
     expect(instructionsFor(base)).toBeUndefined()
   })
