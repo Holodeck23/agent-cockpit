@@ -96,8 +96,10 @@ try {
   check('G1 raw HTML shows as text, never as elements', (await bubble.locator('script, img, iframe').count()) === 0 && (await bubble.innerText()).includes('<script>alert(1)</script>'))
   check('G1 an unsafe link is only its words', (await bubble.locator('a', { hasText: 'bad' }).count()) === 0 && (await bubble.getByText('bad').count()) > 0)
   check('G1 a remote image is never fetched; its alt text links out', (await bubble.locator('a.reply-image').getAttribute('href')) === 'https://tracker.example/p.png')
-  await bubble.getByRole('link', { name: 'docs' }).click()
-  check('G1 web links open in the browser', await until('docs opened', async () => (await opened()).includes('https://example.com/docs')))
+  // Since wave 9 a plain click opens the page beside the chat (G5, proof:wave-9 W9-03); ⌘-click
+  // still hands it to the default browser.
+  await bubble.getByRole('link', { name: 'docs' }).click({ modifiers: ['Meta'] })
+  check('G1 ⌘-clicking a web link opens it in the browser', await until('docs opened', async () => (await opened()).includes('https://example.com/docs')))
   await shot(page, 'g1-reply-light')
   await setTheme(page, 'Dark')
   await shot(page, 'g1-reply-dark')
