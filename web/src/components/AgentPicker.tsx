@@ -49,6 +49,14 @@ export function choiceSummary(choice: AgentChoice, agyListed?: readonly ModelOpt
   return choice.agent === 'opencode' ? model : `${model} · ${choice.effort ? capitalize(choice.effort) : 'Default effort'}`
 }
 
+/** The agent button's subtitle: the model only, since the Effort button beside it shows the effort. */
+export function modelSummary(choice: AgentChoice, agyListed?: readonly ModelOption[]): string {
+  if (!choice.model) return 'Default model'
+  const named = choice.agent === 'antigravity' && agyListed?.length ? agyMenus(agyListed, choice.model, choice.effort).model?.label : undefined
+  // Aliases read as names (Opus); full ids and provider/model names show as typed.
+  return named ?? (/^[a-z]+$/.test(choice.model) ? capitalize(choice.model) : choice.model)
+}
+
 export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): Partial<ThreadSettings> {
   const { model: _model, effort: _effort, useChrome: _chrome, ...rest } = base ?? { useHooks: false }
   return {
@@ -337,7 +345,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
           <AgentGlyph author={value.agent} />
           <span className="picker-text">
             <span className="picker-name">{agentName(value.agent)}</span>
-            <span className="picker-sub">{choiceSummary(value, chipListed)}</span>
+            <span className="picker-sub">{modelSummary(value, chipListed)}</span>
           </span>
           <ChevronDownIcon className="chevron" />
         </button>

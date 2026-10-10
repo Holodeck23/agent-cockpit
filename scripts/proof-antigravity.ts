@@ -56,7 +56,7 @@ try {
 
   await page.getByRole('button', { name: 'New conversation' }).click()
   const chip = (await page.getByRole('button', { name: 'Agent settings' }).locator('.picker-sub').innerText()).trim()
-  check('the composer chip names the model and its effort, not agy\'s id', chip === 'Gemini 3.8 Flash · Low', chip)
+  check('the composer chip names the model, not agy\'s id (the Effort button shows the effort)', chip === 'Gemini 3.8 Flash', chip)
   await messageBox(page).fill('Read the project and report')
   await messageBox(page).press('Enter')
   await headStatus(page).filter({ hasText: 'Ready' }).waitFor()
