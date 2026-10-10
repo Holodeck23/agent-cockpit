@@ -1,6 +1,6 @@
-// The Dock icon tells you what the agents are doing without opening the window: its bars move
-// while any agent is working (four frames a second, stopped the moment nothing is), and its badge
-// shows how many conversations need you. Frames come from build/dock (scripts/make-dock-frames.ts).
+// The Dock icon tells you what the agents are doing without opening the window: its moon circles
+// the light while any agent is working (one orbit in 2.4 s, stopped the moment nothing is), and its
+// badge shows how many conversations need you. Frames come from build/dock (scripts/make-dock-frames.ts).
 
 export interface Activity {
   readonly working: number
@@ -18,7 +18,9 @@ interface DockDeps<Image> {
   clearInterval(handle: unknown): void
 }
 
-export const FRAME_MS = 250
+/** Frames in one orbit, and how long each shows: 24 × 100 ms is one orbit in 2.4 s. */
+export const DOCK_FRAMES = 24
+export const FRAME_MS = 100
 
 /** Accepts only what the page may send: two small non-negative integers. */
 export function parseActivity(value: unknown): Activity | undefined {
