@@ -3,7 +3,7 @@
 .appearance-panel {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; width: min(320px, calc(100vw - 32px));
   display: grid; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md, 10px);
-  background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+  background: var(--panel); box-shadow: var(--shadow-lg);
 }
 .appearance-row { display: grid; gap: 7px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .appearance-row > span, .appearance-row legend { padding: 0; font-size: 12px; font-weight: 600; color: var(--muted); }

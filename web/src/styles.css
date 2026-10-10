@@ -42,3 +42,11 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .toast.update-toast { align-items: center; border-color: var(--border); }
 .toast .update-toast-notes { font-size: 13px; color: var(--link); padding: 0 4px; }
 .troubleshooting-link { margin-left: 4px; color: var(--link); white-space: nowrap; }
+
+/* Page titles are set in the display face (Lumen): every section's heading, empty states and
+   detail titles. The sizes stay with each section's own stylesheet. */
+.file-list h1, .file-preview h2, .file-empty h2, .gallery h1, .pair h1, .process-list h1, .process-detail-title h2,
+.workflow-list h1, .workflow-editor h1, .workflow-empty h2, .memory h1, .project-settings-title h2,
+.doc-surface h1, .doc-surface h2, .activity-head h2, .release-notes-body h3, .list-empty strong {
+  font-family: var(--display); font-variation-settings: var(--display-axes); font-weight: 450; letter-spacing: -0.015em; color: var(--strong);
+}

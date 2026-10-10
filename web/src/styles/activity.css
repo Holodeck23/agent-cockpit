@@ -62,5 +62,5 @@
 /* Narrow windows: the pane floats over the conversation instead of squeezing it. */
 @media (max-width: 1180px) {
   .thread.with-activity { grid-template-columns: minmax(0, 1fr); }
-  .activity-pane { position: absolute; grid-column: auto; grid-row: auto; top: 0; right: 0; bottom: 0; z-index: 20; max-width: calc(100% - 48px); box-shadow: -18px 0 40px -24px rgb(0 0 0 / 0.35); }
+  .activity-pane { position: absolute; grid-column: auto; grid-row: auto; top: 0; right: 0; bottom: 0; z-index: 20; max-width: calc(100% - 48px); box-shadow: -18px 0 40px -24px light-dark(#1e1c2847, #000000b3); }
 }

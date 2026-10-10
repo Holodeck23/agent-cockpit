@@ -1,14 +1,14 @@
 .first-run { display: flex; flex-direction: column; --entry-gap: clamp(28px, 5vw, 76px); overflow: auto; }
-.first-run-bar { display: flex; align-items: center; gap: 10px; flex: 0 0 64px; padding: 0 32px 0 calc(var(--traffic-clearance, 84px) + 8px); border-bottom: 1px solid var(--border); -webkit-app-region: drag; font-family: var(--round); font-weight: 700; }
-.first-run-bar > svg { width: 24px; height: 24px; color: var(--blue); }
+.first-run-bar { display: flex; align-items: center; gap: 10px; flex: 0 0 64px; padding: 0 32px 0 calc(var(--traffic-clearance, 84px) + 8px); border-bottom: 1px solid var(--border); -webkit-app-region: drag; font-family: var(--display); font-variation-settings: var(--display-axes); font-weight: 500; font-size: 17px; }
+.first-run-bar > svg { width: 24px; height: 24px; }
 .first-run-bar button { margin-left: auto; -webkit-app-region: no-drag; }
 .first-run-body { width: min(1050px, 100%); margin: auto; padding: 48px 48px 72px; display: grid; grid-template-columns: 1fr 1fr; gap: var(--entry-gap); align-items: center; }
 .first-run-kicker { color: var(--muted); font-size: 12px; font-weight: 650; }
-.first-run h1 { font: 750 clamp(38px, 4.2vw, 60px)/1.08 var(--round); letter-spacing: -.035em; color: var(--strong); margin: 22px 0; }
+.first-run h1 { font: 400 clamp(40px, 4.6vw, 66px)/1.04 var(--display); font-variation-settings: 'SOFT' 100, 'opsz' 144; letter-spacing: -.03em; color: var(--strong); margin: 22px 0; }
 .first-run-intro p { max-width: 310px; font-size: 17px; line-height: 1.65; color: var(--secondary); }
 .first-run-actions { padding: 32px; border: 1px solid var(--border); border-radius: var(--r-xl); background: var(--panel); box-shadow: 0 6px 22px #00000006; }
-.first-run-actions > svg { color: var(--blue); width: 30px; height: 30px; }
-.first-run h2 { font: 700 24px/1.2 var(--round); color: var(--strong); margin: 16px 0 12px; overflow-wrap: anywhere; }
+.first-run-actions > svg { color: var(--lumen); width: 30px; height: 30px; }
+.first-run h2 { font: 450 26px/1.2 var(--display); font-variation-settings: var(--display-axes); letter-spacing: -.015em; color: var(--strong); margin: 16px 0 12px; overflow-wrap: anywhere; }
 .first-run-actions p { line-height: 1.6; color: var(--secondary); }
 .first-run-actions .button-primary { width: 100%; margin: 16px 0 10px; padding: 12px 16px; }
 .first-run-actions > .button-plain { display: block; margin: 8px auto; }
@@ -27,7 +27,7 @@
 .first-run-actions .button-primary { justify-content: center; }
 
 .recovery-card { text-align: left; width: 100%; max-width: 580px; min-width: 0; --recovery-space: 14px; }
-.recovery-card h3 { color: var(--strong); font: 700 21px/1.3 var(--round); margin: var(--recovery-space) 0 8px; overflow-wrap: anywhere; }
+.recovery-card h3 { color: var(--strong); font: 450 23px/1.25 var(--display); font-variation-settings: var(--display-axes); letter-spacing: -.015em; margin: var(--recovery-space) 0 8px; overflow-wrap: anywhere; }
 .recovery-card p { margin: 8px 0; overflow-wrap: anywhere; }
 .recovery-card .recovery-task { color: var(--secondary); font-size: 14px; line-height: 1.6; }
 .recovery-card .recovery-meta, .recovery-card small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -44,7 +44,7 @@
 .recovery-card :is(button, select):focus-visible { outline: 3px solid var(--halo); outline-offset: 3px; }
 /* Beta terms (BetaTerms.tsx): shown before the first-run screen until accepted. */
 .beta-terms { width: min(640px, 100%); margin: auto; padding: 48px 32px 72px; color: var(--secondary); font-size: 15px; line-height: 1.6; }
-.beta-terms h1 { font: 750 clamp(30px, 3.4vw, 44px)/1.1 var(--round); letter-spacing: -.03em; color: var(--strong); margin: 0 0 18px; }
+.beta-terms h1 { font: 400 clamp(32px, 3.6vw, 48px)/1.08 var(--display); font-variation-settings: 'SOFT' 100, 'opsz' 144; letter-spacing: -.025em; color: var(--strong); margin: 0 0 18px; }
 .beta-terms ul { padding-left: 20px; margin: 16px 0; display: grid; gap: 8px; }
 .beta-terms a { color: var(--link); }
 .beta-terms-actions { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }

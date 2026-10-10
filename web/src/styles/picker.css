@@ -3,7 +3,7 @@
 .picker-panel {
   position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 30; width: min(420px, calc(100vw - 40px));
   display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md, 10px);
-  background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+  background: var(--panel); box-shadow: var(--shadow-lg);
 }
 .picker-panel input { padding: 8px 10px; border: 1px solid var(--input-border, var(--border)); border-radius: var(--r-sm); background: var(--field); outline: none; }
 .picker-list { max-height: 300px; overflow: auto; display: flex; flex-direction: column; }
@@ -41,7 +41,7 @@
 /* Presets: named agent settings at the top of the agent panel. */
 .presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .preset-chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--field); }
-.preset-chip.active { border-color: var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 12%, var(--panel)); }
+.preset-chip.active { border-color: var(--selected); background: var(--selected-soft); }
 .preset-chip > button { border: 0; background: none; padding: 3px 4px 3px 10px; color: var(--strong); font-size: 12.5px; }
 .preset-chip > .preset-remove { padding: 3px 8px 3px 4px; color: var(--muted); }
 .preset-add { border: 1px dashed var(--border); border-radius: 999px; background: none; padding: 3px 10px; color: var(--secondary); font-size: 12.5px; }

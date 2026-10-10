@@ -17,12 +17,12 @@
 .workspace-button.missing .icon { color: var(--needs-ink); }
 .workspace-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .workspace-dot.working { background: var(--working-ink); }
-.workspace-dot.needs { background: var(--blue); box-shadow: 0 0 0 3px var(--halo-soft); }
+.workspace-dot.needs { background: var(--ember); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ember) 18%, transparent); }
 
 /* A little wider than the button: the filter pills under it start further left and must not peek out. */
 .workspace-panel {
   position: absolute; left: -6px; right: -6px; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; gap: 2px; padding: 6px;
-  border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+  border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--panel); box-shadow: var(--shadow-lg);
 }
 .workspace-row {
   display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 8px 9px; border: 0; border-radius: var(--r-sm); background: transparent;
