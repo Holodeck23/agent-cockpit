@@ -3,7 +3,7 @@
 button, a, summary { cursor: pointer; }
 :focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
 .app { height: 100dvh; }
-.bubble { font-size: 17px; line-height: 1.6; }
+.bubble, .bubble.user { font-size: 17px; line-height: 1.6; }
 .author-name, .approval, .composer textarea, .card-title { font-size: 16px; }
 .subnav-item, .button-primary, .button-soft, .tab-label { font-size: 15px; }
 .author-time, .card-meta, .thread-status, .filter, .composer-foot, .preview-heading strong, .preview-actions button, .preview-actions a { font-size: 13px; }
