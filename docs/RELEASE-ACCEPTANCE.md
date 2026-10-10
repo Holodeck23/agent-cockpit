@@ -1,5 +1,16 @@
 # Release acceptance
 
+## v0.1.7 candidate — 2026-10-10 (not published)
+
+Everything merged since v0.1.6 (approval outcomes and countdown, visible permission level and send destination, Antigravity images, the Codex Stop/steer race fix, word-boundary titles), plus crash reports limited to what the beta terms name, Idle for a conversation with nothing running, and two lost-click fixes (Processes → Open site; the first click after typing in a document).
+
+- Artifact: `Cockpit-0.1.7-arm64.dmg`, 128,443,017 bytes, arm64, ad-hoc signed, not notarized. SHA-256 `cff662b51d16bd67d4322d5e73a4a4b4404408b9b0cd52542781ec7edb1fea0c`. Built from `4ee183c`.
+- `npm run verify`: 1243 tests. CI green. `check:installers` and the landing checks passed.
+- **Cumulative gate** (new, `scripts/gate.ts`): 35 deterministic packaged suites covering waves 1–12, CROSS-01–10, startup, recovery, window key, handoff, interruption, reports, states and find-and-inspect, three consecutive passes on one proof package (`app.asar` `8fadb911…`, unchanged throughout): 105/105. Its first run on main found nine proofs stale against UI merged since 10-08 and two product regressions, all fixed before this build.
+- The DMG's app, copied to an isolated location: v0.1.7, signature ok, `app.asar` matches the packaged build (`29f9c8f7…`), release lockdown PASS.
+- Startup (feature D11): six launches of the proof package showed the UI within 0.8 s, so no loading screen.
+- Open: production-build manual flow, an independent person on their own Mac (the [tester checklist](user/tester-checklist.md)), two hours of real use, the live Chrome connected path, the full in-app second-account flow, physical-phone push, OpenCode's live OpenRouter path, and confirming the Sentry project's IP setting.
+
 ## v0.1.6 published prerelease — 2026-10-08
 
 Waves 11 and 12 (the phone live preview on its own origin; account profiles per project and agent; worktrees with their lifecycle, merge back and two agents at once), the handoff preview before an agent switch, Report a bug / Send feedback, the one-line Terminal install, and crash and error reports through Sentry as a condition of the beta (`BETA-TERMS.md`, no off switch). First release that sends anything to the developer.
