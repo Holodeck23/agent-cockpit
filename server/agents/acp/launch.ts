@@ -5,6 +5,7 @@ import type { AgentId, AgentSession, ApprovalBehavior, EventSink, OutgoingImage,
 import { acpPrompt } from '../image-input.ts'
 import { createRpcClient } from '../codex/rpc.ts'
 import { acpTool, acpTurnEnd, parseAcpUpdate } from './parse.ts'
+import { inheritedEnv } from '../inherited-env.ts'
 
 // A coding agent that speaks the Agent Client Protocol over stdio (OpenCode: `opencode acp`; Gemini CLI:
 // `gemini --acp`). Cockpit is the client: it starts or loads a session, sends each turn with
@@ -35,7 +36,7 @@ export interface AcpLaunchInput {
 type PermissionOption = { optionId: string; kind: string }
 
 export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSession {
-  const child = spawn(input.command, [...input.args], { cwd: input.cwd, stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN, env: { ...process.env, ...input.env } })
+  const child = spawn(input.command, [...input.args], { cwd: input.cwd, stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN, env: { ...inheritedEnv(), ...input.env } })
   let exited = false
   let sessionId: string | undefined
   let loading = false

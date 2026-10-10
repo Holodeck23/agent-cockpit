@@ -8,6 +8,7 @@ import { codexInput } from '../image-input.ts'
 import { codexEffort } from './efforts.ts'
 import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
+import { inheritedEnv } from '../inherited-env.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -99,7 +100,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   const child = spawn(deps.executable ?? 'codex', ['app-server', ...(deps.configArgs ?? [])], {
     cwd: opts.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...process.env, ...deps.env },
+    env: { ...inheritedEnv(), ...deps.env },
   })
   let exited = false
   let threadId: string | undefined

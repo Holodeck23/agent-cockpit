@@ -13,6 +13,7 @@ import { withImagePaths } from '../image-input.ts'
 import { brainDir, newTurnImages } from './images.ts'
 import { resolveAgyModel } from './models.ts'
 import { parseAntigravityLine } from './parse.ts'
+import { inheritedEnv } from '../inherited-env.ts'
 
 const inputSchema = z.object({
   cwd: z.string().min(1),
@@ -134,7 +135,7 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
   const child = spawn(executable, buildAntigravityArgs(value), {
     cwd: value.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...process.env, ...env },
+    env: { ...inheritedEnv(), ...env },
   })
   let exited = false
   let firstTurn = true

@@ -13,6 +13,7 @@ import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
 import { probeClaude, validateClaudeArgs } from './capabilities.ts'
 import { watchChrome } from './chrome-watch.ts'
+import { inheritedEnv } from '../inherited-env.ts'
 
 export interface ClaudeLaunchDeps {
   /** Override for tests or a non-PATH install. */
@@ -45,7 +46,7 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   // Defer spawning until callers can register the session (or immediately close
   // it). In particular, never abort an execFile whose spawn has already failed.
   const ready = Promise.resolve().then(() => ended ? undefined :
-    probeClaude(deps.executable ?? 'claude', input.cwd, { ...process.env, ...deps.env }, controller.signal))
+    probeClaude(deps.executable ?? 'claude', input.cwd, { ...inheritedEnv(), ...deps.env }, controller.signal))
     .then((capabilities) => {
       if (ended || !capabilities) return
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
@@ -101,7 +102,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...process.env, ...deps.env },
+    env: { ...inheritedEnv(), ...deps.env },
   })
   let exited = false
   const stderrTail: string[] = []
