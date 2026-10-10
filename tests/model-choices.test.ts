@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { agyChoiceLabel, agyEffortFor, agyMenus } from '../web/src/model-choices.ts'
+import { agyChoiceLabel, agyEffortFor, agyMenus, claudeMenu, OTHER_MODEL } from '../web/src/model-choices.ts'
+import { claudeModels } from '../server/agents/claude/models.ts'
 
 const listed = [
   { id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
@@ -56,5 +57,28 @@ describe('the composer chip for an Antigravity choice', () => {
     expect(agyChoiceLabel(listed, 'gemini-2-ultra', '')).toBeUndefined()
     expect(agyChoiceLabel(listed, 'gemini-3.1-pro', 'medium')).toBeUndefined()
     expect(agyChoiceLabel([], 'gemini-3.1-pro', 'low')).toBeUndefined()
+  })
+})
+
+describe('Claude Code model menu', () => {
+  const listed = claudeModels(['fable', 'opus', 'sonnet'])
+
+  it('is Default, the --help aliases, Haiku, then Other', () => {
+    expect(claudeMenu(listed, '').models.map((m) => m.label)).toEqual(['Default model', 'Fable', 'Opus', 'Sonnet', 'Haiku', 'Other…'])
+    expect(claudeMenu(listed, 'opus')).toMatchObject({ selected: 'opus', other: false })
+  })
+
+  it('shows a full model id as Other, with its box', () => {
+    expect(claudeMenu(listed, 'claude-opus-5-5')).toMatchObject({ selected: OTHER_MODEL, other: true })
+  })
+
+  it('keeps Other open while its box is still empty, and closes it on an alias', () => {
+    expect(claudeMenu(listed, '', true)).toMatchObject({ selected: OTHER_MODEL, other: true })
+    expect(claudeMenu(listed, 'sonnet', true)).toMatchObject({ selected: 'sonnet', other: false })
+  })
+
+  it('takes a new alias --help names, and has a menu before --help is read', () => {
+    expect(claudeMenu(claudeModels(['mythos', 'opus']), '').models.map((m) => m.value)).toEqual(['', 'mythos', 'opus', 'haiku', OTHER_MODEL])
+    expect(claudeMenu(undefined, '').models).toHaveLength(6)
   })
 })

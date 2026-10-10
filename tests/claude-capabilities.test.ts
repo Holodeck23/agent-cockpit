@@ -187,3 +187,13 @@ describe('Claude compatibility', () => {
     expect(existsSync(join(f.cwd, 'launched'))).toBe(false)
   }, 12_000)
 })
+
+describe('Claude Code model aliases from --help', () => {
+  it('reads the aliases --model names, in its order', () => {
+    expect(parseClaudeHelp(installedHelp).modelAliases).toEqual(['fable', 'opus', 'sonnet'])
+  })
+
+  it('reads none when --model gives no aliases', () => {
+    expect(parseClaudeHelp(help).modelAliases).toEqual([])
+  })
+})

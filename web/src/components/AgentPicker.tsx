@@ -6,7 +6,7 @@ import { api, type AccountView, type AgentCapabilities, type AgentStatus, type H
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
-import { agyChoiceLabel, agyEffortFor, agyMenus } from '../model-choices.ts'
+import { agyChoiceLabel, agyEffortFor, agyMenus, claudeMenu, OTHER_MODEL } from '../model-choices.ts'
 import { permissionLabel, permissionDescription, needsPermissionConfirmation } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
@@ -26,7 +26,8 @@ export interface AgentChoice {
 }
 
 const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
-  claude: ['haiku', 'sonnet', 'opus'],
+  // Claude Code has its own menu (claudeMenu).
+  claude: [],
   // Account-specific model ids can be typed; blank uses the user's CLI default.
   codex: [],
   // Listed by the installed agy itself (`agy models`, on Refresh); blank uses Antigravity's default.
@@ -221,6 +222,9 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   // The chip names an Antigravity model from agy's last listing. Reading it never runs agy; the phone
   // is refused capabilities, and without a listing the chip shows the stored value as it is.
   const [agyListed, setAgyListed] = useState<readonly ModelOption[] | undefined>(undefined)
+  /** Claude's Other was picked and its box may still be empty. */
+  const [claudeOther, setClaudeOther] = useState(false)
+  useEffect(() => { setClaudeOther(false) }, [value.agent, open])
   useEffect(() => {
     if (value.agent !== 'antigravity' || document.documentElement.classList.contains('phone')) return
     let live = true
@@ -272,6 +276,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   // Antigravity, once agy has listed its models: a model by name, then the efforts that model offers.
   const agy = current.agent === 'antigravity' && listedChoices ? agyMenus(listedChoices, current.model, current.effort) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
+  // Claude Code: Default, the aliases its --help names (plus Haiku), then Other for a full id.
+  const claude = current.agent === 'claude' ? claudeMenu(listedChoices, current.model, claudeOther) : undefined
 
   const commitChoice = (next: AgentChoice): void => {
     const remembered = remember(memory, next)
@@ -409,6 +415,22 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                     <option key={m.value || 'default'} value={m.value}>{m.label}</option>
                   ))}
                 </select>
+              ) : claude ? (
+                <>
+                  <select value={claude.selected} onChange={(e) => {
+                    const model = e.target.value
+                    setClaudeOther(model === OTHER_MODEL)
+                    patch({ model: model === OTHER_MODEL ? (claude.other ? current.model : '') : model })
+                  }}>
+                    {claude.models.map((m) => (
+                      <option key={m.value || 'default'} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  {claude.other ? (
+                    <input aria-label="Claude model id" value={current.model} placeholder="Full model id, e.g. claude-opus-5-5" autoFocus={claudeOther}
+                      onChange={(e) => patch({ model: e.target.value.trim() })} />
+                  ) : null}
+                </>
               ) : (
                 <>
                   <input

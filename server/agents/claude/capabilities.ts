@@ -11,7 +11,15 @@ export interface ClaudeCapabilities {
   readonly appendSystemPromptFile: boolean
   /** --chrome: Claude in Chrome, for Use my Chrome (H4). */
   readonly chrome: boolean
+  /** The model aliases --model names as examples ('fable', 'opus', 'sonnet'), in its order. */
+  readonly modelAliases: readonly string[]
   readonly options: ReadonlyMap<string, string>
+}
+
+/** Quoted lowercase words in --model's own block; anything else (full ids, prose) is not an alias. */
+function modelAliases(block: string | undefined): string[] {
+  const aliases = [...(block ?? '').matchAll(/'([a-z]+)'/g)].map((m) => m[1]!)
+  return [...new Set(aliases)]
 }
 
 /** Only option declarations count; prose mentioning an option is not support. */
@@ -33,6 +41,7 @@ export function parseClaudeHelp(help: string): ClaudeCapabilities {
     promptSuggestions: options.has('--prompt-suggestions'),
     appendSystemPromptFile: options.has('--append-system-prompt-file') || help.includes('--append-system-prompt[-file]'),
     chrome: options.has('--chrome'),
+    modelAliases: modelAliases(options.get('--model')),
     options,
   }
 }
