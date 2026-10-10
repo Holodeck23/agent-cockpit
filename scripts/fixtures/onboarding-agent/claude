@@ -40,7 +40,8 @@ while IFS= read -r line; do
   shot=$(curl -s -X POST "$COCKPIT_MCP_URL/api/mcp/preview/screenshot" \
     -H "authorization: Bearer $COCKPIT_MCP_TOKEN" -H 'content-type: application/json' -d "{\"url\":\"$url\"}")
   meta=$(printf '%s' "$shot" | sed -n 's/.*"mimeType":"\([^"]*\)".*"width":\([0-9]*\).*"height":\([0-9]*\).*/\1 \2x\3/p')
-  case "$shot" in *'"mimeType":"image/png"'*'"width":1280'*'"height":800'*) inspected=yes ;; *) inspected=no ;; esac
+  # Since wave 9 the capture is the conversation's own page at its viewport size, not a fixed 1280x800.
+  case "$shot" in *'"mimeType":"image/png"'*'"width":'[1-9]*'"height":'[1-9]*) inspected=yes ;; *) inspected=no ;; esac
   text="Opened the embedded preview (HTTP $opened) and inspected its PNG: $inspected ($meta). Process $id."
   printf '{"type":"assistant","message":{"id":"preview-fixture","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$text"
   printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","total_cost_usd":0,"duration_ms":5}\n' "$text"

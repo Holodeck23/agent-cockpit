@@ -59,6 +59,7 @@ export const GATE_SUITES: readonly GateSuite[] = [
   { name: 'feedback', script: 'proof:feedback', covers: ['D4'] },
   { name: 'states', script: 'proof:states', covers: ['EA-D10', 'R10', 'BASE-08', 'J9'] },
   { name: 'find-inspect', script: 'proof:find-inspect', covers: ['EA-D20', 'A9'] },
+  { name: 'director', script: 'proof:director', covers: ['EA-D17'] },
   { name: 'antigravity', script: 'proof:antigravity', covers: ['I2', 'L3'] },
   { name: 'opencode', script: 'proof:opencode', covers: ['I2'] },
 ]
