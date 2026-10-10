@@ -1,8 +1,8 @@
 # Installation and Updating Guide
 
-> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.7 prerelease (2026-10-10).** Cockpit supports Claude Code, Codex, Google Antigravity and OpenCode on Apple-silicon Macs. This release improves approvals, permission clarity, Antigravity image display, stop behavior and interaction reliability. Independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
-*(Documented for v0.1.4)*
+*(Documented for v0.1.7)*
 
 ## System Requirements
 
@@ -40,7 +40,7 @@ Cockpit is in beta, and the beta is conditional on its [terms](../../BETA-TERMS.
 
 ## Installing Agents
 
-Cockpit connects to agents that are already installed on your Mac. You must install the CLIs and sign in using your own accounts and subscriptions. Cockpit automatically resolves your login-shell `PATH` and checks fallback directories (like Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder.
+Cockpit connects to Claude Code, Codex, Google Antigravity and OpenCode when their CLIs are installed on your Mac. You must sign in using your own accounts, subscriptions or provider configuration. Cockpit automatically resolves your login-shell `PATH` and checks fallback directories (like Homebrew and user-level npm installs) to find these CLIs, even when launched from the macOS Finder. Detection does not prove that an agent is signed in or has quota.
 
 ### Claude Code
 Install globally using npm (requires Node.js):
@@ -57,6 +57,8 @@ Install the Antigravity `agy` CLI according to Google's official setup instructi
 
 ### OpenCode (OpenRouter)
 Install OpenCode via standard `npm` or binary. OpenRouter is accessed through OpenCode, which will require setting up your OpenRouter API keys in its configuration.
+
+Claude Code and Codex currently have the fullest guided install, update, sign-in and recent-session recovery paths. Antigravity's live subscription resume has been verified, but its headless mode cannot show native approval cards or receive Cockpit's per-session preview tools. OpenCode's packaged ACP integration is verified; a live OpenRouter account run is still an open acceptance check. See [Agent Compatibility and Limitations](compatibility.md).
 
 ## Identifying Your App Version
 

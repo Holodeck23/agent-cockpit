@@ -14,7 +14,7 @@ Three automated runs with fresh Cockpit state and real Claude sessions reached a
 
 ## Supported Platforms
 
-Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It expects the supported Agent CLIs to be installed on your system.
+Currently, Cockpit is built for macOS and Apple Silicon (ARM64). It supports Claude Code, Codex, Google Antigravity and OpenCode. Each CLI must be installed and signed in with your own account or provider configuration. Claude Code and Codex have the fullest guided setup and recent-session recovery. OpenCode's packaged ACP path is verified, but live OpenRouter use remains an open acceptance check. Antigravity has a verified live resume path, but its headless CLI cannot receive Cockpit approval cards or the per-session preview tools.
 
 ## Quick Links
 

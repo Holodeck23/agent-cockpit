@@ -1,6 +1,6 @@
 # First-Run Quick Start
 
-> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.7 prerelease (2026-10-10).** Cockpit supports Claude Code, Codex, Google Antigravity and OpenCode. Claude Code and Codex provide the fullest guided setup and recent-session recovery; see [Agent Compatibility and Limitations](compatibility.md) for the Antigravity and OpenCode boundaries. Independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
 
 Welcome to Agent Cockpit! This guide will take you from launching the app to seeing your first result.
 
@@ -13,7 +13,7 @@ When you first launch Cockpit with no saved projects or conversations and withou
 
 ### Automatic Agent Defaults
 
-During your first run, Cockpit automatically chooses an installed agent for you, leaving the model and effort settings at their CLI defaults. It uses manual permissions to ensure you are in control.
+During your first run, Cockpit automatically chooses an installed supported agent, leaving the model and effort settings at their CLI defaults. It uses manual permissions where the CLI can hand approval requests to Cockpit. Antigravity instead uses its own headless permission policy.
 
 ### Skip For Now
 
