@@ -5,7 +5,7 @@ import { BranchPicker } from './BranchPicker.tsx'
 import { ContextPicker } from './ContextPicker.tsx'
 import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
-import { ArrowUpIcon } from './icons.tsx'
+import { ArrowUpIcon, StopIcon } from './icons.tsx'
 import { chipToSend, useComposerAttach } from '../useComposerAttach.ts'
 import type { MessageImage } from '../api.ts'
 
@@ -35,6 +35,9 @@ interface ComposerProps {
   disabled?: boolean
   /** A turn is running: the composer's edge shows the scanner (D12, styles/scanner.css). */
   working?: boolean
+  /** Stops the turn this composer targets, independently of the draft or sending restrictions. */
+  onStop?: () => void
+  stopLabel?: string
   /** The agent picker, shown in the bottom row. */
   picker: ReactNode
   /** Re-reads the branch pill when it changes, e.g. the conversation's status. */
@@ -70,7 +73,7 @@ export function draftAfterSend(current: string, sent: string): string {
   return current.trim() === sent ? '' : current
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, onStop, stopLabel = 'Stop current turn', picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [confirmedDestination, setConfirmedDestination] = useState<string>()
   const destinationKey = `${draftKey}:${confirmDestination ?? ''}`
@@ -213,9 +216,12 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
           {picker}
           {projectPath ? <BranchPicker key={workspaceId ?? 'main'} projectPath={projectPath} workspaceId={workspaceId} threadId={threadId} refreshKey={branchRefreshKey} /> : null}
           <span className="composer-spacer" />
-          <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
-            <ArrowUpIcon />
-          </button>
+          <span className="composer-actions">
+            {onStop ? <button type="button" className="composer-stop" aria-label={stopLabel} title={stopLabel} onClick={onStop}><StopIcon /></button> : null}
+            <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
+              <ArrowUpIcon />
+            </button>
+          </span>
         </div>
       </div>
     </form>

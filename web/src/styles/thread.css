@@ -195,12 +195,15 @@
 }
 .composer-foot > .icon-button:disabled { opacity: 0.5; }
 .composer-spacer { flex: 1; }
-.send {
+.composer-actions { display: flex; align-items: center; gap: 5px; flex: none; }
+.send, .composer-stop {
   display: grid; place-items: center; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 7px;
   background: var(--project-fill, var(--blue)); color: #fff; box-shadow: none;
 }
-.send .icon { width: 17px; height: 17px; stroke-width: 2.2; }
-.send:active:not(:disabled) { transform: translateY(1px); }
+.composer-stop { background: var(--field); color: var(--strong); }
+.composer-stop:hover { background: var(--input-border); }
+.send .icon, .composer-stop .icon { width: 17px; height: 17px; stroke-width: 2.2; }
+.send:active:not(:disabled), .composer-stop:active { transform: translateY(1px); }
 .send:disabled { background: var(--field); color: var(--muted); box-shadow: none; }
 
 /* agent picker */
