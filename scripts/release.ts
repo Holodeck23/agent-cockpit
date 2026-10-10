@@ -2,10 +2,13 @@
 // can be re-run after a failure without repeating the ones before it.
 //
 //   npm run release -- prepare 0.1.4   bump package.json + release links; list prose to rewrite
-//   npm run release -- build 0.1.4     verify, landing checks, proofs on a proof build of this commit,
-//                                      package to release/v0.1.4, SHA256SUMS, isolated install check,
+//   npm run release -- build 0.1.4     verify, landing checks, the cumulative gate (scripts/gate.ts,
+//                                      3 passes) on a proof build of this commit, package to
+//                                      release/v0.1.4, SHA256SUMS, isolated install check,
 //                                      installed copy: debug flags refused, window-only API
-//   npm run release -- publish 0.1.4 --notes notes.md   GitHub prerelease from a pushed main
+//                                      (--gate-runs N for a dry run; publish needs 3)
+//   npm run release -- publish 0.1.4 --notes notes.md   GitHub prerelease from a pushed main;
+//                                      refuses without a passed 3-run gate for this source
 //   npm run release -- deploy 0.1.4    Vercel landing deploy, live page check, live update feed
 //
 // --evidence <dir> collects logs and screenshots (default release/v<version>/evidence).
@@ -46,6 +49,10 @@ const SUMS = join(OUT, 'SHA256SUMS')
 const EVIDENCE = resolve(flag('evidence') ?? join(OUT, 'evidence'))
 const INSTALLED = join(OUT, 'installed', 'Cockpit.app')
 const PROOF_APP = join(OUT, 'proof', 'mac-arm64', 'Cockpit.app')
+const GATE = join(EVIDENCE, 'gate')
+// Three consecutive passes is the release gate (ACCEPTANCE REL-02). Fewer is a dry run publish refuses.
+const GATE_RUNS = Number(flag('gate-runs') ?? 3)
+const REQUIRED_GATE_RUNS = 3
 // Node ignores --inspect and NODE_OPTIONS in the release app. RunAsNode stays on: each agent's
 // cockpit MCP server runs on the app's own binary with ELECTRON_RUN_AS_NODE (electron/main.ts).
 const RELEASE_FUSES = ['-c.electronFuses.enableNodeCliInspectArguments=false', '-c.electronFuses.enableNodeOptionsEnvironmentVariable=false']
@@ -126,11 +133,11 @@ async function build(): Promise<void> {
   // The release build refuses debuggers (electron/debug-flags.ts), and Playwright drives the app
   // through one, so the Playwright proofs run on a proof build of the same commit, made first.
   await run('package-proof.log', 'npx', ['electron-builder', '--mac', 'dir', '--arm64', `-c.directories.output=release/v${version}/proof`])
-  const proofEnv = (name: string) => ({ COCKPIT_APP: PROOF_APP, COCKPIT_PROOF_DIR: join(EVIDENCE, name) })
-  await run('proof-startup.log', 'npx', ['tsx', 'scripts/proof-startup.ts'], proofEnv('proof-startup'))
-  await run('proof-recovery.log', 'npx', ['tsx', 'scripts/proof-recovery.ts'], proofEnv('proof-recovery'))
-  await run('proof-recovery-legacy.log', 'npx', ['tsx', 'scripts/proof-recovery.ts', '--legacy'], proofEnv('proof-recovery-legacy'))
-  await run('proof-window-key.log', 'npx', ['tsx', 'scripts/proof-window-key.ts'], proofEnv('proof-window-key'))
+  // The cumulative gate (REL-02): every required deterministic proof, GATE_RUNS passes in a row on
+  // this one proof package (scripts/lib/gate-suites.ts). It replaces the four proofs this stage used to
+  // run, which are in it. publish refuses without a passed gate for this commit.
+  rmSync(GATE, { recursive: true, force: true })
+  await run('gate.log', 'npx', ['tsx', 'scripts/gate.ts', '--app', PROOF_APP, '--out', GATE, '--runs', String(GATE_RUNS)])
 
   await run('build-electron-release.log', 'npm', ['run', 'build:electron'], { COCKPIT_RELEASE_BUILD: '1' })
   await run('package.log', 'npx', ['electron-builder', '--mac', '--arm64', `-c.directories.output=release/v${version}`, ...RELEASE_FUSES])
@@ -208,6 +215,15 @@ async function publish(): Promise<void> {
   if (!readFileSync(SUMS, 'utf8').startsWith(dmgSha)) fail('SHA256SUMS does not match the DMG')
   const verified = JSON.parse(readFileSync(join(EVIDENCE, 'install-verification.json'), 'utf8')) as InstallVerification
   if (verified.dmg_sha256 !== dmgSha || !verified.asar_match) fail('install-verification.json is for a different DMG: re-run build')
+  const gateFile = join(GATE, 'gate.json')
+  if (!existsSync(gateFile)) fail(`no cumulative gate record at ${gateFile}: re-run build`)
+  const gate = JSON.parse(readFileSync(gateFile, 'utf8')) as { commit: string; requiredRuns: number; subset: unknown; verdict?: { passed: boolean } }
+  if (!gate.verdict?.passed || gate.subset || gate.requiredRuns < REQUIRED_GATE_RUNS) {
+    fail(`the cumulative gate did not pass ${REQUIRED_GATE_RUNS} consecutive full runs: see ${join(GATE, 'summary.txt')}`)
+  }
+  // build may leave one change to commit (the landing's DMG size); anything else is untested source.
+  const since = git('diff', '--name-only', gate.commit, head).split('\n').filter(Boolean)
+  if (since.some((file) => file !== 'landing/index.html')) fail(`source changed since the gated commit ${gate.commit.slice(0, 12)}: ${since.join(', ')}`)
   if (!readFileSync(LANDING, 'utf8').includes(`· DMG · ${landingSizeLabel(readFileSync(DMG).length)}`)) {
     fail('landing/index.html does not state this DMG size: commit the build stage change')
   }
