@@ -1,6 +1,6 @@
 import type { ThreadSummary } from '../api.ts'
 import { DEFAULT_APPEARANCE, rowMeta, type RowShows } from '../appearance.ts'
-import { agentLabel, dayLabel, shownStatus, tagFor, toneFor } from '../conversation-meta.ts'
+import { agentLabel, dayLabel, shownStatus } from '../conversation-meta.ts'
 import { ChatIcon } from './icons.tsx'
 import { StatusPill } from './StatusPill.tsx'
 
@@ -18,7 +18,6 @@ interface ConversationCardProps {
 }
 
 export function ConversationCard({ thread, selected, unread, onSelect, project, shows = DEFAULT_APPEARANCE.rows, excerpt }: ConversationCardProps) {
-  const tag = tagFor(thread.meta.title)
   const classes = ['card', selected ? 'selected' : '', thread.meta.completed ? 'completed' : '', unread ? 'unread' : '']
   return (
     <button
@@ -27,19 +26,18 @@ export function ConversationCard({ thread, selected, unread, onSelect, project, 
       aria-current={selected ? 'true' : undefined}
       onClick={() => onSelect(thread.meta.id)}
     >
-      <span className="card-top">
-        <span className={`tag tag-${toneFor(tag)}`}>{tag}</span>
-        <span className="card-count" aria-label={`${thread.messageCount} messages`}>
-          {unread ? <span className="unread-dot" aria-label="Unread" /> : null}
-          <ChatIcon />
-          {thread.messageCount}
-        </span>
+      <span className="card-title">
+        {unread ? <span className="unread-dot" aria-label="Unread" /> : null}
+        {thread.meta.title}
       </span>
-      <span className="card-title">{thread.meta.title}</span>
       {excerpt ? <span className="card-preview card-excerpt">{excerpt}</span> : shows.preview && thread.preview ? <span className="card-preview">{thread.preview}</span> : null}
       <span className="card-foot">
         <span className="card-meta">
           {rowMeta({ project, agent: agentLabel(thread.meta.settings.agent), date: dayLabel(thread.lastActivityAt) }, shows)}
+        </span>
+        <span className="card-count" aria-label={`${thread.messageCount} messages`}>
+          <ChatIcon />
+          {thread.messageCount}
         </span>
         <StatusPill status={shownStatus(thread)} turn={thread.turn} />
       </span>

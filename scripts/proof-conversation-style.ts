@@ -38,12 +38,12 @@ seed('Summarize the release checklist', [
   { kind: 'user_text', text: 'Summarize the release checklist.' }, reply('The checklist is ready for review.'), done,
 ], true)
 seed('Conversation layout review', [
-  { kind: 'user_text', text: 'Review the conversation screen at desktop and narrow window sizes. Keep the project tint, agent glyphs and scanner.' },
+  { kind: 'user_text', text: 'Review the conversation screen at desktop and narrow window sizes. Keep the agent glyphs and the working light.' },
   reply('The conversation list has flat rows and a filled selection. Filters remain compact, and each status stays at the right edge of its row.\n\nThe transcript has a calmer reading rhythm, with the composer anchored beneath it. The project keeps its green accent.'), done,
   { kind: 'user_text', text: 'Check the header and the 980 × 640 layout too.' },
   reply('The list toggle sits beside the title. Status and completion appear together below it, and the narrow layout keeps the message box visible.'), done,
 ])
-seed('Check scanner timing', [{ kind: 'user_text', text: 'Check the scanner timing.' }, reply('The scanner remains part of the start screen.'), done])
+seed('Check the working light', [{ kind: 'user_text', text: 'Check the working light timing.' }, reply('The working light drifts only while a turn runs.'), done])
 
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `conversation-enjoy-${name}.png`) })
 const app = await launchPackagedApp({ HOME: home, SHELL: join(ROOT, 'scripts/fixtures/wave10-cli/login-shell'),

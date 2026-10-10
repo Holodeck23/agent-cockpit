@@ -50,7 +50,7 @@
 .tab.active .tab-main { color: var(--strong); font-weight: 500; }
 .tab:not(.active) .tab-main:hover { color: var(--body); background: color-mix(in srgb, var(--strong) 6%, transparent); }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
-.tab-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--tab-tint, var(--body)); }
+.tab-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--lumen); font-variant-numeric: tabular-nums; }
 .tab-needs { position: relative; display: inline-flex; color: var(--muted); }
 .tab-needs .icon { width: 20px; height: 20px; }
 .count-dot {
@@ -67,7 +67,7 @@
 .tab:hover .tab-pin, .tab-pin.pinned { opacity: 1; }
 .tab-pin:hover { background: var(--field); }
 .tab-pin .icon { width: 15px; height: 15px; }
-.tab-pin.pinned { color: var(--tab-tint, var(--strong)); }
+.tab-pin.pinned { color: var(--strong); }
 .tab-pin:hover { color: var(--strong); }
 
 /* Projects are small planets: a round body, lit from the upper left. */
@@ -143,21 +143,21 @@
   border-radius: var(--r-sm); color: var(--muted); font: inherit; font-size: 14px; cursor: default;
   transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
-/* The active section has a small light on the horizon beneath it. */
+/* The active section has a short line on the horizon beneath it, in the selected colour. */
 .subnav-item::after {
   content: ''; position: absolute; left: 50%; bottom: -10px; width: 22px; height: 2px; border-radius: 2px;
-  background: var(--project-tint, var(--lumen)); box-shadow: 0 0 8px 1px color-mix(in srgb, var(--project-tint, var(--lumen)) 70%, transparent);
+  background: var(--selected);
   transform: translateX(-50%) scaleX(0); opacity: 0; transition: transform var(--t-med) var(--ease), opacity var(--t-med) var(--ease);
 }
 .subnav-item[aria-selected='true']::after { transform: translateX(-50%) scaleX(1); opacity: 1; }
 .subnav-item .icon { width: 17px; height: 17px; }
 .subnav-item[aria-selected='true'] { color: var(--strong); font-weight: 500; }
-.subnav-item[aria-selected='true'] .icon { color: var(--project-tint, var(--lumen)); }
+.subnav-item[aria-selected='true'] .icon { color: var(--selected); }
 .subnav-item:not([aria-selected='true']):hover { color: var(--strong); background: var(--field); }
 .subnav-needs { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--needs-bg); color: var(--needs-ink); font-size: 11.5px; font-weight: 650; text-align: center; }
 .subnav-selected { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }
 .subnav-item .subnav-caret { width: 14px; height: 14px; color: var(--muted); }
-.subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--project-tint, inherit); }
+.subnav-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--lumen); font-variant-numeric: tabular-nums; }
 .subnav-tools { display: flex; gap: 4px; }
 /* Pinned files and documents (F6): reopen from any section. */
 .subnav-pins { display: flex; gap: 2px; min-width: 0; margin-right: auto; padding-left: 10px; border-left: 1px solid var(--border); overflow: hidden; }
@@ -166,7 +166,7 @@
   color: var(--secondary); font: inherit; font-size: 13px; cursor: default; flex: none;
 }
 .subnav-pin span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.subnav-pin .icon, .subnav-pin svg { width: 15px; height: 15px; flex: none; color: var(--project-tint, var(--muted)); }
+.subnav-pin .icon, .subnav-pin svg { width: 15px; height: 15px; flex: none; color: var(--muted); }
 .subnav-pin:hover, .subnav-pin:focus-visible { background: var(--field); color: var(--strong); outline: none; }
 .icon-button {
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: none; border: 0;

@@ -76,7 +76,6 @@
     "proof:wave-6.5": "tsx scripts/proof-wave-6.5.ts",
     "proof:wave-7": "tsx scripts/proof-wave-7.ts",
     "proof:cross-wave": "tsx scripts/proof-cross-wave.ts",
-    "proof:scanner": "tsx scripts/proof-scanner.ts",
     "proof:wave-9": "tsx scripts/proof-wave-9.ts",
     "proof:wave-10": "tsx scripts/proof-wave-10.ts",
     "proof:handoff": "tsx scripts/proof-handoff.ts",

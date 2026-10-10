@@ -90,9 +90,9 @@ try {
     await page.getByRole('button', { name: 'Start fresh' }).click()
     await page.getByRole('heading', { name: 'What are you working on?' }).waitFor()
     await page.locator('.workflow-card').first().waitFor()
-    check('the start screen keeps its art, scanner, and workflow status pills',
+    check('the start screen keeps its art, working light, and workflow status pills',
       await page.locator('.start-art').count() === 1
-      && await page.locator('.composer-card .scanner .scanner-lamp').count() === 146
+      && await page.locator('.composer-card .working-light').count() === 1
       && await page.locator('.start-workflow-status').count() === 2)
     check('the new-conversation title has breadcrumb pills',
       await page.locator('.thread-breadcrumbs span:not([aria-hidden])').count() === 2)

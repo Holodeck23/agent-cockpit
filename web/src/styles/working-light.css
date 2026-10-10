@@ -1,0 +1,62 @@
+/* Lumen's working light (components/WorkingLight.tsx), the composer's one signature.
+
+   While a turn runs, a single soft light drifts along the composer's bottom edge, out and back,
+   never hurried, and the card's edge holds a faint lumen halo that breathes once every few seconds.
+   It is the one glow on the screen while it is lit. Idle, nothing is drawn and nothing moves.
+   Reduce motion: the light rests in the middle of the edge and the halo holds still.
+
+   The drift is a transform on an element as wide as the edge, so the light's 0–100% is the edge's
+   own width and the animation never touches layout. The light itself is a radial gradient wider
+   than it is tall: white-hot at the centre, lumen through the middle, tide at the fringe. */
+
+.working-light {
+  --drift-cycle: 6.4s; /* out and back; the one-way drift is half */
+  position: absolute;
+  inset-inline: 28px;
+  bottom: -1px;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--t-slow) var(--ease);
+}
+.working-light > i { position: absolute; inset: 0; }
+.working-light > i::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 160px;
+  height: 8px;
+  margin-left: -80px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse closest-side,
+    color-mix(in srgb, #fff 60%, var(--lumen)) 0%,
+    var(--lumen) 30%,
+    color-mix(in srgb, var(--tide) 45%, transparent) 68%,
+    transparent 100%);
+}
+.composer-card.working .working-light { opacity: 1; }
+.composer-card.disabled .working-light { display: none; }
+
+/* The halo: the card's edge takes the light while it works. */
+.composer-card.working {
+  border-color: color-mix(in srgb, var(--lumen) 32%, var(--border));
+  box-shadow: 0 0 0 4px var(--lumen-soft), var(--shadow-md);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .working-light > i { animation: working-drift calc(var(--drift-cycle) / 2) var(--ease-breathe) infinite alternate; }
+  .composer-card.working { animation: working-halo var(--drift-cycle) var(--ease-breathe) infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-light > i { transform: translateX(50%); }
+}
+
+@keyframes working-drift {
+  from { transform: translateX(4%); }
+  to { transform: translateX(96%); }
+}
+@keyframes working-halo {
+  0%, 100% { box-shadow: 0 0 0 4px var(--lumen-soft), var(--shadow-md); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--lumen) 8%, transparent), var(--shadow-md); }
+}
