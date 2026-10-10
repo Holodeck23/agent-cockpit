@@ -60,6 +60,16 @@ export function openPage(layouts: LayoutMap, key: string, url: string): LayoutMa
   return { ...layouts, [key]: { url, mode: prior?.mode ?? 'desktop', width: prior?.width ?? DEFAULT_PANE_WIDTH, expanded: prior?.expanded ?? false, visible: true } }
 }
 
+/**
+ * Loads a person asked for, counted per page. A page's pane is keyed by the page and can mount after
+ * the request (Processes → Open site switches to the owner conversation first), so a count that
+ * belongs to the page, not to whichever pane is on screen, is what lets the request survive (W7.3).
+ */
+export type OpenRequests = Readonly<Record<string, number>>
+export const requestOpen = (requests: OpenRequests, key: string): OpenRequests => ({ ...requests, [key]: (requests[key] ?? 0) + 1 })
+/** The page has a request it has not carried out yet: `handled` is the count it last carried out. */
+export const pendingOpen = (requested: number, handled: number | undefined): boolean => requested > (handled ?? 0)
+
 /** Any change to one page's record; only a safe http(s) address replaces the remembered one. */
 export function updatePage(layouts: LayoutMap, key: string, change: Partial<PaneLayout>): LayoutMap {
   const prior = layouts[key]

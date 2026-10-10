@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { addressToUrl, originLabel } from '../../../server/browser/address.ts'
-import { MOBILE_WIDTH, paneWidth, type PaneLayout } from '../browser-layout.ts'
+import { MOBILE_WIDTH, paneWidth, pendingOpen, type PaneLayout } from '../browser-layout.ts'
 import { native, type BrowserCapacity, type BrowserPageState } from '../native.ts'
 import { useOverlayOver } from '../useOverlayOver.ts'
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, ExpandIcon, ExternalIcon, PhoneIcon, ReloadIcon, RestoreIcon, StopIcon } from './icons.tsx'
@@ -9,12 +9,15 @@ import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, ExpandIcon, ExternalIcon,
 // (electron/browser-service.ts) over the viewport box below; this component owns the controls
 // and tells the host where that box is, or to hide the page when Cockpit needs the space.
 
+/** Per page: the open request (App's count for that page) it last carried out. */
+const handledOpens = new Map<string, number>()
+
 interface BrowserPaneProps {
   readonly pageKey: string
   /** The folder whose website data this page uses: the project's, or a worktree's own folder. */
   readonly projectPath: string
   readonly layout: PaneLayout
-  /** Changes each time something asks to show `layout.url` again (a link, a process site). */
+  /** How many times something asked this page to show `layout.url` (a link, a process site). */
   readonly openNonce: number
   readonly onLayout: (change: Partial<PaneLayout>) => void
   readonly onClose: () => void
@@ -53,12 +56,12 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
   }, [browser, pageKey, projectPath])
 
   // A page that already exists comes back as it was; only a new page, or an explicit open, loads.
-  const lastNonce = useRef<number | undefined>(undefined)
+  // What each page last carried out outlives this pane, which remounts per page.
   useEffect(() => {
     if (!browser) return
     let cancelled = false
-    const explicit = lastNonce.current !== undefined && lastNonce.current !== openNonce
-    lastNonce.current = openNonce
+    const explicit = pendingOpen(openNonce, handledOpens.get(pageKey))
+    handledOpens.set(pageKey, openNonce)
     if (explicit) { open(layoutRef.current.url); return }
     const seen = stateEvents.current
     void browser.state(pageKey).then((existing) => {
