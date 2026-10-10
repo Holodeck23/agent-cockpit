@@ -202,7 +202,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agentWorkflowsAllowed = (projectPath: string): boolean =>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
   // Tests that fake the version check get a fixed record: no real CLI is run.
-  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService())
+  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService({ listingsFile: join(root, 'agy-models.json') }))
   const agyMcp = createAgyMcp(projects, options.mcp)
   // Created after the manager it watches; the manager asks it before starting a session.
   let lifecycle: Lifecycle | undefined
