@@ -25,27 +25,42 @@ function Svg({ className, title, children }: IconProps & { children: ReactNode }
   )
 }
 
-/** The Cockpit mark: three gauge bars on a blue tile. */
+/** The mark (Lumen): a lit core with a small gold moon on a tilted orbit, on a night tile. */
 export function Mark({ className }: IconProps) {
   return (
     <svg className={className ? `mark ${className}` : 'mark'} viewBox="0 0 24 24" role="img" aria-label="Cockpit">
-      <rect width="24" height="24" rx="6" fill="var(--blue)" />
-      <g fill="#fff">
-        <rect x="6" y="11.5" width="2.8" height="6.5" rx="1.4" />
-        <rect x="10.6" y="6" width="2.8" height="12" rx="1.4" />
-        <rect x="15.2" y="9" width="2.8" height="9" rx="1.4" />
-      </g>
+      <defs>
+        <linearGradient id="mark-night" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#2a2560" />
+          <stop offset="1" stopColor="#14132e" />
+        </linearGradient>
+        <radialGradient id="mark-core" cx="0.42" cy="0.38" r="0.65">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="0.45" stopColor="#c9c0ff" />
+          <stop offset="1" stopColor="#7d6cf0" />
+        </radialGradient>
+      </defs>
+      <rect width="24" height="24" rx="6.5" fill="url(#mark-night)" />
+      <ellipse cx="12" cy="12.4" rx="8" ry="3.4" transform="rotate(-18 12 12.4)" fill="none" stroke="#b9b0ff" strokeOpacity="0.55" strokeWidth="0.9" />
+      <circle cx="12" cy="12.4" r="4" fill="url(#mark-core)" />
+      <circle cx="18.6" cy="8.6" r="1.55" fill="#f2c46d" />
     </svg>
   )
 }
 
-/** Working indicator: the mark's three bars; they move while `live`. */
+/**
+ * Working indicator (Lumen): the mark's orbit, small. While `live` the moon circles the core; the
+ * orbit is two eased sways at right angles, a quarter-cycle apart, so the moon stays round
+ * (styles/chrome.css). The `bars` class name is kept for the stylesheets and proofs that look for it.
+ */
 export function Bars({ className, live = false }: IconProps & { live?: boolean }) {
   return (
-    <svg className={`bars${live ? ' live' : ''}${className ? ` ${className}` : ''}`} viewBox="0 0 12 12" aria-hidden>
-      <rect className="bar b1" x="1" y="5" width="2.4" height="6" rx="1.2" />
-      <rect className="bar b2" x="4.8" y="1" width="2.4" height="10" rx="1.2" />
-      <rect className="bar b3" x="8.6" y="3.5" width="2.4" height="7.5" rx="1.2" />
+    <svg className={`bars orbit${live ? ' live' : ''}${className ? ` ${className}` : ''}`} viewBox="0 0 12 12" aria-hidden>
+      <g transform="rotate(-20 6 6)">
+        <ellipse className="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3" />
+        <circle className="orbit-core" cx="6" cy="6" r="2.5" />
+        <g className="orbit-x"><g className="orbit-y"><circle className="orbit-moon" cx="6" cy="6" r="1.25" /></g></g>
+      </g>
     </svg>
   )
 }

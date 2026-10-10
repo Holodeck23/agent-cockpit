@@ -1,18 +1,67 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Cockpit mark: three gauge bars on a blue tile (macOS icon grid: 824px body, 100px inset). -->
+  <!-- Lumen mark: a lit core with a gold moon on a tilted orbit, on a night tile with a few stars.
+       macOS icon grid: 824px body, 100px inset. scripts/make-dock-frames.ts moves the moon (#moon)
+       round the orbit for the Dock while agents work; keep the ids. -->
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3d8cff"/>
-      <stop offset="1" stop-color="#2066d6"/>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d2868"/>
+      <stop offset="1" stop-color="#11112b"/>
     </linearGradient>
+    <radialGradient id="bloom" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a99cff" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#7d6cf0" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#7d6cf0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.44" cy="0.4" r="0.62">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.35" stop-color="#ebe6ff"/>
+      <stop offset="0.75" stop-color="#a596f7"/>
+      <stop offset="1" stop-color="#7563e6"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.5" stop-color="#d4ccff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#d4ccff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="moonfill" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#fff1cc"/>
+      <stop offset="0.5" stop-color="#f2c46d"/>
+      <stop offset="1" stop-color="#c98a24"/>
+    </radialGradient>
+    <radialGradient id="moonglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f2c46d" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#f2c46d" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tileclip"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <clipPath id="front"><rect x="-400" y="0" width="800" height="400"/></clipPath>
     <filter id="drop" x="-10%" y="-10%" width="120%" height="125%">
       <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.28"/>
     </filter>
   </defs>
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" filter="url(#drop)"/>
-  <g fill="#fff">
-    <rect x="304" y="448" width="96" height="248" rx="48"/>
-    <rect x="464" y="296" width="96" height="400" rx="48"/>
-    <rect x="624" y="376" width="96" height="320" rx="48"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#night)" filter="url(#drop)"/>
+  <g clip-path="url(#tileclip)">
+    <g fill="#fff">
+      <circle cx="248" cy="252" r="5" opacity="0.7"/>
+      <circle cx="356" cy="196" r="3.5" opacity="0.45"/>
+      <circle cx="770" cy="236" r="4" opacity="0.55"/>
+      <circle cx="822" cy="404" r="3" opacity="0.4"/>
+      <circle cx="214" cy="712" r="3.5" opacity="0.35"/>
+      <circle cx="694" cy="820" r="3" opacity="0.3"/>
+    </g>
+    <circle cx="300" cy="350" r="6" fill="#f2c46d" opacity="0.8"/>
+    <circle cx="512" cy="530" r="330" fill="url(#bloom)"/>
+  </g>
+  <!-- the orbit, in its own tilted frame centred on the core -->
+  <g id="orbit" transform="translate(512 530) rotate(-18)">
+    <ellipse rx="290" ry="104" fill="none" stroke="#c3baff" stroke-opacity="0.32" stroke-width="7"/>
+    <g id="moon-back"></g>
+  </g>
+  <circle cx="512" cy="530" r="200" fill="url(#halo)"/>
+  <circle cx="512" cy="530" r="108" fill="url(#core)"/>
+  <g transform="translate(512 530) rotate(-18)">
+    <ellipse rx="290" ry="104" fill="none" stroke="#d6cfff" stroke-opacity="0.7" stroke-width="7" clip-path="url(#front)"/>
+    <g id="moon" transform="translate(222 -67)">
+      <circle r="84" fill="url(#moonglow)"/>
+      <circle r="36" fill="url(#moonfill)"/>
+    </g>
   </g>
 </svg>
