@@ -106,6 +106,13 @@ describe('status labels', () => {
   it('calls a finished turn Ready, so it is not mistaken for a completed conversation', () => {
     expect(STATUS_LABEL.done).toBe('Ready')
   })
+
+  // Day 10: a stopped or reopened conversation said "Waiting", which reads like Needs you or a busy
+  // agent. Nothing is running and nothing is asked of you: it is idle.
+  it('calls a conversation with nothing running Idle, and no state Waiting', () => {
+    expect(STATUS_LABEL.idle).toBe('Idle')
+    expect(Object.values(STATUS_LABEL)).not.toContain('Waiting')
+  })
 })
 
 describe('an empty conversation list says why (A10)', () => {

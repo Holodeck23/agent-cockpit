@@ -117,7 +117,7 @@ describe('latestTurn and the status timer (A11)', async () => {
     // Your own image is not the agent reporting in; the agent's is.
     expect(deriveStatus([...launched, at(1, { kind: 'image', file: 'a.png', mediaType: 'image/png', from: 'you' })], true)).toBe('starting')
     expect(deriveStatus([...launched, at(1, { kind: 'image', file: 'b.png', mediaType: 'image/png', from: 'agent' })], true)).toBe('working')
-    // No turn in flight, no Starting: a launch that never reported back reads as Waiting after a restart.
+    // No turn in flight, no Starting: a launch that never reported back reads as Idle after a restart.
     expect(deriveStatus(launched, false)).toBe('idle')
   })
 })
