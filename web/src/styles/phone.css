@@ -80,7 +80,8 @@
   .thread-head h1 { font-size: 17px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .thread-status { gap: 8px; }
   .events { padding: 14px 12px 8px; }
-  .bubble { padding: 11px 14px; font-size: 15px; }
+  .bubble { font-size: 15px; }
+  .bubble.user { padding-left: 12px; }
   .composer { padding: 4px 10px calc(10px + env(safe-area-inset-bottom)); }
   .composer textarea { font-size: 16px; }
   .phone .composer-foot > .icon-button { display: none; }

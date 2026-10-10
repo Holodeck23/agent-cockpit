@@ -68,7 +68,7 @@
 }
 .segment > button:hover:not(:disabled), .segment .icon-button:hover { background: var(--field); color: var(--strong); }
 .segment > button:disabled { color: var(--muted); opacity: 0.45; }
-.segment > button[aria-pressed='true'] { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.segment > button[aria-pressed='true'] { color: var(--selected); background: var(--selected-soft); }
 .thread-menu { position: relative; }
 .menu-right { right: 0; left: auto; }
 .menu-note { margin: 6px 10px; font-size: 12px; color: var(--muted); }
