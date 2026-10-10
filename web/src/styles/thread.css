@@ -367,7 +367,7 @@
 .workflow-card-text strong { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workflow-card-text span { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .start-workflow-status { flex: none; margin-left: auto; padding: 3px 8px; border-radius: 999px; background: var(--field); color: var(--secondary); font-size: 11px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
-.start-workflow-status.scheduled { background: color-mix(in srgb, var(--success) 13%, var(--field)); color: var(--success); }
+.start-workflow-status.scheduled { background: none; color: var(--strong); box-shadow: inset 0 0 0 1px var(--border); }
 .start-workflow-status.error { background: color-mix(in srgb, var(--danger) 13%, var(--field)); color: var(--danger); }
 .link-button { justify-self: start; padding: 2px 0; border: 0; background: none; color: var(--link); font: inherit; font-size: 13px; }
 .link-button:hover { text-decoration: underline; }
