@@ -136,7 +136,9 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
               ) : null}
               <button type="button" className="icon-button file-find-button" aria-label="Find and replace" title="Find and replace (⌘F, ⌥⌘F)" aria-pressed={Boolean(find)}
                 onClick={() => setFind(find ? undefined : 'replace')}><SearchIcon /></button>
-              {dirty ? <button type="button" className="button-soft" onClick={() => onReload(file.path)}>Revert</button> : null}
+              {/* Always there (disabled when clean): a Document edit is reported on blur, so a Revert that
+                  appeared then moved the controls under the pointer and the first click after typing missed. */}
+              <button type="button" className="button-soft" disabled={!dirty} onClick={() => onReload(file.path)}>Revert</button>
               <button type="button" className="button-soft" disabled={!dirty || !file.eol || file.conflict} onClick={() => onSave(file.path)}>Save</button>
               {inDocuments ? null : selectedLines ? (
                 <button type="button" className="button-primary" title="Start or continue a conversation about the selected lines" onClick={() => onAttach(file.path, selectedLines)}>
