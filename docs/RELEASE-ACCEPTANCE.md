@@ -1,6 +1,6 @@
 # Release acceptance
 
-## v0.1.7 candidate — 2026-10-10 (not published)
+## v0.1.7 published prerelease — 2026-10-10
 
 Everything merged since v0.1.6 (approval outcomes and countdown, visible permission level and send destination, Antigravity images, the Codex Stop/steer race fix, word-boundary titles), plus crash reports limited to what the beta terms name, Idle for a conversation with nothing running, and two lost-click fixes (Processes → Open site; the first click after typing in a document).
 
@@ -10,7 +10,9 @@ Everything merged since v0.1.6 (approval outcomes and countdown, visible permiss
 - The DMG's app, copied to an isolated location: v0.1.7, signature ok, full package `9e8e3247…` and `app.asar` `29f9c8f7…` match the packaged build; release lockdown PASS.
 - `candidate-binding.json` binds source `85447b7`, the exact proof and production package hashes, installer hash/version and qualifying gate hash. Publication recomputes those identities and rejects a missing, stale or mixed-build record; only post-build Markdown and `landing/` changes remain allowed.
 - Startup (feature D11): six launches of the proof package showed the UI within 0.8 s, so no loading screen.
-- Open: production-build manual flow, an independent person on their own Mac (the [tester checklist](user/tester-checklist.md)), two hours of real use, the live Chrome connected path, the full in-app second-account flow, physical-phone push, OpenCode's live OpenRouter path, and confirming the Sentry project's IP setting.
+- PR #55 merged at `4d5dcb9`. The GitHub prerelease targets that merge and reports the DMG at the exact bound size and SHA-256. The production Vercel page is byte-for-byte identical to the reviewed landing source, advertises all four supported agents and links to the v0.1.7 asset. Hosted interaction checks passed at 360, 390, 768, 1280 and 1440 px plus JavaScript-disabled; the update smoke downloaded the exact asset and reports v0.1.7 up to date.
+- `/Applications/Cockpit.app` was replaced with the exact bound DMG copy, verified as v0.1.7 with matching app.asar and a valid signature, then launched. The prior v0.1.6 bundle was preserved as `/Applications/Cockpit 0.1.6 backup 2026-10-10.app`; user state was not replaced.
+- Open: production-build manual flow, an independent person on their own Mac (the [tester checklist](user/tester-checklist.md)), two hours of real use, the live Chrome connected path, the full in-app second-account flow, physical-phone push, OpenCode's live OpenRouter path, and confirming the Sentry project's IP setting. Publication does not close these human/live gates.
 
 ## v0.1.6 published prerelease — 2026-10-08
 
