@@ -33,7 +33,7 @@ export function BetaTermsGate({ children }: { children: ReactNode }) {
         <p>Cockpit is in beta. Using it means you agree to send crash and error reports to its developer, so problems get found and fixed. They cannot be turned off during the beta; to stop them, stop using Cockpit.</p>
         <ul>
           <li>A report holds the error message and stack trace, Cockpit's version, and the macOS version and kind of Mac.</li>
-          <li>Your home folder is replaced with ~. Your machine name, user, screenshots, recordings, crash memory dumps and file contents are never sent. Error text can still name a project or file.</li>
+          <li>Your home folder is replaced with ~. Your machine name, user, time zone, language, screen, screenshots, recordings, crash memory dumps and file contents are never sent. Error text can still name a project or file.</li>
           <li>Reports go to Sentry (EU) and are deleted after its retention period.</li>
         </ul>
         <p><a href={TERMS_URL} target="_blank" rel="noreferrer">Read the full beta terms</a></p>

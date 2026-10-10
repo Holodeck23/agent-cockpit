@@ -45,9 +45,9 @@ to stop them, stop using Cockpit.
   - Cockpit also sends a short record when it starts and stops, so the developer can
     count how many people run each version and how often it crashes. It holds nothing
     about your work.
-  - Your home folder is replaced with ~. Your machine name, user, screenshots,
-    recordings, crash memory dumps and file contents are never sent. Error text can
-    still name a project or file.
+  - Your home folder is replaced with ~. Your machine name, user, time zone,
+    language, screen, screenshots, recordings, crash memory dumps and file contents
+    are never sent. Error text can still name a project or file.
   - Reports go to Sentry (EU) and are deleted after its retention period.
 
 Full terms: https://github.com/Holodeck23/agent-cockpit/blob/main/BETA-TERMS.md

@@ -1,10 +1,8 @@
 # User Guide
 
-> **v0.1.4 prerelease (2026-10-03).** Easier reading and fewer missed turns: conversations stay where you're reading, ⌘F find, copy a message and Mac notifications. v0.1.3 added Check for Updates. Same-Mac acceptance passed on a second account for v0.1.2; independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **v0.1.7 prerelease.** This guide describes Cockpit 0.1.7: worktrees, account profiles, the handoff review before switching agents, phone live preview, Feedback, the Terminal install and the beta terms are all covered below. Independent other-Mac acceptance of this version is still open; see the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
-
-*(Documented for v0.1.4)*
 
 ## Workspace & Projects
 
@@ -25,6 +23,23 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Presets:** **Save these settings as a preset** names the current agent, model, effort and permissions; one click on the chip applies them later.
 -   **Antigravity** starts in **Bypass permissions**, because it can't pause for approval when run by Cockpit. **Configured permissions** follows Antigravity's own settings; **Plan** is read-only.
 -   **Permissions:** You can control the level of autonomy the agent has, from full manual approval to more permissive setups.
+
+### Switching agents
+
+1.  In a conversation, open the agent picker, choose another agent and press **Switch…**. Stop the current turn first.
+2.  Cockpit shows **What <agent> receives**: the exact text the new agent will get, its size, and whether it is the whole conversation or how many earlier messages were left out to fit (the budget is 400,000 characters; the opening request and the newest messages are kept, never half a message).
+3.  Press **Start handoff** to switch, or **Back** to leave things as they are.
+
+The handoff is a short briefing plus the transcript so far: your messages, the replies, a note for each tool used, questions and your answers, and any image named by file. A message you took back is not in it. The new agent starts a fresh session; provider-side history is not transferred. If the conversation changes after you open the review, **Start handoff** is refused with "The conversation changed since you reviewed the handoff. Review it again before switching.", so an agent only ever receives what you saw.
+
+### Accounts
+
+A project can run Claude Code or Codex on an account other than your CLI's default login.
+
+-   In the agent picker (or **Project settings**), the **Account** menu shows the CLI default and any account profiles. **Add an account…** asks for a name, then runs that CLI's own sign-in in a separate folder under `~/.agent-cockpit/`. Your default login is never signed out or changed.
+-   The choice is per project and per agent: every conversation on that agent in the project uses it from its next turn. A running conversation keeps the account it started with until it is idle.
+-   Providers cannot resume a session under another account, so continuing a conversation after a switch starts a fresh session with a handoff (as above), and the transcript says so.
+-   Antigravity and OpenCode use their CLI default only; Cockpit says why in the menu.
 
 ## Conversations
 
@@ -61,6 +76,15 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Branches:** The composer features a branch pill showing your current Git branch. You can search, switch, or create-and-switch branches.
 -   **Restrictions:** Switching branches while an agent is busy is strictly refused (it is not queued for later).
 -   **Dirty Changes:** Creating a *new* branch can carry uncommitted changes over, but switching to an *existing* branch requires you to commit or stash dirty changes first.
+
+### Worktrees
+
+A worktree is a separate checkout of the project on its own branch, so an agent can try something without touching your main checkout.
+
+-   The workspace button above the conversations shows **Main checkout** or the worktree in use. **New worktree…** asks for a name, an optional base (empty means the main checkout's current commit; a branch, tag or commit also works) and a branch name. Uncommitted files in the main checkout are not copied, and Cockpit tells you how many.
+-   Files, Changes and new conversations use the selected workspace. A conversation keeps its own workspace; one conversation can have agents working in two worktrees at once, each with its own queue and Stop.
+-   **Manage worktrees…** lists each worktree with its branch and conversations. **Merge into the main checkout…** shows what would merge first, then runs Git's own merge; a conflict stays on screen until you resolve it and **Continue**, or **Abort** to put the main checkout back. Nothing is pushed.
+-   **Remove…** runs only after a fresh check finds nothing that exists only in that worktree; its branch is kept. A worktree with changes, untracked or ignored files, or commits on no other branch can be kept or **Archive**d as it is. Cockpit never stashes, resets or force-deletes.
 
 ## Processes & Previews
 
@@ -120,8 +144,9 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 
 ## Updates
 
+-   **Install or update from Terminal:** `curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh` shows the [beta terms](../../BETA-TERMS.md), installs only after you type `agree`, checks the download against the release's `SHA256SUMS` and puts Cockpit in Applications, without the Gatekeeper block a browser download gets. Quit Cockpit first when updating.
 -   **Check for Updates…** is in the Cockpit app menu (v0.1.3 and later). It reads the official GitHub release list, including prereleases, and only checks when you choose it.
--   **Download Update** opens the official Apple-silicon DMG for that release in your browser. Install it by hand: finish or stop running agents, quit Cockpit, open the DMG and drag Cockpit to Applications to replace the old copy. State in `~/.agent-cockpit/` is outside the app, so conversations and settings are kept.
+-   **Copy Install Command** copies the Terminal line above. **Download in Browser** opens the official Apple-silicon DMG for that release instead; macOS then blocks its first launch until you choose **Open Anyway** in System Settings → Privacy & Security. To install a downloaded DMG: finish or stop running agents, quit Cockpit, open the DMG and drag Cockpit to Applications to replace the old copy. State in `~/.agent-cockpit/` is outside the app, so conversations and settings are kept.
 -   If the check fails (offline, rate-limited, or the newest release has no installer yet), Cockpit says so; a failed check never reports "up to date". When GitHub can't be reached, **Troubleshooting** opens the network section of the troubleshooting guide.
 -   After you install a newer version, Cockpit says **Updated to Cockpit x** once; **What's new** shows that version's notes.
 
@@ -136,7 +161,12 @@ Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their
 ## Data, Backup, and Privacy
 
 -   **Data Location:** Cockpit state lives in `~/.agent-cockpit/` unless `COCKPIT_HOME` overrides it. Project files and the CLIs’ own credentials/session stores live separately.
--   **Privacy:** the only thing Cockpit itself sends is crash and error reports, to its developer through Sentry (EU region), as a condition of the beta ([terms](../../BETA-TERMS.md)); there is no setting to turn them off. A report holds the error and stack trace, Cockpit's version and the macOS version and kind of Mac, never file contents, screenshots or the machine name. Cockpit also sends a short record when it starts and stops (version counts and crash rate only, nothing about your work). Check for Updates, when you choose it, requests the public release list from GitHub's API (no account or project data is sent). Agent runs can send prompts, attachments and project content to the configured provider, including scheduled workflow runs. Tools may also contact external services. Optional push notifications are sent via standard Web Push infrastructure if enabled on your phone.
+-   **What leaves this Mac:** Cockpit keeps its own data on this Mac. These are the times something leaves it:
+    -   **Always (beta terms):** crash and error reports, and a short record when Cockpit starts and stops, go to its developer through Sentry (EU region) ([terms](../../BETA-TERMS.md)). There is no setting to turn them off. A report holds the error and stack trace, Cockpit's version (with its Electron, Chromium and Node.js versions), the macOS version and the kind of Mac (processor and memory). Your home folder becomes `~`; the machine name, user, time zone, language, screen, file contents and screenshots are never sent, though error text can name a project or file. Reports carry no IP address of their own and ask Sentry not to record the one they arrive from.
+    -   **Your agents:** every turn, including scheduled workflow runs, sends your prompt, attachments and whatever project content the agent reads to that agent's provider, through the CLI you installed. The agent's own tools (web search, MCP servers) can reach other services.
+    -   **Only when you ask:** **Check for Updates** and **Help → Release Notes** read the public release list from GitHub's API. **Check for updates** on an agent in the picker reads that CLI's latest version from the npm registry (Claude Code and Codex). **Install** and **Update** download the agent's official installer or run its own updater. **Feedback** and **Help → Report a Problem…** open a GitHub issue page in your browser; nothing is posted until you submit it there. Sites you open in the in-app browser load as in any browser.
+    -   **Phone access, if you turn it on:** your paired devices reach Cockpit over your own Tailscale network. A "Needs you" notification to a paired phone carries the project name and conversation title, encrypted for that phone, through its browser's push service (Google's or Apple's).
+-   **Stored on this Mac:** conversations (your messages, the agents' replies, tool activity and attached images), workflows, schedules, settings, account profiles and worktree records live in `~/.agent-cockpit/`. Each conversation is a folder with its events and a readable `messages.md`. Account profiles keep each extra account's CLI sign-in in its own folder there (and in the Keychain for Claude Code), separate from your default CLI login. The agent CLIs also keep their own session history in their own folders (for example `~/.claude/` and `~/.codex/`).
 -   **Backups:** To back up your Cockpit data, securely copy the `~/.agent-cockpit/` directory.
 -   **Damaged files (after v0.1.4):** a crash, a power cut or a full disk can leave a conversation's files half-written. Cockpit skips the damaged part, keeps every other conversation listed, and never rewrites or deletes the file. See [Troubleshooting](troubleshooting.md#conversations--workflows).
 
