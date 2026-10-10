@@ -6,12 +6,17 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = resolve(here, '..')
 const sample = await readFile(resolve(here, 'demo/sample-app.html'), 'utf8')
+// Lumen's display face, inlined once (latin, every axis) for both the demo and the page: the page
+// opens from disk and the demo frame's CSP allows data: fonts only.
+const fraunces = (await readFile(resolve(repo, 'node_modules/@fontsource-variable/fraunces/files/fraunces-latin-full-normal.woff2'))).toString('base64')
+const frauncesFace = `@font-face{font-family:'Fraunces Variable';font-style:normal;font-display:swap;font-weight:100 900;src:url(data:font/woff2;base64,${fraunces}) format('woff2')}`
 const result = await build({
   entryPoints: [resolve(here, 'demo/entry.tsx')], bundle: true, write: false, outdir: 'out', minify: true,
   jsx: 'automatic', format: 'iife', target: ['chrome120', 'safari17'], legalComments: 'inline',
   define: { 'process.env.NODE_ENV': '"production"', localStorage: 'demoStorage' },
   inject: [resolve(here, 'demo/storage.ts')],
   plugins: [{ name: 'local-demo-adapters', setup(plugin) {
+    plugin.onLoad({ filter: /fraunces\/full\.css$/ }, () => ({ contents: frauncesFace, loader: 'css' }))
     plugin.onResolve({ filter: /(?:^|\/)api(?:\.ts)?$/ }, args => args.importer.includes('/web/src/') ? { path: resolve(here, 'demo/api.ts') } : undefined)
     plugin.onResolve({ filter: /(?:^|\/)native(?:\.ts)?$/ }, args => args.importer.includes('/web/src/') ? { path: resolve(here, 'demo/native.ts') } : undefined)
     plugin.onLoad({ filter: /web\/src\/components\/PreviewPane\.tsx$/ }, async args => ({
@@ -38,7 +43,7 @@ const featureDirectory = `<details class="feature-directory"><summary>Browse all
 const directoryMarker = /<!-- FEATURE_DIRECTORY_START -->[\s\S]*?<!-- FEATURE_DIRECTORY_END -->/
 if (!directoryMarker.test(page)) throw new Error('Missing feature directory marker')
 await writeFile(file, page.replace(/<script type="application\/json" id="cockpit-demo">[\s\S]*?<\/script>/, () => payload)
-  .replace(/<style id="landing-style">[\s\S]*?<\/style>/, () => '<style id="landing-style">' + pageCss + '</style>')
+  .replace(/<style id="landing-style">[\s\S]*?<\/style>/, () => '<style id="landing-style">' + frauncesFace + pageCss + '</style>')
   .replace(/<script id="demo-tour-script">[\s\S]*?<\/script>/, () => '<script id="demo-tour-script">' + tour + '</script>')
   .replace(directoryMarker, () => `<!-- FEATURE_DIRECTORY_START -->${featureDirectory}<!-- FEATURE_DIRECTORY_END -->`))
 console.log(`Embedded production UI: ${Math.round(js.length / 1024)} KB JS + ${Math.round(css.length / 1024)} KB CSS`)
