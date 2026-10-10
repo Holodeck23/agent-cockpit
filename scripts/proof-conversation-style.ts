@@ -72,7 +72,9 @@ try {
     const style = getComputedStyle(el)
     return { border: style.borderWidth, shadow: style.boxShadow, fill: style.backgroundColor }
   })
-  check('selected row is filled without a card border or shadow', selectedStyle.border === '0px' && selectedStyle.shadow === 'none' && selectedStyle.fill !== 'rgba(0, 0, 0, 0)', JSON.stringify(selectedStyle))
+  // Lumen: the selected row is lifted onto paper (a soft shadow, no border) with a selected-colour mark at its edge.
+  const selectedMark = await page.locator('.card.selected').evaluate((el) => getComputedStyle(el, '::before').width)
+  check('selected row is lifted onto paper, without a border, with its edge mark', selectedStyle.border === '0px' && selectedStyle.shadow !== 'none' && selectedStyle.fill !== 'rgba(0, 0, 0, 0)' && selectedMark === '2px', JSON.stringify({ ...selectedStyle, selectedMark }))
   check('handoff review styles survived the parked commit', await page.evaluate(() => {
     return [...document.styleSheets].some((sheet) => {
       try { return [...sheet.cssRules].some((rule) => rule.cssText.includes('.handoff-review')) } catch { return false }

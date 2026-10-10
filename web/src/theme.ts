@@ -14,11 +14,34 @@ function load(): ThemeMode {
   }
 }
 
+/**
+ * Runs `change` with every transition held off until two frames later, so a theme switch lands all
+ * at once instead of each surface fading from the old colours at its own pace (styles.css
+ * .theme-switching).
+ */
+function withoutTransitions(change: () => void): void {
+  const root = document.documentElement
+  root.classList.add('theme-switching')
+  change()
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')))
+}
+
 /** tokens.css switches on data-theme; the desktop app's native chrome follows along. */
 function apply(mode: ThemeMode): void {
-  if (mode === 'system') delete document.documentElement.dataset.theme
-  else document.documentElement.dataset.theme = mode
+  withoutTransitions(() => {
+    if (mode === 'system') delete document.documentElement.dataset.theme
+    else document.documentElement.dataset.theme = mode
+  })
   native?.setTheme(mode)
+}
+
+// Following the OS: when its appearance changes, switch at once too.
+try {
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (!document.documentElement.dataset.theme) withoutTransitions(() => undefined)
+  })
+} catch {
+  // no matchMedia (tests): nothing to follow
 }
 
 export function useTheme(): { mode: ThemeMode; set: (mode: ThemeMode) => void } {

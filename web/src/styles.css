@@ -50,3 +50,6 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .doc-surface h1, .doc-surface h2, .activity-head h2, .release-notes-body h3, .list-empty strong {
   font-family: var(--display); font-variation-settings: var(--display-axes); font-weight: 450; letter-spacing: -0.015em; color: var(--strong);
 }
+
+/* A theme switch lands all at once (theme.ts): no surface fades from the old colours on its own. */
+.theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
