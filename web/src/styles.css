@@ -1,7 +1,10 @@
 /* Base elements and shared controls. Tokens: styles/tokens.css. */
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--canvas-app); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--canvas-app); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+::selection { background: color-mix(in srgb, var(--lumen) 26%, transparent); }
+/* Display type: Fraunces, soft. Used for titles only; everything you read and click is the system face. */
+.display { font-family: var(--display); font-variation-settings: var(--display-axes); }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: default; }
 code { font-family: var(--mono); font-size: 0.86em; }
@@ -10,20 +13,27 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .list-resize { position: absolute; top: 0; bottom: 0; left: calc(var(--list-width, 312px) - 4px); width: 8px; z-index: 3; cursor: col-resize; touch-action: none; }
 .list-resize:hover, .list-resize:focus-visible { outline: none; background: linear-gradient(90deg, transparent 3px, var(--project-tint, var(--halo)) 3px, var(--project-tint, var(--halo)) 5px, transparent 5px); }
 
+/* Primary: a filled light. No ledge; it lifts a little on hover and its glow comes up. */
 .button-primary {
-  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 0; border-radius: var(--r-sm);
-  background: var(--project-fill, var(--blue)); color: #fff; font-weight: 600; box-shadow: 0 2px 0 var(--project-fill-shadow, var(--blue-shadow));
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px; border: 0; border-radius: var(--r-sm);
+  background: var(--project-fill, var(--lumen-deep)); color: #fff; font-weight: 600;
+  box-shadow: inset 0 1px 0 #ffffff2e, 0 1px 2px color-mix(in srgb, var(--project-fill, var(--lumen-deep)) 40%, transparent);
+  transition: box-shadow var(--t-med) var(--ease), transform var(--t-fast) var(--ease), filter var(--t-fast) var(--ease);
 }
-.button-primary:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--project-fill-shadow, var(--blue-shadow)); }
+.button-primary:hover:not(:disabled) { filter: brightness(1.06); box-shadow: inset 0 1px 0 #ffffff2e, 0 0 0 4px color-mix(in srgb, var(--project-fill, var(--lumen)) 16%, transparent), 0 6px 18px -8px var(--project-fill, var(--lumen)); }
+.button-primary:active:not(:disabled) { transform: translateY(1px); filter: brightness(0.96); }
 .button-primary:disabled { background: var(--field); color: var(--muted); box-shadow: none; }
 .button-primary .icon { width: 17px; height: 17px; }
-.button-soft { padding: 7px 14px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-weight: 500; }
-.button-soft:hover { background: var(--field); }
+.button-soft {
+  padding: 7px 14px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-weight: 500;
+  box-shadow: var(--shadow-sm); transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.button-soft:hover { background: var(--field); border-color: color-mix(in srgb, var(--muted) 40%, var(--input-border)); }
 
 .toast {
   position: fixed; right: 16px; top: 108px; z-index: 30; display: flex; gap: 10px; align-items: flex-start;
   max-width: min(480px, calc(100vw - 32px)); padding: 10px 14px; border-radius: var(--r-md);
-  background: var(--panel); color: var(--strong); border: 1px solid var(--danger); box-shadow: 0 12px 30px -16px rgb(0 0 0 / 0.4);
+  background: var(--panel); color: var(--strong); border: 1px solid var(--danger); box-shadow: var(--shadow-lg);
 }
 .toast button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; }
 

@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen Brand Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..700,100&display=swap" rel="stylesheet">
+<style>
+/* The Lumen brand board: the same tokens as web/src/styles/tokens.css, shown in both themes. */
+:root {
+  color-scheme: light dark;
+  --lumen: light-dark(#5b4fd0, #a99cff); --lumen-deep: light-dark(#4639b3, #8a7cf5);
+  --lumen-soft: light-dark(#5b4fd01f, #a99cff24); --lumen-glow: light-dark(#5b4fd040, #a99cff59);
+  --ember: light-dark(#a86a12, #f2c46d); --tide: light-dark(#2f8a83, #7fd8cc);
+  --topbar: light-dark(#ebe8e1, #0c0d14); --canvas: light-dark(#f5f3ee, #11121a); --panel: light-dark(#fcfbf8, #171925);
+  --content: light-dark(#fdfcfa, #0f1018); --field: light-dark(#eeebe4, #1f2131); --bubble: light-dark(#f4f1ea, #1c1e2d);
+  --strong: light-dark(#1e1c28, #eeedf7); --body: light-dark(#3a3746, #cfcede); --muted: light-dark(#7d7a8b, #85839a);
+  --border: light-dark(#e4e0d7, #ffffff12); --hairline: light-dark(#ece9e1, #ffffff0b);
+  --success: light-dark(#3d7a59, #8fcfaa); --danger: light-dark(#b0414f, #f2919b);
+  --needs-bg: light-dark(#f8eedb, #2c2519); --needs-ink: light-dark(#7c4d0c, #f5cf85);
+  --p-green: light-dark(#3d7a59, #8fcfaa);
+  --tag-blue: light-dark(#4a68c9, #92a9f2); --tag-pink: light-dark(#a94a78, #ee9fc6);
+  --display: 'Fraunces', Georgia, serif; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1); --ease-breathe: cubic-bezier(0.45, 0, 0.55, 1);
+  --shadow-md: 0 1px 2px light-dark(#1e1c280d, #0000004d), 0 8px 24px -12px light-dark(#1e1c2830, #00000099);
+  --shadow-lg: 0 2px 6px light-dark(#1e1c280f, #00000059), 0 28px 60px -24px light-dark(#1e1c2847, #000000b3);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.55 var(--font); color: var(--body); background: #0b0c13; -webkit-font-smoothing: antialiased; }
+.display { font-family: var(--display); font-variation-settings: 'SOFT' 100, 'opsz' 72; font-weight: 400; letter-spacing: -0.015em; }
+
+/* ---------- hero: the night sky ---------- */
+.hero { position: relative; overflow: hidden; color: #eeedf7; padding: 72px 24px 64px; background:
+  radial-gradient(900px 500px at 70% 40%, #2d2868aa, transparent 70%),
+  radial-gradient(600px 400px at 10% 90%, #1d3b4a66, transparent 70%), #0b0c13; }
+.hero::before { content: ''; position: absolute; inset: 0; pointer-events: none; background:
+  radial-gradient(1.5px 1.5px at 8% 20%, #fff8, transparent 60%), radial-gradient(1px 1px at 22% 64%, #fff6, transparent 60%),
+  radial-gradient(1.5px 1.5px at 41% 12%, #d9d2ff99, transparent 60%), radial-gradient(1px 1px at 57% 82%, #fff5, transparent 60%),
+  radial-gradient(1.5px 1.5px at 88% 14%, #f2c46d99, transparent 60%), radial-gradient(1px 1px at 93% 70%, #fff6, transparent 60%),
+  radial-gradient(1px 1px at 33% 40%, #fff4, transparent 60%), radial-gradient(1px 1px at 74% 58%, #fff4, transparent 60%); }
+.wrap { position: relative; max-width: 1180px; margin: 0 auto; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
+.kicker { font: 600 11px/1 var(--font); letter-spacing: 0.18em; text-transform: uppercase; color: #a99cff; }
+.hero h1 { margin: 18px 0 18px; font-size: clamp(44px, 7vw, 84px); line-height: 1.02; color: #fff; }
+.hero h1 em { font-style: italic; color: #f2c46d; font-variation-settings: 'SOFT' 100, 'opsz' 144; }
+.hero p { max-width: 520px; margin: 0 0 14px; color: #b4b2c6; font-size: 17px; }
+.words { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
+.words span { padding: 6px 14px; border: 1px solid #ffffff1c; border-radius: 999px; color: #d8d6ea; font-size: 13px; background: #ffffff08; }
+.icon-stage { display: grid; justify-items: center; gap: 18px; }
+.icon-big { width: min(380px, 80vw); aspect-ratio: 1; filter: drop-shadow(0 30px 60px #00000080); }
+.icon-caption { font-size: 13px; color: #85839a; text-align: center; }
+.icon-caption b { color: #d8d6ea; font-weight: 500; }
+
+/* ---------- sections ---------- */
+section.sheet { padding: 64px 24px; background: var(--canvas); color: var(--body); }
+section.sheet.night { color-scheme: dark; }
+section.sheet.paper { color-scheme: light; }
+.sheet h2 { margin: 0 0 8px; font-size: clamp(30px, 4vw, 42px); color: var(--strong); }
+.sheet .lede { margin: 0 0 36px; max-width: 640px; color: var(--muted); font-size: 16px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+
+/* palette */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.swatch { border-radius: 16px; overflow: hidden; border: 1px solid var(--border); background: var(--panel); }
+.swatch i { display: block; height: 72px; }
+.swatch div { padding: 10px 12px; font-size: 12.5px; }
+.swatch b { display: block; color: var(--strong); font-weight: 600; }
+.swatch code { font: 11.5px var(--mono); color: var(--muted); }
+.palette-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: 22px; overflow: hidden; border: 1px solid #ffffff14; }
+.palette-pair > div { padding: 28px; background: var(--canvas); }
+.palette-pair > div:first-child { color-scheme: light; }
+.palette-pair > div:last-child { color-scheme: dark; }
+.palette-pair h3 { margin: 0 0 16px; font-size: 24px; color: var(--strong); }
+
+/* type */
+.type-specimen { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 36px; align-items: end; }
+.specimen-big { font-size: clamp(64px, 10vw, 128px); line-height: 0.95; color: var(--strong); }
+.specimen-big em { color: var(--lumen); font-style: italic; }
+.type-scale div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--hairline); }
+.type-scale small { color: var(--muted); font: 11.5px var(--mono); white-space: nowrap; }
+
+/* motion demos */
+.demo { display: grid; gap: 14px; align-content: start; padding: 22px; border-radius: 20px; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+.demo h3 { margin: 0; font-size: 20px; color: var(--strong); }
+.demo p { margin: 0; font-size: 13.5px; color: var(--muted); }
+.demo-stage { display: grid; place-items: center; min-height: 120px; border-radius: 14px; background: var(--canvas); }
+
+/* orbit glyph (same as the app) */
+.orbit { width: 14px; height: 14px; overflow: visible; flex: none; }
+.orbit.big { width: 72px; height: 72px; }
+.orbit-ring { fill: none; stroke: var(--lumen); stroke-opacity: 0.4; stroke-width: 0.85; }
+.orbit-core { fill: var(--lumen); transform-box: fill-box; transform-origin: center; }
+.orbit-moon { fill: var(--ember); }
+.orbit-x { transform: translateX(4.2px); } .orbit-y { transform: translateY(-1.3px); }
+.orbit.live .orbit-x { animation: ox 1.4s var(--ease-breathe) infinite alternate; }
+.orbit.live .orbit-y { animation: oy 1.4s var(--ease-breathe) -0.7s infinite alternate; }
+.orbit.live .orbit-core { animation: breathe 2.8s var(--ease-breathe) infinite; }
+@keyframes ox { from { transform: translateX(-5.1px); } to { transform: translateX(5.1px); } }
+@keyframes oy { from { transform: translateY(-2.3px); } to { transform: translateY(2.3px); } }
+@keyframes breathe { 50% { transform: scale(0.82); opacity: 0.75; } }
+
+/* status pills */
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.pill-working { color: var(--lumen); background: var(--lumen-soft); }
+.pill-needs { color: var(--needs-ink); background: var(--needs-bg); }
+.pill-needs::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 0 0 var(--ember); animation: candle 2.4s var(--ease-breathe) infinite; }
+@keyframes candle { 50% { box-shadow: 0 0 6px 2px color-mix(in srgb, var(--ember) 60%, transparent); } }
+.pill-done { color: var(--muted); }
+.pill-error { color: var(--danger); }
+.pill-error::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* ---------- the app, mocked in the new look ---------- */
+.screens { display: grid; gap: 28px; }
+.app { display: grid; grid-template-rows: 44px 50px 520px; border-radius: 14px; overflow: hidden; background: var(--canvas); box-shadow: 0 40px 80px -30px #000c, 0 0 0 1px #ffffff14; font-size: 13.5px; }
+.app.light { color-scheme: light; } .app.dark { color-scheme: dark; }
+.tabbar { display: flex; align-items: flex-end; gap: 8px; padding: 0 10px 0 78px; background: var(--topbar); position: relative; }
+.app.dark .tabbar { background-image: radial-gradient(1px 1px at 30% 30%, #fff6, transparent 60%), radial-gradient(1px 1px at 62% 60%, #fff4, transparent 60%), radial-gradient(1.2px 1.2px at 80% 25%, #f2c46d77, transparent 60%); }
+.lights { position: absolute; left: 14px; top: 15px; display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: light-dark(#d9d5cc, #2a2c3a); }
+.mark { width: 22px; height: 22px; align-self: center; margin-right: 4px; }
+.tab { position: relative; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 8px; border-radius: 12px 12px 0 0; background: var(--canvas); color: var(--strong); font-weight: 500; }
+.tab::before, .tab::after { content: ''; position: absolute; bottom: 0; width: 12px; height: 12px; }
+.tab::before { left: -12px; background: radial-gradient(circle at 0 0, transparent 11.5px, var(--canvas) 12px); }
+.tab::after { right: -12px; background: radial-gradient(circle at 100% 0, transparent 11.5px, var(--canvas) 12px); }
+.planet { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; font: 600 12px/1 var(--display); background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--p-green) 55%, #fff), var(--p-green) 62%, color-mix(in srgb, var(--p-green) 80%, #000)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--p-green) 14%, transparent); }
+.tab-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--lumen); font-size: 12px; font-weight: 600; }
+.tab.other { background: none; color: var(--muted); font-weight: 400; }
+.tab.other::before, .tab.other::after { display: none; }
+.planet.pink { --p-green: var(--tag-pink); background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--p-green) 12%, transparent), color-mix(in srgb, var(--p-green) 26%, transparent)); color: var(--p-green); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-green) 22%, transparent); }
+.projects { margin-left: auto; align-self: center; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--hairline); background: color-mix(in srgb, var(--canvas) 85%, transparent); color: var(--body); font-size: 13px; }
+.subnav { display: flex; align-items: center; gap: 4px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+.subnav span { position: relative; padding: 6px 12px; color: var(--muted); }
+.subnav span.on { color: var(--strong); font-weight: 500; }
+.subnav span.on::after { content: ''; position: absolute; left: 50%; bottom: -10px; width: 22px; height: 2px; border-radius: 2px; transform: translateX(-50%); background: var(--p-green); box-shadow: 0 0 8px 1px color-mix(in srgb, var(--p-green) 70%, transparent); }
+.subnav .tools { margin-left: auto; display: flex; gap: 14px; color: var(--muted); font-size: 12.5px; }
+.body { display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: 0; }
+.list { display: flex; flex-direction: column; gap: 10px; padding: 18px 12px; border-right: 1px solid var(--border); background: var(--canvas); min-height: 0; }
+.list-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+.list-head h4 { margin: 0; font-size: 23px; color: var(--strong); }
+.new { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; font-size: 20px; line-height: 1; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--p-green) 70%, #fff), var(--p-green)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--p-green) 14%, transparent), 0 6px 16px -6px var(--p-green); }
+.search { padding: 8px 12px; border-radius: 10px; background: var(--field); color: var(--muted); font-size: 13px; }
+.filters { display: flex; gap: 2px; font-size: 12px; color: var(--muted); }
+.filters span { padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.filters span.on { color: var(--strong); background: var(--field); font-weight: 600; }
+.cards { display: grid; gap: 2px; }
+.card { display: grid; gap: 4px; padding: 11px 12px; border-radius: 12px; }
+.card.sel { background: var(--panel); box-shadow: var(--shadow-md); }
+.card-title { color: var(--strong); font-weight: 500; font-size: 14px; }
+.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+.tagdot { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.tagdot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--dot, var(--tag-blue)); }
+.thread { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--content); min-height: 0; }
+.thread-head { padding: 14px 26px 12px; border-bottom: 1px solid var(--border); }
+.thread-head h4 { margin: 0 0 6px; font-size: 22px; color: var(--strong); }
+.thread-head .row { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.ghost { padding: 3px 10px; border-radius: 999px; background: var(--field); color: var(--body); }
+.transcript { display: grid; align-content: start; gap: 22px; padding: 24px 26px; max-width: 760px; width: 100%; margin: 0 auto; overflow: hidden; }
+.who { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; color: var(--strong); }
+.who small { font-weight: 400; color: var(--muted); }
+.who .spark { width: 16px; height: 16px; color: #d97757; }
+.you-bubble { padding: 11px 16px; border-radius: 16px 16px 16px 6px; background: var(--bubble); color: var(--strong); width: fit-content; max-width: 90%; }
+.agent-text { color: var(--strong); line-height: 1.7; }
+.agent-text code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background: var(--field); }
+.agent-text pre { margin: 10px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--field); font: 12px/1.6 var(--mono); color: var(--body); overflow: hidden; }
+.composer-wrap { padding: 8px 22px 16px; }
+.composer { position: relative; border-radius: 18px; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+.composer.working { border-color: color-mix(in srgb, var(--lumen) 30%, var(--border)); box-shadow: 0 0 0 4px var(--lumen-soft), var(--shadow-md); animation: halo 4.8s var(--ease-breathe) infinite; }
+@keyframes halo { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--lumen) 9%, transparent), var(--shadow-md); } }
+.composer .ph { padding: 14px 18px 8px; color: var(--muted); }
+.composer .foot { display: flex; align-items: center; gap: 10px; padding: 6px 8px 8px 12px; font-size: 12.5px; color: var(--muted); }
+.composer .foot b { color: var(--strong); font-weight: 600; }
+.composer .chip { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); }
+.send { margin-left: auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: #fff; background: var(--p-green); }
+/* The working light: one soft mote drifting along the bottom edge, never hurried. */
+.drift { position: absolute; left: 22px; right: 22px; bottom: -1px; height: 2px; overflow: visible; pointer-events: none; }
+.drift i { position: absolute; inset: 0; animation: drift 5.6s var(--ease-breathe) infinite alternate; }
+.drift i::before { content: ''; position: absolute; left: 0; top: -3px; width: 140px; height: 8px; margin-left: -70px; border-radius: 50%;
+  background: radial-gradient(ellipse closest-side, color-mix(in srgb, #fff 55%, var(--lumen)), var(--lumen) 35%, color-mix(in srgb, var(--tide) 40%, transparent) 70%, transparent);
+  filter: blur(0.5px); }
+@keyframes drift { from { transform: translateX(6%); } to { transform: translateX(94%); } }
+.drift i { transform-origin: left; }
+.demo-stage .composer { width: 86%; }
+
+/* the Dock */
+.dock { display: flex; align-items: end; gap: 14px; padding: 14px 22px; border-radius: 26px; background: #ffffff14; border: 1px solid #ffffff1f; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+.dock .tile { width: 72px; height: 72px; border-radius: 17px; background: #ffffff18; }
+.dock .live { width: 88px; height: 88px; position: relative; }
+.dock .live svg { width: 100%; height: 100%; }
+.badge { position: absolute; top: 2px; right: 2px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #ff453a; color: #fff; font: 600 13px/22px var(--font); text-align: center; }
+.dock-stage { display: grid; place-items: center; gap: 14px; padding: 48px 20px; border-radius: 22px; background: radial-gradient(600px 300px at 50% 0%, #6b5dd655, transparent), linear-gradient(160deg, #3b3a63, #1a1b2e); }
+.dock-stage p { margin: 0; color: #b4b2c6; font-size: 13px; text-align: center; }
+
+.decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.decision { padding: 18px 20px; border-radius: 16px; background: var(--panel); border: 1px solid var(--border); }
+.decision b { display: block; margin-bottom: 4px; color: var(--strong); font-family: var(--display); font-weight: 500; font-size: 17px; }
+.decision span { color: var(--muted); font-size: 13.5px; }
+footer { padding: 36px 24px 56px; background: #0b0c13; color: #85839a; font-size: 13px; text-align: center; }
+
+@media (max-width: 860px) {
+  .hero-grid, .type-specimen, .palette-pair { grid-template-columns: 1fr; }
+  .app { grid-template-rows: 44px 50px auto; }
+  .body { grid-template-columns: 1fr; }
+  .list { border-right: 0; border-bottom: 1px solid var(--border); }
+  .subnav .tools, .tab.other { display: none; }
+  .tabbar { padding-left: 64px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="kicker">Cockpit · a new look · Lumen</div>
+      <h1 class="display">A quiet room where the only light is your <em>agents</em>.</h1>
+      <p>The surfaces are ink and paper, and they hold still. Your agents are the light in the room: points that breathe while they think and circle while they work. When one needs you, it glows like a candle, never like an alarm.</p>
+      <p>Calm, because nothing moves unless an agent is working. Organized, because every surface has one job. Alive, because work shows up as light. And a little magical.</p>
+      <div class="words"><span>calm</span><span>organized</span><span>alive</span><span>a little magical</span></div>
+    </div>
+    <div class="icon-stage">
+      <div class="icon-big" id="hero-icon"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1024 1024">
+  <!-- Lumen mark: a lit core with a gold moon on a tilted orbit, on a night tile with a few stars.
+       macOS icon grid: 824px body, 100px inset. scripts/make-dock-frames.ts moves the moon (#moon)
+       round the orbit for the Dock while agents work; keep the ids. -->
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d2868"/>
+      <stop offset="1" stop-color="#11112b"/>
+    </linearGradient>
+    <radialGradient id="bloom" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a99cff" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#7d6cf0" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#7d6cf0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.44" cy="0.4" r="0.62">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.35" stop-color="#ebe6ff"/>
+      <stop offset="0.75" stop-color="#a596f7"/>
+      <stop offset="1" stop-color="#7563e6"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.5" stop-color="#d4ccff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#d4ccff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="moonfill" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#fff1cc"/>
+      <stop offset="0.5" stop-color="#f2c46d"/>
+      <stop offset="1" stop-color="#c98a24"/>
+    </radialGradient>
+    <radialGradient id="moonglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f2c46d" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#f2c46d" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tileclip"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <clipPath id="front"><rect x="-400" y="0" width="800" height="400"/></clipPath>
+    <filter id="drop" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#night)" filter="url(#drop)"/>
+  <g clip-path="url(#tileclip)">
+    <g fill="#fff">
+      <circle cx="248" cy="252" r="5" opacity="0.7"/>
+      <circle cx="356" cy="196" r="3.5" opacity="0.45"/>
+      <circle cx="770" cy="236" r="4" opacity="0.55"/>
+      <circle cx="822" cy="404" r="3" opacity="0.4"/>
+      <circle cx="214" cy="712" r="3.5" opacity="0.35"/>
+      <circle cx="694" cy="820" r="3" opacity="0.3"/>
+    </g>
+    <circle cx="300" cy="350" r="6" fill="#f2c46d" opacity="0.8"/>
+    <circle cx="512" cy="530" r="330" fill="url(#bloom)"/>
+  </g>
+  <!-- the orbit, in its own tilted frame centred on the core -->
+  <g id="orbit" transform="translate(512 530) rotate(-18)">
+    <ellipse rx="290" ry="104" fill="none" stroke="#c3baff" stroke-opacity="0.32" stroke-width="7"/>
+    <g id="moon-back"></g>
+  </g>
+  <circle cx="512" cy="530" r="200" fill="url(#halo)"/>
+  <circle cx="512" cy="530" r="108" fill="url(#core)"/>
+  <g transform="translate(512 530) rotate(-18)">
+    <ellipse rx="290" ry="104" fill="none" stroke="#d6cfff" stroke-opacity="0.7" stroke-width="7" clip-path="url(#front)"/>
+    <g id="moon" transform="translate(222 -67)">
+      <circle r="84" fill="url(#moonglow)"/>
+      <circle r="36" fill="url(#moonfill)"/>
+    </g>
+  </g>
+</svg>
+</div>
+      <div class="icon-caption"><b>The app icon.</b> A glowing light with a gold moon in orbit.<br>In the Dock the moon circles the light while an agent is working.</div>
+    </div>
+  </div>
+</header>
+
+<section class="sheet night">
+  <div class="wrap">
+    <h2 class="display">The Dock, while agents work</h2>
+    <p class="lede">Replaces the bouncing bars. The moon orbits once every 2.4 seconds and passes behind the light. When the work stops it settles at the top right, and the badge still counts the conversations that need you.</p>
+    <div class="dock-stage">
+      <div class="dock"><div class="tile"></div><div class="tile"></div><div class="live" id="dock-icon"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1024 1024">
+  <!-- Lumen mark: a lit core with a gold moon on a tilted orbit, on a night tile with a few stars.
+       macOS icon grid: 824px body, 100px inset. scripts/make-dock-frames.ts moves the moon (#moon)
+       round the orbit for the Dock while agents work; keep the ids. -->
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d2868"/>
+      <stop offset="1" stop-color="#11112b"/>
+    </linearGradient>
+    <radialGradient id="bloom" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a99cff" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#7d6cf0" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#7d6cf0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.44" cy="0.4" r="0.62">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.35" stop-color="#ebe6ff"/>
+      <stop offset="0.75" stop-color="#a596f7"/>
+      <stop offset="1" stop-color="#7563e6"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.5" stop-color="#d4ccff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#d4ccff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="moonfill" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#fff1cc"/>
+      <stop offset="0.5" stop-color="#f2c46d"/>
+      <stop offset="1" stop-color="#c98a24"/>
+    </radialGradient>
+    <radialGradient id="moonglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f2c46d" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#f2c46d" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tileclip"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <clipPath id="front"><rect x="-400" y="0" width="800" height="400"/></clipPath>
+    <filter id="drop" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#night)" filter="url(#drop)"/>
+  <g clip-path="url(#tileclip)">
+    <g fill="#fff">
+      <circle cx="248" cy="252" r="5" opacity="0.7"/>
+      <circle cx="356" cy="196" r="3.5" opacity="0.45"/>
+      <circle cx="770" cy="236" r="4" opacity="0.55"/>
+      <circle cx="822" cy="404" r="3" opacity="0.4"/>
+      <circle cx="214" cy="712" r="3.5" opacity="0.35"/>
+      <circle cx="694" cy="820" r="3" opacity="0.3"/>
+    </g>
+    <circle cx="300" cy="350" r="6" fill="#f2c46d" opacity="0.8"/>
+    <circle cx="512" cy="530" r="330" fill="url(#bloom)"/>
+  </g>
+  <!-- the orbit, in its own tilted frame centred on the core -->
+  <g id="orbit" transform="translate(512 530) rotate(-18)">
+    <ellipse rx="290" ry="104" fill="none" stroke="#c3baff" stroke-opacity="0.32" stroke-width="7"/>
+    <g id="moon-back"></g>
+  </g>
+  <circle cx="512" cy="530" r="200" fill="url(#halo)"/>
+  <circle cx="512" cy="530" r="108" fill="url(#core)"/>
+  <g transform="translate(512 530) rotate(-18)">
+    <ellipse rx="290" ry="104" fill="none" stroke="#d6cfff" stroke-opacity="0.7" stroke-width="7" clip-path="url(#front)"/>
+    <g id="moon" transform="translate(222 -67)">
+      <circle r="84" fill="url(#moonglow)"/>
+      <circle r="36" fill="url(#moonfill)"/>
+    </g>
+  </g>
+</svg>
+<span class="badge">2</span></div><div class="tile"></div></div>
+      <p>Live preview of the frames that will be rendered for <code>build/dock/</code></p>
+    </div>
+  </div>
+</section>
+
+<section class="sheet paper">
+  <div class="wrap">
+    <h2 class="display">The app, in the new look</h2>
+    <p class="lede">The same layout and features, made quieter. The doodles, the 3D buttons and the coloured chips on every row are gone. Agent replies read like a page instead of sitting in boxes. One light, the project's own colour, marks where you are.</p>
+    <div class="screens">
+      <div class="app light">
+  <div class="tabbar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <svg class="mark" viewBox="0 0 24 24"><defs><linearGradient id="mn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2560"/><stop offset="1" stop-color="#14132e"/></linearGradient><radialGradient id="mc" cx="0.42" cy="0.38" r="0.65"><stop offset="0" stop-color="#fff"/><stop offset="0.45" stop-color="#c9c0ff"/><stop offset="1" stop-color="#7d6cf0"/></radialGradient></defs><rect width="24" height="24" rx="6.5" fill="url(#mn)"/><ellipse cx="12" cy="12.4" rx="8" ry="3.4" transform="rotate(-18 12 12.4)" fill="none" stroke="#b9b0ff" stroke-opacity="0.55" stroke-width="0.9"/><circle cx="12" cy="12.4" r="4" fill="url(#mc)"/><circle cx="18.6" cy="8.6" r="1.55" fill="#f2c46d"/></svg>
+    <div class="tab"><span class="planet">G</span>Garden<span class="tab-badge"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>1</span></div>
+    <div class="tab other"><span class="planet pink">S</span>Sprout site</div>
+    <span class="projects">Projects ⌄</span>
+  </div>
+  <div class="subnav"><span class="on">Conversations</span><span>Files</span><span>Workflows</span><span>Memory</span><div class="tools"><span>Feedback</span><span>Phone</span><span>Settings</span></div></div>
+  <div class="body">
+    <aside class="list">
+      <div class="list-head"><h4 class="display">Conversations</h4><span class="new">+</span></div>
+      <div class="search">Search conversations…</div>
+      <div class="filters"><span class="on">All 4</span><span>Needs you 1</span><span>Working 1</span><span>Unread 0</span></div>
+      <div class="cards">
+        <div class="card sel"><span class="card-title">Water schedule reminders</span><div class="card-foot"><span class="tagdot">Claude Code · Today</span><span class="pill pill-working"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>0:42</span></div></div>
+        <div class="card"><span class="card-title">Tidy the settings page</span><div class="card-foot"><span class="tagdot" style="--dot:var(--p-green)">Codex · Today</span><span class="pill pill-needs">Needs you</span></div></div>
+        <div class="card"><span class="card-title">Summarize the release checklist</span><div class="card-foot"><span class="tagdot" style="--dot:var(--tag-pink)">Claude Code · Today</span><span class="pill pill-done">Ready</span></div></div>
+        <div class="card"><span class="card-title">Review migration notes</span><div class="card-foot"><span class="tagdot" style="--dot:var(--ember)">Claude Code · Yesterday</span><span class="pill pill-error">Error</span></div></div>
+      </div>
+    </aside>
+    <main class="thread">
+      <div class="thread-head"><h4 class="display">Water schedule reminders</h4><div class="row"><span class="pill pill-working"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>Working · 0:42</span><span class="ghost">Stop</span><span class="ghost">Changes</span></div></div>
+      <div class="transcript">
+        <div><div class="who">You <small>10:18</small></div><div class="you-bubble">Add reminders so each plant gets watered on its own schedule.</div></div>
+        <div><div class="who"><svg class="spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 7.2L21 7l-5.6 5L21 17l-7.4-2.2L12 22l-1.6-7.2L3 17l5.6-5L3 7l7.4 2.2z"/></svg>Claude Code <small>10:19</small></div>
+          <div class="agent-text">I added a <code>schedule</code> field to each plant and a small reminder loop. It checks once an hour and lets you know when a plant is due.<pre>export const isDue = (p: Plant, now: Date) =>
+  now.getTime() - p.lastWatered.getTime() >= p.everyDays * DAY</pre></div></div>
+        <div><div class="who">You <small>10:21</small></div><div class="you-bubble">Can the reminder say which room the plant is in?</div></div>
+      </div>
+      <div class="composer-wrap"><div class="composer working"><div class="ph">Add to the current turn…</div><div class="foot"><b>Claude Code</b> Default model<span class="chip">Ask before acting</span><span class="send">↑</span></div><div class="drift"><i></i></div></div></div>
+    </main>
+  </div>
+</div>
+
+      <div class="app dark">
+  <div class="tabbar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <svg class="mark" viewBox="0 0 24 24"><defs><linearGradient id="mn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2560"/><stop offset="1" stop-color="#14132e"/></linearGradient><radialGradient id="mc" cx="0.42" cy="0.38" r="0.65"><stop offset="0" stop-color="#fff"/><stop offset="0.45" stop-color="#c9c0ff"/><stop offset="1" stop-color="#7d6cf0"/></radialGradient></defs><rect width="24" height="24" rx="6.5" fill="url(#mn)"/><ellipse cx="12" cy="12.4" rx="8" ry="3.4" transform="rotate(-18 12 12.4)" fill="none" stroke="#b9b0ff" stroke-opacity="0.55" stroke-width="0.9"/><circle cx="12" cy="12.4" r="4" fill="url(#mc)"/><circle cx="18.6" cy="8.6" r="1.55" fill="#f2c46d"/></svg>
+    <div class="tab"><span class="planet">G</span>Garden<span class="tab-badge"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>1</span></div>
+    <div class="tab other"><span class="planet pink">S</span>Sprout site</div>
+    <span class="projects">Projects ⌄</span>
+  </div>
+  <div class="subnav"><span class="on">Conversations</span><span>Files</span><span>Workflows</span><span>Memory</span><div class="tools"><span>Feedback</span><span>Phone</span><span>Settings</span></div></div>
+  <div class="body">
+    <aside class="list">
+      <div class="list-head"><h4 class="display">Conversations</h4><span class="new">+</span></div>
+      <div class="search">Search conversations…</div>
+      <div class="filters"><span class="on">All 4</span><span>Needs you 1</span><span>Working 1</span><span>Unread 0</span></div>
+      <div class="cards">
+        <div class="card sel"><span class="card-title">Water schedule reminders</span><div class="card-foot"><span class="tagdot">Claude Code · Today</span><span class="pill pill-working"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>0:42</span></div></div>
+        <div class="card"><span class="card-title">Tidy the settings page</span><div class="card-foot"><span class="tagdot" style="--dot:var(--p-green)">Codex · Today</span><span class="pill pill-needs">Needs you</span></div></div>
+        <div class="card"><span class="card-title">Summarize the release checklist</span><div class="card-foot"><span class="tagdot" style="--dot:var(--tag-pink)">Claude Code · Today</span><span class="pill pill-done">Ready</span></div></div>
+        <div class="card"><span class="card-title">Review migration notes</span><div class="card-foot"><span class="tagdot" style="--dot:var(--ember)">Claude Code · Yesterday</span><span class="pill pill-error">Error</span></div></div>
+      </div>
+    </aside>
+    <main class="thread">
+      <div class="thread-head"><h4 class="display">Water schedule reminders</h4><div class="row"><span class="pill pill-working"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>Working · 0:42</span><span class="ghost">Stop</span><span class="ghost">Changes</span></div></div>
+      <div class="transcript">
+        <div><div class="who">You <small>10:18</small></div><div class="you-bubble">Add reminders so each plant gets watered on its own schedule.</div></div>
+        <div><div class="who"><svg class="spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 7.2L21 7l-5.6 5L21 17l-7.4-2.2L12 22l-1.6-7.2L3 17l5.6-5L3 7l7.4 2.2z"/></svg>Claude Code <small>10:19</small></div>
+          <div class="agent-text">I added a <code>schedule</code> field to each plant and a small reminder loop. It checks once an hour and lets you know when a plant is due.<pre>export const isDue = (p: Plant, now: Date) =>
+  now.getTime() - p.lastWatered.getTime() >= p.everyDays * DAY</pre></div></div>
+        <div><div class="who">You <small>10:21</small></div><div class="you-bubble">Can the reminder say which room the plant is in?</div></div>
+      </div>
+      <div class="composer-wrap"><div class="composer working"><div class="ph">Add to the current turn…</div><div class="foot"><b>Claude Code</b> Default model<span class="chip">Ask before acting</span><span class="send">↑</span></div><div class="drift"><i></i></div></div></div>
+    </main>
+  </div>
+</div>
+
+    </div>
+  </div>
+</section>
+
+<section class="sheet night">
+  <div class="wrap">
+    <h2 class="display">How things move</h2>
+    <p class="lede">Motion shows only state. Nothing loops unless an agent is working, everything eases in and out, and with Reduce Motion on, all of it holds still.</p>
+    <div class="cols">
+      <div class="demo"><h3 class="display">The orbit</h3><p>Replaces the three bouncing bars, everywhere they appeared: tabs, filters, status, steps.</p>
+        <div class="demo-stage"><svg class="orbit big live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg></div></div>
+      <div class="demo"><h3 class="display">The working light</h3><p>Replaces the KITT scanner. One soft light drifts along the message box and the edge glows faintly. When the agent is idle, nothing moves.</p>
+        <div class="demo-stage"><div class="composer working"><div class="ph">Add to the current turn…</div><div class="foot"><b>Claude Code</b><span class="chip">Ask before acting</span></div><div class="drift"><i></i></div></div></div></div>
+      <div class="demo"><h3 class="display">Status</h3><p>Working is lit. Needs you glows like a candle. Ready is quiet text. Error is a single rose dot.</p>
+        <div class="demo-stage"><div class="pills">
+          <span class="pill pill-working"><svg class="orbit live" viewBox="0 0 12 12"><g transform="rotate(-20 6 6)"><ellipse class="orbit-ring" cx="6" cy="6" rx="5.1" ry="2.3"/><circle class="orbit-core" cx="6" cy="6" r="2.5"/><g class="orbit-x"><g class="orbit-y"><circle class="orbit-moon" cx="6" cy="6" r="1.25"/></g></g></g></svg>Working · 0:42</span>
+          <span class="pill pill-needs">Needs you</span><span class="pill pill-done">Ready</span><span class="pill pill-error">Error</span></div></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet paper">
+  <div class="wrap">
+    <h2 class="display">Colour</h2>
+    <p class="lede">Moonpaper by day, night by night. One light, a violet-blue lumen, is the accent everywhere. Candle gold is the only other warm colour, and it always means "this needs you".</p>
+    <div class="palette-pair">
+      <div><h3 class="display">Moonpaper</h3><div class="swatches">
+        <div class="swatch"><i style="background:#f5f3ee"></i><div><b>Paper</b><code>#f5f3ee</code></div></div>
+        <div class="swatch"><i style="background:#1e1c28"></i><div><b>Ink</b><code>#1e1c28</code></div></div>
+        <div class="swatch"><i style="background:#5b4fd0"></i><div><b>Lumen</b><code>#5b4fd0</code></div></div>
+        <div class="swatch"><i style="background:#a86a12"></i><div><b>Candle</b><code>#a86a12</code></div></div>
+        <div class="swatch"><i style="background:#2f8a83"></i><div><b>Tide</b><code>#2f8a83</code></div></div>
+        <div class="swatch"><i style="background:#b0414f"></i><div><b>Rose</b><code>#b0414f</code></div></div>
+      </div></div>
+      <div><h3 class="display">Night</h3><div class="swatches">
+        <div class="swatch"><i style="background:#11121a"></i><div><b>Night</b><code>#11121a</code></div></div>
+        <div class="swatch"><i style="background:#eeedf7"></i><div><b>Moonlight</b><code>#eeedf7</code></div></div>
+        <div class="swatch"><i style="background:#a99cff"></i><div><b>Lumen</b><code>#a99cff</code></div></div>
+        <div class="swatch"><i style="background:#f2c46d"></i><div><b>Candle</b><code>#f2c46d</code></div></div>
+        <div class="swatch"><i style="background:#7fd8cc"></i><div><b>Tide</b><code>#7fd8cc</code></div></div>
+        <div class="swatch"><i style="background:#f2919b"></i><div><b>Rose</b><code>#f2919b</code></div></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet night">
+  <div class="wrap type-specimen">
+    <div class="specimen-big display">Calm <em>&amp;</em> clear.</div>
+    <div class="type-scale">
+      <div><span class="display" style="font-size:28px;color:var(--strong)">Water schedule reminders</span><small>Fraunces · titles</small></div>
+      <div><span style="font-size:15px;color:var(--strong);font-weight:500">The fern in the kitchen is thirsty.</span><small>SF Pro · interface</small></div>
+      <div><span style="font-size:13px;color:var(--muted)">Claude Code · Today · 4 messages</span><small>SF Pro · meta</small></div>
+      <div><span style="font:12.5px var(--mono);color:var(--body)">isDue(plant, now)</span><small>SF Mono · code</small></div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet paper">
+  <div class="wrap">
+    <h2 class="display">What changes</h2>
+    <p class="lede">Everything you see changes. Everything that works stays as it is.</p>
+    <div class="decisions">
+      <div class="decision"><b>Logo &amp; app icon</b><span>The orbit mark replaces the blue bar-chart tile, in the app, the .icns, the PWA icons and the DMG background.</span></div>
+      <div class="decision"><b>Dock animation</b><span>The moon orbits the light. It replaces the rising bars, with one look for light and dark.</span></div>
+      <div class="decision"><b>KITT scanner → working light</b><span>146 lamps become one soft light. It's calmer and much lighter for the page.</span></div>
+      <div class="decision"><b>Every screen</b><span>Tokens, chrome, list, conversation, composer, menus, modals, first run, files, workflows and phone.</span></div>
+      <div class="decision"><b>Landing site</b><span>The Vercel page moves to the same night-and-paper look, after the app.</span></div>
+      <div class="decision"><b>Name: kept for now</b><span>Still "Cockpit" everywhere. A rename touches install, updates, storage and the agents' MCP tools, so it's a separate decision.</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>Lumen · brand board · docs/brand/lumen-board.html · tokens live in web/src/styles/tokens.css</footer>
+
+<script>
+// The Dock preview: move the moon round the orbit, behind the light for the far half.
+(() => {
+  const host = document.getElementById('dock-icon')
+  const moon = host.querySelector('#moon'), back = host.querySelector('#moon-back'), front = moon.parentNode
+  const RX = 290, RY = 104, PERIOD = 2400, START = -0.226 * Math.PI
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const tick = (t) => {
+    const a = START + (2 * Math.PI * (t % PERIOD)) / PERIOD
+    const x = RX * Math.cos(a), y = RY * Math.sin(a)
+    moon.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`)
+    const target = y < 0 ? back : front
+    if (moon.parentNode !== target) target.appendChild(moon)
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+})()
+</script>
+</body>
+</html>
