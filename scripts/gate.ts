@@ -114,5 +114,5 @@ const verdict = gateVerdict(record.results, suites.map((suite) => suite.name), r
 const passed = verdict.passed && !voided && !only && !record.dirty
 save({ finishedAt: new Date().toISOString(), endAsarSha256: endAsar, voided: voided || null, verdict: { ...verdict, passed } })
 line(`GATE ${passed ? 'PASS' : 'FAIL'}: ${verdict.cleanRuns}/${runs} clean passes${voided ? `; ${voided}` : ''}${record.dirty ? '; dirty tree' : ''}`
-  + `${only ? '; subset only' : ''}${verdict.firstFailure ? `; first failure: ${verdict.firstFailure.name} run ${verdict.firstFailure.run} (${verdict.firstFailure.last || `exit ${verdict.firstFailure.exit}`})` : ''}`)
+  + `${only ? '; subset only' : ''}${verdict.firstFailure ? `; first failure: ${verdict.firstFailure.name} run ${verdict.firstFailure.run} (exit ${verdict.firstFailure.exit}${verdict.firstFailure.last ? `, last verdict line: ${verdict.firstFailure.last}` : ''})` : ''}`)
 process.exit(passed ? 0 : 1)

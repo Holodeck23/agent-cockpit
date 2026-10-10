@@ -1,7 +1,7 @@
 // D10 session-state gate, run against the PACKAGED app (npm run package:proof first):
 //   COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:states
 // No agent usage: scripts/fixtures/states-agent leaves each conversation in one state. Checks the
-// header and list label for Starting, Working, Needs you, Ready, Error and Waiting (after Stop),
+// header and list label for Starting, Working, Needs you, Ready, Error and Idle (after Stop),
 // and saves one screenshot per state to PROOF_DIR/states/.
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -34,8 +34,8 @@ async function expectState(label: string, text: string, title = text): Promise<v
   await headStatus(page).filter({ hasText: label }).waitFor()
   const card = page.locator('.card').filter({ hasText: title.slice(0, 20) })
   check(`${label}: the header says it`, ((await headStatus(page).textContent()) ?? '').includes(label))
-  // The list shows a state for every busy or finished conversation; an idle one (Waiting) is header-only by design.
-  if (label === 'Waiting') check('Waiting: the list card shows no state pill (idle is header-only)', await card.locator('.pill').count() === 0)
+  // The list shows a state for every busy or finished conversation; an idle one (Idle) is header-only by design.
+  if (label === 'Idle') check('Idle: the list card shows no state pill (idle is header-only)', await card.locator('.pill').count() === 0)
   else check(`${label}: the list card carries the same state`, (await card.innerText()).includes(label))
   await page.screenshot({ path: join(shots, `${label.toLowerCase().replace(/ /g, '-')}.png`) })
 }
@@ -45,7 +45,7 @@ try {
   await start(page, 'Check starting state')
   await expectState('Starting', 'Check starting state')
   await page.locator('.thread-head').getByRole('button', { name: 'Stop', exact: true }).click()
-  await expectState('Waiting', 'Check starting state')
+  await expectState('Idle', 'Check starting state')
 
   await start(page, 'Check working state')
   await expectState('Working', 'Check working state')
