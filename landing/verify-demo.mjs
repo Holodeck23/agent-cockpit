@@ -40,6 +40,9 @@ try {
     await button('Allow').waitFor(); await noOverflow(); await shot('approval')
     assert.ok(await app.locator('.bubble.user').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 16))
     await button('Allow').click()
+    // Narrow layouts keep the conversation in view until the visitor explicitly chooses Preview.
+    const previewTab = app.getByRole('tab', { name: 'Preview', exact: true })
+    if (await previewTab.isVisible()) await previewTab.click()
     const sample = app.frameLocator('.preview-pane iframe')
     await sample.locator('[data-plant="basil"]').getByRole('button', { name: 'Mark watered' }).click()
     assert.equal(await sample.locator('#progress-label').innerText(), '1 of 3 watered')

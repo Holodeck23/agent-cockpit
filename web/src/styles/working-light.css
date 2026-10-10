@@ -5,12 +5,13 @@
    It is the one glow on the screen while it is lit. Idle, nothing is drawn and nothing moves.
    Reduce motion: the light rests in the middle of the edge and the halo holds still.
 
-   The drift is a transform on an element as wide as the edge, so the light's 0–100% is the edge's
-   own width and the animation never touches layout. The light itself is a radial gradient wider
-   than it is tall: white-hot at the centre, lumen through the middle, tide at the fringe. */
+   The drift is a transform on an element inset by half the glow's width. Its 0–100% travel carries
+   the glow exactly from one end of the edge to the other without overflow or layout work. The light
+   itself is a radial gradient wider than it is tall: white-hot at the centre, lumen through the
+   middle, tide at the fringe. */
 
+.composer-card { --working-cycle: 6.4s; } /* out and back; the one-way drift is half */
 .working-light {
-  --drift-cycle: 6.4s; /* out and back; the one-way drift is half */
   position: absolute;
   inset-inline: 28px;
   bottom: -1px;
@@ -19,7 +20,7 @@
   opacity: 0;
   transition: opacity var(--t-slow) var(--ease);
 }
-.working-light > i { position: absolute; inset: 0; }
+.working-light > i { position: absolute; inset-block: 0; inset-inline: 80px; }
 .working-light > i::before {
   content: '';
   position: absolute;
@@ -45,8 +46,8 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .working-light > i { animation: working-drift calc(var(--drift-cycle) / 2) var(--ease-breathe) infinite alternate; }
-  .composer-card.working { animation: working-halo var(--drift-cycle) var(--ease-breathe) infinite; }
+  .composer-card.working .working-light > i { animation: working-drift calc(var(--working-cycle) / 2) var(--ease-breathe) infinite alternate; }
+  .composer-card.working { animation: working-halo var(--working-cycle) var(--ease-breathe) infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
   .working-light > i { transform: translateX(50%); }

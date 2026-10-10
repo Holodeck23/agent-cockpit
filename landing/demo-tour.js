@@ -8,7 +8,7 @@
   const expand = document.getElementById('expand-demo');
   const steps = [
     ['A change is ready to try.', 'Your agent has made a clearer Today view for Garden Notes. Choose Allow to open it in Preview. Choose Deny and nothing starts.', 'Conversations'],
-    ['Try the result yourself.', 'Mark Basil watered in Preview. The progress changes immediately. Try Needs water to see how the list responds. On a narrow screen, close Preview to return to the conversation.', 'Conversations'],
+    ['Try the result yourself.', 'Mark Basil watered in Preview. The progress changes immediately. Try Needs water to see how the list responds. On a narrow screen, choose Preview first; close it to return to the conversation.', 'Conversations'],
     ['Keep the next request with the project.', 'Open notes.md in Files, choose Source, change the next step, then Save. Your draft stays with you as you move between views.', 'Files'],
     ['Turn a review into a repeatable step.', 'Choose Review before sharing, then Save and run. The sample result shows the saved brief it read; no AI model is called.', 'Workflows'],
     ['Carry the conversation forward.', 'Return to the Garden Notes conversation. Open the agent picker below the message box, choose Codex, then Switch. The earlier messages stay in place.', 'Conversations'],

@@ -113,7 +113,8 @@ try {
       const filters = document.querySelector('.memory-filters')!
       return { pageFits: document.documentElement.scrollWidth <= innerWidth,
         columnsFit: view.right <= innerWidth && view.left >= 0,
-        toggleVisible: filters.scrollWidth <= filters.clientWidth }
+        toggleVisible: filters.scrollWidth <= filters.clientWidth,
+        titleSingleLine: true }
     }
     if (which === 'start') {
       const thread = document.querySelector('.new-conversation')!.getBoundingClientRect()
@@ -121,16 +122,21 @@ try {
       const composer = document.querySelector('.new-conversation .composer')!.getBoundingClientRect()
       return { pageFits: document.documentElement.scrollWidth <= innerWidth,
         columnsFit: thread.left >= 0 && thread.right <= innerWidth && composer.right <= innerWidth,
-        toggleVisible: toggle.left >= thread.left && toggle.right <= thread.right }
+        toggleVisible: toggle.left >= thread.left && toggle.right <= thread.right,
+        titleSingleLine: true }
     }
     const list = document.querySelector(which === 'files' ? '.file-list' : '.workflow-list')!.getBoundingClientRect()
     const detail = document.querySelector(which === 'files' ? '.file-preview' : '.workflow-editor')!.getBoundingClientRect()
     const toggle = document.querySelector(which === 'files' ? '.file-preview header .file-explorer-toggle' : '.workflow-editor header .workflow-list-toggle')!.getBoundingClientRect()
+    const title = which === 'files' ? document.querySelector<HTMLElement>('.file-preview header h2') : null
+    const titleRange = title ? document.createRange() : null
+    if (title && titleRange) titleRange.selectNodeContents(title)
     return { pageFits: document.documentElement.scrollWidth <= innerWidth,
       columnsFit: list.right <= detail.left && detail.right <= innerWidth,
-      toggleVisible: toggle.right <= detail.right }
+      toggleVisible: toggle.right <= detail.right,
+      titleSingleLine: !title || (titleRange!.getClientRects().length === 1 && title.scrollWidth <= title.clientWidth) }
   }, screen)
-  check(`${screen} fits 980 × 640`, narrow.pageFits && narrow.columnsFit && narrow.toggleVisible, JSON.stringify(narrow))
+  check(`${screen} fits 980 × 640`, narrow.pageFits && narrow.columnsFit && narrow.toggleVisible && narrow.titleSingleLine, JSON.stringify(narrow))
   await shot(page, 'narrow-dark')
   if (screen === 'start') {
     await page.locator('.suggestion').first().click()

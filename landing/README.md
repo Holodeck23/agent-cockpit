@@ -26,8 +26,8 @@ switch agents, edit/save notes, run a workflow against the saved version, recove
 conversation, add/edit memory, filter conversations and reset. Replies and checklist output
 are explicitly fixed simulations. Native Mac actions and scheduling require the app.
 
-The landing page uses Cockpit's rounded system typography and light surfaces. Marketing
-body copy is 19–21px; main demo conversation text is 17px. `demo/readability.css` records
+The landing page uses Cockpit's Lumen palette and Fraunces display face over calm light and night
+surfaces. Marketing body copy is 19–21px; main demo conversation text is 17px. `demo/readability.css` records
 only demo-specific reading-size and responsive adaptations. At narrow widths Preview
 occupies one pane; Close preview returns to the conversation. Expand opens a larger view;
 Escape closes it. The agent-team reference informed the guided actions and free exploration.
