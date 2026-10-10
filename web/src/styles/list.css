@@ -4,36 +4,33 @@
   display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; min-width: 0; min-height: 0;
   background: var(--canvas-app); border-right: 1px solid var(--border);
 }
-/* Keep the darker, higher-contrast palette within the conversation screen. */
+/* The conversation screen: the list sits on the canvas, the selected row is lifted onto paper. */
 .layout {
-  --canvas-app: light-dark(#fafaf9, #191919);
-  --content: light-dark(#fff, #111111);
-  --field: light-dark(#f0f0eb, #292929);
-  --border: light-dark(#e5e5df, #ffffff20);
-  --conversation-row-selected: light-dark(#e9e9e4, #2b2b2b);
-  --conversation-filter-active: light-dark(#e6e3db, #302d28);
+  --conversation-row-selected: var(--panel);
+  --conversation-filter-active: var(--field);
 }
 
-.list-head { display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px 14px; }
-.list-art { width: 42px; height: 36px; flex: none; }
-.list-head h1 { flex: 1; margin: 0; font: 400 20px/1.2 var(--round); color: var(--strong); letter-spacing: -0.01em; }
+.list-head { display: flex; align-items: center; gap: 10px; padding: 20px 16px 14px 18px; }
+.list-art { display: none; } /* Lumen: no doodles in the list */
+.list-head h1 { flex: 1; margin: 0; font: 400 24px/1.15 var(--display); font-variation-settings: var(--display-axes); color: var(--strong); letter-spacing: -0.015em; }
 
-/* The blue "3D" button: a 3px darker ledge that collapses when pressed. */
+/* New conversation: a round ink button. It lifts on hover; colour is kept for state. */
 .new-button {
-  display: grid; place-items: center; width: 36px; height: 36px; padding: 0; flex: none;
-  background: var(--project-fill, var(--blue)); color: #fff; border: 0; border-radius: var(--r-md);
-  box-shadow: 0 3px 0 var(--project-fill-shadow, var(--blue-shadow)); transform: translateY(-1px); cursor: default;
-  transition: transform 80ms ease, box-shadow 80ms ease;
+  display: grid; place-items: center; width: 34px; height: 34px; padding: 0; flex: none;
+  background: var(--ink-fill); color: var(--ink-fill-text); border: 0; border-radius: 50%;
+  box-shadow: inset 0 1px 0 #ffffff1f, var(--shadow-sm); cursor: default;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-med) var(--ease);
 }
-.new-button .icon { width: 20px; height: 20px; stroke-width: 2.4; }
-.new-button:hover { box-shadow: 0 3px 0 var(--project-fill-shadow, var(--blue-shadow)), 0 0 0 4px var(--halo-soft); }
-.new-button:active { transform: translateY(2px); box-shadow: 0 0 0 var(--project-fill-shadow, var(--blue-shadow)); }
+.new-button .icon { width: 18px; height: 18px; stroke-width: 2.2; }
+.new-button:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 #ffffff1f, var(--shadow-md); }
+.new-button:active { transform: translateY(1px); box-shadow: var(--shadow-sm); }
 
 .search {
-  display: flex; align-items: center; gap: 8px; margin: 0 14px; height: 38px; padding: 0 12px;
-  background: var(--field); border-radius: 10px; color: var(--muted);
+  display: flex; align-items: center; gap: 8px; margin: 0 14px; height: 36px; padding: 0 12px;
+  background: var(--field); border: 1px solid transparent; border-radius: 10px; color: var(--muted);
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
-.search:focus-within { box-shadow: 0 0 0 3px var(--halo-soft); }
+.search:focus-within { border-color: color-mix(in srgb, var(--selected) 45%, transparent); background: var(--panel); }
 .search .icon { width: 17px; height: 17px; }
 .search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--strong); font: inherit; }
 .search input::placeholder { color: var(--muted); }
@@ -42,33 +39,37 @@
 .filters { display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 12px 12px 8px; overflow-x: auto; scrollbar-width: none; }
 .filter {
   display: flex; align-items: center; gap: 4px; padding: 6px 9px; background: none; border: 0;
-  border-radius: 8px; color: var(--secondary); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: default;
+  border-radius: 999px; color: var(--muted); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: default;
+  transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
-.filter[aria-selected='true'] { color: var(--strong); font-weight: 600; background: var(--conversation-filter-active); }
+.filter[aria-selected='true'] { color: var(--strong); font-weight: 600; background: var(--conversation-filter-active); box-shadow: inset 0 0 0 1px var(--hairline); }
 .filter:hover:not([aria-selected='true']) { color: var(--strong); background: var(--field); }
 .filter-count { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
 .filter .icon { width: 15px; height: 15px; }
 .unread-icon { position: relative; display: inline-flex; }
-.unread-icon::after { content: ''; position: absolute; top: 0; right: -1px; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+.unread-icon::after { content: ''; position: absolute; top: 0; right: -1px; width: 6px; height: 6px; border-radius: 50%; background: var(--selected); }
 
 .cards { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; overflow-y: auto; }
 
 .card {
-  display: grid; gap: 6px; width: 100%; padding: 12px 14px; text-align: left;
+  display: grid; gap: 5px; width: 100%; padding: 11px 14px 10px; text-align: left;
   background: transparent; border: 0; border-radius: 12px;
   color: var(--body); font: inherit; cursor: default;
+  transition: background-color var(--t-fast) var(--ease), box-shadow var(--t-med) var(--ease);
 }
-.card:hover { background: var(--field); }
-.card.selected { background: var(--conversation-row-selected); }
+.card:hover { background: color-mix(in srgb, var(--field) 70%, transparent); }
+/* The selected row is lifted onto paper, with a short selected-colour mark at its edge. */
+.card.selected { position: relative; background: var(--conversation-row-selected); box-shadow: var(--shadow-md); }
+.card.selected::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 2px; border-radius: 2px; background: var(--selected); }
 .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.card-count { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
-.card-count .icon { width: 15px; height: 15px; }
-.unread-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); margin-right: 2px; }
-.card-title { font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--strong); overflow-wrap: anywhere;
+.card-count { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; opacity: 0.8; }
+.card-count .icon { width: 13px; height: 13px; }
+.unread-dot { display: inline-block; width: 7px; height: 7px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--selected); vertical-align: middle; }
+.card-title { font-size: 14.5px; font-weight: 500; line-height: 1.35; color: var(--strong); overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card.unread .card-title { font-weight: 650; }
-.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
-.card-meta { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-foot { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.card-meta { flex: 1; min-width: 0; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .tag { padding: 2px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tag-blue { background: var(--tag-blue-bg); color: var(--tag-blue-ink); }
@@ -76,28 +77,35 @@
 .tag-pink { background: var(--tag-pink-bg); color: var(--tag-pink-ink); }
 .tag-apricot { background: var(--tag-apricot-bg); color: var(--tag-apricot-ink); }
 
-.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+/* Status is a light, never a filled pill. Working is lit (the orbit, in lumen); needs you is a
+   gold candle; ready is quiet text; error is one rose mark. */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pill .icon { width: 13px; height: 13px; stroke-width: 2.4; }
-.pill-working { background: var(--tint-apricot); color: var(--working-ink); }
-.pill-starting { color: var(--muted); box-shadow: inset 0 0 0 1px var(--input-border); }
-.starting-dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: starting-spin 0.9s linear infinite; }
+.pill-working { color: var(--lumen); }
+.pill-starting { color: var(--muted); }
+.starting-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--lumen); border-right-color: transparent; animation: starting-spin 1.4s var(--ease-breathe) infinite; }
 @keyframes starting-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .starting-dot { animation: none; } }
-.pill-needs_input { background: var(--needs-bg); color: var(--needs-ink); box-shadow: inset 0 0 0 1px var(--needs-border); }
-.pill-done { color: var(--success); background: color-mix(in srgb, var(--success) 14%, var(--field)); }
-.pill-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.pill-needs_input { color: var(--needs-ink); }
+.pill-needs_input::before, .pill-error::before { content: ''; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.pill-needs_input::before { background: var(--ember); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ember) 18%, transparent); }
+.pill-done { color: var(--muted); font-weight: 400; }
+.pill-error { color: var(--danger); }
+.pill-error::before { background: var(--danger); }
+/* One glow at a time: rows hold still. The breathing candle is kept for the open conversation's
+   question or approval (styles/thread.css). */
 
 .list-empty { display: grid; justify-items: center; gap: 4px; padding: 36px 16px; text-align: center; color: var(--muted); }
-.list-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 10px; border-radius: var(--r-md); background: var(--field); }
+.list-empty-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 10px; border-radius: 50%; background: var(--field); }
 .list-empty-icon .icon { width: 20px; height: 20px; }
-.list-empty strong { color: var(--strong); font-size: 16px; font-weight: 600; }
+.list-empty strong { color: var(--strong); font: 400 19px/1.25 var(--display); font-variation-settings: var(--display-axes); }
 
 .list-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 44px; padding: 0 14px;
   border-top: 1px solid var(--border); color: var(--muted); font-size: 13px;
 }
 .check { display: inline-flex; align-items: center; gap: 7px; color: var(--body); }
-.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
+.check input { width: 15px; height: 15px; margin: 0; accent-color: var(--selected); }
 .card-excerpt { font-style: italic; }
 /* A narrow list (the fixed 260px below 1120px windows) keeps all four filters in view. */
 .list { container-type: inline-size; }
@@ -116,7 +124,7 @@
 .layout.list-hidden { grid-template-columns: minmax(0, 1fr); }
 .list-dropdown {
   position: absolute; z-index: 20; top: 6px; left: 10px; bottom: 10px; width: min(340px, calc(100vw - 40px)); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0;
-  border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; box-shadow: 0 18px 44px -18px rgb(0 0 0 / 0.45);
+  border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-lg); animation: rise var(--t-med) var(--ease);
 }
 .list-dropdown > .list { border-right: 0; }
 .list-dropdown-actions { display: flex; justify-content: flex-end; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--canvas-app); }

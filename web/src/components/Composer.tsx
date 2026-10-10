@@ -6,6 +6,7 @@ import { ContextPicker } from './ContextPicker.tsx'
 import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
 import { ArrowUpIcon } from './icons.tsx'
+import { WorkingLight } from './WorkingLight.tsx'
 import { chipToSend, useComposerAttach } from '../useComposerAttach.ts'
 import type { MessageImage } from '../api.ts'
 
@@ -33,7 +34,7 @@ interface ComposerProps {
   draftKey: string
   placeholder: string
   disabled?: boolean
-  /** A turn is running: the composer's edge shows the scanner (D12, styles/scanner.css). */
+  /** A turn is running: the composer's working light drifts along its edge (styles/working-light.css). */
   working?: boolean
   /** The agent picker, shown in the bottom row. */
   picker: ReactNode
@@ -217,6 +218,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             <ArrowUpIcon />
           </button>
         </div>
+        <WorkingLight />
       </div>
     </form>
   )

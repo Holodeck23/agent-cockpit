@@ -9,7 +9,14 @@
    color-scheme: the OS by default, or data-theme="light|dark" on <html>.
 
    The older names (--blue, --orange, --round …) stay as aliases so every stylesheet picks up the
-   new palette; new work should use the Lumen names. */
+   new palette; new work should use the Lumen names.
+
+   Colour has three jobs and no others (the rules, docs/brand/lumen-board.html):
+     --lumen     an agent is working. The only thing that moves.
+     --ember     an agent needs you. Candlelight, never an alarm.
+     --selected  you picked it: selection, focus, links, the active section.
+   Green appears only as a small done tick, rose only as a small error mark. One glow at a time:
+   if the working light is lit, nothing else blooms. Status is a light, never a filled pill. */
 
 :root {
   color-scheme: light dark;
@@ -22,6 +29,8 @@
   --ember: light-dark(#a86a12, #f2c46d);          /* needs you */
   --ember-soft: light-dark(#f6ead2, #3a2f1c);
   --tide: light-dark(#2f8a83, #7fd8cc);           /* the cool end of the aurora */
+  --selected: light-dark(#2b7c76, #7fd8cc);      /* you picked it */
+  --selected-soft: light-dark(#2b7c761a, #7fd8cc1f);
   --aurora: linear-gradient(90deg, var(--lumen) 0%, var(--tide) 55%, var(--ember) 100%);
 
   /* ---------- surfaces, back to front ---------- */
@@ -71,17 +80,17 @@
   --needs-border: light-dark(#e4c992, #5e4b2a);
   --needs-ink: light-dark(#7c4d0c, #f5cf85);
 
-  /* status pills + conversation tags: dusk tints, one hue family each */
+  /* status + conversation tags: no fills. A tag is quiet text; status is a light (styles/list.css). */
   --tint-apricot: var(--lumen-soft);
   --working-ink: var(--lumen);
-  --tag-blue-bg: light-dark(#e3e6f7, #5b6fd526);
-  --tag-blue-ink: light-dark(#34407a, #b4c0f5);
-  --tag-green-bg: light-dark(#dfefe6, #5fbf9022);
-  --tag-green-ink: light-dark(#2b5a43, #a4dcbf);
-  --tag-pink-bg: light-dark(#f5e3ec, #c45c8f24);
-  --tag-pink-ink: light-dark(#8a3561, #f0b0cf);
-  --tag-apricot-bg: light-dark(#f5ead6, #c99a4a24);
-  --tag-apricot-ink: light-dark(#76501a, #f0cf95);
+  --tag-blue-bg: transparent;
+  --tag-blue-ink: var(--muted);
+  --tag-green-bg: transparent;
+  --tag-green-ink: var(--muted);
+  --tag-pink-bg: transparent;
+  --tag-pink-ink: var(--muted);
+  --tag-apricot-bg: transparent;
+  --tag-apricot-ink: var(--muted);
 
   /* project colours (letter avatars, project tint): dusk versions of the old six */
   --p-blue: light-dark(#4a68c9, #92a9f2);
@@ -92,13 +101,16 @@
   --p-gray: light-dark(#6c6979, #a6a4b6);
 
   /* ---------- aliases kept for older stylesheets ---------- */
-  --blue: var(--lumen);
-  --blue-shadow: var(--lumen-deep);
-  --link: var(--lumen);
-  --halo: var(--lumen-glow);
-  --halo-soft: var(--lumen-soft);
-  --focus-ring: var(--lumen-soft);
-  --project-soft: var(--lumen-soft);
+  --blue: var(--selected);
+  --blue-shadow: var(--selected);
+  --link: var(--selected);
+  --halo: color-mix(in srgb, var(--selected) 45%, transparent);
+  --halo-soft: var(--selected-soft);
+  --focus-ring: var(--selected-soft);
+  --project-soft: var(--selected-soft);
+  /* primary actions are ink, not colour */
+  --ink-fill: light-dark(#26232f, #e6e4f0);
+  --ink-fill-text: light-dark(#fbfaf7, #14151f);
   --pink: var(--p-pink);
   --orange: var(--ember);
 
