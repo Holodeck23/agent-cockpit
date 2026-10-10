@@ -58,6 +58,7 @@
     "proof:preview": "tsx scripts/proof-preview.ts",
     "proof:open-file": "tsx scripts/proof-open-file.ts",
     "dock-frames": "tsx scripts/make-dock-frames.ts",
+    "pwa-icons": "tsx scripts/make-pwa-icons.ts",
     "proof:conversation-read": "tsx scripts/proof-conversation-read.ts",
     "proof:agent-controls": "tsx scripts/proof-agent-controls.ts",
     "proof:onboarding": "tsx scripts/proof-onboarding.ts",

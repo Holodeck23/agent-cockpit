@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
-import { createDockActivity, parseActivity } from './dock-activity.ts'
+import { createDockActivity, DOCK_FRAMES, parseActivity } from './dock-activity.ts'
 import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts'
 import { copyInto } from '../server/files/copy-in.ts'
 import { isKnownFolder } from '../server/projects/folders.ts'
@@ -373,7 +373,7 @@ function createWindow(url: string): BrowserWindow {
 // Calls go through app.dock each time (not a saved reference), so the proofs can watch them.
 const dockFrames = (name: string) => nativeImage.createFromPath(join(__dirname, 'dock', `${name}.png`))
 const dockLook = (dir: string) => ({
-  frames: Array.from({ length: 8 }, (_, i) => dockFrames(`${dir}frame-${i}`)).filter((image) => !image.isEmpty()),
+  frames: Array.from({ length: DOCK_FRAMES }, (_, i) => dockFrames(`${dir}frame-${i}`)).filter((image) => !image.isEmpty()),
   rest: dockFrames(`${dir}rest`),
 })
 const darkDock = dockLook('dark/')

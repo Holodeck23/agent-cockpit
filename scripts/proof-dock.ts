@@ -63,7 +63,8 @@ try {
   await page.waitForTimeout(2_200)
   const moving = await dockLog(app)
   const distinct = new Set(moving.icons).size
-  check('while an agent works the icon cycles its frames', moving.icons.length >= 7 && moving.icons.length <= 11 && distinct >= 6,
+  // 2.2 s at FRAME_MS (100 ms) is about 22 frame changes.
+  check('while an agent works the icon cycles its frames', moving.icons.length >= 18 && moving.icons.length <= 26 && distinct >= 16,
     `${moving.icons.length} changes in 2.2 s, ${distinct} different`)
   check('the moving frames are not the plain icon', !moving.icons.includes(moving.rest))
   check('working alone sets no badge', await badge(app) === '')
