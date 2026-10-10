@@ -221,9 +221,11 @@ async function publish(): Promise<void> {
   if (!gate.verdict?.passed || gate.subset || gate.requiredRuns < REQUIRED_GATE_RUNS) {
     fail(`the cumulative gate did not pass ${REQUIRED_GATE_RUNS} consecutive full runs: see ${join(GATE, 'summary.txt')}`)
   }
-  // build may leave one change to commit (the landing's DMG size); anything else is untested source.
+  // After the gate only what never reaches the app may change: the landing page (its DMG size) and
+  // Markdown (the release record with this build's hashes). Anything else is untested source.
   const since = git('diff', '--name-only', gate.commit, head).split('\n').filter(Boolean)
-  if (since.some((file) => file !== 'landing/index.html')) fail(`source changed since the gated commit ${gate.commit.slice(0, 12)}: ${since.join(', ')}`)
+  const untested = since.filter((file) => !file.startsWith('landing/') && !file.endsWith('.md'))
+  if (untested.length) fail(`source changed since the gated commit ${gate.commit.slice(0, 12)}: ${untested.join(', ')}`)
   if (!readFileSync(LANDING, 'utf8').includes(`· DMG · ${landingSizeLabel(readFileSync(DMG).length)}`)) {
     fail('landing/index.html does not state this DMG size: commit the build stage change')
   }
