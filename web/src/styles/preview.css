@@ -25,7 +25,7 @@
 .preview-actions button:hover, .preview-actions a:hover { background: var(--field); color: var(--strong); }
 .preview-actions .preview-close { font-size: 19px; line-height: 1; }
 .preview-address { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--field); }
-.preview-address span { flex: none; padding: 2px 6px; border-radius: 999px; background: var(--tag-green-bg); color: var(--tag-green-ink); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.preview-address span { flex: none; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--hairline); background: none; color: var(--muted); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
 .preview-address code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--secondary); font-size: 11.5px; }
 .preview-pane iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
@@ -61,8 +61,8 @@
 }
 .browser-address:focus-within { border-color: color-mix(in srgb, var(--link) 45%, var(--border)); }
 .browser-address input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--strong); font: 12px var(--mono); }
-.browser-origin { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border-radius: 999px; background: var(--tag-blue-bg); color: var(--tag-blue-ink); font-size: 10.5px; font-weight: 650; }
-.browser-origin.local { background: var(--tag-green-bg); color: var(--tag-green-ink); text-transform: uppercase; letter-spacing: .04em; }
+.browser-origin { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--hairline); background: none; color: var(--muted); font-size: 10.5px; font-weight: 650; }
+.browser-origin.local { color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .browser-stage { position: relative; display: grid; min-height: 0; background: var(--content); }
 .browser-viewport { min-width: 0; min-height: 0; }
 .browser-stage.mobile { justify-items: center; background: var(--field); }

@@ -1,7 +1,5 @@
 .files-layout { display: grid; grid-template-columns: minmax(240px, 29%) minmax(0, 1fr); min-height: 0;
-  --canvas-app: light-dark(#fafaf9, #191919); --content: light-dark(#fff, #111111);
-  --field: light-dark(#f0f0eb, #292929); --border: light-dark(#e5e5df, #ffffff20);
-  --file-row-selected: light-dark(#e9e9e4, #2b2b2b); --file-filter-active: light-dark(#e6e3db, #302d28);
+  --file-row-selected: var(--panel); --file-filter-active: var(--field);
 }
 .file-list { overflow: auto; border-right: 1px solid var(--border); padding: 24px 20px; background: var(--canvas-app); }
 .file-list h1 { font-size: 25px; margin: 6px 0 12px; }
@@ -54,7 +52,7 @@
 .file-new-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--body); }
 .file-views { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); }
 .file-views button { border: none; background: transparent; padding: 5px 12px; border-radius: 6px; color: var(--secondary); font-size: 13px; }
-.file-views button[aria-pressed='true'] { background: var(--panel); color: var(--body); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+.file-views button[aria-pressed='true'] { background: var(--panel); color: var(--body); box-shadow: var(--shadow-sm); }
 @media (max-width: 800px) { .file-preview > header { flex-direction: column; } .file-text { min-height: 240px; } .files-layout { grid-template-columns: 220px minmax(0, 1fr); } }
 @media (max-width: 560px) { .files-layout { display: block; overflow: auto; } .file-list { max-height: 280px; border-bottom: 1px solid var(--border); } }
 
@@ -82,14 +80,14 @@
 .file-rename .button-soft { margin-left: 4px; }
 .file-rename input.file-rename-ext { flex: 0 0 56px; }
 .file-row.file-rename .file-rename-dot { flex: none; color: var(--muted); }
-.file-confirm { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: min(300px, 90vw); padding: 12px; border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--panel); font-size: 13px; line-height: 1.5; box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
+.file-confirm { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: min(300px, 90vw); padding: 12px; border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--panel); font-size: 13px; line-height: 1.5; box-shadow: var(--shadow-lg); }
 .file-confirm button { justify-self: end; }
 /* The menu and the name box hang from the whole location row, so they never run off a narrow sidebar. */
 .file-location { position: relative; }
 .new-file { margin-left: auto; }
 .new-file .file-new { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); padding: 7px 10px; }
 .new-file .file-new .icon { width: 14px; height: 14px; }
-.new-file .file-new-form { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25; flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 14%); }
+.new-file .file-new-form { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25; flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-lg); }
 .new-file .file-new-form small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 .new-file-menu .menu-item { justify-content: space-between; }
 .file-tabs-menu { position: relative; margin-left: auto; display: flex; align-items: center; flex: none; }
@@ -140,8 +138,9 @@
 .file-highlight .hljs-strong { font-weight: 700; }
 .file-highlight .hljs-emphasis { font-style: italic; }
 :root {
-  --hl-keyword: light-dark(#a3367a, #f08ac4); --hl-string: light-dark(#2f7a3d, #8fd18f); --hl-comment: light-dark(#8a8a85, #8b8b86);
-  --hl-number: light-dark(#b45a12, #f2a766); --hl-title: light-dark(#2357c6, #82aaff); --hl-attr: light-dark(#7d4fc2, #c3a6ff); --hl-type: light-dark(#0f7a86, #6fd3dc);
+  /* syntax: the night sky's own colours, muted enough to read for an hour */
+  --hl-keyword: light-dark(#6a4fc4, #b8a8ff); --hl-string: light-dark(#2f7a62, #8fd3b6); --hl-comment: light-dark(#8e8a99, #7c7a90);
+  --hl-number: light-dark(#a0621a, #f0c27a); --hl-title: light-dark(#3a5fb8, #9db6f5); --hl-attr: light-dark(#8a4a8c, #e0a8e2); --hl-type: light-dark(#2b7c76, #7fd8cc);
 }
 /* The gutter follows the text's scroll; it never shows a scrollbar of its own. */
 .file-source .file-gutter { overflow: hidden; }
@@ -150,7 +149,7 @@
    (Source) or the document (Document); neither editor's DOM changes. */
 .editor-find {
   display: grid; gap: 6px; align-self: flex-end; width: min(520px, 100%); padding: 6px;
-  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.35);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-md);
 }
 .editor-find-row { display: flex; align-items: center; gap: 4px; }
 .editor-find input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--panel); color: var(--strong); font-size: 13px; }
@@ -166,8 +165,8 @@
 .editor-find .find-count { min-width: 72px; }
 .file-find-button { width: 34px; height: 34px; }
 .doc-view .editor-find { margin-left: auto; margin-bottom: 8px; }
-::highlight(cockpit-editor-find) { background-color: color-mix(in srgb, #f5c542 45%, transparent); }
-::highlight(cockpit-editor-find-current) { background-color: #f5a623; color: #1a1a1a; }
+::highlight(cockpit-editor-find) { background-color: color-mix(in srgb, var(--ember) 28%, transparent); }
+::highlight(cockpit-editor-find-current) { background-color: var(--ember); color: light-dark(#fff, #1e1c28); }
 
 /* Drop files from Finder to copy them in (F8). */
 .file-drop { position: relative; min-height: 160px; border-radius: 10px; }

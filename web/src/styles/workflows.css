@@ -1,8 +1,6 @@
 /* Uses Cockpit's existing surface, type and accent tokens in both themes. */
 .workflows-layout { display: grid; grid-template-columns: minmax(240px, 29%) minmax(0, 1fr); flex: 1; min-height: 0; overflow: hidden;
-  --canvas-app: light-dark(#fafaf9, #191919); --content: light-dark(#fff, #111111);
-  --field: light-dark(#f0f0eb, #292929); --border: light-dark(#e5e5df, #ffffff20);
-  --workflow-row-selected: light-dark(#e9e9e4, #2b2b2b); --workflow-filter-active: light-dark(#e6e3db, #302d28);
+  --workflow-row-selected: var(--panel); --workflow-filter-active: var(--field);
 }
 .workflows-layout.list-hidden { grid-template-columns: minmax(0, 1fr); }
 .workflow-list[hidden] { display: none; }
@@ -44,12 +42,11 @@
 .workflow-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
 .workflow-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
 .workflow-actions button, .workflow-run button { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--strong); font: inherit; font-size: 13px; }
-.workflow-actions .button-primary { background: var(--blue); color: white; border-color: var(--blue-shadow); }
 .workflow-run { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 32px; }
 .workflow-run > div:first-child { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .workflow-run span { color: var(--muted); }
 .workflow-empty { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 16px; padding: clamp(30px, 6vw, 80px); overflow: auto; }
-.workflow-empty > svg { width: 40px; height: 40px; color: var(--blue); }
+.workflow-empty > svg { width: 40px; height: 40px; color: var(--muted); }
 .workflow-empty h2 { font-size: 28px; max-width: 380px; }
 .workflow-empty p { max-width: 430px; color: var(--muted); line-height: 1.7; }
 .workflow-list-empty { display: flex; flex-direction: column; gap: 12px; padding: 32px 0; color: var(--muted); line-height: 1.6; font-size: 13px; }
@@ -93,9 +90,7 @@
 .repeat-picker small { margin-top: 0; }
 /* Memory (components/Memory.tsx) */
 .memory { flex: 1; min-height: 0; overflow: auto; padding: 30px clamp(24px, 6vw, 96px) 48px; background: var(--content);
-  --content: light-dark(#fff, #111111); --panel: light-dark(#fff, #191919);
-  --field: light-dark(#f0f0eb, #292929); --border: light-dark(#e5e5df, #ffffff20);
-  --memory-row-selected: light-dark(#e9e9e4, #2b2b2b); --memory-filter-active: light-dark(#e6e3db, #302d28);
+  --memory-row-selected: var(--panel); --memory-filter-active: var(--field);
 }
 .memory > header { max-width: 760px; }
 .memory h1 { margin: 6px 0 8px; font-size: 29px; }

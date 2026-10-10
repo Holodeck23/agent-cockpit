@@ -60,31 +60,53 @@ export function soundFor(previous: Seen | undefined, threads: readonly Row[], se
   return soundForChanges(attentionChanges(previous, threads, focusedId), settings)
 }
 
-const TONES: Record<SoundKind, { type: OscillatorType; notes: ReadonlyArray<[frequency: number, start: number]> }> = {
-  reply: { type: 'sine', notes: [[659.25, 0], [880, 0.11]] },
-  decision: { type: 'triangle', notes: [[880, 0], [880, 0.14], [1318.5, 0.28]] },
+// Lumen's chimes: small glass bells. Each note is a sine with two quiet inharmonic partials (the
+// ratios of a struck bell) that fade faster than the note, so it rings and then settles; a faint
+// echo gives it room. Reply rises a fifth; a decision is a three-note call, brighter but not loud.
+const TONES: Record<SoundKind, { notes: ReadonlyArray<[frequency: number, start: number]> }> = {
+  reply: { notes: [[880, 0], [1318.51, 0.12]] },
+  decision: { notes: [[1108.73, 0], [1318.51, 0.13], [1760, 0.26]] },
 }
+const PARTIALS: ReadonlyArray<[ratio: number, gain: number, decay: number]> = [[1, 0.13, 1.3], [2.76, 0.03, 0.45], [5.4, 0.01, 0.2]]
 let context: AudioContext | undefined
+let room: AudioNode | undefined
+
+/** A quiet feedback echo every note passes through once: the room the bells ring in. */
+function roomFor(ctx: AudioContext): AudioNode {
+  const input = ctx.createGain()
+  const delay = ctx.createDelay(1)
+  const feedback = ctx.createGain()
+  const wet = ctx.createGain()
+  delay.delayTime.value = 0.19
+  feedback.gain.value = 0.28
+  wet.gain.value = 0.22
+  input.connect(ctx.destination)
+  input.connect(delay).connect(feedback).connect(delay)
+  delay.connect(wet).connect(ctx.destination)
+  return input
+}
 
 /** Plays the tone and announces it (`cockpit:sound` on window), which is how the proofs hear it. */
 export function playSound(kind: SoundKind): void {
   window.dispatchEvent(new CustomEvent('cockpit:sound', { detail: kind }))
   try {
     context ??= new AudioContext()
+    room ??= roomFor(context)
     void context.resume()
-    const { type, notes } = TONES[kind]
-    for (const [frequency, start] of notes) {
+    for (const [frequency, start] of TONES[kind].notes) {
       const at = context.currentTime + start
-      const osc = context.createOscillator()
-      const gain = context.createGain()
-      osc.type = type
-      osc.frequency.value = frequency
-      gain.gain.setValueAtTime(0.0001, at)
-      gain.gain.exponentialRampToValueAtTime(0.18, at + 0.015)
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.32)
-      osc.connect(gain).connect(context.destination)
-      osc.start(at)
-      osc.stop(at + 0.34)
+      for (const [ratio, peak, decay] of PARTIALS) {
+        const osc = context.createOscillator()
+        const gain = context.createGain()
+        osc.type = 'sine'
+        osc.frequency.value = frequency * ratio
+        gain.gain.setValueAtTime(0.0001, at)
+        gain.gain.exponentialRampToValueAtTime(peak, at + 0.008)
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + decay)
+        osc.connect(gain).connect(room)
+        osc.start(at)
+        osc.stop(at + decay + 0.02)
+      }
     }
   } catch {
     // no audio output available: stay quiet

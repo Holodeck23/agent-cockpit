@@ -3,18 +3,18 @@
 .phone-button { position: relative; }
 .phone-badge {
   position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-  background: var(--blue); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
+  background: var(--ember); color: light-dark(#fff, #2a1f0c); font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
 }
-.phone-on { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: #2fa24f; }
+.phone-on { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
 .phone-menu { width: 340px; }
 .phone-body { display: grid; gap: 10px; padding: 4px 10px 10px; }
 .phone-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--body); }
 .phone-qr { justify-self: center; width: 164px; height: 164px; padding: 6px; background: #fff; border-radius: var(--r-sm); }
 .phone-qr svg { display: block; width: 100%; height: 100%; }
 .phone-url { justify-self: center; font: 12.5px var(--mono); color: var(--link); overflow-wrap: anywhere; text-align: center; }
-.phone-error { margin: 0; font-size: 13px; color: #c2372b; }
+.phone-error { margin: 0; font-size: 13px; color: var(--danger); }
 .phone-toggle {
-  justify-self: start; padding: 7px 14px; border: 0; border-radius: var(--r-sm); background: var(--blue); color: #fff;
+  justify-self: start; padding: 7px 14px; border: 0; border-radius: var(--r-sm); background: var(--ink-fill); color: var(--ink-fill-text);
   font: inherit; font-weight: 600; cursor: default;
 }
 .phone-toggle.off { background: var(--field); color: var(--strong); font-weight: 500; }
@@ -31,10 +31,10 @@
 .pairing-text { flex: 1; min-width: 0; font-size: 13.5px; color: var(--strong); }
 .pairing-meta { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .pairing-code { font: 600 13px var(--mono); color: var(--strong); letter-spacing: 0.08em; }
-.pairing-allow { padding: 5px 12px; border: 0; border-radius: var(--r-sm); background: var(--blue); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: default; }
+.pairing-allow { padding: 5px 12px; border: 0; border-radius: var(--r-sm); background: var(--ink-fill); color: var(--ink-fill-text); font: inherit; font-size: 13px; font-weight: 600; cursor: default; }
 .pairing-banner {
   position: fixed; top: 106px; left: 50%; z-index: 31; width: min(620px, calc(100vw - 32px)); transform: translateX(-50%);
-  border-radius: var(--r-md); background: var(--panel); box-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.45);
+  border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-lg);
 }
 
 /* ---------- pairing screen (phone, before approval) ---------- */
@@ -44,15 +44,15 @@
 .pair p { margin: 0; }
 .pair-field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 .pair-field input { padding: 11px 12px; background: var(--field); border: 1px solid var(--input-border); border-radius: var(--r-sm); color: var(--strong); font: inherit; font-size: 16px; }
-.pair-ask { padding: 12px 16px; border: 0; border-radius: var(--r-md); background: var(--blue); color: #fff; font: inherit; font-weight: 600; box-shadow: 0 3px 0 var(--blue-shadow); }
+.pair-ask { padding: 12px 16px; border: 0; border-radius: var(--r-md); background: var(--ink-fill); color: var(--ink-fill-text); font: inherit; font-weight: 600; box-shadow: var(--shadow-md); }
 .pair-code { font: 600 34px var(--mono); letter-spacing: 0.18em; color: var(--strong); text-align: center; padding: 14px 0; background: var(--field); border-radius: var(--r-md); }
 .pair-wait { color: var(--muted); text-align: center; }
-.pair-error { color: #c2372b; }
+.pair-error { color: var(--danger); }
 
 /* ---------- phone layout ---------- */
 .back-button { display: none; }
 .phone-bar { align-items: center; gap: 10px; }
-.phone-title { font: 600 15px var(--round); color: var(--strong); }
+.phone-title { font: 500 17px var(--display); font-variation-settings: var(--display-axes); color: var(--strong); }
 .notify-button.on { color: var(--blue); }
 .agent-static { font-size: 13px; color: var(--muted); }
 .thread-pick { place-items: center; color: var(--muted); font-size: 14px; }
@@ -100,12 +100,12 @@
   font: 11.5px var(--mono); color: var(--strong); overflow-wrap: anywhere; user-select: all;
 }
 .preview-row .pairing-allow { grid-column: 1 / -1; justify-self: start; }
-.preview-on { font-size: 12px; color: #2fa24f; overflow-wrap: anywhere; }
+.preview-on { font-size: 12px; color: var(--success); overflow-wrap: anywhere; }
 .preview-conflict { grid-column: 1 / -1; }
 .preview-limits { line-height: 1.45; }
 .phone-apps-menu { width: min(360px, calc(100vw - 24px)); }
 .phone-view-app {
-  flex: none; padding: 6px 12px; border: 0; border-radius: var(--r-sm); background: var(--blue); color: #fff;
+  flex: none; padding: 6px 12px; border: 0; border-radius: var(--r-sm); background: var(--ink-fill); color: var(--ink-fill-text);
   font: inherit; font-size: 13px; font-weight: 600; cursor: default;
 }
 .phone-apps-state { display: grid; gap: 8px; padding: 6px 10px 10px; }

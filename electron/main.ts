@@ -35,7 +35,7 @@ import type { BrowserHost } from '../server/browser/agent.ts'
 // exactly as in a browser; the preload adds only a folder picker.
 
 // Keep in step with --canvas-app in web/src/styles/tokens.css so the window never flashes.
-const CANVAS = { light: '#fafaf9', dark: '#202020' }
+const CANVAS = { light: '#f5f3ee', dark: '#11121a' }
 // Longer than both stop ladders — agents: EOF → SIGTERM → SIGKILL (2 × 1.5s); project
 // processes: group SIGTERM → SIGKILL (3s) — so nothing hung is orphaned.
 const SHUTDOWN_GRACE_MS = 5000
