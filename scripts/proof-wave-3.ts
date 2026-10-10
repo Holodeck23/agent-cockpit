@@ -148,9 +148,14 @@ try {
   // A8: peek into a sent message's clips.
   await open('Clips')
   const chip = page.locator('.message-clips [title="src/app.ts"]')
-  await chip.hover()
   const peek = page.locator('.peek-panel')
-  check('A8 hovering a file clip shows its first lines', await until('peek', async () => (await peek.locator('.peek-text').innerText()).includes('export const total = a + 1')))
+  // Re-opening the transcript scrolls the clip under the pointer. Move away and re-enter until the
+  // browser has delivered a real hover, rather than assuming one pointer position change is enough.
+  const hoverFile = async (): Promise<boolean> => {
+    if ((await peek.count()) === 0) { await page.mouse.move(5, 5); await chip.hover() }
+    return (await peek.locator('.peek-text').innerText({ timeout: 500 })).includes('export const total = a + 1')
+  }
+  check('A8 hovering a file clip shows its first lines', await until('peek', hoverFile))
   const panelBox = await peek.boundingBox()
   const viewBox = await page.locator('.thread .events').boundingBox()
   check('A8 the peek is fully inside the conversation view', !!panelBox && !!viewBox && panelBox.y >= viewBox.y, `${panelBox?.y} vs ${viewBox?.y}`)

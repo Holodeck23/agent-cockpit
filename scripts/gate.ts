@@ -139,6 +139,7 @@ const line = (text: string): void => { console.log(text); writeFileSync(join(out
 line(`gate ${record.commit.slice(0, 12)}${record.dirty ? ' (DIRTY TREE)' : ''} · app ${record.appVersion} · package ${startPackage.slice(0, 12)} · app.asar ${startAsar.slice(0, 12)} · ${suites.length} suites × ${runs}`)
 let voided = ''
 let processLeak = ''
+let suiteFailure = ''
 for (let run = 1; run <= runs && !voided && !processLeak; run++) {
   const asar = sha256(asarPath)
   const packageHash = hashPackageTree(app)
@@ -158,11 +159,13 @@ for (let run = 1; run <= runs && !voided && !processLeak; run++) {
     }
     save()
     if (processLeak) break
+    if (!suitePassed(result)) {
+      suiteFailure = `${suite.name} run ${run} failed (exit ${result.exit}${result.last ? `, last verdict line: ${result.last}` : ''})`
+      line(`${suiteFailure}; the gate stops here (a fix is a new candidate)`)
+      break
+    }
   }
-  if (record.results.some((result) => result.run === run && !suitePassed(result))) {
-    line(`run ${run} had a failure; the gate stops here (a fix is a new candidate)`)
-    break
-  }
+  if (suiteFailure) break
 }
 const endAsar = sha256(asarPath)
 const endPackage = hashPackageTree(app)
@@ -173,5 +176,5 @@ const passed = gatePassesProcessCleanup(verdict.passed && !voided && !only && !r
 save({ finishedAt: new Date().toISOString(), endPackageSha256: endPackage, endAsarSha256: endAsar, voided: voided || null,
   processLeak: processLeak || null, verdict: { ...verdict, passed } })
 line(`GATE ${passed ? 'PASS' : 'FAIL'}: ${verdict.cleanRuns}/${runs} clean passes${voided ? `; ${voided}` : ''}${record.dirty ? '; dirty tree' : ''}`
-  + `${only ? '; subset only' : ''}${processLeak ? `; ${processLeak}` : ''}${verdict.firstFailure ? `; first failure: ${verdict.firstFailure.name} run ${verdict.firstFailure.run} (exit ${verdict.firstFailure.exit}${verdict.firstFailure.last ? `, last verdict line: ${verdict.firstFailure.last}` : ''})` : ''}`)
+  + `${only ? '; subset only' : ''}${processLeak ? `; ${processLeak}` : ''}${suiteFailure ? `; ${suiteFailure}` : ''}`)
 process.exit(passed ? 0 : 1)
