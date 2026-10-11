@@ -109,7 +109,10 @@ export function createLifecycle(options: LifecycleOptions) {
   const download = options.download ?? fetchInstaller
   const installers = options.installers ?? INSTALLERS
   const dir = join(options.stateRoot, 'agent-operations')
-  const ops = new Map<string, { view: OperationView; run?: HelperRun }>()
+  // cancelRequested: Cancel pressed before the helper existed (download, closing idle sessions).
+  const ops = new Map<string, { view: OperationView; run?: HelperRun; cancelRequested?: boolean }>()
+  // Set when Cockpit quits: nothing starts a helper after that, since none would be cancelled with it.
+  let closed = false
   const listeners = new Set<(view: OperationView) => void>()
   const pendingFile = join(dir, 'pending-updates.json')
   const prefsFile = join(dir, 'preferences.json')
@@ -182,10 +185,25 @@ export function createLifecycle(options: LifecycleOptions) {
     update(id, { state, endedAt: new Date().toISOString(), ...patch })
   }
 
+  /** True when the helper must not start now, having settled the operation: Cancel came first, or Cockpit is quitting. */
+  const halted = (id: string): boolean => {
+    const entry = ops.get(id)
+    if (!entry) return true
+    if (entry.cancelRequested) {
+      finish(id, 'cancelled', { message: entry.view.kind === 'update' ? 'Update cancelled. Nothing was changed.' : 'Cancelled. Nothing was installed.' })
+      return true
+    }
+    if (!closed) return false
+    // A quit never runs an update: it stays pending, a question at the next start (W10-08).
+    if (entry.view.kind === 'update') update(id, { state: 'waiting_for_idle', message: 'Cockpit is closing, so this update has not started.' })
+    else finish(id, 'cancelled', { message: 'Cockpit closed before the installer ran. Nothing was installed.' })
+    return true
+  }
+
   /** Runs a waiting update once nothing uses its executable: close idle sessions, recheck, update. */
   const advance = (id: string): void => {
     const entry = ops.get(id)
-    if (!entry || entry.view.state !== 'waiting_for_idle') return
+    if (closed || !entry || entry.view.state !== 'waiting_for_idle') return
     const { agent } = entry.view
     const label = AGENT_LABEL[agent]
     const busy = options.sessions?.activity(agent).busy ?? 0
@@ -199,6 +217,7 @@ export function createLifecycle(options: LifecycleOptions) {
       await options.sessions?.closeIdle(agent)
       // Revalidate: what is installed now is what gets updated, by the manager that owns it now.
       const before = await options.capabilities.get(agent, { refresh: true })
+      if (halted(id)) return
       const p = updatePlanFor(before, { brew: resolveExecutable('brew', pathEnv())?.path })
       if (!p.available) { finish(id, 'error', { message: `Nothing was updated: ${p.reason}`, ...(p.manual ? { manual: p.manual } : {}) }); return }
       await updateCli(id, agent, before, p)
@@ -222,9 +241,11 @@ export function createLifecycle(options: LifecycleOptions) {
     let bytes: Buffer
     log(id, `Downloading ${spec.url}`)
     try { bytes = await download(spec.url, spec.hosts) } catch (error) {
+      if (halted(id)) return
       finish(id, 'error', { message: `Could not download the official installer (${error instanceof Error ? error.message : String(error)}). Nothing was installed.`, manual })
       return
     }
+    if (halted(id)) return
     const sha = createHash('sha256').update(bytes).digest('hex')
     log(id, `sha256 ${sha}`)
     if (!bytes.subarray(0, 2).equals(Buffer.from('#!'))) {
@@ -263,7 +284,7 @@ export function createLifecycle(options: LifecycleOptions) {
     const caps = await options.capabilities.get(agent, { refresh: true })
     const label = AGENT_LABEL[agent]
     if (exit.cancelled) { finish(id, 'cancelled', { message: `Cancelled. ${label} is ${describe(caps)}.` }); return }
-    const manual = caps.executable.state === 'missing' ? manualInstall(agent) : `${AGENT_LABEL[agent] === 'Antigravity' ? 'agy' : agent} update`
+    const manual = caps.executable.state === 'missing' ? manualInstall(agent) : p.manual ?? `${AGENT_LABEL[agent] === 'Antigravity' ? 'agy' : agent} update`
     if (exit.code !== 0 || caps.executable.state !== 'found') {
       finish(id, 'error', { message: `${exitText(exit, 'The update')}. ${label} is now ${describe(caps)}. Your conversations are kept; the update's output is in the log.`, manual })
       return
@@ -292,6 +313,7 @@ export function createLifecycle(options: LifecycleOptions) {
     plan,
     /** The explicit action. Throws when the plan is not available (the plan says why). */
     async start(agent: AgentId, kind: OperationKind, start: StartOptions = {}): Promise<OperationView> {
+      if (closed) throw new Error('Cockpit is closing.')
       const before = kind === 'update' ? await options.capabilities.get(agent, { refresh: true }) : await options.capabilities.get(agent)
       const p = kind === 'install' ? installPlanFor(agent, before, home) : kind === 'update' ? updatePlanFor(before, { brew: resolveExecutable('brew', pathEnv())?.path }) : signinPlanFor(before)
       if (!p.available) throw new Error(p.manual ? `${p.reason} Run it yourself: ${p.manual}` : p.reason)
@@ -315,7 +337,7 @@ export function createLifecycle(options: LifecycleOptions) {
     /** Explicit confirmation of an update that was pending when Cockpit quit. */
     resume(id: string): boolean {
       const entry = ops.get(id)
-      if (entry?.view.state !== 'pending_confirmation') return false
+      if (closed || entry?.view.state !== 'pending_confirmation') return false
       update(id, { state: 'waiting_for_idle', message: undefined })
       advance(id)
       return true
@@ -345,6 +367,7 @@ export function createLifecycle(options: LifecycleOptions) {
     lastCheck: (agent: AgentId): LatestCheck | undefined => latest.get(agent),
     /** Quit: every helper Cockpit started ends with it (ID-06). */
     shutdown(): Promise<unknown> {
+      closed = true
       const running = [...ops.values()].filter((e) => e.run)
       for (const e of running) e.run!.cancel()
       return Promise.all(running.map((e) => e.run?.done))
@@ -365,7 +388,13 @@ export function createLifecycle(options: LifecycleOptions) {
         finish(id, 'cancelled', { message: 'Update cancelled. Nothing was changed.' })
         return true
       }
-      if (!entry || !RUNNING.has(entry.view.state) || !entry.run) return false
+      if (!entry || !RUNNING.has(entry.view.state)) return false
+      if (!entry.run) {
+        // No helper yet: remember the ask; the operation finishes cancelled before it starts one.
+        entry.cancelRequested = true
+        update(id, { message: 'Cancelling…' })
+        return true
+      }
       entry.run.cancel()
       return true
     },
