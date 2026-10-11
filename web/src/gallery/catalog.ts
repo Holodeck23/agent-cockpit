@@ -88,7 +88,7 @@ export const GALLERY: readonly GalleryWorkflow[] = [
   },
   {
     name: 'release-check', title: 'Release check', category: 'Quality',
-    summary: 'Runs the checks and says whether it is ready to ship.', permissionMode: 'plan', schedule: null,
+    summary: 'Runs the checks and says whether it is ready to ship.', permissionMode: 'manual', schedule: null,
     prompt: lines(
       'Tell me whether this project is ready to release, without changing any files.',
       'Find and run its own checks (tests, type check, lint, build) as documented in the repository.',

@@ -37,7 +37,10 @@ export function NewWorktreeDialog({ projectId, projectName, onCreate, onClose }:
   }, [projectId])
 
   const prefix = preflight?.branchPrefix ?? 'codex/'
-  const suggestion = branchSuggestion(prefix, name)
+  // A name with no a-z or 0-9 (Cyrillic, CJK, emoji) has an empty slug; the server then names the branch "worktree".
+  // branchSuggestion's <name> is only the placeholder for an empty field.
+  const named = branchSuggestion(prefix, name)
+  const suggestion = name.trim() && named.endsWith('<name>') ? `${prefix}worktree` : named
   const ready = name.trim().length > 0 && !blocked && !busy
 
   const submit = (event: FormEvent): void => {

@@ -45,7 +45,7 @@ export function FileTree({ project, workspace, selected, dirty, onOpen, onCreate
       (e: unknown) => { if (active) setError(e instanceof Error ? e.message : String(e)) },
     )
     return () => { active = false }
-  }, [project, workspace?.scope, folder, refresh])
+  }, [project.path, workspace?.scope, folder, refresh]) // the path, not the object: a projects refresh hands over new ones
 
   // Files dropped here are copied into this folder (F8); the list then shows them.
   const [dropNote, setDropNote] = useState('')
