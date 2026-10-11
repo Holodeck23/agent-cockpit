@@ -15,7 +15,7 @@ export const codexLaunchSchema = z.object({
   model: z
     .string()
     .max(100)
-    .regex(/^[A-Za-z0-9._\-[\]]+$/)
+    .regex(/^[A-Za-z0-9._\-[\]/:]+$/)
     .optional(),
   effort: z.enum(ALL_EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
@@ -168,7 +168,15 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     const generation = stopGeneration
     // A level the model does not have (a saved Ultra on a model without it) becomes its highest (R7).
     const effort = codexEffort(opts.model, opts.effort)
-    const fail = (error: unknown): void => { if (!exited) onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) }) }
+    // A rejected turn/start never names a turn, so end it here: left as is the conversation stays
+    // working, and a Stop pressed meanwhile would interrupt the next turn the moment it starts.
+    const fail = (error: unknown): void => {
+      turnStarting = false
+      interruptOnStart = false
+      if (exited) return
+      onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) })
+      if (!currentTurnId) onEvent({ kind: 'result', ok: false })
+    }
     const start = (): Promise<unknown> => {
       // A late steering failure must not restart work canceled by Stop or session close.
       if (exited || generation !== stopGeneration) return Promise.resolve()
