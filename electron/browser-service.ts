@@ -75,6 +75,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   let lastShown: string | undefined
   let revisions = 0
   const bump = (page: Page): void => { page.revision = ++revisions }
+  const notifyDestroyed = (key: string): void => { for (const listener of destroyedListeners) listener(key) }
 
   // Installed once per partition, never on the control session (whose one onBeforeSendHeaders
   // listener carries the window key, electron/window-key.ts).
@@ -136,9 +137,12 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) page.error = undefined })
     contents.on('did-navigate', () => bump(page))
     contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => { if (isMainFrame) bump(page) })
+    // A page dropped by close() or forgetAll() was announced there. Its WebContents finishes
+    // dying later, maybe after a new page holds the key, and must not touch that page's grants.
     contents.once('destroyed', () => {
-      if (pages.get(key) === page) pages.delete(key)
-      for (const listener of destroyedListeners) listener(key)
+      if (pages.get(key) !== page) return
+      pages.delete(key)
+      notifyDestroyed(key)
     })
     contents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
       // -3 is an aborted load: a new navigation replaced it, or Stop.
@@ -278,6 +282,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const win = deps.window()
       if (page.attached && win && !win.isDestroyed()) win.contentView.removeChildView(page.view)
       if (!page.view.webContents.isDestroyed()) page.view.webContents.close()
+      notifyDestroyed(key)
     },
     /** Clears one workspace's website data (logins, storage, cache), refused while one of its pages loads. */
     async clearData(projectPath: string): Promise<string | undefined> {
@@ -288,11 +293,13 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       await web.clearCache()
       return undefined
     },
-    /** The window was closed: its views went with it. */
+    /** The window was closed. Electron does not tear a child view's WebContents down with it. */
     forgetAll(): void {
-      const keys = [...pages.keys()]
+      const forgotten = [...pages]
       pages.clear()
-      for (const key of keys) for (const listener of destroyedListeners) listener(key)
+      lastShown = undefined
+      for (const [, page] of forgotten) if (!page.view.webContents.isDestroyed()) page.view.webContents.close()
+      for (const [key] of forgotten) notifyDestroyed(key)
     },
     /** For the agent tools (electron/browser-agent-host.ts): the page itself, never handed to the renderer. */
     agentPage(key: string): { readonly contents: WebContents; readonly revision: number; readonly viewport: { width: number; height: number } } | undefined {
@@ -315,6 +322,13 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const page = create(key, projectPath)
       if (last) void page.view.webContents.loadURL(last).catch(() => undefined)
       return undefined
+    },
+    /** The person has seen the "Cockpit unloaded this page" notice: stop reporting it for this page. */
+    acknowledgeReload(key: string): void {
+      const page = pages.get(key)
+      if (!page?.reloaded) return
+      page.reloaded = false
+      publish(key)
     },
     /** For the capacity explanation: does this page hold unsaved typing? */
     async hasUnsaved(key: string): Promise<boolean> {

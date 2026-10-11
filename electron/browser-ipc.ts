@@ -33,6 +33,7 @@ export function registerBrowserIpc(origin: string, service: BrowserService, isPr
   })
   ipcMain.handle('cockpit:browser-state', (event, key: unknown) => (fromCockpit(event) && pageKeyOk(key) ? service.state(key) : undefined))
   ipcMain.on('cockpit:browser-external', (event, key: unknown) => { if (fromCockpit(event) && pageKeyOk(key)) service.openExternal(key) })
+  ipcMain.on('cockpit:browser-reload-seen', (event, key: unknown) => { if (fromCockpit(event) && pageKeyOk(key)) service.acknowledgeReload(key) })
   ipcMain.on('cockpit:browser-close', (event, key: unknown) => { if (fromCockpit(event) && pageKeyOk(key)) service.close(key) })
   ipcMain.handle('cockpit:browser-clear', async (event, projectPath: unknown) => {
     if (!fromCockpit(event) || typeof projectPath !== 'string' || !isProject(projectPath)) return 'Not a project'
