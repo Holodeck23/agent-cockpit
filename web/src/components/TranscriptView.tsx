@@ -26,7 +26,8 @@ interface TranscriptViewProps {
   streaming: string
   streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
-  onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void
+  /** May return the request's promise: a rejection gives the question card back. */
+  onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void | Promise<unknown>
   /** Takes a waiting message back to the draft (J1). */
   onUnqueue?: (queuedId: string) => void
   /** Stops the current turn so waiting messages run now (J1). */
