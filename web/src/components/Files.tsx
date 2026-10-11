@@ -16,6 +16,9 @@ const EXPLORER_KEY = 'cockpit:files-explorer-hidden'
 const loadHidden = (): boolean => { try { return localStorage.getItem(EXPLORER_KEY) === '1' } catch { return false } }
 const loadSpace = (): Space => { try { return localStorage.getItem(SPACE_KEY) === 'documents' ? 'documents' : 'project' } catch { return 'project' } }
 
+// App keeps a reply's link after it is used and Files remounts (another section, another project): each link opens once.
+let lastRevealed: number | undefined
+
 export function Files({ project, workspace, workspaceLabel, guard, onAttach, reveal, onPins, workspacePicker }: {
   project?: Project; workspace?: WorkspaceRef; workspaceLabel?: string; guard?: SelectionGuard; onAttach: (reference: string) => void; reveal?: { target: FileTarget; nonce: number }; onPins: (pins: readonly string[]) => void
   /** The workspace picker, once the project has worktrees: which checkout's files are shown. */
@@ -32,7 +35,8 @@ export function Files({ project, workspace, workspaceLabel, guard, onAttach, rev
   // A reply's file link: open the file in Project files, then select its lines.
   const { open: openPath } = open
   useEffect(() => {
-    if (!reveal) return
+    if (!reveal || reveal.nonce === lastRevealed) return
+    lastRevealed = reveal.nonce
     const { path, line, endLine } = reveal.target
     setSpace(spaceOf(path).space)
     void openPath(path).then(() => { if (line) setJump({ path, line, endLine, nonce: reveal.nonce }) })

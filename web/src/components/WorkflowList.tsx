@@ -65,7 +65,7 @@ export function WorkflowList({ project, rows, loaded, selected, busy, onSelect, 
               aria-current={selected === w.id ? 'true' : undefined} disabled={busy} onClick={() => onSelect(w.id)}>
               <span className="workflow-row-top"><strong>{displayTitle(w)}</strong>
                 <small className={`workflow-status${w.lastError ? ' workflow-error' : w.enabled ? ' scheduled' : ''}`}>
-                  {w.lastError ? 'Needs attention' : w.enabled ? 'Scheduled' : w.calendar ? 'Paused' : 'Manual'}
+                  {w.lastError ? 'Needs attention' : w.enabled ? 'Scheduled' : w.calendar || w.intervalMinutes ? 'Paused' : 'Manual'}
                 </small>
               </span>
               <code className="workflow-slug">@workflow:{w.name}</code>
