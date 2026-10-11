@@ -117,7 +117,19 @@ function isOurs(manifest: string | undefined | Error): boolean {
   }
 }
 
+/**
+ * A file system error (a read-only or unmounted folder, a full disk) is a failure to report, not a throw:
+ * a launch then starts without Cockpit's tools, and Connect answers with a message.
+ */
 export function connectPlugin(root: string, entry: AgyMcpEntry, options: ConnectOptions): ConnectResult {
+  try {
+    return connect(root, entry, options)
+  } catch (error) {
+    return fail('unsafe_path', `Cockpit could not write its plugin in ${join(root, PLUGIN_DIR)} (${error instanceof Error ? error.message : String(error)}). Check that the folder can be written to.`)
+  }
+}
+
+function connect(root: string, entry: AgyMcpEntry, options: ConnectOptions): ConnectResult {
   const dir = join(root, PLUGIN_DIR)
   const unsafe = unsafeFolder(root)
   if (unsafe) return fail('unsafe_path', `${unsafe} is a link or a file, not a folder in this project. Cockpit writes only inside the project and left it alone.`)
