@@ -138,14 +138,20 @@ export function createWorktreeLifecycle({ workspaces, activeIn }: LifecycleDeps)
     if (!exists) blockers.push('Its folder is gone.')
     const head = exists ? (await out(workspace.cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']))?.trim() : undefined
     const gitDir = exists ? (await out(workspace.cwd, ['rev-parse', '--absolute-git-dir']))?.trim() : undefined
+    if (exists && !head) blockers.push('Git could not verify the worktree commit; removal is blocked.')
+    if (exists && !gitDir) blockers.push('Git could not locate its operation state; removal is blocked.')
     for (const [marker, operation] of IN_PROGRESS) if (gitDir && existsSync(join(gitDir, marker))) blockers.push(`A Git ${operation} is in progress in it.`)
-    const status = exists ? (await out(workspace.cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'])) ?? '' : ''
-    const counts = countStatus(status)
+    const status = exists ? await out(workspace.cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching']) : undefined
+    // Timeout, output overflow and every other Git error mean unknown, never "clean".
+    // Normal git worktree remove deletes ignored files, so Git's own refusal is not a fallback.
+    if (exists && status === undefined) blockers.push('Git could not complete the file status check; removal is blocked. Keep or archive this worktree.')
+    const counts = countStatus(status ?? '')
     // Commits only this worktree's branch holds: every other branch, tag and remote is "elsewhere".
     const branch = workspace.branch
     const commits = head
       ? Number((await out(workspace.cwd, ['rev-list', '--count', head, '--not', ...(branch ? [`--exclude=${branch}`] : []), '--branches', '--tags', '--remotes']))?.trim() ?? 'NaN')
-      : 0
+      : NaN
+    if (!Number.isInteger(commits) || commits < 0) blockers.push('Git could not verify whether this worktree has unique commits; removal is blocked.')
     const unique: UniqueWork = { ...counts, commits: Number.isFinite(commits) ? commits : 1 }
     const nothingUnique = unique.changed === 0 && unique.untracked === 0 && unique.ignored === 0 && unique.commits === 0
     const fingerprint = createHash('sha256').update(JSON.stringify([workspace.revision, head ?? '', status, unique.commits, blockers])).digest('hex').slice(0, 32)
