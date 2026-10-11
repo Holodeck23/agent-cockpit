@@ -48,7 +48,8 @@ export function turnRoles(events: readonly StoredEvent[]): Map<number, TurnRole>
     workedBeforeFirst = false
   }
   events.forEach(({ event }, index) => {
-    if (event.kind === 'user_text') close(true)
+    // A message queued mid-turn (queuedId) arrives while the turn runs; the result, not it, ends the turn.
+    if (event.kind === 'user_text' && !event.queuedId) close(true)
     else if (event.kind === 'assistant_text') messages.push(index)
     else if ((event.kind === 'tool_use' || event.kind === 'approval_request') && messages.length === 0) workedBeforeFirst = true
     else if (ENDS_TURN.has(event.kind)) close(true)

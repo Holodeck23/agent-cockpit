@@ -62,9 +62,13 @@ export function runsOf(threadId: string, events: readonly StoredEvent[]): RunSum
 
 /** The run a crash left open, if the conversation's last request never finished. */
 export function unfinishedRun(threadId: string, events: readonly StoredEvent[]): RunSummary | undefined {
-  const last = runsOf(threadId, events).findLast((r) => !r.ended)
+  const runs = runsOf(threadId, events)
+  const last = runs.findLast((r) => !r.ended)
   if (!last) return undefined
-  // A later result, exit or error means the turn did end; it just was not attributed.
+  // A later result, exit or error means the turn did end; it just was not attributed. A result that
+  // names a run of this log was attributed by runsOf already: the earlier turn's result, recorded after
+  // a message queued during it, says nothing about the queued run that started once it ended.
+  const known = new Set(runs.map((r) => r.runId))
   const after = events.slice(last.index + 1)
-  return after.some(({ event }) => event.kind === 'result' || event.kind === 'exit' || event.kind === 'error') ? undefined : last
+  return after.some(({ event }) => (event.kind === 'result' && !(event.runId && known.has(event.runId))) || event.kind === 'exit' || event.kind === 'error') ? undefined : last
 }
