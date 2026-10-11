@@ -13,7 +13,7 @@ export async function handleWorkflowRoute(req: IncomingMessage, res: ServerRespo
   }
   if (req.method === 'POST' && (!id || parts[3] === 'save')) {
     const input = parseBody(workflowInputSchema, await readJson(req))
-    if (!statSync(input.projectPath).isDirectory()) throw new HttpError(400, 'Project folder is unavailable')
+    if (!statSync(input.projectPath, { throwIfNoEntry: false })?.isDirectory()) throw new HttpError(400, 'Project folder is unavailable')
     return sendJson(res, id ? 200 : 201, { data: deps.store.save(input, id) })
   }
   if (!id || !deps.store.get(id)) throw new HttpError(404, 'Unknown workflow')
