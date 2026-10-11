@@ -137,6 +137,19 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     return kind === 'remote' && origin !== undefined && deps.leases.has({ threadId: grant.threadId, runId, pageKey: pageKeyOf(grant.threadId), origin })
   }
 
+  /**
+   * A page can take itself somewhere the person was not asked about (a local address answering with a
+   * redirect to a website). Where it landed is asked about too, unless that is the very site just approved.
+   * A Deny rejects the call, so the agent is not handed the page as an opened one; reading it still asks.
+   */
+  async function landed(grant: McpGrant, runId: string, page: AgentPageInfo, approved: string | undefined, from: string, signal: AbortSignal): Promise<AgentPageInfo> {
+    const origin = originOf(page.url)
+    if (origin !== undefined && origin !== approved && originClass(page.url, deps.cockpitPorts()) === 'remote') {
+      await permit(grant, runId, 'navigate', origin, { url: page.url, redirectedFrom: from }, signal)
+    }
+    return page
+  }
+
   /** Calls in flight per page, including any waiting on the person: such a page is never unloaded. */
   const active = new Map<string, number>()
 
@@ -186,8 +199,10 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
       if (!target) throw new HttpError(409, `There is no page to go ${action} to.`)
       const kind = originClass(target, ports)
       if (kind === 'refused') throw new HttpError(400, `The browser opens http and https sites only, never Cockpit itself: ${target.slice(0, 200)}`)
-      if (kind === 'remote') await permit(grant, runId, 'navigate', originOf(target)!, { url: target, ...(action ? { action } : {}) }, signal)
-      return url ? host.goto(key, url) : host.history(key, action!)
+      const approved = kind === 'remote' ? originOf(target)! : undefined
+      if (approved) await permit(grant, runId, 'navigate', approved, { url: target, ...(action ? { action } : {}) }, signal)
+      const page = await (url ? host.goto(key, url) : host.history(key, action!))
+      return landed(grant, runId, page, approved, target, signal)
     }
 
     // Input: always needs a grant for the page's exact origin, local app or not.
