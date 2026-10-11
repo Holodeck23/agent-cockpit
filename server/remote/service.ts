@@ -160,7 +160,15 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
 
   async function listen(port: number): Promise<void> {
     if (server?.listening) return
-    const next = createServer((req, res) => void handleRemote(req, res))
+    const next = createServer((req, res) => {
+      // Parsing and the identity guard also run asynchronously. Malformed pre-auth input must
+      // receive an answer, never become an unhandled rejection or leave its socket open.
+      void handleRemote(req, res).catch(() => {
+        if (res.headersSent) { res.destroy(); return }
+        res.writeHead(400, { 'content-type': 'text/plain', 'connection': 'close' })
+        res.end('Request could not be processed')
+      })
+    })
     await new Promise<void>((resolve, reject) => {
       next.once('error', (err: NodeJS.ErrnoException) =>
         reject(new Error(err.code === 'EADDRINUSE' ? `Port ${port} is already in use on this Mac` : err.message)))
