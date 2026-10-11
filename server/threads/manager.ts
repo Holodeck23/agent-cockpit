@@ -242,6 +242,7 @@ export class OperationConflictError extends Error {}
 export class HandoffChangedError extends Error {}
 /** The conversation has run in more than one workspace and the request did not say which (HTTP 409). */
 export class ChooseWorkspaceError extends Error {}
+const CHOOSE_WORKSPACE = 'This conversation has run in more than one workspace. Choose the workspace to continue in.'
 /** The workspace asked for is not this project's, or no longer exists (HTTP 409); never replaced by another. */
 export class WorkspaceUnavailableError extends Error {}
 
@@ -706,7 +707,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     }
     // Once it has run in several workspaces, a request says which; it is never guessed (INTERFACES §5).
     if (workspaceId) moveTo(meta, workspaceId)
-    else if (Object.keys(meta.bindings ?? {}).length > 0) throw new ChooseWorkspaceError('This conversation has run in more than one workspace. Choose the workspace to continue in.')
+    else if (Object.keys(meta.bindings ?? {}).length > 0) throw new ChooseWorkspaceError(CHOOSE_WORKSPACE)
     const target = currentWorkspace(requireMeta(threadId)) ?? ''
     hostActions.cancel(threadId, target)
     // Every image is checked and stored first, so a bad one sends nothing.
@@ -775,7 +776,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       try {
         send(meta.id, text, agentText, workflows, source ? { id: source.id, title: source.title } : undefined, attached)
       } catch (error) {
-        // A refused image leaves no empty conversation behind.
+        // A refused image leaves no empty conversation behind, nor an agent session that already started for it.
+        deleted.add(meta.id)
+        void retire(meta.id)
         store.remove(meta.id)
         images.remove(meta.id)
         throw error
@@ -831,7 +834,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       hostActions.cancel(threadId, workspaceId)
       const entries = workspaceId === undefined ? entriesOf(threadId) : [entryIn(threadId, workspaceId)].filter((e): e is Live => e !== undefined)
       for (const entry of entries) {
-        entry.stopRequested = true
+        // Only a session at work is being stopped: an idle one gets no result to clear the flag, and its next turn would start "stopped".
+        if (busy(entry) || entry.waiting.size > 0) entry.stopRequested = true
         entry.session.interrupt()
       }
     },
@@ -899,6 +903,11 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     resumeRecovered(threadId, agent, text, agentText) {
       const meta = requireMeta(threadId)
       if (anyBusy(threadId)) throw new Error('Stop the current turn before resuming recent work')
+      // send() needs a workspace once the conversation has run in several, and Recovery names none: it
+      // resumes where the conversation is now. Refused here, before the agent or settings change.
+      const several = Object.keys(meta.bindings ?? {}).length > 0
+      const workspaceId = several ? currentWorkspace(meta) : undefined
+      if (several && !workspaceId) throw new ChooseWorkspaceError(CHOOSE_WORKSPACE)
       const settings: ThreadSettings = { agent, permissionMode: 'manual', useHooks: false }
       if (agent !== meta.settings.agent) this.switchAgent(threadId, settings)
       else {
@@ -906,7 +915,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         void retire(threadId)
         store.update(threadId, { settings })
       }
-      send(threadId, text, agentText)
+      send(threadId, text, agentText, undefined, undefined, undefined, undefined, workspaceId)
       return requireMeta(threadId)
     },
     recoverInterrupted() {
