@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
+import { useEffect, useState, type KeyboardEvent } from 'react'
+import { effortsFor, PERMISSION_MODES, type Effort } from '../../../server/agents/claude/flags.ts'
+import { CODEX_MODEL_EFFORTS, codexEffort } from '../../../server/agents/codex/efforts.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
 import type { ModelOption } from '../../../server/agents/capabilities/types.ts'
 import { api, type AccountView, type AgentCapabilities, type AgentStatus, type HandoffPreview, type Preset, type ThreadSettings } from '../api.ts'
@@ -39,6 +40,9 @@ const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
 export { PERMISSION_LABEL } from '../permission-labels.ts'
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
+
+/** The panel sits inside the composer's and the workflow editor's form; Enter in a text box would submit that form. */
+const keepFormUnsubmitted = (e: KeyboardEvent<HTMLInputElement>): void => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault() }
 
 export function choiceSummary(choice: AgentChoice, agyListed?: readonly ModelOption[]): string {
   // Antigravity's model by name and effort, once agy has listed them; its ids are not for reading.
@@ -147,10 +151,13 @@ const CLOSE_KEY = 'cockpit:picker-close-after'
 const readCloseAfter = (): boolean => { try { return localStorage.getItem(CLOSE_KEY) === 'true' } catch { return false } }
 
 /** One click to the agent's effort, beside the picker (OpenCode has no effort setting). */
-function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disabled?: string; onPick: (effort: string) => void }) {
+function EffortButton({ value, agyListed, disabled, onPick }: { value: AgentChoice; /** Antigravity's models as agy last listed them. */ agyListed?: readonly ModelOption[]; disabled?: string; onPick: (effort: string) => void }) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
   if (value.agent === 'opencode') return null
   const label = value.effort ? capitalize(value.effort) : 'Default'
+  // A model agy lists comes in only the efforts agy lists for it (some just Low and High); another is refused at launch.
+  const levels = value.agent === 'antigravity' && agyListed?.length ? agyMenus(agyListed, value.model, value.effort).model?.levels : undefined
+  const efforts: readonly string[] = levels?.length ? levels : ['', ...effortsFor(value.agent, value.model)]
   return (
     <div className="picker effort-picker" ref={ref}>
       <button type="button" className="effort-button" aria-label={`Effort: ${label}`} aria-expanded={open} title={disabled ?? 'Effort'} disabled={disabled !== undefined} onClick={() => setOpen(!open)}>
@@ -159,7 +166,7 @@ function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disable
       </button>
       {open ? (
         <div className="menu effort-menu" role="menu" aria-label="Effort">
-          {['', ...effortsFor(value.agent, value.model)].map((effort) => (
+          {efforts.map((effort) => (
             <button key={effort || 'default'} type="button" role="menuitemradio" aria-checked={value.effort === effort} className="menu-item"
               onClick={() => { onPick(effort); setOpen(false); focusComposer(ref.current) }}>
               {effort ? capitalize(effort) : 'Default'}
@@ -299,7 +306,13 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
     commitChoice(next)
     return true
   }
-  const patch = (change: Partial<AgentChoice>): void => { set({ ...current, ...change }) }
+  const patch = (change: Partial<AgentChoice>): void => {
+    const next = { ...current, ...change }
+    // A Codex model that has levels of its own takes the effort a run would use for the saved one, so the box, the chip and the run
+    // agree. A name still being typed is not a model yet: it leaves the effort alone, so Ultra survives on the way to one that has it.
+    const clamp = change.model !== undefined && change.effort === undefined && next.agent === 'codex' && Object.hasOwn(CODEX_MODEL_EFFORTS, next.model)
+    set(clamp ? { ...next, effort: codexEffort(next.model, (next.effort || undefined) as Effort | undefined) ?? '' } : next)
+  }
   const close = (): void => { setOpen(false); focusComposer(ref.current) }
 
   // Named settings: one click applies them (in a conversation, Apply/Switch still confirms).
@@ -436,7 +449,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                   </select>
                   {claude.other ? (
                     <input aria-label="Claude model id" value={current.model} placeholder="Full model id, e.g. claude-opus-5-5" autoFocus={claudeOther}
-                      onChange={(e) => patch({ model: e.target.value.trim() })} />
+                      onChange={(e) => patch({ model: e.target.value.trim() })} onKeyDown={keepFormUnsubmitted} />
                   ) : null}
                 </>
               ) : (
@@ -446,6 +459,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                     value={current.model}
                     placeholder="Default model"
                     onChange={(e) => patch({ model: e.target.value.trim() })}
+                    onKeyDown={keepFormUnsubmitted}
                   />
                   <datalist id={`models-${current.agent}`}>
                     {modelOptions.map((m) => (
@@ -535,7 +549,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
         setDraft(value); setPermissionConfirm(undefined); setReview(undefined); setOpen(true)
         requestAnimationFrame(() => ref.current?.querySelector<HTMLSelectElement>('select[data-permissions]')?.focus())
       }}>{permissionLabel(value.agent, value.permissionMode)}</button>
-      <EffortButton value={value} disabled={existing ? lockedReason : undefined} onPick={pickEffort} />
+      <EffortButton value={value} agyListed={chipListed} disabled={existing ? lockedReason : undefined} onPick={pickEffort} />
     </div>
   )
 }

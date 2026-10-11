@@ -26,8 +26,9 @@ function toggleTask(editor: Editor): void {
 }
 
 export function DocumentToolbar({ editor }: { editor: Editor }) {
-  const run = (action: () => void) => (event: React.MouseEvent) => {
-    event.preventDefault() // keep the editor's selection
+  // A mouse press must not take focus from the editor, or its selection is lost; the action itself runs on click, which Enter and Space make too.
+  const keepSelection = (event: React.MouseEvent): void => event.preventDefault()
+  const run = (action: () => void) => () => {
     action()
     editor.action((ctx) => ctx.get(editorViewCtx).focus())
   }
@@ -45,15 +46,15 @@ export function DocumentToolbar({ editor }: { editor: Editor }) {
         <option value="2">Heading 2</option>
         <option value="3">Heading 3</option>
       </select>
-      <button type="button" aria-label="Bold" title="Bold (⌘B)" onMouseDown={command(toggleStrongCommand.key)}><b>B</b></button>
-      <button type="button" aria-label="Italic" title="Italic (⌘I)" onMouseDown={command(toggleEmphasisCommand.key)}><i>I</i></button>
-      <button type="button" aria-label="Inline code" title="Inline code" onMouseDown={command(toggleInlineCodeCommand.key)}><code>{'<>'}</code></button>
+      <button type="button" aria-label="Bold" title="Bold (⌘B)" onMouseDown={keepSelection} onClick={command(toggleStrongCommand.key)}><b>B</b></button>
+      <button type="button" aria-label="Italic" title="Italic (⌘I)" onMouseDown={keepSelection} onClick={command(toggleEmphasisCommand.key)}><i>I</i></button>
+      <button type="button" aria-label="Inline code" title="Inline code" onMouseDown={keepSelection} onClick={command(toggleInlineCodeCommand.key)}><code>{'<>'}</code></button>
       <span className="doc-toolbar-gap" />
-      <button type="button" aria-label="Bullet list" title="Bullet list" onMouseDown={command(wrapInBulletListCommand.key)}>•</button>
-      <button type="button" aria-label="Numbered list" title="Numbered list" onMouseDown={command(wrapInOrderedListCommand.key)}>1.</button>
-      <button type="button" aria-label="To-do" title="To-do item" onMouseDown={run(() => toggleTask(editor))}>☑</button>
-      <button type="button" aria-label="Quote" title="Quote" onMouseDown={command(wrapInBlockquoteCommand.key)}>❝</button>
-      <button type="button" aria-label="Code block" title="Code block" onMouseDown={command(createCodeBlockCommand.key)}>{'{ }'}</button>
+      <button type="button" aria-label="Bullet list" title="Bullet list" onMouseDown={keepSelection} onClick={command(wrapInBulletListCommand.key)}>•</button>
+      <button type="button" aria-label="Numbered list" title="Numbered list" onMouseDown={keepSelection} onClick={command(wrapInOrderedListCommand.key)}>1.</button>
+      <button type="button" aria-label="To-do" title="To-do item" onMouseDown={keepSelection} onClick={run(() => toggleTask(editor))}>☑</button>
+      <button type="button" aria-label="Quote" title="Quote" onMouseDown={keepSelection} onClick={command(wrapInBlockquoteCommand.key)}>❝</button>
+      <button type="button" aria-label="Code block" title="Code block" onMouseDown={keepSelection} onClick={command(createCodeBlockCommand.key)}>{'{ }'}</button>
     </div>
   )
 }
