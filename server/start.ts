@@ -28,6 +28,7 @@ import { createMemoryStore } from './memory/store.ts'
 import { createThreadManager, type ThreadManager, type ManagerOptions } from './threads/manager.ts'
 import { createRunObservationStore, observeRuns, type RunObserver } from './runs/observations.ts'
 import { createResultStore } from './results/store.ts'
+import { StoreReadError } from './state/read-error.ts'
 import { createCheckRunner, type CheckRunner } from './results/checks.ts'
 import { createResultService, type ResultService } from './results/service.ts'
 import { createThreadStore, defaultRoot, type ThreadStore } from './threads/store.ts'
@@ -346,7 +347,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     const working = manager.summaries().filter((t) => isBusy(t.status)
       && manager.runs(t.meta.id).some((r) => r.working && (r.workspaceId || primaryId) === workspace.id)).length
     const running = processes.list(undefined, workspace.cwd).filter((p) => p.status !== 'exited').map((p) => p.name)
-    const checking = resultStore.runs().flatMap((runId) => resultStore.get(runId)?.checks ?? [])
+    // A damaged or newer result file cannot hold a live check, so one bad file must not block the removal.
+    const checking = resultStore.runs().flatMap((runId) => { try { return resultStore.get(runId)?.checks ?? [] } catch (error) { if (error instanceof StoreReadError) return []; throw error } })
       .filter((c) => c.workspaceId === workspace.id && c.phase !== 'terminal' && checks.isLive(c.id)).length
     return [
       ...(working ? [`${working} conversation${working === 1 ? ' is' : 's are'} working in it.`] : []),
