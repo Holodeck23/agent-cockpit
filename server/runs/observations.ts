@@ -31,7 +31,7 @@ export interface RunObservation {
 
 const observationSchema = z.object({
   repo: z.boolean(), observedAt: z.string(), head: z.string().nullable(), branch: z.string().nullable(),
-  files: z.array(z.object({ path: z.string(), oldPath: z.string().optional(), status: z.string(), fingerprint: z.string() })),
+  files: z.array(z.object({ path: z.string(), oldPath: z.string().optional(), status: z.string(), fingerprint: z.string(), stat: z.string().optional() })),
   truncated: z.boolean(), stable: z.boolean(),
 })
 const recordSchema = z.object({
