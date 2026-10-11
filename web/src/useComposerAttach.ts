@@ -100,7 +100,9 @@ export function useComposerAttach({ projectPath, draftKey, onInsert }: { project
     onPaste: (event: ClipboardEvent) => {
       const files = Array.from(event.clipboardData.files)
       if (files.length === 0) return
-      // Pasted files are taken over; pasted text stays a normal paste.
+      // Pasted files are taken over; pasted text stays a normal paste. So does text that comes with
+      // an image that is no file on disk: spreadsheet cells carry a picture of themselves.
+      if (event.clipboardData.getData('text/plain') && files.every((file) => !native?.pathForFile(file))) return
       event.preventDefault()
       take(files, files.map(() => false))
     },

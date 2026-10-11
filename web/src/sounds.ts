@@ -120,6 +120,9 @@ export function useAttention(threads: readonly ThreadSummary[], focused: () => s
   const focus = useRef(focused)
   focus.current = focused
   useEffect(() => {
+    // The list starts empty until the first one arrives: that is not the first look, or every
+    // conversation already waiting at launch would read as new. Arm on the first non-empty list.
+    if (!seen.current && threads.length === 0) return
     const changes = attentionChanges(seen.current, threads, focus.current())
     seen.current = new Map(threads.map((t) => [t.meta.id, { status: effective(t), lastActivityAt: t.lastActivityAt }]))
     if (changes.length > 0) handler.current(changes)

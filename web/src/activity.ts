@@ -4,6 +4,7 @@
 import { toolDecisions } from './approval-records.ts'
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeTool, friendlyToolName } from './transcript.ts'
+import { attribute, partition } from '../../server/threads/workspace-events.ts'
 
 /** interrupted: the turn or process ended before the tool reported back. */
 export type ActivityState = 'running' | 'done' | 'error' | 'interrupted' | 'deny' | 'expired' | 'canceled'
@@ -44,10 +45,17 @@ const ENDS_TOOL_CALLS = new Set(['result', 'exit', 'session_boundary', 'agent_sw
 export function buildActivity(events: readonly StoredEvent[], turnRunning = true): ActivityRow[] {
   const decisions = toolDecisions(events)
   const rows: ActivityRow[] = []
-  const open = new Map<string, number>()
-  for (const { ts, event, workspaceId } of events) {
+  // Two agents can work at once in one conversation, one per workspace (W12-15): a call is open in
+  // its own workspace, and a result or exit there ends only that workspace's calls.
+  const keys = attribute(events)
+  const first = keys.find((key) => key !== '') ?? ''
+  const workspaceOf = partition(events).size > 1 ? keys.map((key) => key || first) : undefined
+  const keyOf = (workspace: string | undefined, id: string): string => `${workspace ?? ''}\n${id}`
+  const open = new Map<string, { at: number; workspace: string; id: string }>()
+  for (const [index, { ts, event, workspaceId }] of events.entries()) {
+    const workspace = workspaceOf?.[index]
     if (event.kind === 'tool_use') {
-      open.set(event.id, rows.length)
+      open.set(keyOf(workspace, event.id), { at: rows.length, workspace: workspace ?? '', id: event.id })
       rows.push({
         id: event.id,
         label: describeTool(event.name, event.input),
@@ -57,23 +65,28 @@ export function buildActivity(events: readonly StoredEvent[], turnRunning = true
         startedAt: ts,
       })
     } else if (event.kind === 'tool_result') {
-      const at = open.get(event.toolUseId)
-      const row = at === undefined ? undefined : rows[at]
-      if (at === undefined || !row) continue
-      open.delete(event.toolUseId)
+      // A result not yet tagged with its workspace (just streamed in) finds its call by id alone.
+      const key = open.has(keyOf(workspace, event.toolUseId)) ? keyOf(workspace, event.toolUseId)
+        : workspaceId === undefined ? [...open].find(([, call]) => call.id === event.toolUseId)?.[0] : undefined
+      const call = key === undefined ? undefined : open.get(key)
+      const row = call === undefined ? undefined : rows[call.at]
+      if (key === undefined || !call || !row) continue
+      open.delete(key)
       const decision = decisions.get(`${workspaceId ?? ''}\n${event.toolUseId}`)
       const refused = decision === 'deny' || decision === 'expired' || decision === 'canceled'
-      rows[at] = { ...row, state: event.isError ? refused ? decision : 'error' : 'done', output: bounded(event.content), endedAt: ts }
+      rows[call.at] = { ...row, state: event.isError ? refused ? decision : 'error' : 'done', output: bounded(event.content), endedAt: ts }
     } else if (ENDS_TOOL_CALLS.has(event.kind)) {
-      for (const at of open.values()) {
-        const row = rows[at]
-        if (row) rows[at] = { ...row, state: 'interrupted', endedAt: ts }
+      // Switching agents retires every session of the conversation; anything else ends its own workspace's.
+      for (const [key, call] of open) {
+        if (workspace !== undefined && event.kind !== 'agent_switch' && call.workspace !== workspace) continue
+        const row = rows[call.at]
+        if (row) rows[call.at] = { ...row, state: 'interrupted', endedAt: ts }
+        open.delete(key)
       }
-      open.clear()
     }
   }
   if (!turnRunning) {
-    for (const at of open.values()) {
+    for (const { at } of open.values()) {
       const row = rows[at]
       if (row) rows[at] = { ...row, state: 'interrupted' }
     }
