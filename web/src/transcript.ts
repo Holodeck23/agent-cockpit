@@ -331,6 +331,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let lastUserText: string | undefined
   /** The images sent with that message; Retry sends them again (R8). */
   let lastUserImages: { file: string; name?: string }[] = []
+  // A message sent while a turn runs waits in the agent's queue. It starts the next turn when taken
+  // after the running one has ended; until then it is not what the running turn would retry.
+  let turnOpen = false
+  const queuedSends = new Map<string, { text: string; images: { file: string; name?: string }[] }>()
+  let queuedSending: string | undefined
   /** A failure card already stands for the current turn, so its failed result adds nothing. */
   let failedThisTurn = false
   // The permission mode a turn ran in: the last change before it, or the current one once nothing
@@ -341,6 +346,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let turnMode: ThreadSettings['permissionMode'] | undefined = currentMode
   let repliedThisTurn = false
   let refusedThisTurn: string | undefined
+  const startTurn = (index: number, text: string, images: { file: string; name?: string }[]): void => {
+    lastUserText = text; lastUserImages = images; failedThisTurn = false
+    turnMode = index > lastChange ? currentMode : loggedMode
+    repliedThisTurn = false; refusedThisTurn = undefined; turnOpen = true
+  }
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
     const item = compacting === undefined ? undefined : items[compacting]
     if (compacting !== undefined && item?.type === 'compaction') replace(compacting, { ...item, state, endedAt: ts, ...sizes })
@@ -363,13 +373,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
     const key = `${ts}-${index}`
     const last = items.at(-1)
     if (takenBack.has(index)) return
+    if (event.kind !== 'image') queuedSending = undefined
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
         if (event.kind === 'user_text') {
-          lastUserText = event.text; lastUserImages = []; failedThisTurn = false
-          turnMode = index > lastChange ? currentMode : loggedMode
-          repliedThisTurn = false; refusedThisTurn = undefined
+          if (event.queuedId) { queuedSends.set(event.queuedId, { text: event.text, images: [] }); queuedSending = event.queuedId }
+          else startTurn(index, event.text, [])
         } else repliedThisTurn = true
         const author = event.kind === 'user_text' ? 'you' : agent
         const workspace = workspaceOf?.[index]
@@ -397,7 +407,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       }
       case 'image': {
         const ref: ImageRef = { file: event.file, ...(event.name ? { name: event.name } : {}) }
-        if (event.from === 'you') lastUserImages = [...lastUserImages, ref]
+        if (event.from === 'you') {
+          const queued = queuedSending ? queuedSends.get(queuedSending) : undefined
+          if (queued) queued.images = [...queued.images, ref]
+          else lastUserImages = [...lastUserImages, ref]
+        }
         if (event.from === 'you' && last?.type === 'message' && last.author === 'you') {
           replace(items.length - 1, { ...last, images: [...(last.images ?? []), ref] })
         } else {
@@ -568,6 +582,12 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           outcome: event.interrupted ? 'interrupted' : event.ok ? 'ok' : event.stopped ? 'stopped' : 'error' })
         failedThisTurn = false
         refusedThisTurn = undefined
+        turnOpen = false
+        return
+      }
+      case 'user_taken': {
+        const queued = event.id ? queuedSends.get(event.id) : undefined
+        if (queued && !turnOpen) startTurn(index, queued.text, queued.images)
         return
       }
       case 'error':
