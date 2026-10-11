@@ -55,6 +55,7 @@ function useTick(active: boolean): number {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (!active) return
+    setNow(Date.now()) // `now` may be hours old if nothing has ticked since the view mounted
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [active])

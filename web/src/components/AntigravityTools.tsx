@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type Project } from '../api.ts'
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
@@ -12,7 +12,19 @@ export function AntigravityTools({ project }: { project: Project }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
+  // The toggle applies on the server at once but nothing refreshes the project list, so reopening settings
+  // would seed this from an older `project`: read what the server holds now, unless the box was used first.
+  const touched = useRef(false)
+  useEffect(() => {
+    let current = true
+    api.listProjects().then((all) => {
+      const fresh = all.find((p) => p.path === project.path)
+      if (current && fresh && !touched.current) setConnected(fresh.antigravityMcp !== undefined)
+    }, () => { /* keeps the value the project came with */ })
+    return () => { current = false }
+  }, [project.path])
   const change = (next: boolean): void => {
+    touched.current = true
     setBusy(true)
     setError('')
     setNote('')

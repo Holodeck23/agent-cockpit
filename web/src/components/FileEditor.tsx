@@ -61,8 +61,10 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
     try { localStorage.setItem(VIEW_KEY, next) } catch { /* not remembered */ }
   }
   const file = files.find((f) => f.path === active)
+  // A jump applies once: Source applies it as it mounts, and it mounts again on every return to the tab.
+  const appliedJump = useRef<number | undefined>(undefined)
   // Line numbers live in Source, so a jump into Markdown shows Source (without changing the saved choice).
-  const jumping = jump && file && jump.path === file.path ? jump : undefined
+  const jumping = jump && file && jump.path === file.path && jump.nonce !== appliedJump.current ? jump : undefined
   useEffect(() => { if (jumping && isMarkdown(jumping.path)) setView('source') }, [jumping])
   const dirty = file ? isDirty(file) : false
   // Only for a saved file: with unsaved edits the lines on screen are not the lines that would be sent.
@@ -73,6 +75,9 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
     const stayed = onCloseMany(keep)
     setKept(stayed ? `${stayed} ${stayed === 1 ? 'tab has' : 'tabs have'} unsaved changes and stayed open.` : undefined)
   }
+
+  // The question is about unsaved changes: Save, Revert or closing the tab by another way ends it.
+  useEffect(() => { if (confirming && !files.some((f) => f.path === confirming && isDirty(f))) setConfirming(undefined) }, [files, confirming])
 
   const requestClose = (target: OpenFile): void => {
     if (isDirty(target)) { onSelect(target.path); setConfirming(target.path) } else onClose(target.path)
@@ -147,7 +152,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
               ) : <button type="button" className="button-primary" onClick={() => onAttach(file.path)}>Add to conversation</button>}
             </div>
           </header>
-          {confirming === file.path ? (
+          {confirming === file.path && dirty ? (
             <div className="workflow-notice file-banner" role="alert">
               <span>{nameOf(file.path)} has unsaved changes.</span>
               <button type="button" className="button-soft" onClick={() => { setConfirming(undefined); onClose(file.path) }}>Discard changes</button>
@@ -179,7 +184,7 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
             </div>
           ) : (
             <SourceText key={file.path} path={file.path} find={find}
-              onSelectLines={(lines) => setSelected(lines ? { path: file.path, lines } : undefined)} onCloseFind={() => setFind(undefined)} text={file.draft} readOnly={!file.eol} jump={jumping} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
+              onSelectLines={(lines) => setSelected(lines ? { path: file.path, lines } : undefined)} onCloseFind={() => setFind(undefined)} text={file.draft} readOnly={!file.eol} jump={jumping} onJumped={(nonce) => { appliedJump.current = nonce }} onChange={(text) => onChange(file.path, text)} onKeyDown={onKeyDown} />
           )}
           <footer className="file-status" aria-label="File status">
             <span className={dirty ? 'file-status-dirty' : ''}>{file.conflict ? 'Changed on disk' : dirty ? 'Unsaved changes' : 'Saved'}</span>
@@ -201,8 +206,8 @@ export function FileEditor({ files, active, error, onSelect, onClose, onCloseMan
 export type FindMode = 'find' | 'replace'
 
 /** Source view: the text with line numbers beside it. Lines don't wrap, so the numbers stay level. */
-function SourceText({ path, text, readOnly, jump, find, onCloseFind, onSelectLines, onChange, onKeyDown }: {
-  path: string; text: string; readOnly: boolean; jump?: Jump; find?: FindMode; onCloseFind: () => void; onSelectLines: (lines?: SelectedLines) => void
+function SourceText({ path, text, readOnly, jump, onJumped, find, onCloseFind, onSelectLines, onChange, onKeyDown }: {
+  path: string; text: string; readOnly: boolean; jump?: Jump; onJumped: (nonce: number) => void; find?: FindMode; onCloseFind: () => void; onSelectLines: (lines?: SelectedLines) => void
   onChange: (text: string) => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 }) {
   const gutter = useRef<HTMLPreElement>(null)
@@ -267,6 +272,7 @@ function SourceText({ path, text, readOnly, jump, find, onCloseFind, onSelectLin
     el.setSelectionRange(start, end)
     const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight) || 22
     el.scrollTop = Math.max(0, (jump.line - 1) * lineHeight - el.clientHeight / 3)
+    onJumped(jump.nonce)
     // Only a new jump applies; editing afterwards must not pull the view back.
   }, [jump?.nonce])
   const numbers = Array.from({ length: lineCount(text) }, (_, i) => i + 1).join('\n')
