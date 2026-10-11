@@ -86,14 +86,18 @@ export function AgentLifecycle({ agent, caps, onChanged }: { agent: AgentId; cap
   const [op, setOp] = useState<OperationView>()
   const [error, setError] = useState('')
   const [checking, setChecking] = useState(false)
+  // The agent on screen now: an answer for one the user has left is dropped.
+  const showing = useRef(agent)
+  useEffect(() => { showing.current = agent })
   const load = useCallback(() => {
     api.agentLifecycle(agent).then((next) => {
+      if (showing.current !== agent) return
       setView(next)
       setOp((shown) => next.operations.find((o) => !o.endedAt) ?? (shown?.agent === agent ? shown : undefined))
     }, (e: unknown) => setError(message(e)))
   }, [agent])
   // A new agent starts clean; a re-check of the same agent keeps an ended operation's message.
-  useEffect(() => { setOp(undefined); setError('') }, [agent])
+  useEffect(() => { setView(undefined); setOp(undefined); setError('') }, [agent])
   useEffect(() => { load() }, [load, caps?.probedAt])
   // Held in a ref so a parent re-render does not restart the poll below.
   const changed = useRef(onChanged)
@@ -103,13 +107,15 @@ export function AgentLifecycle({ agent, caps, onChanged }: { agent: AgentId; cap
   const running = op !== undefined && (RUNNING.has(op.state) || op.state === 'pending_confirmation')
   useEffect(() => {
     if (!op || !running) return
+    let current = true
     const timer = setInterval(() => {
       api.agentOperation(op.id).then((next) => {
+        if (!current) return
         setOp(next)
         if (next.endedAt) { changed.current(); load() }
       }, () => undefined)
     }, 1000)
-    return () => clearInterval(timer)
+    return () => { current = false; clearInterval(timer) }
   }, [op?.id, running, load])
 
   const start = (kind: OperationKind): void => {

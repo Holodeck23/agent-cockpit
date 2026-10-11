@@ -68,6 +68,9 @@ export function FindBar({ root, contentKey, onClose }: FindBarProps) {
   const [ranges, setRanges] = useState<Range[]>([])
   const [current, setCurrent] = useState(-1)
   const input = useRef<HTMLInputElement>(null)
+  // New content finds the matches again; the view moves only when the query or the current match does.
+  const collectedFor = useRef('')
+  const scrolledTo = useRef('')
 
   useEffect(() => {
     input.current?.focus()
@@ -79,6 +82,7 @@ export function FindBar({ root, contentKey, onClose }: FindBarProps) {
   useLayoutEffect(() => {
     const el = root.current
     const found = el ? collect(el, query) : []
+    collectedFor.current = query
     setRanges(found)
     setCurrent((at) => (found.length === 0 ? -1 : at >= 0 && at < found.length ? at : 0))
   }, [query, contentKey, root])
@@ -86,12 +90,16 @@ export function FindBar({ root, contentKey, onClose }: FindBarProps) {
   useEffect(() => {
     const registry = highlights()
     if (!registry) return
-    if (ranges.length === 0) { clearHighlights(); return }
+    if (ranges.length === 0) { clearHighlights(); scrolledTo.current = ''; return }
     registry.set(ALL, new Highlight(...ranges))
     const active = ranges[current]
     if (active) {
       registry.set(CURRENT, new Highlight(active))
-      active.startContainer.parentElement?.scrollIntoView({ block: 'center' })
+      const place = `${collectedFor.current}\0${current}`
+      if (place !== scrolledTo.current) {
+        scrolledTo.current = place
+        active.startContainer.parentElement?.scrollIntoView({ block: 'center' })
+      }
     } else registry.delete(CURRENT)
   }, [ranges, current])
 
