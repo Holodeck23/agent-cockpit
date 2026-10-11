@@ -57,8 +57,9 @@ const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init)
 installCrashGuard(process, join(defaultRoot(), 'logs', 'main-errors.log'))
 
 // A released app will not run under a debugger (electron/debug-flags.ts).
-if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
-  console.error(`Cockpit does not start with ${debugSwitches(process.argv).join(' ')}.`)
+const debuggerFlags = debugSwitches(process.argv, (name) => app.commandLine.hasSwitch(name))
+if (IS_RELEASE_BUILD && debuggerFlags.length > 0) {
+  console.error(`Cockpit does not start with ${debuggerFlags.join(' ')}.`)
   process.exit(1)
 }
 
