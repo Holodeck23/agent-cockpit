@@ -54,6 +54,9 @@ export type ActOutcome =
   | { readonly outcome: 'done'; readonly detail: string; readonly page: AgentPageInfo }
   | { readonly outcome: 'stale' | 'gone' | 'covered' | 'outside'; readonly detail: string; readonly page: AgentPageInfo }
 
+/** A page after an agent's navigation. `blocked`: a hop to another site that the host stopped before requesting it. */
+export interface Landing extends AgentPageInfo { readonly blocked?: string }
+
 export interface Capture { readonly data: string; readonly mimeType: 'image/png'; readonly width: number; readonly height: number; readonly page: AgentPageInfo }
 
 /** The pages, as the desktop app's main process holds them. */
@@ -64,11 +67,15 @@ export interface BrowserHost {
    * or reloaded at its last address if Cockpit unloaded it. Rejects when every loaded page is in use.
    */
   ensure(key: string, projectPath: string): Promise<AgentPageInfo>
-  /** Loads `url`; resolves when it has loaded, failed, or a bounded wait has passed. */
-  goto(key: string, url: string): Promise<AgentPageInfo>
+  /**
+   * Loads `url`; resolves when it has loaded, failed, or a bounded wait has passed. A hop to a remote
+   * origin outside `allow` (a local page answering with a redirect to a website) is stopped before it is
+   * requested and reported as `blocked`; the caller asks about it and goes on with a larger `allow`.
+   */
+  goto(key: string, url: string, allow?: readonly string[]): Promise<Landing>
   /** Where Back or Forward would go, if anywhere. */
   historyUrl(key: string, direction: 'back' | 'forward'): string | undefined
-  history(key: string, action: 'back' | 'forward' | 'reload'): Promise<AgentPageInfo>
+  history(key: string, action: 'back' | 'forward' | 'reload', allow?: readonly string[]): Promise<Landing>
   read(key: string): Promise<PageRead>
   capture(key: string): Promise<Capture>
   /** Dispatches only if the page is still at `expect` (revision and origin) right before it does. Never retried. */
@@ -89,6 +96,8 @@ export interface BrowserAgentDeps {
 }
 
 const APPROVAL_SECONDS = 45
+/** Sites a single navigation may be redirected through, each one asked about, before the call gives up. */
+const MAX_REDIRECT_HOPS = 5
 
 const ACTION_WORDS: Record<BrowserOperation, string> = {
   read: 'Read the page', screenshot: 'Take a screenshot of the page', navigate: 'Open a page',
@@ -138,13 +147,14 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
   }
 
   /**
-   * A page can take itself somewhere the person was not asked about (a local address answering with a
-   * redirect to a website). Where it landed is asked about too, unless that is the very site just approved.
-   * A Deny rejects the call, so the agent is not handed the page as an opened one; reading it still asks.
+   * Where a navigation ended, for a page that took itself somewhere the person was not asked about (a redirect
+   * landing after the host's bounded wait is the one the host's own stop cannot see). Asked about too, unless
+   * that is a site already approved for this navigation. A Deny rejects the call, so the agent is not handed
+   * the page as an opened one; reading it still asks.
    */
-  async function landed(grant: McpGrant, runId: string, page: AgentPageInfo, approved: string | undefined, from: string, signal: AbortSignal): Promise<AgentPageInfo> {
+  async function landed(grant: McpGrant, runId: string, page: AgentPageInfo, allowed: ReadonlySet<string>, from: string, signal: AbortSignal): Promise<AgentPageInfo> {
     const origin = originOf(page.url)
-    if (origin !== undefined && origin !== approved && originClass(page.url, deps.cockpitPorts()) === 'remote') {
+    if (origin !== undefined && !allowed.has(origin) && originClass(page.url, deps.cockpitPorts()) === 'remote') {
       await permit(grant, runId, 'navigate', origin, { url: page.url, redirectedFrom: from }, signal)
     }
     return page
@@ -201,8 +211,20 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
       if (kind === 'refused') throw new HttpError(400, `The browser opens http and https sites only, never Cockpit itself: ${target.slice(0, 200)}`)
       const approved = kind === 'remote' ? originOf(target)! : undefined
       if (approved) await permit(grant, runId, 'navigate', approved, { url: target, ...(action ? { action } : {}) }, signal)
-      const page = await (url ? host.goto(key, url) : host.history(key, action!))
-      return landed(grant, runId, page, approved, target, signal)
+      // The host stops a hop to any other remote site before it is requested. Each one is asked about, then followed.
+      const allowed = new Set(approved ? [approved] : [])
+      let landing = await (url ? host.goto(key, url, [...allowed]) : host.history(key, action!, [...allowed]))
+      for (let hops = 0; landing.blocked; hops++) {
+        const hop = landing.blocked
+        const origin = originOf(hop)
+        if (!origin || originClass(hop, ports) !== 'remote') throw new HttpError(409, 'The page tried to move somewhere it may not go; nothing was opened.')
+        if (hops >= MAX_REDIRECT_HOPS) throw new HttpError(409, `The page kept redirecting to other sites; stopped at ${origin}.`)
+        await permit(grant, runId, 'navigate', origin, { url: hop, redirectedFrom: target }, signal)
+        allowed.add(origin)
+        landing = await host.goto(key, hop, [...allowed])
+      }
+      const { blocked: _blocked, ...page } = landing
+      return landed(grant, runId, page, allowed, target, signal)
     }
 
     // Input: always needs a grant for the page's exact origin, local app or not.

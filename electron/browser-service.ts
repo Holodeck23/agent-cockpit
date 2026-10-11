@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { shell, WebContentsView, session as sessions, type BrowserWindow, type Session, type WebContents } from 'electron'
+import { originClass, originOf } from '../server/browser/agent-policy.ts'
 import { evictions, isAllowedRequest, isNavigable, partitionFor, RESIDENCY, roomForPage, validBounds, type Bounds, type ResidentPage } from './browser-policy.ts'
 import { withinTime } from './one-at-a-time.ts'
 
@@ -40,6 +41,8 @@ interface Page {
   lastUsed: number
   downloads: number
   reloaded: boolean
+  /** While an agent's navigation settles (watchNavigation): what it may land on, and the hop that was stopped. */
+  agentNav?: { readonly allowed: ReadonlySet<string>; blocked?: string }
 }
 
 /** A page's size before the pane has ever placed it (an agent opened it in the background). */
@@ -134,6 +137,17 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     contents.on('will-navigate', stay)
     contents.on('will-redirect', stay)
     contents.on('will-frame-navigate', (details) => { if (!isAllowedRequest(details.url, deps.cockpitPorts())) details.preventDefault() })
+    // An agent's navigation may not carry the page to a remote site nobody approved (a local address answering
+    // with a redirect to one): that hop is stopped before its request goes out, and noted for the agent's call to ask about.
+    const gate = (details: { readonly url: string; readonly isMainFrame: boolean; preventDefault(): void }): void => {
+      const nav = page.agentNav
+      if (!nav || !details.isMainFrame || originClass(details.url, deps.cockpitPorts()) !== 'remote' || nav.allowed.has(originOf(details.url)!)) return
+      details.preventDefault()
+      nav.blocked = details.url
+    }
+    contents.on('will-navigate', gate)
+    contents.on('will-redirect', gate)
+    contents.on('will-frame-navigate', gate)
     contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) page.error = undefined })
     contents.on('did-navigate', () => bump(page))
     contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => { if (isMainFrame) bump(page) })
@@ -239,7 +253,20 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       void page.view.webContents.loadURL(url).catch(() => undefined)
       return undefined
     },
-        /** The page's place in the window; undefined hides it. Showing one page hides the others. */
+        /**
+     * Until the returned function is called, a main-frame hop to a remote origin outside `allow` is stopped.
+     * The function ends the watch and returns the address of the hop that was stopped, if any.
+     */
+    watchNavigation(key: string, allow: readonly string[]): () => string | undefined {
+      const page = pages.get(key)
+      const nav = { allowed: new Set(allow) as ReadonlySet<string>, blocked: undefined as string | undefined }
+      if (page) page.agentNav = nav
+      return () => {
+        if (page && page.agentNav === nav) page.agentNav = undefined
+        return nav.blocked
+      }
+    },
+    /** The page's place in the window; undefined hides it. Showing one page hides the others. */
     place(key: string, rect: unknown): void {
       const page = pages.get(key)
       if (!page) return

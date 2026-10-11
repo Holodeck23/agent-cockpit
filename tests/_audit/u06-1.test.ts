@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ApprovalBehavior } from '../../server/agents/types.ts'
 import { createBrowserAgent, type AgentPageInfo, type BrowserHost } from '../../server/browser/agent.ts'
-import { createBrowserLeases, originOf } from '../../server/browser/agent-policy.ts'
+import { createBrowserLeases, originClass, originOf } from '../../server/browser/agent-policy.ts'
 import { isNavigable } from '../../electron/browser-policy.ts'
 
 // u06-1: browser_navigate asks for approval only when the TARGET url is remote
@@ -37,31 +37,40 @@ afterAll(async () => { await new Promise((resolve) => local.close(resolve)) })
  * through whenever the real isNavigable() (electron/browser-policy.ts) says yes. It records every URL the
  * page actually requested, so we can see what went out.
  */
-function harness(cockpitPorts: number[]) {
+function harness(cockpitPorts: number[], gated = false, remoteRedirects: (url: string) => string | undefined = () => undefined) {
   let url = 'about:blank'
   let revision = 1
   const requested: string[] = []
   const asked: Array<{ tool: string; input: Record<string, unknown> }> = []
   let answer: ApprovalBehavior | 'deny' = 'deny'
+  const refusedOrigins = new Set<string>()
   const page = (): AgentPageInfo => ({ pageId: 'thread:t1', revision, url, origin: originOf(url) ?? 'null', title: '', loading: false, viewport: { width: 800, height: 600 }, timestamp: 'now' })
   const host: BrowserHost = {
     info: () => page(),
     ensure: async () => page(),
-    goto: async (_key, target) => {
+    // `gated` is the host after the fix: electron/browser-service.ts stops a hop to a remote origin the call
+    // did not approve (`allow`) before it is requested, and reports it as `blocked`. Ungated is the old host.
+    goto: async (_key, target, allow = []) => {
       let next = target
-      for (let hop = 0; hop < 5; hop++) {
+      let blocked: string | undefined
+      for (let hop = 0; hop < 30; hop++) {
         requested.push(next)
         url = next
-        if (originOf(next) !== originOf(localUrl)) break // the "remote site": nothing to fetch, it has been requested
-        const res = await fetch(next, { redirect: 'manual' })
-        const location = res.headers.get('location')
-        if (res.status < 300 || res.status >= 400 || !location) break
+        let location: string | null | undefined
+        if (originOf(next) === originOf(localUrl)) {
+          const res = await fetch(next, { redirect: 'manual' })
+          location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : undefined
+        } else {
+          location = remoteRedirects(next) // a "remote site": nothing to fetch, it has been requested
+        }
+        if (!location) break
         const hopUrl = new URL(location, next).toString()
         if (!isNavigable(hopUrl, cockpitPorts)) break // will-redirect -> preventDefault
+        if (gated && originClass(hopUrl, cockpitPorts) === 'remote' && !allow.includes(originOf(hopUrl)!)) { blocked = hopUrl; break }
         next = hopUrl
       }
       revision++
-      return page()
+      return { ...page(), ...(blocked ? { blocked } : {}) }
     },
     historyUrl: () => undefined,
     history: async () => page(),
@@ -76,11 +85,11 @@ function harness(cockpitPorts: number[]) {
     currentRun: () => 'r1',
     approve: async (_grant, tool, input) => {
       asked.push({ tool, input })
-      if (answer === 'deny') throw new Error('Browser action denied by the user')
+      if (answer === 'deny' || refusedOrigins.has(input.origin as string)) throw new Error('Browser action denied by the user')
       return answer
     },
   })
-  return { call: (op: string, body: unknown = {}) => agent.handle(grant, op, body, signal), requested, asked, setAnswer: (a: ApprovalBehavior | 'deny') => { answer = a } }
+  return { call: (op: string, body: unknown = {}) => agent.handle(grant, op, body, signal), requested, asked, setAnswer: (a: ApprovalBehavior | 'deny') => { answer = a }, refuse: (origin: string) => { refusedOrigins.add(origin) }, current: () => url }
 }
 
 describe('u06-1: a local page cannot carry the browser to a remote site unasked', () => {
@@ -101,5 +110,50 @@ describe('u06-1: a local page cannot carry the browser to a remote site unasked'
     expect(h.asked.map((a) => a.input.origin)).toContain(REMOTE)
     // ... and having said no, the agent must not be handed the remote page as a successful navigation.
     expect(result.ok).toBe(false)
+  })
+})
+
+// The host's own stop: the redirect is vetoed before its request goes out (the ungated tests above cover
+// the after-the-fact ask that remains for a redirect the host never saw).
+describe('u06-1: the host stops a redirect to a remote site until the person has said yes', () => {
+  it('a Deny means the remote site is never requested and the page stays where it was', async () => {
+    const h = harness([4000], true)
+    await expect(h.call('navigate', { url: localUrl })).rejects.toMatchObject({ status: 409 })
+    expect(h.asked.map((a) => a.input.origin)).toEqual([REMOTE])
+    expect(h.asked[0]!.input).toMatchObject({ url: REMOTE_TARGET, redirectedFrom: localUrl })
+    expect(h.requested).toEqual([localUrl])
+  })
+
+  it('an Allow follows the redirect once, and the agent is handed the page without the host\'s note', async () => {
+    const h = harness([4000], true)
+    h.setAnswer('allow')
+    const page = await h.call('navigate', { url: localUrl }) as AgentPageInfo
+    expect(h.requested).toEqual([localUrl, REMOTE_TARGET])
+    expect(h.asked.map((a) => a.input.origin)).toEqual([REMOTE])
+    expect(page.url).toBe(REMOTE_TARGET)
+    expect(page).not.toHaveProperty('blocked')
+  })
+
+  it('asks about each remote site on a chain, and stops asking when one is denied', async () => {
+    const redirects = (u: string): string | undefined => (u === 'https://a.test/' ? 'https://b.test/x' : undefined)
+    const allowBoth = harness([4000], true, redirects)
+    allowBoth.setAnswer('allow')
+    expect((await allowBoth.call('navigate', { url: 'https://a.test/' }) as AgentPageInfo).url).toBe('https://b.test/x')
+    expect(allowBoth.asked.map((a) => a.input.origin)).toEqual(['https://a.test', 'https://b.test'])
+
+    const denySecond = harness([4000], true, redirects)
+    denySecond.setAnswer('allow')
+    denySecond.refuse('https://b.test')
+    await expect(denySecond.call('navigate', { url: 'https://a.test/' })).rejects.toMatchObject({ status: 409 })
+    expect(denySecond.asked.map((a) => a.input.origin)).toEqual(['https://a.test', 'https://b.test'])
+    expect(denySecond.requested).toEqual(['https://a.test/'])
+    expect(denySecond.current()).toBe('https://a.test/')
+  })
+
+  it('gives up on a page that keeps redirecting to new sites', async () => {
+    const h = harness([4000], true, (u) => `https://r${Number(/r(\d+)\.test/.exec(u)?.[1] ?? 0) + 1}.test/`)
+    h.setAnswer('allow')
+    await expect(h.call('navigate', { url: 'https://r0.test/' })).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/kept redirecting/) })
+    expect(h.asked.length).toBeLessThan(10)
   })
 })

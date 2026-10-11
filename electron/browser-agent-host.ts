@@ -1,5 +1,5 @@
 import type { WebContents } from 'electron'
-import type { ActOutcome, AgentInput, AgentPageInfo, BrowserHost, Capture, PageRead } from '../server/browser/agent.ts'
+import type { ActOutcome, AgentInput, AgentPageInfo, BrowserHost, Capture, Landing, PageRead } from '../server/browser/agent.ts'
 import { originOf } from '../server/browser/agent-policy.ts'
 import { dragPath, insideViewport, KEY_EVENTS, refParts, samePage } from './browser-policy.ts'
 import type { BrowserService } from './browser-service.ts'
@@ -106,6 +106,27 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
     while (!contents.isDestroyed() && contents.isLoading() && Date.now() < deadline) await sleep(100)
   }
 
+  /**
+   * An agent's navigation: runs `start`, waits for the page to settle, and reports the hop to another site
+   * that the service stopped (`blocked`) while only the origins in `allow` were approved.
+   */
+  function navigation(key: string, allow: readonly string[], start: () => void): Promise<Landing> {
+    return serial(key, async () => {
+      const contents = contentsOf(key)
+      const end = service.watchNavigation(key, allow)
+      let blocked: string | undefined
+      try {
+        start()
+        await settle(contents)
+      } finally {
+        blocked = end()
+      }
+      const page = info(key) ?? gone(key)
+      if (page.url) navigated(key, page.url)
+      return blocked ? { ...page, blocked } : page
+    })
+  }
+
   async function act(key: string, input: AgentInput, expect: { revision: number; origin: string }): Promise<ActOutcome> {
     const page = service.agentPage(key)
     if (!page) return { outcome: 'gone', detail: 'This conversation’s page is gone. Open it again with browser_navigate.', page: gone(key) }
@@ -206,29 +227,17 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
       if (full) throw new Error(full)
       return info(key) ?? gone(key)
     },
-    async goto(key, url) {
-      const contents = contentsOf(key)
+    goto: (key, url, allow = []) => navigation(key, allow, () => {
       const refused = service.load(key, url)
       if (refused) throw new Error(refused)
-      await settle(contents)
-      const page = info(key) ?? gone(key)
-      if (page.url) navigated(key, page.url)
-      return page
-    },
+    }),
     historyUrl(key, direction) {
       const history = service.agentPage(key)?.contents.navigationHistory
       if (!history) return undefined
       const index = history.getActiveIndex() + (direction === 'back' ? -1 : 1)
       return index >= 0 && index < history.length() ? history.getEntryAtIndex(index)?.url : undefined
     },
-    async history(key, action) {
-      const contents = contentsOf(key)
-      service.navigate(key, action)
-      await settle(contents)
-      const page = info(key) ?? gone(key)
-      if (page.url) navigated(key, page.url)
-      return page
-    },
+    history: (key, action, allow = []) => navigation(key, allow, () => service.navigate(key, action)),
     async read(key): Promise<PageRead> {
       const contents = contentsOf(key)
       const page = info(key) ?? gone(key)
