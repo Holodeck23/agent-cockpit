@@ -86,9 +86,13 @@ const IN_PROGRESS: readonly (readonly [string, string])[] = [
   ['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert'], ['BISECT_LOG', 'bisect'],
 ]
 
-const out = async (cwd: string, args: readonly string[]): Promise<string | undefined> => {
-  try { return (await run(cwd, args)).stdout } catch { return undefined }
+const out = async (cwd: string, args: readonly string[], timeout?: number, maxBuffer?: number): Promise<string | undefined> => {
+  try { return (await run(cwd, args, timeout, maxBuffer)).stdout } catch { return undefined }
 }
+
+/** The status read is the only guard for ignored files, so it gets room for a worktree full of them. */
+const STATUS_TIMEOUT_MS = 60_000
+const STATUS_MAX_BYTES = 64_000_000
 
 /** Counts `git status --porcelain=v1 -z` entries by kind (a rename carries its old path as the next field). */
 export function countStatus(output: string): Pick<UniqueWork, 'changed' | 'untracked' | 'ignored'> {
@@ -139,7 +143,10 @@ export function createWorktreeLifecycle({ workspaces, activeIn }: LifecycleDeps)
     const head = exists ? (await out(workspace.cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']))?.trim() : undefined
     const gitDir = exists ? (await out(workspace.cwd, ['rev-parse', '--absolute-git-dir']))?.trim() : undefined
     for (const [marker, operation] of IN_PROGRESS) if (gitDir && existsSync(join(gitDir, marker))) blockers.push(`A Git ${operation} is in progress in it.`)
-    const status = exists ? (await out(workspace.cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'])) ?? '' : ''
+    const read = exists ? await out(workspace.cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'], STATUS_TIMEOUT_MS, STATUS_MAX_BYTES) : ''
+    // A state Git could not report is not an empty one: nothing is removed on a guess.
+    if (exists && (read === undefined || head === undefined)) blockers.push('Git could not report what is in it, so Cockpit does not remove it.')
+    const status = read ?? ''
     const counts = countStatus(status)
     // Commits only this worktree's branch holds: every other branch, tag and remote is "elsewhere".
     const branch = workspace.branch

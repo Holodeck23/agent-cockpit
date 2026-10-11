@@ -98,8 +98,15 @@ function pinChange(all: readonly Project[], existing: Project, pinned: boolean |
   return { pinOrder: Math.max(0, ...all.map((p) => p.pinOrder ?? 0)) + 1 }
 }
 
+/** The folder's own name, held to the 80 characters projectSchema allows: one over-long name would make the whole file unreadable. */
+function folderName(path: string): string {
+  const name = (basename(path) || path).slice(0, 80)
+  // Never end on half of a surrogate pair.
+  return /[\ud800-\udbff]$/.test(name) ? name.slice(0, -1) : name
+}
+
 function fresh(path: string, now: string): Project {
-  return { path, name: basename(path) || path, color: colorFor(path), pinned: false, lastOpenedAt: now }
+  return { path, name: folderName(path), color: colorFor(path), pinned: false, lastOpenedAt: now }
 }
 
 export function createProjectStore(root: string): ProjectStore {

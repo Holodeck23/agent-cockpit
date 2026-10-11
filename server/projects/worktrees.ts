@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { run } from '../git/branches.ts'
 import { withRepoLock } from './repo-lock.ts'
-import { canonicalPath, type Workspace, type WorkspaceStore } from './workspaces.ts'
+import { canonicalPath, gitCommonDir, type Workspace, type WorkspaceStore } from './workspaces.ts'
 
 // Worktree workspaces (M1, W12.2; mechanism from G-WORKTREES). A worktree is a Git linked worktree
 // of the project's primary checkout, in a visible sibling folder `<project>-worktree-<id>`, on a new
@@ -163,7 +163,8 @@ export function createWorktreeService(root: string, workspaces: WorkspaceStore, 
 
   const primaryOf = (projectId: string): Workspace =>
     workspaces.forProject(projectId).find((w) => w.kind === 'primary') ?? refuse({ code: 'unknown-project' })
-  const repoOf = (primary: Workspace): string => primary.gitCommonDir ?? refuse({ code: 'not-git' })
+  // A folder that became a repository after it was registered is looked at again, not refused until the next listing.
+  const repoOf = (primary: Workspace): string => primary.gitCommonDir ?? gitCommonDir(primary.canonicalCwd) ?? refuse({ code: 'not-git' })
 
   const listWorktrees = async (cwd: string): Promise<GitWorktree[]> =>
     parseWorktreeList((await run(cwd, ['worktree', 'list', '--porcelain', '-z'])).stdout)
@@ -197,6 +198,10 @@ export function createWorktreeService(root: string, workspaces: WorkspaceStore, 
   }
 
   const validateRepository = async (cwd: string): Promise<void> => {
+    // A worktree is of the whole repository and sits beside the folder: only the repository's top can have one.
+    // From a subfolder it would nest inside the repository and could never merge back.
+    const top = await out(cwd, ['rev-parse', '--show-toplevel'])
+    if (!top || canonicalPath(top) !== canonicalPath(cwd)) refuse({ code: 'not-git' })
     if (!(await ok(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']))) refuse({ code: 'unborn' })
     const gitDir = await out(cwd, ['rev-parse', '--absolute-git-dir'])
     for (const [marker, operation] of IN_PROGRESS) if (gitDir && existsSync(join(gitDir, marker))) refuse({ code: 'operation-in-progress', operation })
