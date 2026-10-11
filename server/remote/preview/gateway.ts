@@ -86,7 +86,11 @@ const STATE_TEXT: Record<State, { status: number; title: string; body: string }>
   unreachable: { status: 502, title: 'The app is not reachable', body: 'The dev server refused the connection. Check it in Cockpit, then reload.' },
 }
 
-/** A small page in place of app content, with the way back to Cockpit. Never echoes request data. */
+/**
+ * A small page in place of app content, with the way back to Cockpit. Never echoes request data.
+ * The way back spells out the Mac's tailnet name, so only a caller Tailscale identified for this
+ * port gets it: this listener is also reachable by a DNS-rebinding page, which reads the answer.
+ */
 function sendState(res: ServerResponse, state: State, controlOrigin: string | undefined, extra: Record<string, string> = {}): void {
   if (res.headersSent) { res.destroy(); return }
   const { status, title, body } = STATE_TEXT[state]
@@ -155,7 +159,7 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
   async function admit(req: IncomingMessage, service: PreviewService): Promise<{ session: PreviewSession; target: UpstreamTarget } | { state: State; policy?: GatewayPolicy }> {
     const policy = deps.policy()
     const login = policy && previewLogin(req, policy, service)
-    if (!policy || !login) return { state: 'denied', ...(policy ? { policy } : {}) }
+    if (!policy || !login) return { state: 'denied' }
     const target = await deps.upstream(service)
     const deviceId = deps.device(req, login)
     if (!deviceId) return { state: 'revoked', policy }
@@ -169,7 +173,7 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
   async function bootstrap(req: IncomingMessage, res: ServerResponse, service: PreviewService): Promise<void> {
     const policy = deps.policy()
     const login = policy && previewLogin(req, policy, service)
-    if (!policy || !login) return sendState(res, 'denied', policy?.controlOrigin)
+    if (!policy || !login) return sendState(res, 'denied', undefined)
     if (req.method !== 'POST') return sendState(res, 'invalid-ticket', policy.controlOrigin)
     let ticket: string | null
     try { ticket = new URLSearchParams((await readBody(req, 4096)).toString('utf8')).get('ticket') } catch { return sendState(res, 'invalid-ticket', policy.controlOrigin) }
@@ -193,7 +197,10 @@ export function createPreviewGateway(deps: GatewayDeps): PreviewGateway {
     res.on('error', () => res.destroy())
     const path = req.url ?? '/'
     if (path === BOOTSTRAP_PATH || path.startsWith(`${BOOTSTRAP_PATH}?`)) return bootstrap(req, res, service)
-    if (path.startsWith(RESERVED_PREFIX)) return sendState(res, 'unavailable', deps.policy()?.controlOrigin)
+    if (path.startsWith(RESERVED_PREFIX)) {
+      const policy = deps.policy()
+      return sendState(res, 'unavailable', policy && previewLogin(req, policy, service) ? policy.controlOrigin : undefined)
+    }
     const admitted = await admit(req, service)
     if ('state' in admitted) return sendState(res, admitted.state, admitted.policy?.controlOrigin)
     const { session, target } = admitted
