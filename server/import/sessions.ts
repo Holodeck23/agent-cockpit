@@ -40,10 +40,10 @@ const parse = (line: string): Record<string, unknown> | undefined => {
     return undefined
   }
 }
-/** Text the CLI injected rather than the person typed: wrapped context blocks, command echoes, caveats. */
+/** Text the CLI injected rather than the person typed: wrapped context blocks, command echoes, caveats, Esc markers. */
 const injected = (text: string): boolean => {
   const t = text.trimStart()
-  return t === '' || t.startsWith('<') || t.startsWith('Caveat:') || t.startsWith('# AGENTS.md')
+  return t === '' || t.startsWith('<') || t.startsWith('Caveat:') || t.startsWith('# AGENTS.md') || t.startsWith('[Request interrupted by user')
 }
 const asText = (value: unknown): string => (typeof value === 'string' ? value : JSON.stringify(value ?? ''))
 
@@ -84,6 +84,8 @@ export function readClaudeSession(text: string, sessionId: string, projectPath: 
   for (const line of text.split('\n')) {
     const row = parse(line)
     if (!row || (row.type !== 'user' && row.type !== 'assistant') || row.isSidechain === true || row.isMeta === true) continue
+    // /compact writes its summary as a user row; the CLI made it, the person did not type it.
+    if (row.isCompactSummary === true || row.isVisibleInTranscriptOnly === true) continue
     // Every message Claude Code writes names its folder. One that does not could have been put
     // there by anything that can write in ~/.claude, and dashed folder names can collide.
     if (typeof row.cwd !== 'string') continue
