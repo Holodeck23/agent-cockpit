@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { writeFileAtomic } from './atomic.ts'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join, relative } from 'node:path'
+import { basename, isAbsolute, join, relative, sep } from 'node:path'
 import { z } from 'zod'
 import { contained, explained, HIDDEN } from './browser.ts'
 import { copyInto } from './copy-in.ts'
@@ -55,7 +55,9 @@ export function setDocumentsFolder(root: string, projectPath: string, folder: st
     if (!isAbsolute(folder)) throw new Error('Choose a folder by its full path')
     if (!statSync(folder, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`Not a folder: ${folder}`)
     const inside = relative(realpathSync(projectPath), realpathSync(folder))
-    if (!inside.startsWith('..') && !isAbsolute(inside)) throw new Error('Choose a folder outside the project, so agents and git do not see your documents')
+    // A segment-aware test: a folder named "..notes" inside the project is inside, not outside.
+    const outside = inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)
+    if (!outside) throw new Error('Choose a folder outside the project, so agents and git do not see your documents')
   }
   const from = documentsDir(root, projectPath)
   const to = folder ?? defaultDir(root, projectPath)
@@ -160,10 +162,14 @@ export function renameFile(root: string, projectPath: string, space: Space, path
   const base = spaceRoot(root, projectPath, space)
   return explained(path, `Not found: ${path}`, () => {
     const { root: real, target } = contained(base, path)
-    if (!statSync(target).isFile()) throw new Error('Only files can be renamed here')
+    const own = statSync(target)
+    if (!own.isFile()) throw new Error('Only files can be renamed here')
     const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''
     const next = join(real, folder, trimmed)
-    if (existsSync(next)) throw new Error(`${trimmed} already exists`)
+    // On a case-insensitive volume a change of capitals names the file itself: that is a rename, not a clash.
+    const clash = statSync(next, { throwIfNoEntry: false })
+    const itself = clash !== undefined && clash.dev === own.dev && clash.ino === own.ino && basename(next).toLowerCase() === basename(target).toLowerCase()
+    if (clash && !itself) throw new Error(`${trimmed} already exists`)
     renameSync(target, next)
     if (space === 'documents') {
       const marks = readMarks(root, projectPath)
