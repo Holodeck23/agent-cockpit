@@ -45,6 +45,15 @@ export class AccountInUseError extends Error {
   constructor(message: string, readonly projects: readonly string[] = []) { super(message) }
 }
 
+/** An open sign-in: its view, the helper while it runs, and the whole run (including a discard) as one promise. */
+interface SigninEntry {
+  view: SigninView
+  run?: HelperRun
+  /** Cancel arrived with no helper to stop (still starting, or already checking): runSignin honours it. */
+  cancelled?: boolean
+  settled?: Promise<void>
+}
+
 export type SigninState = 'waiting_for_user' | 'checking' | 'verified' | 'error' | 'cancelled'
 
 export interface SigninView {
@@ -82,7 +91,7 @@ export function createAccountService(options: AccountServiceOptions) {
   const probe = options.probe ?? observeIdentity
   const baseEnv = options.env ?? agentBaseEnv
   const logDir = join(options.stateRoot, 'account-signins')
-  const signins = new Map<string, { view: SigninView; run?: HelperRun }>()
+  const signins = new Map<string, SigninEntry>()
   const listeners = new Set<(view: SigninView) => void>()
   let refreshing: Promise<void> | undefined
 
@@ -109,6 +118,12 @@ export function createAccountService(options: AccountServiceOptions) {
   async function logout(agent: AgentId, env: Record<string, string>, logFile: string): Promise<HelperExit> {
     const executable = await options.executable(agent)
     return runHelper({ executable, args: LOGOUT_ARGS[agent]!, env, cwd: homedir(), timeoutMs: options.timeoutMs?.logout ?? LOGOUT_TIMEOUT_MS, logFile }).done
+  }
+
+  /** Cancel: stops the helper while there is one; later (starting, checking) the run itself sees the flag. */
+  const cancelOpen = (entry: SigninEntry): void => {
+    if (entry.run) entry.run.cancel()
+    else entry.cancelled = true
   }
 
   /** A sign-in that did not finish leaves no profile: the CLI signs that context out, then the folder goes. */
@@ -140,8 +155,12 @@ export function createAccountService(options: AccountServiceOptions) {
         update(id, { lines: [...helper.lines], ...(url ? { url } : {}) })
       },
     })
-    signins.get(id)!.run = helper
+    const entry = signins.get(id)!
+    entry.run = helper
+    if (entry.cancelled) helper.cancel()
     const exit = await helper.done
+    // The helper is gone: a Cancel from here on has nothing to stop.
+    entry.run = undefined
     const unchanged = 'No account was added and no project’s account changed.'
     if (exit.cancelled) { await discard(agent, profileId, logFile); finish(id, 'cancelled', { message: `Sign-in cancelled. ${unchanged}` }); return }
     if (exit.code !== 0) {
@@ -152,6 +171,7 @@ export function createAccountService(options: AccountServiceOptions) {
     }
     update(id, { state: 'checking', message: 'Checking which account signed in…' })
     const identity = await probe(agent, { executable, env })
+    if (entry.cancelled) { await discard(agent, profileId, logFile); finish(id, 'cancelled', { message: `Sign-in cancelled. ${unchanged}` }); return }
     if (identity.state !== 'known') {
       await discard(agent, profileId, logFile)
       finish(id, 'error', { message: `Sign-in finished, but ${label(agent)} does not confirm an account (${identity.reason ?? 'unknown'}). ${unchanged}` })
@@ -237,12 +257,14 @@ export function createAccountService(options: AccountServiceOptions) {
       mkdirSync(logDir, { recursive: true, mode: 0o700 })
       const logFile = join(logDir, `${id}.log`)
       writeFileSync(logFile, '', { mode: 0o600 })
-      signins.set(id, { view: { id, agent, label: name, state: 'waiting_for_user', takesCode: agent === 'claude', lines: [], startedAt: new Date().toISOString() } })
-      runSignin(id, agent, name, profileId, logFile).catch((error: unknown) => {
-        void discard(agent, profileId, logFile).catch(() => undefined)
+      const entry: SigninEntry = { view: { id, agent, label: name, state: 'waiting_for_user', takesCode: agent === 'claude', lines: [], startedAt: new Date().toISOString() } }
+      signins.set(id, entry)
+      entry.settled = runSignin(id, agent, name, profileId, logFile).catch(async (error: unknown) => {
+        const cleanup = discard(agent, profileId, logFile).catch(() => undefined)
         finish(id, 'error', { message: `Cockpit could not finish the sign-in: ${error instanceof Error ? error.message : String(error)}. No account was added.` })
+        await cleanup
       })
-      return signins.get(id)!.view
+      return entry.view
     },
     signin: (id: string): SigninView | undefined => signins.get(id)?.view,
     /** The code Claude's sign-in page shows; passed to the waiting CLI only, never logged or kept. */
@@ -254,16 +276,16 @@ export function createAccountService(options: AccountServiceOptions) {
     },
     cancelSignin(id: string): boolean {
       const entry = signins.get(id)
-      if (!entry?.run || entry.view.endedAt) return false
-      entry.run.cancel()
+      if (!entry || entry.view.endedAt) return false
+      cancelOpen(entry)
       return true
     },
 
     /**
      * Removes a managed profile: refused while a session uses it or a project still chooses it
-     * (unless `moveProjectsToDefault`, which changes those projects first, idle ones only). The
-     * CLI signs that context out; only then is its folder deleted. The vendor account and the CLI
-     * default's sign-in are untouched.
+     * (unless `moveProjectsToDefault`, which moves those projects to the default, idle ones only,
+     * and puts them back if the removal is then refused). The CLI signs that context out; only
+     * then is its folder deleted. The vendor account and the CLI default's sign-in are untouched.
      */
     async remove(accountId: string, removeOptions: { moveProjectsToDefault?: boolean } = {}): Promise<{ removed: true; message: string }> {
       const account = store.get(accountId)
@@ -275,16 +297,31 @@ export function createAccountService(options: AccountServiceOptions) {
       if (choosing.length > 0 && !removeOptions.moveProjectsToDefault) {
         throw new AccountInUseError(`${choosing.length} project${choosing.length === 1 ? ' uses' : 's use'} “${account.label}”. Choose another account for ${choosing.length === 1 ? 'it' : 'them'} first, or move ${choosing.length === 1 ? 'it' : 'them'} to the CLI default.`, choosing)
       }
-      for (const project of choosing) await service.select(project, account.agent, defaultAccountId(account.agent))
+      // Idle sessions end before any project moves, so a removal refused here has changed nothing.
       await options.sessions.closeIdle(account.id)
       // A turn may have started while the idle ones closed: still never sign out under it.
       if (options.sessions.inUse(account.id) > 0) throw new AccountInUseError(`A conversation started on “${account.label}” just now. Try again when it has finished.`)
       mkdirSync(logDir, { recursive: true, mode: 0o700 })
       const logFile = join(logDir, `remove-${account.id}.log`)
-      const exit = await logout(account.agent, envFor(account), logFile)
-      if (exit.code !== 0) {
-        const manual = `${PROFILE_ISOLATION[account.agent]}="${store.profileDir(account.id)}" ${account.agent === 'claude' ? 'claude auth logout' : 'codex logout'}`
-        throw new AccountInUseError(`${label(account.agent)} could not sign that profile out (${exit.error ?? (exit.timedOut ? 'timed out' : `exit ${exit.code ?? exit.signal}`)}), so Cockpit kept it rather than leave a sign-in behind. Try again, or run: ${manual}`)
+      const moved: string[] = []
+      try {
+        for (const project of choosing) {
+          await service.select(project, account.agent, defaultAccountId(account.agent))
+          moved.push(project)
+        }
+        const exit = await logout(account.agent, envFor(account), logFile)
+        if (exit.code !== 0) {
+          const manual = `${PROFILE_ISOLATION[account.agent]}="${store.profileDir(account.id)}" ${account.agent === 'claude' ? 'claude auth logout' : 'codex logout'}`
+          throw new AccountInUseError(`${label(account.agent)} could not sign that profile out (${exit.error ?? (exit.timedOut ? 'timed out' : `exit ${exit.code ?? exit.signal}`)}), so Cockpit kept it rather than leave a sign-in behind. Try again, or run: ${manual}`)
+        }
+      } catch (error) {
+        // The profile stays, so a project this call moved goes back to it: a refused removal changes no selection.
+        for (const project of moved) {
+          await service.select(project, account.agent, account.id).catch((restoreError: unknown) => {
+            console.warn(`[cockpit] could not put ${project} back on “${account.label}”:`, restoreError instanceof Error ? restoreError.message : restoreError)
+          })
+        }
+        throw error
       }
       store.deleteProfileDir(account.id)
       store.remove(account.id)
@@ -295,11 +332,10 @@ export function createAccountService(options: AccountServiceOptions) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    /** Quit: an open sign-in ends with Cockpit, and its unfinished profile is discarded. */
+    /** Quit: an open sign-in ends with Cockpit, and its unfinished profile is discarded before this resolves. */
     shutdown(): Promise<unknown> {
-      const open = [...signins.values()].filter((e) => e.run)
-      for (const e of open) e.run!.cancel()
-      return Promise.all(open.map((e) => e.run?.done))
+      for (const e of signins.values()) if (!e.view.endedAt) cancelOpen(e)
+      return Promise.all([...signins.values()].map((e) => e.settled))
     },
   }
   return service

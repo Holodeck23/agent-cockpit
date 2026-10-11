@@ -374,6 +374,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   server.on('request', (req, res) => {
     void api(req, res).then((handled) => {
       if (!handled) serveStatic(options.webDist, new URL(req.url ?? '/', 'http://localhost').pathname, res)
+    }).catch((error: unknown) => {
+      // A request target the URL parser rejects (`//`) throws before the router's own try: answer it, never hang the socket or crash `npm start`.
+      if ((error as NodeJS.ErrnoException).code !== 'ERR_INVALID_URL') console.warn('[cockpit] request failed:', error instanceof Error ? error.message : error)
+      if (!res.headersSent) res.writeHead(400, { 'content-type': 'text/plain' })
+      res.end()
     })
   })
 
