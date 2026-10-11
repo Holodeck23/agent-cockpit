@@ -149,6 +149,9 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
     if (!service || !gateway.openIds().includes(service.id)) {
       return { state: 'not-enabled', error: 'Phone preview is not turned on for this app. Turn it on in Phone access on your Mac.' }
     }
+    // Two folders of one project can run the same name and command at once. They share this service and the gateway serves
+    // the newest, so a ticket for the older one would be refused at the bootstrap.
+    if (liveProcess(service)?.id !== process.id) return { state: 'stopped', error: 'A newer copy of this app, with the same name and command, is running in another folder. Phone preview shows that one; open it instead.' }
     const target = await resolver.resolve(process)
     if (!target) return { state: 'stopped', error: 'The app is not answering on its address yet, or another program holds its port.' }
     const origin = previewOrigin(policy.hostname, service)
