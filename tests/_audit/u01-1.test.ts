@@ -118,7 +118,7 @@ vi.mock('../../electron/browser-service.ts', () => ({
 vi.mock('../../electron/browser-ipc.ts', () => ({ registerBrowserIpc: vi.fn() }))
 vi.mock('../../electron/browser-agent-host.ts', () => ({ createBrowserAgentHost: () => ({}) }))
 
-const PREVIEW = { url: 'http://127.0.0.1:5173/', projectPath: '/Users/test/project' }
+const PREVIEW = { url: 'http://127.0.0.1:5173/', projectPath: '/Users/example/project' }
 
 /** The person closes the window (Cmd+W); the app stays alive on macOS. Returns once the window is gone. */
 async function closeWindow(): Promise<void> {
