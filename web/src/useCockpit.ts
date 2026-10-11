@@ -30,14 +30,17 @@ function nextTurn(turn: ThreadSummary['turn'], update: ThreadUpdate): ThreadSumm
   return turn
 }
 
+/** Events that inform without being activity; the same kinds as server/threads/manager.ts QUIET, plus the unpersisted text_delta. */
+const QUIET: ReadonlySet<string> = new Set(['text_delta', 'awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion', 'account_changed', 'workspace_changed'])
+
 export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate): ThreadSummary[] {
   return threads.map((t) => {
     if (t.meta.id !== update.threadId) return t
     const isMessage = update.event.kind === 'assistant_text' || update.event.kind === 'user_text'
     const text = isMessage && 'text' in update.event ? update.event.text : undefined
     // Streaming deltas are not persisted server-side, so they don't count as activity either; nor do
-    // a dismissal or a branch note (server/threads/manager.ts QUIET).
-    const lastActivityAt = update.event.kind === 'text_delta' || update.event.kind === 'awaiting_dismissed' || update.event.kind === 'branch_changed' ? t.lastActivityAt : new Date().toISOString()
+    // a dismissal, a branch note or a settings/account/workspace change (server/threads/manager.ts QUIET).
+    const lastActivityAt = QUIET.has(update.event.kind) ? t.lastActivityAt : new Date().toISOString()
     // A reply, a dismissal or Mark complete settles a question (server/threads/turns.ts awaitingOf).
     const settles = update.event.kind === 'user_text' || update.event.kind === 'awaiting_dismissed' || (update.event.kind === 'completion_changed' && update.event.completed)
     return {
@@ -58,6 +61,21 @@ export function applyToSummaries(threads: ThreadSummary[], update: ThreadUpdate)
 function upsertProcess(list: ProcessInfo[], info: ProcessInfo): ProcessInfo[] {
   if (info.cleared) return list.filter((p) => p.id !== info.id)
   return list.some((p) => p.id === info.id) ? list.map((p) => (p.id === info.id ? info : p)) : [info, ...list]
+}
+
+/**
+ * A thread read's streams plus the deltas that arrived while it was in flight. The read may already
+ * hold the first of them (the server counts a delta the moment it sends it), so those are not added twice.
+ */
+function withLateDeltas(snapshot: Readonly<Record<string, string>>, late: Readonly<Record<string, readonly string[]>>): Record<string, string> {
+  const merged = { ...snapshot }
+  for (const [key, deltas] of Object.entries(late)) {
+    const held = merged[key] ?? ''
+    for (let known = deltas.length; known >= 0; known -= 1) {
+      if (held.endsWith(deltas.slice(0, known).join(''))) { merged[key] = held + deltas.slice(known).join(''); break }
+    }
+  }
+  return merged
 }
 
 /** `local` is the Mac's own window; the phone gets no phone-access settings. */
@@ -83,21 +101,28 @@ export function useCockpit(local = true): Cockpit {
 
   const selectedRef = useRef(selectedId)
   const loadVersion = useRef(0)
+  // Counts the stored events delivered; a streamed delta is not one, or a reply that streams while
+  // the thread loads would send every read back for another.
   const eventVersion = useRef(0)
+  // Deltas delivered since the newest thread read began (per workspace); undefined when none is in flight.
+  const lateDeltas = useRef<Readonly<Record<string, readonly string[]>> | undefined>(undefined)
   const reloadDetail = useCallback((id: string): void => {
     const version = ++loadVersion.current
     const eventsAtStart = eventVersion.current
+    lateDeltas.current = {}
     api.thread(id).then(
       (loaded) => {
         if (version !== loadVersion.current || selectedRef.current !== id) return
         // Events delivered during this request may be newer than its snapshot.
         // Re-read them instead of losing approvals/results while detail is still loading.
         if (eventsAtStart !== eventVersion.current) { reloadDetail(id); return }
+        const late = lateDeltas.current ?? {}
+        lateDeltas.current = undefined
         setDetail(loaded)
-        setStreams(loaded.runs?.length ? Object.fromEntries(loaded.runs.filter((r) => r.partial).map((r) => [r.workspaceId, r.partial])) : loaded.streaming ? { '': loaded.streaming } : {})
+        setStreams(withLateDeltas(loaded.runs?.length ? Object.fromEntries(loaded.runs.filter((r) => r.partial).map((r) => [r.workspaceId, r.partial])) : loaded.streaming ? { '': loaded.streaming } : {}, late))
       },
       (e: unknown) => {
-        if (version === loadVersion.current && selectedRef.current === id) setError(String(e))
+        if (version === loadVersion.current && selectedRef.current === id) { lateDeltas.current = undefined; setError(String(e)) }
       },
     )
   }, [])
@@ -137,13 +162,15 @@ export function useCockpit(local = true): Cockpit {
       if (!knownIds.current.has(update.threadId) || update.event.kind === 'result') refresh()
       else if (!isDelta) setThreads((current) => applyToSummaries(current, update))
       if (update.threadId !== selectedRef.current) return
-      ++eventVersion.current
       if (update.event.kind === 'text_delta') {
         const delta = update.event.text
         const key = update.workspaceId ?? ''
+        const late = lateDeltas.current
+        if (late) lateDeltas.current = { ...late, [key]: [...(late[key] ?? []), delta] }
         setStreams((current) => ({ ...current, [key]: (current[key] ?? '') + delta }))
         return
       }
+      ++eventVersion.current
       if (update.event.kind === 'completion_changed') {
         const completed = update.event.completed
         setDetail((d) => d?.meta.id === update.threadId ? { ...d, meta: { ...d.meta, completed } } : d)
@@ -161,7 +188,8 @@ export function useCockpit(local = true): Cockpit {
         const key = update.workspaceId
         setStreams((current) => { if (key === undefined) return {}; const { [key]: _done, ...rest } = current; return rest })
       }
-      const stored: StoredEvent = { ts: new Date().toISOString(), event: update.event }
+      // Tagged with the workspace the server stored it under, as it will be after a reload (workspace-events.ts).
+      const stored: StoredEvent = { ts: new Date().toISOString(), event: update.event, ...(update.workspaceId ? { workspaceId: update.workspaceId } : {}) }
       setDetail((d) => (d && d.meta.id === update.threadId ? { ...d, status: update.status, events: [...d.events, stored] } : d))
     }
     // After a (re)connect, anything missed while disconnected is re-read from the server.

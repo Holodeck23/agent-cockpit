@@ -2,9 +2,11 @@
 
 /** Case-insensitive, non-overlapping [start, end) offsets of `query` in `text`. */
 export function findRanges(text: string, query: string): Array<[number, number]> {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return []
-  const haystack = text.toLowerCase()
+  const typed = query.trim()
+  if (!typed) return []
+  // Lower-casing a few characters (e.g. "İ") changes the text's length; offsets would drift, so match exactly then.
+  const fold = text.toLowerCase().length === text.length
+  const [haystack, needle] = fold ? [text.toLowerCase(), typed.toLowerCase()] : [text, typed]
   const found: Array<[number, number]> = []
   for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + needle.length)) {
     found.push([at, at + needle.length])

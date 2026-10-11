@@ -61,7 +61,10 @@ export function useOpenFiles(projectPath: string | undefined, scope?: string, gu
       const read = await api.readFile(projectPath, path, scope)
       if (stillCurrent && !stillCurrent()) return
       const stored = existing ? undefined : parse<StoredDraft>(storage.get(draftKey(draftFor(read.path) ?? projectPath, read.path)))
-      const next = { ...openFile(read.path, read.text, read.version, stored?.draft), conflict: stored !== undefined && stored.version !== read.version }
+      // A draft started from another version than the disk has now is a conflict. It keeps the version it
+      // started from, which is what gets stored again: the next visit must still see the conflict.
+      const conflict = stored !== undefined && stored.version !== read.version
+      const next = { ...openFile(read.path, read.text, conflict ? stored.version : read.version, stored?.draft), conflict }
       setFiles((all) => (all.some((f) => f.path === read.path) ? all.map((f) => (f.path === read.path ? next : f)) : [...all, next]))
       if (!quiet || !requested.current) setActive(read.path)
     } catch (e) {
