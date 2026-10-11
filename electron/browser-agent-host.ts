@@ -200,6 +200,7 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
   }
 
   return {
+    guardNavigation: (key, authorize) => service.guardNavigation(key, authorize),
     info,
     async ensure(key, projectPath) {
       const full = await service.ensure(key, projectPath)
@@ -212,6 +213,7 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
       if (refused) throw new Error(refused)
       await settle(contents)
       const page = info(key) ?? gone(key)
+      if (page.error?.code === -20) throw new Error(page.error.description)
       if (page.url) navigated(key, page.url)
       return page
     },
@@ -223,9 +225,10 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
     },
     async history(key, action) {
       const contents = contentsOf(key)
-      service.navigate(key, action)
+      service.navigate(key, action, true)
       await settle(contents)
       const page = info(key) ?? gone(key)
+      if (page.error?.code === -20) throw new Error(page.error.description)
       if (page.url) navigated(key, page.url)
       return page
     },

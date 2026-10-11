@@ -27,6 +27,7 @@ import { originClass } from '../server/browser/agent-policy.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
 import { registerBrowserIpc } from './browser-ipc.ts'
 import { createBrowserAgentHost } from './browser-agent-host.ts'
+import { guardLocalPreview } from './preview-navigation.ts'
 import { RESIDENCY } from './browser-policy.ts'
 import type { BrowserHost } from '../server/browser/agent.ts'
 
@@ -216,6 +217,7 @@ async function showPreview(preview: PreviewOpen): Promise<void> {
   const url = assertLocalUrl(preview.url)
   if (preview.threadId && browser && browserHost) {
     const key = `thread:${preview.threadId}`
+    guardLocalPreview(browserHost, key, cockpitPorts)
     const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
     if (page.url !== url) {
       const refused = browser.load(key, url)
@@ -236,6 +238,7 @@ async function inspectPreview(preview: PreviewOpen): Promise<PreviewCapture> {
   const url = assertLocalUrl(preview.url)
   if (!preview.threadId || !browserHost) return capturePreview(url)
   const key = `thread:${preview.threadId}`
+  guardLocalPreview(browserHost, key, cockpitPorts)
   const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
   if (page.origin !== new URL(url).origin) await browserHost.goto(key, url)
   const shot = await browserHost.capture(key)

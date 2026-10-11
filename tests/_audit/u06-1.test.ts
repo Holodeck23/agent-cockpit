@@ -44,12 +44,15 @@ function harness(cockpitPorts: number[]) {
   const asked: Array<{ tool: string; input: Record<string, unknown> }> = []
   let answer: ApprovalBehavior | 'deny' = 'deny'
   const page = (): AgentPageInfo => ({ pageId: 'thread:t1', revision, url, origin: originOf(url) ?? 'null', title: '', loading: false, viewport: { width: 800, height: 600 }, timestamp: 'now' })
+  let authorize: (url: string) => Promise<void> = async () => {}
   const host: BrowserHost = {
+    guardNavigation: (_key, guard) => { authorize = guard },
     info: () => page(),
     ensure: async () => page(),
     goto: async (_key, target) => {
       let next = target
       for (let hop = 0; hop < 5; hop++) {
+        await authorize(next)
         requested.push(next)
         url = next
         if (originOf(next) !== originOf(localUrl)) break // the "remote site": nothing to fetch, it has been requested
@@ -101,5 +104,6 @@ describe('u06-1: a local page cannot carry the browser to a remote site unasked'
     expect(h.asked.map((a) => a.input.origin)).toContain(REMOTE)
     // ... and having said no, the agent must not be handed the remote page as a successful navigation.
     expect(result.ok).toBe(false)
+    expect(h.requested).not.toContain(REMOTE_TARGET)
   })
 })

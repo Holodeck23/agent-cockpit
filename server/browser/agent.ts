@@ -58,6 +58,8 @@ export interface Capture { readonly data: string; readonly mimeType: 'image/png'
 
 /** The pages, as the desktop app's main process holds them. */
 export interface BrowserHost {
+  /** Enforced before each main-frame network request, including redirects and later page scripts. */
+  guardNavigation(key: string, authorize: (url: string) => Promise<void>): void
   info(key: string): AgentPageInfo | undefined
   /**
    * Creates the conversation's page (hidden, in the workspace's partition) when it has none: blank,
@@ -120,6 +122,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
         description: `${ACTION_WORDS[op]} in this conversation’s browser on ${local ? `your local app (${host})` : host}. ${warning} Answer within ${APPROVAL_SECONDS} seconds.`,
         grant: { label: `Allow on ${host} for this run` },
       }, signal)
+      if (behavior === 'deny') throw new Error('Browser action denied by the user')
     } catch (error) {
       deps.leases.revokeThread(grant.threadId)
       throw new HttpError(409, error instanceof Error ? error.message : String(error))
@@ -135,19 +138,6 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     if (kind === 'local' || url === 'about:blank') return true
     const origin = originOf(url)
     return kind === 'remote' && origin !== undefined && deps.leases.has({ threadId: grant.threadId, runId, pageKey: pageKeyOf(grant.threadId), origin })
-  }
-
-  /**
-   * A page can take itself somewhere the person was not asked about (a local address answering with a
-   * redirect to a website). Where it landed is asked about too, unless that is the very site just approved.
-   * A Deny rejects the call, so the agent is not handed the page as an opened one; reading it still asks.
-   */
-  async function landed(grant: McpGrant, runId: string, page: AgentPageInfo, approved: string | undefined, from: string, signal: AbortSignal): Promise<AgentPageInfo> {
-    const origin = originOf(page.url)
-    if (origin !== undefined && origin !== approved && originClass(page.url, deps.cockpitPorts()) === 'remote') {
-      await permit(grant, runId, 'navigate', origin, { url: page.url, redirectedFrom: from }, signal)
-    }
-    return page
   }
 
   /** Calls in flight per page, including any waiting on the person: such a page is never unloaded. */
@@ -179,6 +169,19 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     if (!runId) throw new HttpError(409, 'This conversation is not working (or Stop was pressed), so it cannot use the browser now.')
     deps.leases.keepRun(grant.threadId, runId)
     const ports = deps.cockpitPorts()
+    // Install before ensure(): restoring an unloaded page can itself send a signed-in request.
+    // This stays armed after the tool returns so timers, popups and late redirects cannot bypass it.
+    let approvedTarget: string | undefined
+    host.guardNavigation(key, async (url) => {
+      const activeRun = (): boolean => !signal.aborted && deps.currentRun(grant.threadId, grant.workspaceId) === runId
+      if (!activeRun()) throw new Error('The browser run ended or was stopped; navigation was blocked.')
+      const kind = originClass(url, deps.cockpitPorts())
+      if (kind === 'refused') throw new Error('This address cannot be opened by an agent.')
+      const alreadyApproved = url === approvedTarget
+      approvedTarget = undefined // The explicit approval covers exactly the first requested address.
+      if (kind === 'remote' && !alreadyApproved) await permit(grant, runId, 'navigate', originOf(url)!, { url }, signal)
+      if (!activeRun()) throw new Error('The browser run ended or was stopped; navigation was blocked.')
+    })
 
     if (operation === 'read' || operation === 'screenshot') {
       const page = await ensure(host, key, grant.cwd)
@@ -201,8 +204,8 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
       if (kind === 'refused') throw new HttpError(400, `The browser opens http and https sites only, never Cockpit itself: ${target.slice(0, 200)}`)
       const approved = kind === 'remote' ? originOf(target)! : undefined
       if (approved) await permit(grant, runId, 'navigate', approved, { url: target, ...(action ? { action } : {}) }, signal)
-      const page = await (url ? host.goto(key, url) : host.history(key, action!))
-      return landed(grant, runId, page, approved, target, signal)
+      approvedTarget = approved ? new URL(target).href : undefined
+      return conflict(url ? host.goto(key, url) : host.history(key, action!))
     }
 
     // Input: always needs a grant for the page's exact origin, local app or not.

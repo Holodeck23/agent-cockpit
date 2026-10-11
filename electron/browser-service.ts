@@ -69,6 +69,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   const pages = new Map<string, Page>()
   const guarded = new Set<Session>()
   const destroyedListeners = new Set<(key: string) => void>()
+  const navigationGuards = new Map<string, (url: string) => Promise<void>>()
   const limits = deps.limits ?? RESIDENCY
   /** Pages Cockpit unloaded while idle, with the address each was on. */
   const unloaded = new Map<string, string>()
@@ -81,7 +82,26 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   function guard(web: Session): void {
     if (guarded.has(web)) return
     guarded.add(web)
-    web.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !isAllowedRequest(details.url, deps.cockpitPorts()) }))
+    web.webRequest.onBeforeRequest((details, callback) => {
+      if (!isAllowedRequest(details.url, deps.cockpitPorts())) { callback({ cancel: true }); return }
+      if (details.resourceType !== 'mainFrame') { callback({ cancel: false }); return }
+      const entry = [...pages].find(([, p]) => p.view.webContents.id === details.webContentsId)
+      // A request without a live owner must not inherit a different page's approval.
+      if (!entry) { callback({ cancel: true }); return }
+      const [key, page] = entry
+      const authorize = navigationGuards.get(key)
+      if (!authorize) { callback({ cancel: false }); return } // Explicit human navigation.
+      // Unlike did-navigate, this holds the request before HTTP data/cookies reach the destination.
+      void Promise.resolve().then(() => authorize(details.url)).then(() => {
+        callback({ cancel: pages.get(key) !== page || navigationGuards.get(key) !== authorize })
+      }, (error: unknown) => {
+        if (pages.get(key) === page && navigationGuards.get(key) === authorize) {
+          page.error = { code: -20, description: error instanceof Error ? error.message : 'Navigation was denied', url: details.url }
+          publish(key)
+        }
+        callback({ cancel: true })
+      })
+    })
     web.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
     web.setPermissionCheckHandler(() => false)
     // Downloads: no save path is set, so Electron asks the person where to save (or they cancel).
@@ -209,6 +229,8 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   }
 
   const service = {
+    /** Agent policy remains attached until this page closes or the person explicitly navigates. */
+    guardNavigation(key: string, authorize: (url: string) => Promise<void>): void { navigationGuards.set(key, authorize) },
     /** Opens `url` in the conversation's page, creating it in the workspace's partition if needed. */
     async open(key: string, projectPath: string, url: string): Promise<PageState | { error: string } | CapacityRefusal> {
       if (!isNavigable(url, deps.cockpitPorts())) return { error: 'Only http and https pages open here, and not Cockpit itself.' }
@@ -217,6 +239,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
         if (full) return full
       }
       const page = pages.get(key) ?? create(key, projectPath)
+      navigationGuards.delete(key)
       touch(page)
       page.error = undefined
       // Not awaited: a page that never finishes loading must not hold the caller. Progress,
@@ -252,9 +275,10 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       page.view.setBounds(bounds)
       page.view.setVisible(true)
     },
-    navigate(key: string, action: NavAction): void {
+    navigate(key: string, action: NavAction, agent = false): void {
       const contents = pages.get(key)?.view.webContents
       if (!contents) return
+      if (!agent && action !== 'stop') navigationGuards.delete(key)
       touch(pages.get(key))
       if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
       else if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward()
@@ -274,6 +298,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const page = pages.get(key)
       if (!page) return
       pages.delete(key)
+      navigationGuards.delete(key)
       if (lastShown === key) lastShown = undefined
       const win = deps.window()
       if (page.attached && win && !win.isDestroyed()) win.contentView.removeChildView(page.view)
@@ -292,6 +317,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     forgetAll(): void {
       const keys = [...pages.keys()]
       pages.clear()
+      navigationGuards.clear()
       for (const key of keys) for (const listener of destroyedListeners) listener(key)
     },
     /** For the agent tools (electron/browser-agent-host.ts): the page itself, never handed to the renderer. */
