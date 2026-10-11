@@ -220,7 +220,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   })()
 
   child.on('error', (error) => {
-    onEvent({ kind: 'error', message: startErrorMessage('codex', error) })
+    onEvent({ kind: 'error', message: startErrorMessage('codex', error, opts.cwd) })
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true

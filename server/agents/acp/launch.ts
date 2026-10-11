@@ -126,7 +126,7 @@ export function launchAcp(input: AcpLaunchInput, onEvent: EventSink): AgentSessi
   })()
 
   child.on('error', (error) => {
-    onEvent({ kind: 'error', message: startErrorMessage(input.agent, error) })
+    onEvent({ kind: 'error', message: startErrorMessage(input.agent, error, input.cwd) })
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true

@@ -193,7 +193,7 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
     if (stderrTail.length > 20) stderrTail.shift()
   })
   child.on('error', (error) => {
-    onEvent({ kind: 'error', message: startErrorMessage('antigravity', error) })
+    onEvent({ kind: 'error', message: startErrorMessage('antigravity', error, value.cwd) })
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true
