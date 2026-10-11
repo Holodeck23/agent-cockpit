@@ -143,8 +143,9 @@ async function boot(): Promise<void> {
   running.manager.subscribe((update) => { if (update.event.kind === 'thread_deleted') pages.close(`thread:${update.threadId}`) })
   registerBrowserIpc(new URL(running.url).origin, browser, isFolder, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
   mainWindow = createWindow(running.url)
+  // Not a count of all windows: a hidden preview-capture window would hide the missing one.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
+    if ((!mainWindow || mainWindow.isDestroyed()) && running) mainWindow = createWindow(running.url)
   })
 }
 
@@ -398,12 +399,9 @@ function showNotification(value: unknown): void {
   const release = (): void => { shownNotifications.delete(note) }
   note.on('click', () => {
     release()
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
-    if (!win) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-    win.webContents.send('cockpit:open-thread', threadId)
+    // The window may have been closed since this was posted: it reopens, then opens the thread.
+    sendToPage('cockpit:open-thread', threadId)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus()
   })
   note.on('close', release)
   shownNotifications.add(note)
