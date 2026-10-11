@@ -189,6 +189,11 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
     await stopGroup(pid, graceMs)
     // A daemon that escaped the group can hold the pipes open; don't wait on it forever.
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, graceMs))])
+    // 'close' waits for the output pipes, so a daemon holding them leaves a dead command 'stopping'
+    // for good, and restart() would reuse that row instead of starting anything. The command is gone: say so.
+    if (entryOf(id).info.status !== 'exited' && (child.exitCode !== null || child.signalCode !== null)) {
+      update(id, { status: 'exited', exitCode: child.exitCode, signal: child.signalCode, endedAt: new Date().toISOString() })
+    }
     return entryOf(id).info
   }
 
