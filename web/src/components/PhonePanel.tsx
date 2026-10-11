@@ -108,6 +108,8 @@ export function PhonePanel({ status, onError, onOpenChange }: PhoneButtonProps) 
               <button type="button" className="phone-toggle" disabled={busy} onClick={() => toggle(true)}>
                 {busy ? 'Turning on…' : status?.enabled ? 'Try again' : 'Turn on phone access'}
               </button>
+              {/* On but not running (Tailscale down at launch): it can still be turned off. */}
+              {status?.enabled ? <button type="button" className="phone-toggle off" disabled={busy} onClick={() => toggle(false)}>Turn off phone access</button> : null}
             </div>
           )}
         </div>

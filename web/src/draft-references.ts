@@ -31,7 +31,11 @@ export function referencesIn(text: string): DraftReference[] {
 }
 
 const escape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const tokenPattern = (token: string): RegExp => new RegExp(`(^|\\s)${escape(token)}(?=\\s|$)`, 'g')
+// A token ends where referencesIn() ends it: a file path runs to whitespace, a workflow name to the
+// first character its name pattern cannot take ("@workflow:review." is the workflow "review").
+// The leading boundary is a lookbehind, so a neighbouring copy keeps its own.
+const tokenEnd = (token: string): string => (token.startsWith('@workflow:') ? '(?![a-z0-9]|-[a-z0-9])' : '(?=\\s|$)')
+const tokenPattern = (token: string, trailing = ''): RegExp => new RegExp(`(?<=^|\\s)${escape(token)}${tokenEnd(token)}${trailing}`, 'g')
 
 export const hasReference = (text: string, token: string): boolean => tokenPattern(token).test(text)
 
@@ -43,7 +47,7 @@ export function addReference(text: string, token: string): string {
 
 /** Removes every copy of a reference, and the space after each. */
 export function removeReference(text: string, token: string): string {
-  return text.replace(new RegExp(`(^|\\s)${escape(token)}(?=\\s|$)[ \\t]?`, 'g'), '$1').replace(/[ \t]+\n/g, '\n').replace(/^[ \t]+/, '')
+  return text.replace(tokenPattern(token, '[ \\t]?'), '').replace(/[ \t]+\n/g, '\n')
 }
 
 /** An `@word` being typed in the draft: where its @ sits and what follows it so far. */
