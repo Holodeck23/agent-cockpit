@@ -38,12 +38,17 @@ function useProcessLog(id: string | undefined): Log | undefined {
     let next: number | undefined
     const tick = async (): Promise<void> => {
       try {
-        const read = await api.readProcess(id, next === undefined ? { tail: 500 } : { since: next })
+        // A `since` read is cut to the server's default tail (200) unless it names one: ask for as many lines as the pane keeps.
+        const read = await api.readProcess(id, next === undefined ? { tail: 500 } : { since: next, tail: MAX_LINES })
         if (!live) return
         const first = next === undefined
         next = read.next
-        setLog((prev) => first || !prev ? { id, lines: read.lines, next: read.next, dropped: read.dropped }
-          : read.lines.length ? { ...prev, lines: [...prev.lines, ...read.lines].slice(-MAX_LINES), next: read.next } : prev)
+        // A slow answer lets the next tick ask with the same cursor: only lines past what the pane holds are added.
+        setLog((prev) => {
+          if (first || !prev) return { id, lines: read.lines, next: read.next, dropped: read.dropped }
+          const fresh = read.lines.filter((line) => line.seq > prev.next)
+          return fresh.length ? { ...prev, lines: [...prev.lines, ...fresh].slice(-MAX_LINES), next: read.next } : prev
+        })
       } catch {
         // The process may have been pruned; the list will drop it.
       }
