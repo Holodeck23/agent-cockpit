@@ -105,8 +105,11 @@ export function withoutEdgeSpaces(doc: Node): Node {
     if (!node.isTextblock) return true
     if (node.type.spec.code) return false
     const text = node.textContent
-    const lead = text.length - text.trimStart().length
-    const trail = text.length - text.trimEnd().length
+    // Spaces and tabs only: trimStart() also takes NBSP and the like, which Markdown keeps.
+    let lead = 0
+    while (lead < text.length && (text[lead] === ' ' || text[lead] === '\t')) lead += 1
+    let trail = 0
+    while (trail < text.length && (text[text.length - 1 - trail] === ' ' || text[text.length - 1 - trail] === '\t')) trail += 1
     const first = node.firstChild
     const last = node.lastChild
     // Only when the spaces sit in plain text at the block's edge.

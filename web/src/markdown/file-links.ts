@@ -8,6 +8,10 @@ export interface FileTarget { readonly path: string; readonly line?: number; rea
 const SPEC = /^([^\s:#]+)(?::(\d+)(?:-(\d+)|:\d+)?|#L(\d+)(?:-L?(\d+))?)?$/
 const PATH = /^[\w@+-][\w.@+/-]*$/
 const EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,9}$/
+// A bare name.ext (no directory, no line) is as often code (`console.log`, `this.state`) as a file,
+// so it counts only with an extension that files really have.
+const FILE_EXTENSIONS = new Set(('md mdx txt json jsonc yaml yml toml ini cfg conf lock ts tsx mts cts js jsx mjs cjs css scss less html htm xml svg ' +
+  'py rb go rs java kt swift c h cpp hpp cs php sh bash zsh sql graphql proto vue svelte csv tsv png jpg jpeg gif webp pdf plist gradle tf ipynb patch diff').split(' '))
 
 export function fileLink(raw: string, projectPath: string | undefined): FileTarget | undefined {
   if (!projectPath) return undefined
@@ -22,9 +26,11 @@ export function fileLink(raw: string, projectPath: string | undefined): FileTarg
   path = path.replace(/^\.\//, '')
   if (!PATH.test(path) || !EXTENSION.test(path)) return undefined
   if (path.split('/').some((part) => part === '' || part === '.' || part === '..')) return undefined
+  const numbered = match[2] !== undefined || match[4] !== undefined
+  if (!numbered && !path.includes('/') && !FILE_EXTENSIONS.has(path.slice(path.lastIndexOf('.') + 1).toLowerCase())) return undefined
   const line = Number(match[2] ?? match[4] ?? NaN)
   const end = Number(match[3] ?? match[5] ?? NaN)
-  if (match[2] !== undefined || match[4] !== undefined) {
+  if (numbered) {
     if (!(line >= 1)) return undefined
     return end > line ? { path, line, endLine: end } : { path, line }
   }
