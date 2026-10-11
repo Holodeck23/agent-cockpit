@@ -76,6 +76,8 @@ const cockpit = {
     navigate: (key: string, action: NavAction): void => ipcRenderer.send('cockpit:browser-nav', { key, action }),
     state: (key: string): Promise<PageState | undefined> => ipcRenderer.invoke('cockpit:browser-state', key) as Promise<PageState | undefined>,
     openExternal: (key: string): void => ipcRenderer.send('cockpit:browser-external', key),
+    /** The person dismissed the "Reloaded" notice: main stops reporting the page as reloaded. */
+    reloadSeen: (key: string): void => ipcRenderer.send('cockpit:browser-reload-seen', key),
     close: (key: string): void => ipcRenderer.send('cockpit:browser-close', key),
     /** Resolves to an error message, if any. */
     clearData: (projectPath: string): Promise<string | undefined> => ipcRenderer.invoke('cockpit:browser-clear', projectPath) as Promise<string | undefined>,

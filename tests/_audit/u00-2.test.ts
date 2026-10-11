@@ -11,6 +11,7 @@ import { registerBrowserIpc } from '../../electron/browser-ipc.ts'
 const h = vi.hoisted(() => ({
   views: [] as Array<{ webContents: { closeCalls: number; destroyed: boolean; finishDestroy: () => void } }>,
   ipc: new Map<string, (event: unknown, ...args: unknown[]) => unknown>(),
+  bridge: undefined as undefined | { browser: { reloadSeen(key: string): void } },
 }))
 
 // Just enough of Electron for electron/browser-service.ts: a view whose WebContents is closed
@@ -44,7 +45,13 @@ vi.mock('electron', async () => {
   }
   const web = { webRequest: { onBeforeRequest: vi.fn() }, setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn() }
   const ipcMain = { on: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => h.ipc.set(channel, fn), handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => h.ipc.set(channel, fn) }
-  return { shell: { openExternal: vi.fn() }, WebContentsView: FakeView, session: { fromPartition: () => web }, ipcMain }
+  // The page's side (electron/preload.ts): what the bridge sends reaches the handlers main registered, from Cockpit's own window.
+  const ipcRenderer = {
+    on: vi.fn(), removeListener: vi.fn(), invoke: vi.fn(),
+    send: (channel: string, ...args: unknown[]) => { h.ipc.get(channel)?.({ senderFrame: { url: 'http://127.0.0.1:45871/' }, main: true }, ...args) },
+  }
+  const contextBridge = { exposeInMainWorld: (_name: string, api: unknown) => { h.bridge = api as typeof h.bridge } }
+  return { shell: { openExternal: vi.fn() }, WebContentsView: FakeView, session: { fromPartition: () => web }, ipcMain, ipcRenderer, contextBridge, webUtils: { getPathForFile: () => '' } }
 })
 
 const win = { isDestroyed: () => false, contentView: { addChildView: vi.fn(), removeChildView: vi.fn() }, getContentSize: () => [1400, 900] }
@@ -97,6 +104,21 @@ describe('u00-2 reloaded notice', () => {
     expect(service.state(KEY)?.reloaded).toBe(true)
 
     seen(from('http://127.0.0.1:45871/', true), KEY)
+    expect(service.state(KEY)?.reloaded).toBeUndefined()
+  })
+
+  it('reaches main from the page bridge: preload sends it and the page stops being reloaded', async () => {
+    const service = make({ maxIdle: 4, idleMs: 0, maxTotal: 8 })
+    services.push(service)
+    registerBrowserIpc('http://127.0.0.1:45871', service, () => true, (event) => (event as { main?: boolean }).main === true)
+    await import('../../electron/preload.ts')
+    expect(h.bridge?.browser.reloadSeen).toBeTypeOf('function')
+    await service.open(KEY, '/tmp/u00-2-project', 'https://example.com/a')
+    await service.sweep()
+    await service.ensure(KEY, '/tmp/u00-2-project')
+    expect(service.state(KEY)?.reloaded).toBe(true)
+
+    h.bridge!.browser.reloadSeen(KEY)
     expect(service.state(KEY)?.reloaded).toBeUndefined()
   })
 })

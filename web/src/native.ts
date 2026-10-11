@@ -46,6 +46,7 @@ export interface CockpitBridge {
     navigate(key: string, action: NavAction): void
     state(key: string): Promise<PageState | undefined>
     openExternal(key: string): void
+    reloadSeen(key: string): void
     close(key: string): void
     clearData(projectPath: string): Promise<string | undefined>
     onState(listener: (state: PageState) => void): () => void

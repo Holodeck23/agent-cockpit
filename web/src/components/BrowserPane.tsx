@@ -181,7 +181,7 @@ export function BrowserPane({ pageKey, projectPath, layout, openNonce, onLayout,
         {state?.reloaded && !reloadNoted ? (
           <>
             <span>Reloaded: Cockpit unloaded this page while it was idle. Anything typed on it was not kept.</span>
-            <button type="button" className="button-soft" onClick={() => setReloadNoted(true)}>OK</button>
+            <button type="button" className="button-soft" onClick={() => { setReloadNoted(true); browser?.reloadSeen(pageKey) }}>OK</button>
           </>
         ) : null}
       </div>
