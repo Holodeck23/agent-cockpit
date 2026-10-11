@@ -86,7 +86,15 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
   }
 
   async function handleRemote(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const url = new URL(req.url ?? '/', 'http://localhost')
+    let url: URL
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost')
+    } catch {
+      // A request target Node accepts but the URL parser rejects (`//`): answer it, never leave the socket hanging.
+      res.setHeader('x-frame-options', 'DENY')
+      res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
+      return void res.end('Bad request')
+    }
     const isApi = url.pathname.startsWith('/api/')
     // No other page may frame the phone page or its answers (it holds approvals). No CORS, ever.
     res.setHeader('x-frame-options', 'DENY')
@@ -160,7 +168,15 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
 
   async function listen(port: number): Promise<void> {
     if (server?.listening) return
-    const next = createServer((req, res) => void handleRemote(req, res))
+    const next = createServer((req, res) => {
+      void handleRemote(req, res).catch((err: unknown) => {
+        // Anything handleRemote did not answer itself: log it, and never leave the phone's socket hanging.
+        console.warn('[cockpit] phone request failed:', err instanceof Error ? err.message : err)
+        if (res.headersSent) return void res.destroy()
+        res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
+        res.end('Request failed')
+      })
+    })
     await new Promise<void>((resolve, reject) => {
       next.once('error', (err: NodeJS.ErrnoException) =>
         reject(new Error(err.code === 'EADDRINUSE' ? `Port ${port} is already in use on this Mac` : err.message)))
