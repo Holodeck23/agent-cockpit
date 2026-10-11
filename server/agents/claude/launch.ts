@@ -33,12 +33,13 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   // Use my Chrome: the first Chrome call gets a bounded wait (chrome-watch.ts).
   const onEvent: EventSink = input.chrome ? watchChrome(events, () => session?.interrupt()) : events
   let ended = false
-  let pending: { readonly text: string; readonly images?: readonly OutgoingImage[] } | undefined
+  // Every message sent before the --help probe resolves waits here, in order, and is written once Claude is up.
+  let pending: readonly { readonly text: string; readonly queuedId?: string; readonly images?: readonly OutgoingImage[] }[] = []
   let replays = false
   const finish = (error?: unknown, stopped = false) => {
     if (ended) return
     ended = true
-    pending = undefined
+    pending = []
     if (error) onEvent({ kind: 'error', message: error instanceof Error ? error.message : 'Could not check Claude Code compatibility' })
     onEvent({ kind: 'result', ok: false, ...(stopped ? { stopped: true } : {}) })
     onEvent({ kind: 'exit', code: null })
@@ -59,14 +60,16 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
         prompt?.remove()
         throw error
       }
-      if (pending !== undefined) { session.send(pending.text, undefined, pending.images); pending = undefined }
+      const waiting = pending
+      pending = []
+      for (const message of waiting) session.send(message.text, message.queuedId, message.images)
     }).catch((error: unknown) => finish(error))
   return {
     agent: 'claude',
     send(text, queuedId, images) {
       if (session) session.send(text, queuedId, images)
-      else if (!ended && pending === undefined) pending = { text, ...(images ? { images } : {}) }
-      else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
+      else if (!ended) pending = [...pending, { text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) }]
+      else onEvent({ kind: 'error', message: 'Agent process is not running' })
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
     respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
@@ -147,7 +150,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     if (stderrTail.length > 20) stderrTail.shift()
   })
   child.on('error', (error) => {
-    onEvent({ kind: 'error', message: startErrorMessage('claude', error) })
+    onEvent({ kind: 'error', message: startErrorMessage('claude', error, input.cwd) })
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true

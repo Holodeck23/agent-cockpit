@@ -83,7 +83,7 @@ export async function probeClaude(executable: string, cwd: string, env: NodeJS.P
     }, (error, stdout) => {
       if (!error) { resolve(stdout); return }
       if (error.code === 'ENOENT' || error.code === 'EACCES') {
-        reject(new Error(startErrorMessage('claude', Object.assign(new Error(error.message), { code: error.code }))))
+        reject(new Error(startErrorMessage('claude', Object.assign(new Error(error.message), { code: error.code }), cwd)))
       } else {
         reject(new Error('Could not check Claude Code compatibility (the check failed, timed out, or returned too much output). Check the selected CLI in Terminal, then retry. No agent turn was started.'))
       }
