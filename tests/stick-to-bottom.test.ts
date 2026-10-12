@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { nearBottom } from '../web/src/useStickToBottom.ts'
 
@@ -13,5 +14,10 @@ describe('nearBottom', () => {
 
   it('content shorter than the view is always at the bottom', () => {
     expect(nearBottom({ scrollTop: 0, clientHeight: 400, scrollHeight: 300 })).toBe(true)
+  })
+
+  it('leaves scroll anchoring to the hook, not the browser', () => {
+    const css = readFileSync(new URL('../web/src/styles/thread.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/\.events\s*\{[^}]*overflow-anchor:\s*none/s)
   })
 })

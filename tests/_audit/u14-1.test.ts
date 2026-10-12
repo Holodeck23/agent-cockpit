@@ -20,10 +20,21 @@ let hits: string[]
 let gateway: PreviewGateway
 let access: PreviewAccess
 let port = 0
+let admitted: Promise<void>
+let markAdmitted: () => void
 
 beforeEach(async () => {
   hits = []
-  access = createPreviewAccess()
+  admitted = new Promise((resolve) => { markAdmitted = resolve })
+  const stored = createPreviewAccess()
+  access = {
+    ...stored,
+    session(id, at) {
+      const found = stored.session(id, at)
+      if (found) markAdmitted()
+      return found
+    },
+  }
   app = createServer((req, res) => { hits.push(`${req.method} ${req.url}`); req.resume(); req.on('end', () => res.end('stored')) })
   await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', () => resolve()))
   const appPort = (app.address() as AddressInfo).port
@@ -56,7 +67,10 @@ async function splitUpload(between: () => void): Promise<{ status?: number; erro
     req.on('error', (error) => resolve({ error: error.message }))
     req.write('12345')
     void (async () => {
-      await settle()
+      // The case under test is a request that passed admission, then lost access while its body
+      // was still arriving. Waiting for the session lookup makes that ordering deterministic even
+      // on a loaded CI runner; a fixed sleep could revoke first and merely exercise the 401 path.
+      await admitted
       between()
       await settle(50)
       req.end('67890')
