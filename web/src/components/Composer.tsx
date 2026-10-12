@@ -141,6 +141,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     setSending(true)
     setSubmitError(undefined)
     const sentImages = attach.images
+    const sentNote = attach.note
     try {
       await onSubmit(trimmed, sentImages.map(chipToSend))
       // Whatever you typed while it was sending stays; only the sent text leaves the box.
@@ -148,6 +149,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
       // Likewise an image added meanwhile stays. This `attach` is from the render that sent, so
       // `remove` takes the chips out of the draft they were sent from, even if the view has moved on.
       for (const { id } of sentImages) attach.remove(id)
+      attach.clearNote(sentNote)
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {
