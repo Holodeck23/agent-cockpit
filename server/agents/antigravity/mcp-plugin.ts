@@ -85,12 +85,18 @@ function readPlain(file: string): string | undefined | Error {
 /** Replaces `file` only if it still holds `expected` (undefined: still absent). */
 function commit(file: string, text: string, expected: string | undefined, beforeCommit?: () => void): boolean {
   const temp = `${file}.${randomUUID()}.tmp`
-  writeFileSync(temp, text, { flag: 'wx', mode: 0o644 })
-  beforeCommit?.()
-  const now = readPlain(file)
-  if (now !== expected) { unlinkSync(temp); return false }
-  renameSync(temp, file)
-  return true
+  try {
+    writeFileSync(temp, text, { flag: 'wx', mode: 0o644 })
+    beforeCommit?.()
+    const now = readPlain(file)
+    if (now !== expected) { unlinkSync(temp); return false }
+    renameSync(temp, file)
+    return true
+  } catch (error) {
+    // A half-written temp file would make the next Connect see a plugin folder that is not Cockpit's.
+    try { unlinkSync(temp) } catch { /* never written, or already gone */ }
+    throw error
+  }
 }
 
 type Parsed = { readonly servers: Record<string, unknown>; readonly rest: Record<string, unknown> }
@@ -122,18 +128,29 @@ function isOurs(manifest: string | undefined | Error): boolean {
  * a launch then starts without Cockpit's tools, and Connect answers with a message.
  */
 export function connectPlugin(root: string, entry: AgyMcpEntry, options: ConnectOptions): ConnectResult {
+  const absent = (path: string): boolean => { try { lstatSync(path); return false } catch { return true } }
+  const created = PARENTS.filter((parent) => absent(join(root, parent)))
+  const pluginAbsent = absent(join(root, PLUGIN_DIR))
   try {
-    return connect(root, entry, options)
+    return connect(root, entry, options, created)
   } catch (error) {
+    // A failure records no ownership, so a folder this attempt made would never be removed again: take back what it made.
+    if (pluginAbsent) takeBack(join(root, PLUGIN_DIR), ['plugin.json', '.gitignore', 'mcp_config.json'])
+    for (const parent of [...created].reverse()) takeBack(join(root, parent), [])
     return fail('unsafe_path', `Cockpit could not write its plugin in ${join(root, PLUGIN_DIR)} (${error instanceof Error ? error.message : String(error)}). Check that the folder can be written to.`)
   }
 }
 
-function connect(root: string, entry: AgyMcpEntry, options: ConnectOptions): ConnectResult {
+/** Removes Cockpit's own files from a folder this attempt made, then the folder if nothing else is in it. */
+function takeBack(folder: string, files: readonly string[]): void {
+  for (const name of files) { try { unlinkSync(join(folder, name)) } catch { /* not written */ } }
+  try { rmdirSync(folder) } catch { /* not empty (someone else's files are in it) or already gone */ }
+}
+
+function connect(root: string, entry: AgyMcpEntry, options: ConnectOptions, created: readonly (typeof PARENTS)[number][]): ConnectResult {
   const dir = join(root, PLUGIN_DIR)
   const unsafe = unsafeFolder(root)
   if (unsafe) return fail('unsafe_path', `${unsafe} is a link or a file, not a folder in this project. Cockpit writes only inside the project and left it alone.`)
-  const created = PARENTS.filter((parent) => { try { lstatSync(join(root, parent)); return false } catch { return true } })
   let exists = true
   try { lstatSync(dir) } catch { exists = false }
   if (exists) {
@@ -170,6 +187,15 @@ function connect(root: string, entry: AgyMcpEntry, options: ConnectOptions): Con
 }
 
 export function disconnectPlugin(root: string, owned: AgyMcpOwnership): DisconnectResult {
+  try {
+    return disconnect(root, owned)
+  } catch (error) {
+    // Like Connect: a read-only, unmounted or unreadable folder is a message, and the project stays connected.
+    return fail('unsafe_path', `Cockpit could not remove its plugin from ${join(root, PLUGIN_DIR)} (${error instanceof Error ? error.message : String(error)}). Check that the folder can be written to, then try again.`)
+  }
+}
+
+function disconnect(root: string, owned: AgyMcpOwnership): DisconnectResult {
   const dir = join(root, PLUGIN_DIR)
   const unsafe = unsafeFolder(root)
   if (unsafe) return fail('unsafe_path', `${unsafe} is a link or a file; Cockpit left it alone.`)
