@@ -36,7 +36,7 @@ Ensure you have Node.js and `npm` installed. Run `npm ci` in the repository firs
 | `npm run dev:server` | Starts the backend server with hot-reload via `tsx watch`. |
 | `npm run dev:web` | Starts the Vite dev server for the React frontend. |
 | `npm run app` | Builds the project and opens the Electron desktop app locally. |
-| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-0.1.4-arm64.dmg`. |
+| `npm run package` | Builds the production `Cockpit.app` and a `.dmg` installer for macOS arm64 at `release/mac-arm64/Cockpit.app` and `release/Cockpit-<version>-arm64.dmg`. |
 
 ## Testing and Proofs
 
