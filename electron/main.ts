@@ -5,6 +5,7 @@ import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
+import { requestNativeAttention } from './attention.ts'
 import { fileOnDisk, spaceRoot, spaceSchema } from '../server/files/documents.ts'
 import { copyInto } from '../server/files/copy-in.ts'
 import { isKnownFolder } from '../server/projects/folders.ts'
@@ -438,6 +439,10 @@ function registerIpc(url: string, threadsDir: string, isProject: (path: string) 
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
     const activity = parseActivity(value)
     if (activity) dock?.update(activity)
+  })
+  ipcMain.on('cockpit:attention', (event) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return
+    requestNativeAttention(app.dock, mainWindow)
   })
   ipcMain.on('cockpit:set-theme', (event, mode: unknown) => {
     if (!event.senderFrame || new URL(event.senderFrame.url).origin !== origin) return

@@ -19,3 +19,10 @@ describe('the account box before its answers arrive', () => {
     expect(html).not.toMatch(/<option value="__add" selected="">/)
   })
 })
+
+it('renders a compact account switch for the composer', () => {
+  const html = renderToStaticMarkup(createElement(AccountChoice, { agent: 'codex', projectPath: '/tmp/p', compact: true }))
+  expect(html).toContain('aria-label="Account for next message"')
+  expect(html).toContain('Checking account…')
+  expect(html).not.toContain('Add an account')
+})

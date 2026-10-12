@@ -59,6 +59,8 @@ const cockpit = {
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   /** Drives the Dock icon: animated while agents work, badged with how many need you. */
   setActivity: (activity: { working: number; needs: number }): void => ipcRenderer.send('cockpit:activity', activity),
+  /** A fresh approval or question: bounce the Dock even when another conversation already needs you. */
+  requestAttention: (): void => ipcRenderer.send('cockpit:attention'),
   /** The process runner's open_preview tool reaches the page through this event. */
   onPreviewOpen: (listener: (preview: PreviewOpen) => void): (() => void) => {
     const receive = (_event: IpcRendererEvent, value: unknown): void => {

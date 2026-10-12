@@ -83,6 +83,18 @@ describe('Stop beside the message box', () => {
     expect(host.querySelector('.image-chip')).not.toBeNull()
   })
 
+  it('places the project account switch directly beside Stop and Send', async () => {
+    await act(async () => root.render(createElement(Composer, {
+      draftKey: 'account-test', placeholder: 'Message', picker: null, onStop: () => undefined,
+      account: createElement('select', { 'aria-label': 'Account for next message' }, createElement('option', null, 'Work')),
+      onSubmit: async () => undefined,
+    })))
+    const actions = host.querySelector('.composer-actions')!
+    expect([...actions.children].map((el) => el.getAttribute('aria-label'))).toEqual([
+      'Account for next message', 'Stop current turn', 'Send',
+    ])
+  })
+
   it('stops only the selected workspace and hides Stop when that workspace finishes', async () => {
     const data = detail('working')
     const events: StoredEvent[] = ['main', 'rose'].map((workspaceId) => ({

@@ -1,6 +1,6 @@
 import type { WebContents } from 'electron'
 import type { ActOutcome, AgentInput, AgentPageInfo, BrowserHost, Capture, PageRead } from '../server/browser/agent.ts'
-import { APPROVAL_SECONDS, originOf } from '../server/browser/agent-policy.ts'
+import { originOf } from '../server/browser/agent-policy.ts'
 import { dragPath, insideViewport, KEY_EVENTS, refParts, samePage } from './browser-policy.ts'
 import type { BrowserService } from './browser-service.ts'
 import { withinTime } from './one-at-a-time.ts'
@@ -100,25 +100,20 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
     withinTime(contents.executeJavaScriptInIsolatedWorld(WORLD, [{ code }]) as Promise<T>, SCRIPT_MS, `The page did not answer within ${SCRIPT_MS / 1000} s`)
 
   /**
-   * Pages whose navigation is held for the guard right now (the person may be deciding): how many requests wait,
-   * and when the latest of them was first held.
+   * Pages whose navigation is held for the guard right now (the person may be deciding): how many requests wait.
    */
-  const deciding = new Map<string, { waiting: number; since: number }>()
-  /** One ask's own window: the time the person has to answer it, and a little more for the answer to arrive. */
-  const DECISION_WAIT_MS = (APPROVAL_SECONDS + 15) * 1000
-
+  const deciding = new Map<string, number>()
   /**
    * Until the page stops loading, or a bounded wait passes; the result says if it is still loading. A request
    * held while the person decides is not a slow load: the load's clock starts once they have, so a Deny
-   * always reaches the call that asked. Each ask gets its own DECISION_WAIT_MS from the moment it is held (a
-   * redirect chain that asks twice waits for both), not one budget for the whole call.
+   * always reaches the call that asked. A redirect chain can ask more than once; every ask pauses the clock.
    */
   async function settle(contents: WebContents, key: string): Promise<void> {
     let deadline = Date.now() + LOAD_WAIT_MS
     await sleep(50)
     while (!contents.isDestroyed()) {
-      const asking = deciding.get(key)
-      if (asking && Date.now() < asking.since + DECISION_WAIT_MS) deadline = Date.now() + LOAD_WAIT_MS
+      const asking = (deciding.get(key) ?? 0) > 0
+      if (asking) deadline = Date.now() + LOAD_WAIT_MS
       else if (!contents.isLoading() || Date.now() >= deadline) break
       await sleep(100)
     }
@@ -240,12 +235,12 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
 
   return {
     guardNavigation: (key, authorize, options) => service.guardNavigation(key, async (url) => {
-      deciding.set(key, { waiting: (deciding.get(key)?.waiting ?? 0) + 1, since: Date.now() })
+      deciding.set(key, (deciding.get(key) ?? 0) + 1)
       try {
         await authorize(url)
       } finally {
-        const left = (deciding.get(key)?.waiting ?? 1) - 1
-        if (left > 0) deciding.set(key, { waiting: left, since: deciding.get(key)!.since })
+        const left = (deciding.get(key) ?? 1) - 1
+        if (left > 0) deciding.set(key, left)
         else deciding.delete(key)
       }
     }, options),

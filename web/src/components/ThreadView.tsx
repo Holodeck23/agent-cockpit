@@ -11,6 +11,7 @@ import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
+import { AccountChoice } from './AccountChoice.tsx'
 import { ChangesView } from './ChangesView.tsx'
 import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
@@ -299,6 +300,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         working={isWorking(status) && focusedRunning}
         onStop={focusedRunning ? () => guard(api.interrupt(meta.id, inSeveral ? focused : undefined)) : undefined}
         stopLabel={inSeveral && focused !== undefined ? `Stop current turn in ${workspace!.nameOf(focused)}` : undefined}
+        account={phone ? undefined : <AccountChoice agent={meta.settings.agent} projectPath={meta.projectPath} compact recheck={false} disabled={running} />}
         onSubmit={(text, images) => send(text, images).then(() => undefined)}
         picker={phone ? (
           <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>

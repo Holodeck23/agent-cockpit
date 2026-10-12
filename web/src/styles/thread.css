@@ -196,6 +196,12 @@
 .composer-foot > .icon-button:disabled { opacity: 0.5; }
 .composer-spacer { flex: 1; }
 .composer-actions { display: flex; align-items: center; gap: 5px; flex: none; }
+.composer-account select {
+  width: min(180px, 22vw); height: 30px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--field); color: var(--strong); font: inherit; font-size: 12px;
+}
+.composer-account select:disabled { color: var(--muted); opacity: 0.72; }
+.composer-account-error { max-width: 120px; overflow: hidden; color: var(--red); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .send, .composer-stop {
   display: grid; place-items: center; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 7px;
   background: var(--project-fill, var(--blue)); color: #fff; box-shadow: none;

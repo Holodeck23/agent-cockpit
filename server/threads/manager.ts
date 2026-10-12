@@ -37,6 +37,8 @@ export interface LaunchRequest {
   readonly cockpit?: CockpitMcpLaunch
   /** The project's own instructions, as set in Cockpit. */
   readonly projectInstructions?: string
+  /** Project trust choice: allow Codex network access in workspace-write. */
+  readonly codexNetwork?: boolean
   /** Where this conversation's images are kept, for agents that read them as files. */
   readonly imagesDir?: string
   /** Selects the account (W12.1): CLAUDE_CONFIG_DIR or CODEX_HOME for a profile, nothing for the CLI default. */
@@ -83,6 +85,12 @@ export const instructionsFor = (req: LaunchRequest): string | undefined =>
  */
 export const claudeLaunchEnv = (env: Readonly<Record<string, string>> | undefined): Record<string, string> => ({ ...env, DISABLE_AUTOUPDATER: '1' })
 
+/** Launch-only Codex config: Cockpit's MCP wiring plus the project's explicit network trust. */
+export const codexConfigArgs = (req: Pick<LaunchRequest, 'cockpit' | 'codexNetwork'>): string[] => [
+  ...(req.cockpit ? codexMcpConfigArgs(req.cockpit) : []),
+  ...(req.codexNetwork ? ['-c', 'sandbox_workspace_write.network_access=true'] : []),
+]
+
 export const defaultLaunchers: Record<AgentId, Launcher> = {
   claude: (req, onEvent) => {
     const mcp = req.cockpit ? claudeMcpOptions(req.cockpit) : undefined
@@ -103,8 +111,9 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       { env: claudeLaunchEnv({ ...mcp?.env, ...req.accountEnv }) },
     )
   },
-  codex: (req, onEvent) =>
-    launchCodex(
+  codex: (req, onEvent) => {
+    const configArgs = codexConfigArgs(req)
+    return launchCodex(
       {
         cwd: req.cwd,
         model: req.settings.model,
@@ -115,10 +124,11 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       },
       onEvent,
       {
-        ...(req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit) } : {}),
+        ...(configArgs.length > 0 ? { configArgs } : {}),
         ...(req.cockpit || req.accountEnv ? { env: { ...req.cockpit?.secretEnv, ...req.accountEnv } } : {}),
       },
-    ),
+    )
+  },
   antigravity: antigravityLauncher(),
   opencode: (req, onEvent) =>
     launchOpencode(
@@ -166,11 +176,14 @@ export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaun
 
 /** Current instructions for a project folder, read when an agent session starts. */
 export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
+export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean } | undefined
 
 export interface ManagerOptions {
   readonly launchers?: Partial<Record<AgentId, Launcher>>
   readonly mcp?: McpProvider
   readonly instructions?: InstructionsProvider
+  /** Per-project user trust, read at each native session launch. */
+  readonly projectTrust?: ProjectTrustProvider
   /** Where conversation images are kept; defaults to the store's own state folder. */
   readonly images?: ImageStore
   /** The opaque primary workspace for a project folder (G-IDENTITY); undefined when it cannot be resolved. */
@@ -680,6 +693,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const session = launcher(
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
+        ...(options.projectTrust?.(meta.projectPath)?.codexNetwork ? { codexNetwork: true } : {}),
         cwd: cwd ?? meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),

@@ -7,11 +7,12 @@ const seen = (...rows: Array<[string, Status, string?]>): Seen => new Map(rows.m
 const on = { reply: true, decision: true }
 
 describe('sounds', () => {
-  it('are off unless stored as on', () => {
-    expect(DEFAULT_SOUNDS).toEqual({ reply: false, decision: false })
+  it('calls for decisions by default while preserving an explicit choice', () => {
+    expect(DEFAULT_SOUNDS).toEqual({ reply: false, decision: true })
     expect(parseSounds(null)).toEqual(DEFAULT_SOUNDS)
     expect(parseSounds('garbage')).toEqual(DEFAULT_SOUNDS)
-    expect(parseSounds('{"reply":true,"decision":"yes"}')).toEqual({ reply: true, decision: false })
+    expect(parseSounds('{"reply":true,"decision":"yes"}')).toEqual({ reply: true, decision: true })
+    expect(parseSounds('{"reply":false,"decision":false}')).toEqual({ reply: false, decision: false })
   })
 
   it('plays a reply when a turn ends after working or waiting', () => {
@@ -38,19 +39,19 @@ describe('sounds', () => {
     expect(soundFor(seen(['a', 'working'], ['b', 'working']), [row('a', 'needs_input'), row('b', 'done')], { reply: true, decision: false })).toBe('reply')
   })
 
-  it('stays quiet for the conversation you are looking at, but not for others', () => {
+  it('stays quiet for an ordinary reply you are looking at, but still calls for its decision', () => {
     expect(soundFor(seen(['a', 'working']), [row('a', 'done')], on, 'a')).toBeUndefined()
     expect(soundFor(seen(['a', 'working'], ['b', 'working']), [row('a', 'done'), row('b', 'done')], on, 'a')).toBe('reply')
-    expect(soundFor(seen(['a', 'working']), [row('a', 'needs_input')], on, 'a')).toBeUndefined()
+    expect(soundFor(seen(['a', 'working']), [row('a', 'needs_input')], on, 'a')).toBe('decision')
   })
 })
 
 describe('attentionChanges', () => {
-  it('names each conversation that finished or now needs a decision, skipping the focused one', () => {
+  it('names each conversation that finished or now needs a decision, including a focused decision', () => {
     const before = seen(['a', 'working'], ['b', 'working'], ['c', 'working'], ['d', 'done'])
     const now = [row('a', 'done'), row('b', 'needs_input'), row('c', 'working'), row('d', 'done')]
     expect(attentionChanges(before, now)).toEqual([{ id: 'a', kind: 'reply' }, { id: 'b', kind: 'decision' }])
-    expect(attentionChanges(before, now, 'b')).toEqual([{ id: 'a', kind: 'reply' }])
+    expect(attentionChanges(before, now, 'b')).toEqual([{ id: 'a', kind: 'reply' }, { id: 'b', kind: 'decision' }])
     expect(attentionChanges(undefined, now)).toEqual([])
   })
 

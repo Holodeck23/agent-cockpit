@@ -34,18 +34,19 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
   return {
     /** Resolves `allow`, or `allow_session` when the person chose the session or grant option. */
     request(threadId: string, toolName: string, input: unknown, signal?: AbortSignal, options: HostActionOptions = {}): Promise<Exclude<ApprovalBehavior, 'deny'>> {
-      const { timeoutMs = 45_000, label = 'Conversation action', sessionKey, grant, workspaceId = '' } = options
-      const description = options.description ?? 'Cockpit conversation control; one action only. Expires after 45 seconds.'
+      const { timeoutMs, label = 'Conversation action', sessionKey, grant, workspaceId = '' } = options
+      const description = options.description ?? 'Cockpit conversation control; one action only. Waits until you answer or the calling turn ends.'
       if (sessionKey && allowedForSession.has(`${sessionOf(threadId, workspaceId)}${sessionKey}`)) return Promise.resolve('allow_session')
       if ([...pending.values()].some((p) => p.threadId === threadId && p.workspaceId === workspaceId)) return Promise.reject(new Error('Answer the pending Cockpit action first'))
       if (signal?.aborted) return Promise.reject(new Error(`${label} disconnected`))
       return new Promise((resolve, reject) => {
         const requestId = randomUUID()
         const abort = () => finish('deny', `${label} disconnected`, 'canceled')
-        const timer = setTimeout(() => finish('deny', `${label} approval expired; request it again${label === 'Conversation action' ? ' with a new request_key' : ''}`, 'expired'), timeoutMs)
+        const timer = timeoutMs === undefined ? undefined : setTimeout(() => finish('deny', `${label} approval expired; request it again${label === 'Conversation action' ? ' with a new request_key' : ''}`, 'expired'), timeoutMs)
         const finish = (behavior: ApprovalBehavior, error?: string, outcome?: ApprovalOutcome) => {
           if (!pending.delete(requestId)) return
-          clearTimeout(timer); signal?.removeEventListener('abort', abort)
+          if (timer !== undefined) clearTimeout(timer)
+          signal?.removeEventListener('abort', abort)
           if (behavior === 'allow_session' && sessionKey) allowedForSession.add(`${sessionOf(threadId, workspaceId)}${sessionKey}`)
           const chosen = behavior === 'deny' ? 'deny' : behavior === 'allow_session' && (sessionKey || grant) ? 'allow_session' : 'allow'
           record(threadId, { kind: 'approval_resolved', requestId, behavior: chosen, ...(outcome ? { outcome } : {}) }, workspaceId || undefined)
@@ -56,7 +57,8 @@ export function createHostActions(record: (threadId: string, event: NormalizedEv
         signal?.addEventListener('abort', abort, { once: true })
         // A non-empty suggestion list is what makes the card offer Allow for this session.
         const suggestions = grant ? [{ type: 'cockpitGrant', label: grant.label }] : sessionKey ? [{ type: 'cockpitSession', key: sessionKey }] : []
-        record(threadId, { kind: 'approval_request', requestId, toolName, input, suggestions, description, expiresAt: new Date(Date.now() + timeoutMs).toISOString() }, workspaceId || undefined)
+        record(threadId, { kind: 'approval_request', requestId, toolName, input, suggestions, description,
+          ...(timeoutMs === undefined ? {} : { expiresAt: new Date(Date.now() + timeoutMs).toISOString() }) }, workspaceId || undefined)
       })
     },
     approve(threadId: string, requestId: string, behavior: ApprovalBehavior): boolean {

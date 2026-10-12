@@ -15,6 +15,7 @@ import type { Project, ThreadSummary } from '../../web/src/api.ts'
 
 const hoisted = vi.hoisted(() => ({
   notify: vi.fn(),
+  requestAttention: vi.fn(),
   cockpit: { threads: [] as unknown[], selectedId: undefined as string | undefined },
   projects: [] as unknown[],
 }))
@@ -95,6 +96,7 @@ const goTo = (digit: number): void => { act(() => { window.dispatchEvent(key(dig
 beforeEach(() => {
   vi.resetModules()
   hoisted.notify.mockClear()
+  hoisted.requestAttention.mockClear()
   hoisted.projects = [PROJECT]
   hoisted.cockpit = { threads: [], selectedId: undefined }
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: { show: false } }), { status: 200 })))
@@ -102,7 +104,8 @@ beforeEach(() => {
   Object.defineProperty(window, 'cockpit', {
     configurable: true,
     value: {
-      platform: 'darwin', setTheme: () => undefined, setActivity: () => undefined, notify: hoisted.notify, appVersion: async () => undefined,
+      platform: 'darwin', setTheme: () => undefined, setActivity: () => undefined, requestAttention: hoisted.requestAttention,
+      notify: hoisted.notify, appVersion: async () => undefined,
       onShowReleaseNotes: () => () => undefined, onPreviewOpen: () => () => undefined, onOpenThread: () => () => undefined, onFullScreen: () => () => undefined,
     },
   })
@@ -124,13 +127,16 @@ describe('attention for the selected conversation', () => {
     show([thread('a', 'needs_input', { lastActivityAt: '2026-10-10T10:05:00.000Z' }), thread('b', 'working')], 'b')
     expect(hoisted.notify).toHaveBeenCalledTimes(1)
     expect(hoisted.notify.mock.calls[0]?.[0]).toMatchObject({ threadId: 'a' })
+    expect(hoisted.requestAttention).toHaveBeenCalledTimes(1)
+    expect(document.title).toBe('Waiting on you · Cockpit')
   })
 
-  it('stays quiet while the Conversations section shows it (control)', async () => {
+  it('still notifies when the focused conversation needs a decision', async () => {
     const { show } = await mount()
     show([thread('a', 'working')], 'a')
     show([thread('a', 'needs_input', { lastActivityAt: '2026-10-10T10:05:00.000Z' })], 'a')
-    expect(hoisted.notify).not.toHaveBeenCalled()
+    expect(hoisted.notify).toHaveBeenCalledTimes(1)
+    expect(hoisted.notify.mock.calls[0]?.[0]).toMatchObject({ threadId: 'a' })
   })
 
   it('notifies about it when the person is on Files, where it is not on screen', async () => {
@@ -142,7 +148,7 @@ describe('attention for the selected conversation', () => {
     expect(hoisted.notify.mock.calls[0]?.[0]).toMatchObject({ threadId: 'a' })
   })
 
-  it('notifies about a finished reply from Processes too, and goes quiet again once back on Conversations', async () => {
+  it('notifies about a finished reply from Processes and a decision after returning to Conversations', async () => {
     const { show } = await mount()
     show([thread('a', 'working')], 'a')
     goTo(5) // ⌥⌘5: Processes
@@ -152,6 +158,6 @@ describe('attention for the selected conversation', () => {
     goTo(1) // ⌥⌘1: Conversations
     show([thread('a', 'working', { lastActivityAt: '2026-10-10T10:06:00.000Z' })], 'a')
     show([thread('a', 'needs_input', { lastActivityAt: '2026-10-10T10:07:00.000Z' })], 'a')
-    expect(hoisted.notify).toHaveBeenCalledTimes(1)
+    expect(hoisted.notify).toHaveBeenCalledTimes(2)
   })
 })

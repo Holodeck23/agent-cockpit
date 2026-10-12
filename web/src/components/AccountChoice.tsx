@@ -30,9 +30,12 @@ interface AccountChoiceProps {
   readonly onSelected?: (account: AccountView | undefined) => void
   /** Re-read who the CLI defaults are signed in to (default on); one is enough when several show at once. */
   readonly recheck?: boolean
+  /** One project-wide account switch beside Send; account management stays in the full picker/settings view. */
+  readonly compact?: boolean
+  readonly disabled?: boolean
 }
 
-export function AccountChoice({ agent, projectPath, onSelected, recheck = true }: AccountChoiceProps) {
+export function AccountChoice({ agent, projectPath, onSelected, recheck = true, compact = false, disabled = false }: AccountChoiceProps) {
   const [view, setView] = useState<AccountsView>()
   const [projectId, setProjectId] = useState<string>()
   const [selected, setSelected] = useState<string>()
@@ -70,6 +73,7 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
 
   const support = view?.support[agent]
   if (view && support && !support.profiles) {
+    if (compact) return null
     return <p className="picker-note account-default-only" role="note">Account: CLI default. {support.reason}</p>
   }
 
@@ -86,6 +90,23 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
       .finally(() => setBusy(false))
   }
   const reload = (): Promise<void> => api.accounts().then(setView, (e: unknown) => setError(message(e)))
+
+  if (compact) {
+    return (
+      <span className="composer-account">
+        <select aria-label="Account for next message" title="Account for the next message in this project"
+          value={loading ? '' : selected ?? ''} disabled={disabled || loading || busy} aria-busy={loading}
+          onChange={(e) => choose(e.target.value)}>
+          {loading ? <option value="">Checking account…</option> : null}
+          {mine.map((account) => (
+            <option key={account.id} value={account.id}>{account.mode === 'default' ? `Default${account.identity?.state === 'known' ? ` · ${account.identity.hint}` : ''}` : accountName(account)}</option>
+          ))}
+        </select>
+        {error ? <span className="composer-account-error" role="alert" title={error}>Account change failed</span> : null}
+        {note ? <span className="visually-hidden" role="status">{note}</span> : null}
+      </span>
+    )
+  }
 
   return (
     <div className="account-choice" role="group" aria-label="Account">

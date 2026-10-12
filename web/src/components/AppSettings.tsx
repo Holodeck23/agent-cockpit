@@ -49,7 +49,7 @@ export function AppSettings({ sounds, onSounds, notify, onNotify, onClose }: App
                 </label>
               </div>
             ))}
-            <p className="modal-note">Never for the conversation you are looking at. Click one to open that conversation. macOS asks once whether Cockpit may notify; you can change that later in System Settings → Notifications.</p>
+            <p className="modal-note">Approval and question notifications also appear for the conversation you are looking at. Click one to open that conversation. macOS asks once whether Cockpit may notify; you can change that later in System Settings → Notifications.</p>
           </section>
         ) : null}
         <section className="settings-section" aria-labelledby="settings-sounds">
@@ -63,7 +63,7 @@ export function AppSettings({ sounds, onSounds, notify, onNotify, onClose }: App
               <button type="button" className="button-soft" aria-label={`Play the ${s.id} sound`} onClick={() => playSound(s.id)}>Play</button>
             </div>
           ))}
-          <p className="modal-note">Sounds play while Cockpit is open, from any project, but not for the conversation you are looking at. They are off until you turn them on, and remembered on this Mac.</p>
+          <p className="modal-note">Decision sounds also play for the conversation you are looking at. They are on by default; reply sounds stay opt-in. Both are remembered on this Mac.</p>
         </section>
         <section className="settings-section" aria-labelledby="settings-elsewhere">
           <h3 id="settings-elsewhere">Elsewhere</h3>

@@ -6,7 +6,7 @@ import { buildClaudeArgs } from '../server/agents/claude/flags.ts'
 import type { AgentSession } from '../server/agents/types.ts'
 import { COCKPIT_GUIDANCE } from '../server/mcp/sessions.ts'
 import { createProjectStore } from '../server/projects/store.ts'
-import { createThreadManager, instructionsFor, projectInstructionsBlock, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
+import { codexConfigArgs, createThreadManager, instructionsFor, projectInstructionsBlock, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 
@@ -33,6 +33,20 @@ describe('project instructions in the store', () => {
     const cleared = projects.open('/p', { instructions: '' })
     expect(cleared.instructions).toBeUndefined()
     expect(cleared.instructionsRevision).toBe(3)
+  })
+
+  it('keeps Codex network trust off for old projects and saves an explicit project choice', () => {
+    const projects = createProjectStore(newRoot())
+    expect(projects.open('/p').codexNetwork).toBeUndefined()
+    expect(projects.open('/p', { codexNetwork: true }).codexNetwork).toBe(true)
+    expect(projects.open('/p', { codexNetwork: false }).codexNetwork).toBe(false)
+  })
+})
+
+describe('Codex project trust', () => {
+  it('passes network access as a launch override without writing project config', () => {
+    expect(codexConfigArgs({ codexNetwork: false })).toEqual([])
+    expect(codexConfigArgs({ codexNetwork: true })).toEqual(['-c', 'sandbox_workspace_write.network_access=true'])
   })
 })
 
@@ -132,5 +146,19 @@ describe('instructions reach sessions', () => {
     manager.send(a.id, 'on codex')
     expect(requests.at(-1)?.projectInstructions).toBe('Project A rules, v2')
     expect(requests.at(-1)?.seed).toContain('after restart')
+  })
+
+  it('reads project network trust at launch and passes it only to that project', () => {
+    const requests: LaunchRequest[] = []
+    const launcher = recordingLauncher(requests)
+    const manager = createThreadManager(createThreadStore(newRoot()), {
+      launchers: { codex: launcher },
+      projectTrust: (path) => ({ codexNetwork: path === '/work/trusted' }),
+    })
+    const settings = threadSettingsSchema.parse({ agent: 'codex' })
+    manager.create({ projectPath: '/work/trusted', settings, text: 'one' })
+    manager.create({ projectPath: '/work/offline', settings, text: 'two' })
+    expect(requests[0]?.codexNetwork).toBe(true)
+    expect(requests[1]?.codexNetwork).toBeUndefined()
   })
 })

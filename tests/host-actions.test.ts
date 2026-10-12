@@ -49,6 +49,7 @@ it('records deadlines, expiry and cancellation separately from a person denying'
   expect(events.at(-1)).toMatchObject({ behavior: 'deny', outcome: 'expired' })
   const controller = new AbortController()
   const canceled = actions.request('t', 'Read', {}, controller.signal)
+  expect(events.at(-1)).not.toHaveProperty('expiresAt')
   controller.abort()
   await expect(canceled).rejects.toThrow('disconnected')
   expect(events.at(-1)).toMatchObject({ behavior: 'deny', outcome: 'canceled' })
