@@ -119,7 +119,7 @@ function buildComponents(projectPath: string | undefined): Components {
       if (href && safeUrl(href)) return external(href, children)
       const hash = href && projectPath ? commitOf(href) : undefined
       if (hash) return <CommitButton hash={hash}>{children}</CommitButton>
-      const target = href ? fileLink(href, projectPath) : undefined
+      const target = href ? fileLink(href, projectPath, 'link') : undefined
       return target ? <FileButton target={target}>{children}</FileButton> : <span>{children}</span>
     },
     img: ({ src, alt }) => external(typeof src === 'string' ? safeUrl(src) || undefined : undefined, alt || 'image', 'reply-image'),
@@ -142,7 +142,7 @@ export function ReplyMarkdown({ text }: { text: string }) {
   const plugins = useMemo(() => [remarkGfm, htmlAsText, linkFilesInProse(projectPath), ...(projectPath ? [linkCommitsInProse] : [])], [projectPath])
   // Web addresses pass; a file reference passes to the link renderer, which checks it again.
   const urlTransform = (url: string): string | undefined =>
-    safeUrl(url) || (fileLink(url, projectPath) || (url.startsWith(COMMIT_SCHEME) && commitOf(url)) ? url : undefined)
+    safeUrl(url) || (fileLink(url, projectPath, 'link') || (url.startsWith(COMMIT_SCHEME) && commitOf(url)) ? url : undefined)
   return (
     <Markdown remarkPlugins={plugins} components={components} urlTransform={urlTransform}>
       {text}

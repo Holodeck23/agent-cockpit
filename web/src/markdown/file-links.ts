@@ -8,12 +8,20 @@ export interface FileTarget { readonly path: string; readonly line?: number; rea
 const SPEC = /^([^\s:#]+)(?::(\d+)(?:-(\d+)|:\d+)?|#L(\d+)(?:-L?(\d+))?)?$/
 const PATH = /^[\w@+-][\w.@+/-]*$/
 const EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,9}$/
-// A bare name.ext (no directory, no line) is as often code (`console.log`, `this.state`) as a file,
-// so it counts only with an extension that files really have.
+// A bare name.ext (no directory, no line) in a code span is as often code (`console.log`, `this.state`) as a
+// file, so it counts only with an extension that files really have. `log`, `env`, `sum`, `properties` and `m`
+// are left out because `console.log`, `process.env`, `df.sum` and `schema.properties` are code; go.mod and go.sum
+// are named whole.
 const FILE_EXTENSIONS = new Set(('md mdx txt json jsonc yaml yml toml ini cfg conf lock ts tsx mts cts js jsx mjs cjs css scss less html htm xml svg ' +
-  'py rb go rs java kt swift c h cpp hpp cs php sh bash zsh sql graphql proto vue svelte csv tsv png jpg jpeg gif webp pdf plist gradle tf ipynb patch diff').split(' '))
+  'py rb go rs java kt kts swift c h cpp hpp cs php sh bash zsh sql graphql proto vue svelte csv tsv png jpg jpeg gif webp pdf plist gradle tf ipynb patch diff ' +
+  'dart lua scala ex exs erl hs clj zig jl rst tex ejs hbs sass ps1').split(' '))
+const FILE_NAMES = new Set(['go.mod', 'go.sum'])
 
-export function fileLink(raw: string, projectPath: string | undefined): FileTarget | undefined {
+/**
+ * `how` is where the reference was found. In a code span (the default) a bare name.ext must look like a file;
+ * as the target of a Markdown link ([the log](build.log)) the agent has said it is one, so any name.ext is.
+ */
+export function fileLink(raw: string, projectPath: string | undefined, how: 'code' | 'link' = 'code'): FileTarget | undefined {
   if (!projectPath) return undefined
   const match = SPEC.exec(raw.trim())
   if (!match) return undefined
@@ -27,7 +35,7 @@ export function fileLink(raw: string, projectPath: string | undefined): FileTarg
   if (!PATH.test(path) || !EXTENSION.test(path)) return undefined
   if (path.split('/').some((part) => part === '' || part === '.' || part === '..')) return undefined
   const numbered = match[2] !== undefined || match[4] !== undefined
-  if (!numbered && !path.includes('/') && !FILE_EXTENSIONS.has(path.slice(path.lastIndexOf('.') + 1).toLowerCase())) return undefined
+  if (how === 'code' && !numbered && !path.includes('/') && !FILE_NAMES.has(path) && !FILE_EXTENSIONS.has(path.slice(path.lastIndexOf('.') + 1).toLowerCase())) return undefined
   const line = Number(match[2] ?? match[4] ?? NaN)
   const end = Number(match[3] ?? match[5] ?? NaN)
   if (numbered) {
