@@ -4,4 +4,10 @@ dist/
 .DS_Store
 dist-electron/
 release/
+/release
+/release.noindex/
 build/icon-1024.png
+/src-tauri/
+/dist-tauri/
+.fixture-pids
+/.claude/
