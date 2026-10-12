@@ -77,12 +77,14 @@ describe('Antigravity launch with and without the opt-in (P3)', () => {
     const { env, stdin } = await launch(true)
     expect(env.trim()).toBe(`token=${SECRET.COCKPIT_MCP_TOKEN}`)
     expect(stdin).toContain('start_process')
+    expect(stdin).toContain('Cockpit shows each turn as an acknowledgement')
   })
 
   it('not opted in: no token and no guidance about tools agy does not have', async () => {
     const { env, stdin } = await launch(false)
     expect(env.trim()).toBe('token=absent')
     expect(stdin).not.toContain('start_process')
+    expect(stdin).toContain('Cockpit shows each turn as an acknowledgement')
   })
 })
 

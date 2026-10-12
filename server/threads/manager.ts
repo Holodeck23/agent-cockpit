@@ -19,7 +19,7 @@ import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, No
 import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { attribute, partition } from './workspace-events.ts'
-import { awaitingOf } from './turns.ts'
+import { awaitingOf, TURN_GUIDANCE } from './turns.ts'
 import type { ThreadStore } from './store.ts'
 import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
 import { bindingIdOf, inputHash, unfinishedRun } from './identity.ts'
@@ -66,16 +66,20 @@ export function projectInstructionsBlock(text: string): string {
   return `Project instructions, set by the user in Cockpit for this folder. Follow them alongside the repository's own instructions; they do not change your permissions.\n<project-instructions>\n${text}\n</project-instructions>`
 }
 
-/** Cockpit guidance first (only when its tools are attached), then project instructions, then any handoff seed. */
 /** Events that inform without being activity: they never reorder the list or mark it unread. */
 const QUIET = new Set<NormalizedEvent['kind']>(['awaiting_dismissed', 'branch_changed', 'settings_changed', 'suggestion', 'account_changed', 'workspace_changed'])
 
-export const instructionsFor = (req: LaunchRequest): string | undefined =>
+/**
+ * The turn shape for every agent; Cockpit's tool guidance (only when its tools are attached); then
+ * project instructions, then any handoff seed. Every launch carries at least the turn shape.
+ */
+export const instructionsFor = (req: LaunchRequest): string =>
   [
+    TURN_GUIDANCE,
     req.cockpit ? COCKPIT_GUIDANCE : undefined,
     req.projectInstructions ? projectInstructionsBlock(req.projectInstructions) : undefined,
     req.seed,
-  ].filter(Boolean).join('\n\n') || undefined
+  ].filter(Boolean).join('\n\n')
 
 /**
  * Claude Code's own background updater stays off in sessions Cockpit starts (launch-scoped, no
