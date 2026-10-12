@@ -35,6 +35,9 @@ import type { ResultService } from '../results/service.ts'
 import type { PresetStore } from '../presets/store.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
+import { createMapService, handleNavigationRoute, type MapService } from './navigation-routes.ts'
+import { createPrivacy, type Privacy } from '../projects/privacy.ts'
+import { createNavigationStore, type NavigationStore } from '../projects/navigation.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
 import { handleResultRoute } from './result-routes.ts'
 import { resolveWorkflows } from '../workflows/store.ts'
@@ -156,6 +159,11 @@ export interface ApiDeps {
   /** Merge a worktree back into the main checkout (W12.3); desktop only. */
   readonly merges?: MergeService
   readonly memory?: MemoryStore
+  /** The Projects area's arrangement (navigation.json); defaults to the one beside the thread store. */
+  readonly navigation?: NavigationStore
+  /** The Map and Mac only; start.ts shares one with push, previews and crash reports. */
+  readonly mapService?: MapService
+  readonly privacy?: Privacy
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
   /** Where the CLIs keep their sessions (~), for Import conversations; tests point it elsewhere. */
@@ -186,10 +194,14 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, navigation, mapService: sharedMap, privacy: sharedPrivacy, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   const scope = createWorkspaceScope(projects, workspaces)
+  const mapService = sharedMap ?? createMapService({ navigation: navigation ?? createNavigationStore(store.root), projects, summaries: () => manager.summaries() })
+  const privacy = sharedPrivacy ?? createPrivacy(() => mapService.privateRoots())
+  // Mac only (projects-area Move 9): what the phone may not see.
+  const threadHidden = (threadId: string): boolean => { const meta = store.get(threadId); return meta !== undefined && privacy.macOnly(meta.projectPath) }
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
   // @file attachments come from the workspace the message works in (`folder`); workflows stay the project's.
@@ -218,7 +230,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
 
     try {
       if (method === 'GET' && parts[1] === 'stream') {
-        openSse(req, res, manager, processes, viaPhone ? undefined : remote)
+        openSse(req, res, manager, processes, viaPhone ? undefined : remote, viaPhone ? { thread: threadHidden, project: privacy.macOnly } : undefined)
         return true
       }
       if (parts[1] === 'recovery' && parts.length === 2) {
@@ -341,7 +353,9 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
           if (parts.length === 2 && method === 'POST') {
             const body = parseBody(z.object({ projectPath: z.string().min(1).max(1000), scope: memoryScope, text }), await readJson(req))
             known(body.projectPath)
-            sendJson(res, 201, { data: memory.add({ ...body, source: { kind: 'you' } }) })
+            // A Mac-only project's memories never reach agents in other projects.
+            const scope = body.scope === 'everywhere' && privacy.macOnly(body.projectPath) ? 'project' : body.scope
+            sendJson(res, 201, { data: memory.add({ ...body, scope, source: { kind: 'you' } }) })
             return true
           }
           if (parts[2] === 'clear' && method === 'POST') {
@@ -489,12 +503,13 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
       if ((parts[1] === 'runs' || parts[1] === 'checks') && results && checks) {
         await handleResultRoute(req, res, url, parts, {
           manager, store, results, checks, ...(workspaces ? { workspace: (id: string) => workspaces.get(id) } : {}),
-          isOpen: (projectPath) => projects.list({ includeHidden: true }).some((project) => project.path === projectPath),
+          isOpen: (projectPath) => projects.list({ includeHidden: true }).some((project) => project.path === projectPath) && !(viaPhone && privacy.macOnly(projectPath)),
         }, viaPhone)
         return true
       }
+      if ((parts[1] === 'map' || parts[1] === 'navigation') && await handleNavigationRoute(req, res, url, parts, mapService, viaPhone)) return true
       if (parts[1] === 'processes') {
-        await handleProcessRoute(req, res, url, parts, processes, scope)
+        await handleProcessRoute(req, res, url, parts, processes, scope, viaPhone ? privacy.macOnly : undefined)
         return true
       }
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'image') {
@@ -557,7 +572,8 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
       if (parts[1] === 'projects' && parts.length === 2) {
         if (method === 'GET') {
           projects.ensure(store.list().map((meta) => ({ path: meta.projectPath, at: meta.updatedAt })))
-          sendJson(res, 200, { data: withIdentity(projects.list(), workspaces) })
+          const visible = viaPhone ? projects.list().filter((p) => !privacy.macOnly(p.path)) : projects.list()
+          sendJson(res, 200, { data: withIdentity(visible, workspaces) })
           return true
         }
         if (method === 'POST') {
@@ -573,12 +589,13 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
       if (parts.length === 3 && parts[2] === 'search' && method === 'GET') {
         const q = url.searchParams.get('q') ?? ''
         if (q.length > MAX_QUERY) throw new HttpError(400, 'Search for something shorter')
-        sendJson(res, 200, { data: searchThreads(store, q, url.searchParams.get('projectPath') ?? undefined) })
+        const hits = searchThreads(store, q, url.searchParams.get('projectPath') ?? undefined)
+        sendJson(res, 200, { data: viaPhone ? hits.filter((h) => !threadHidden(h.id)) : hits })
         return true
       }
 
       if (parts.length === 2 && method === 'GET') {
-        sendJson(res, 200, { data: manager.summaries() })
+        sendJson(res, 200, { data: viaPhone ? manager.summaries().filter((t) => !privacy.macOnly(t.meta.projectPath)) : manager.summaries() })
         return true
       }
       if (parts.length === 2 && method === 'POST') {
@@ -596,6 +613,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
 
       const threadId = parts[2] ?? ''
       if (!store.get(threadId)) throw new HttpError(404, 'Unknown thread')
+      if (viaPhone && threadHidden(threadId)) throw new HttpError(404, 'Not available from the phone')
       const action = parts[3]
 
       if (method === 'GET' && action === 'events') {

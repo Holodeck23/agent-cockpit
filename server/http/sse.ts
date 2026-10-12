@@ -10,7 +10,13 @@ import type { RemoteAccess } from '../remote/service.ts'
  */
 export const MAX_BUFFERED_BYTES = 8_000_000
 
-export function openSse(req: IncomingMessage, res: ServerResponse, manager: ThreadManager, processes: ProcessRunner, remote?: RemoteAccess): void {
+/** For the phone: conversations and project processes it must not receive (Mac only). */
+export interface StreamFilter {
+  readonly thread: (threadId: string) => boolean
+  readonly project: (projectPath: string) => boolean
+}
+
+export function openSse(req: IncomingMessage, res: ServerResponse, manager: ThreadManager, processes: ProcessRunner, remote?: RemoteAccess, hidden?: StreamFilter): void {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -26,9 +32,11 @@ export function openSse(req: IncomingMessage, res: ServerResponse, manager: Thre
     res.write(chunk)
   }
   const unsubscribe = manager.subscribe((update) => {
+    if (hidden?.thread(update.threadId)) return
     send(`data: ${JSON.stringify(update)}\n\n`)
   })
   const unsubscribeProcesses = processes.subscribe((info) => {
+    if (hidden?.project(info.projectPath)) return
     send(`event: process\ndata: ${JSON.stringify(info)}\n\n`)
   })
   const unsubscribeRemote = remote?.subscribe(() => {

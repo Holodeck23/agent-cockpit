@@ -25,7 +25,10 @@ export async function handleProcessRoute(
   parts: readonly string[],
   runner: ProcessRunner,
   scope?: WorkspaceScope,
+  /** The phone: processes of Mac-only projects are not there. */
+  hidden?: (projectPath: string) => boolean,
 ): Promise<void> {
+  const shown = <T extends { projectPath: string }>(list: readonly T[]): T[] => (hidden ? list.filter((p) => !hidden(p.projectPath)) : [...list])
   const method = req.method ?? 'GET'
   const id = parts[2]
   const action = parts[3]
@@ -35,10 +38,10 @@ export async function handleProcessRoute(
     const workspaceId = url.searchParams.get('workspaceId') ?? undefined
     if (workspaceId) {
       const at = requireScope(scope).resolve(url.searchParams.get('project') ?? undefined, workspaceId)
-      sendJson(res, 200, { data: runner.list(at.projectPath, at.cwd) })
+      sendJson(res, 200, { data: shown(runner.list(at.projectPath, at.cwd)) })
       return
     }
-    sendJson(res, 200, { data: runner.list(url.searchParams.get('project') ?? undefined) })
+    sendJson(res, 200, { data: shown(runner.list(url.searchParams.get('project') ?? undefined)) })
     return
   }
   // Show finished → Clear: the finished rows of one folder leave the history; nothing is stopped.
@@ -54,7 +57,8 @@ export async function handleProcessRoute(
     sendJson(res, 200, { data: { cleared: runner.clearFinished(project) } })
     return
   }
-  if (!id || !runner.get(id)) throw new HttpError(404, 'Unknown process')
+  const found = id ? runner.get(id) : undefined
+  if (!id || !found || hidden?.(found.projectPath)) throw new HttpError(404, 'Unknown process')
   if (method === 'GET' && action === 'output') {
     const since = readCursor(url.searchParams.get('since'), Number.MAX_SAFE_INTEGER)
     const tail = readCursor(url.searchParams.get('tail'), 2000)

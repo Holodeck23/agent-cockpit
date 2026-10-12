@@ -74,6 +74,8 @@ export interface PhonePreviewOptions {
   /** A proof build's shorter wait for a dev server's first byte. */
   readonly firstByteMs?: number
   readonly log?: (line: string) => void
+  /** Mac only: an app running in such a project is never opened on the phone. */
+  readonly hidden?: (projectPath: string) => boolean
 }
 
 const prepareBody = z.object({ processId: z.string().min(1).max(200) })
@@ -143,7 +145,7 @@ export function createPhonePreviews(options: PhonePreviewOptions) {
     const policy = options.policy()
     if (!policy) return { state: 'phone-off', error: 'Phone access is off on your Mac.' }
     const process = processes.get(at.processId)
-    if (!process || process.status !== 'running') return { state: 'stopped', error: 'This app is not running. Start it from Cockpit on your Mac.' }
+    if (!process || options.hidden?.(process.projectPath) || process.status !== 'running') return { state: 'stopped', error: 'This app is not running. Start it from Cockpit on your Mac.' }
     if (!loopbackTarget(process.url)) return { state: 'no-local-url', error: 'This process has not shown a local web address, so there is nothing to open.' }
     const service = services.find(identityOf(process))
     if (!service || !gateway.openIds().includes(service.id)) {
