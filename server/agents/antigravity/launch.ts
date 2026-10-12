@@ -150,6 +150,16 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
   let turnOpen = false
   // Results agy still owes for turns that were stopped: they arrive after Stop, and a message sent meanwhile is not given them.
   let owed = 0
+  // agy lists every denial since this process started on each result (1.3.3); a resumed process starts
+  // over. What is new since the last result is what this turn's policy refused.
+  let deniedSoFar = 0
+  const deniedThisTurn = (result: Extract<NormalizedEvent, { kind: 'result' }>): NormalizedEvent => {
+    const all = result.denied ?? []
+    const fresh = all.slice(deniedSoFar)
+    deniedSoFar = Math.max(deniedSoFar, all.length)
+    const { denied: _all, ...rest } = result
+    return fresh.length ? { ...rest, denied: fresh } : rest
+  }
   const stderrTail: string[] = []
   // Images agy's image-generator saved during a turn are shown at its end, each once (images.ts).
   const home = env?.HOME ?? process.env.HOME ?? homedir()
@@ -173,7 +183,8 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
       onEvent({ kind: 'error', message: `Could not read Antigravity output: ${error instanceof Error ? error.message : String(error)}` })
       return
     }
-    for (const event of events) {
+    for (const raw of events) {
+      const event = raw.kind === 'result' ? deniedThisTurn(raw) : raw
       if (event.kind === 'session') conversationId = event.sessionId
       // After Stop the turn has already ended as stopped: agy's own "interrupted" result is not a failure.
       // A success while a newer message waits is that message's: the stopped turn's result is not coming.

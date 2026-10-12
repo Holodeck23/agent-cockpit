@@ -92,6 +92,7 @@ export function turnOutcomes(events: readonly StoredEvent[], agent: AgentId): Tu
       }
     }
     const result = closing?.kind === 'result' ? closing : undefined
+    if (result?.denied?.length) refused = true
     // Cockpit imports only into a new conversation, so everything before its first agent process
     // was imported. Without one, older imports carry no marker: a bare success that shares its time
     // with your next message was added by the importer.

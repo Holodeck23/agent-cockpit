@@ -39,8 +39,9 @@ export function stepLabel(name: string, input: unknown): string {
 /**
  * The follow-up for a turn that just ended, or undefined when none is owed. `events` ends with the
  * turn's result. Owed only when ALL hold: the result is a success with no text; the turn has no
- * message from the agent; one of its steps was refused by the agent's own policy (never `denied` on
- * the result alone: agy lists every denial of the session there); and Cockpit did not start it.
+ * message from the agent; its own policy refused one of its steps (a refusal in the step's result,
+ * or this turn's `denied` on the result: agy 1.3.3 ends a refused step as done with no output); and
+ * Cockpit did not start it.
  */
 export function blockedStepFollowUp(events: readonly StoredEvent[], modeLabel: string): string | undefined {
   const result = events.at(-1)?.event
@@ -51,8 +52,9 @@ export function blockedStepFollowUp(events: readonly StoredEvent[], modeLabel: s
   if (!turn.some((e) => e.kind === 'user_text')) return undefined
   if (turn.some((e) => (e.kind === 'user_text' && e.fromCockpit) || (e.kind === 'assistant_text' && e.text.trim() !== ''))) return undefined
   const refused = turn.find((e) => e.kind === 'tool_result' && e.isError && isRefusal(e.content) && !BY_YOU.test(e.content))
-  if (refused?.kind !== 'tool_result') return undefined
-  const step = turn.find((e) => e.kind === 'tool_use' && e.id === refused.toolUseId)
+  if (refused?.kind !== 'tool_result' && !result.denied?.length) return undefined
+  // The refused step; with only `denied` to go on, the turn's last step (agy stops at the refusal).
+  const step = refused?.kind === 'tool_result' ? turn.find((e) => e.kind === 'tool_use' && e.id === refused.toolUseId) : turn.findLast((e) => e.kind === 'tool_use')
   const label = step?.kind === 'tool_use' ? stepLabel(step.name, step.input) : result.denied?.[0]?.label ?? 'a step'
   return `Cockpit note: your last step (${label}) was blocked by this conversation's permission mode (${modeLabel}), not by the user. `
     + 'Without running any more tools, tell the user in two or three sentences what you were trying to do, what was blocked, and what you can say without it.'

@@ -343,6 +343,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let refusedThisTurn: string | undefined
   /** The last ended turn's refused step: Cockpit's follow-up (fromCockpit) reports on it. */
   let refusedLastTurn: string | undefined
+  /** This turn's latest step, by item index. */
+  let lastStepAt: number | undefined
   // Turn ends Cockpit followed up after a blocked step: the follow-up says what happened, so the
   // end itself shows no note. If the follow-up ends silent too, the refused-step note shows there.
   const followedUp = new Set<number>()
@@ -354,7 +356,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const startTurn = (index: number, text: string, images: { file: string; name?: string }[]): void => {
     lastUserText = text; lastUserImages = images; failedThisTurn = false
     turnMode = index > lastChange ? currentMode : loggedMode
-    repliedThisTurn = false; refusedThisTurn = undefined; turnOpen = true
+    repliedThisTurn = false; refusedThisTurn = undefined; turnOpen = true; lastStepAt = undefined
   }
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
     const item = compacting === undefined ? undefined : items[compacting]
@@ -434,6 +436,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         return
       }
       case 'tool_use':
+        lastStepAt = items.length
         steps.set(event.id, items.length)
         items.push({ type: 'step', key, label: describeTool(event.name, event.input), startedAt: ts })
         return
@@ -581,6 +584,16 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         deniedCards = 0
         if (compacting !== undefined) endCompaction(ts, event.ok ? 'done' : 'failed')
         const failed = !event.ok && !event.stopped && !event.interrupted
+        // agy 1.3.3 ends a refused step as done with no output; the result's `denied` (this turn's)
+        // says a step was refused. agy stops at the refusal, so it is the turn's last step.
+        if (!refusedThisTurn && event.denied?.length) {
+          const step = lastStepAt === undefined ? undefined : items[lastStepAt]
+          if (lastStepAt !== undefined && step?.type === 'step' && !step.error) {
+            refusedThisTurn = lowerFirst(step.label)
+            replace(lastStepAt, { ...step, label: `Not allowed: ${lowerFirst(step.label)}`, denied: true as const })
+          } else refusedThisTurn = event.denied[0]!.label ?? event.denied[0]!.action
+        }
+        lastStepAt = undefined
         if (event.interrupted) {
           items.push({ type: 'note', key, text: 'Interrupted: Cockpit stopped before this turn finished. Nothing was sent again.', tone: 'plain' })
         } else if (failed && !failedThisTurn) {

@@ -1,9 +1,12 @@
-import { mkdtempSync } from 'node:fs'
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentSession, EventSink, NormalizedEvent } from '../server/agents/types.ts'
 import { blockedStepFollowUp, reportsBlockedSteps, stepLabel } from '../server/threads/blocked-step.ts'
+import { launchAntigravity } from '../server/agents/antigravity/launch.ts'
+import type { AgentCapabilities } from '../server/agents/capabilities/types.ts'
+import { turnOutcomes } from '../server/threads/turn-outcomes.ts'
 import { createThreadManager, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema, type StoredEvent } from '../server/threads/types.ts'
@@ -15,6 +18,13 @@ const refusedTurn = (n: number): NormalizedEvent[] => [
   { kind: 'tool_use', id: `t${n}`, name: 'run_command', input: { CommandLine: 'find . -maxdepth 1 -type f' } },
   { kind: 'tool_result', toolUseId: `t${n}`, content: REFUSED, isError: true },
   { kind: 'result', ok: true, text: '', durationMs: 4657, denied: [{ action: 'command', label: 'RunCommand' }] },
+]
+// The same refusal as agy 1.3.3 sends it through Cockpit's launch, captured live 2026-10-12: the
+// step ends done with no output, and only the result's (per-turn, see the launcher) `denied` says so.
+const refusedTurnLive = (n: number): NormalizedEvent[] => [
+  { kind: 'tool_use', id: `t${n}`, name: 'run_command', input: { CommandLine: 'find . -maxdepth 1 -type f' } },
+  { kind: 'tool_result', toolUseId: `t${n}`, content: '', isError: false },
+  { kind: 'result', ok: true, text: '', durationMs: 7380, denied: [{ action: 'command', label: 'RunCommand' }] },
 ]
 const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
@@ -81,6 +91,17 @@ describe('one follow-up after a blocked step (Antigravity)', () => {
     expect(fake.sent).toHaveLength(2)
   })
 
+  it('agy 1.3.3\'s live shape (a done step with no output, `denied` on the result) gets the same one note', async () => {
+    const { fake, notes, play } = setup()
+    play(refusedTurnLive(1))
+    await tick()
+    expect(fake.sent[1]).toMatch(/^Cockpit note: your last step \(running `find \. -maxdepth 1 -type f`\) was blocked/)
+    play([{ kind: 'tool_use', id: 'x', name: 'run_command', input: { CommandLine: 'ls' } }, { kind: 'tool_result', toolUseId: 'x', content: '', isError: false },
+      { kind: 'result', ok: true, text: '', denied: [{ action: 'command', label: 'RunCommand' }] }])
+    await tick()
+    expect(notes()).toHaveLength(1)
+  })
+
   it('none after Stop', async () => {
     const { manager, meta, fake, play } = setup()
     manager.interrupt(meta.id)
@@ -126,14 +147,42 @@ describe('one follow-up after a blocked step (Antigravity)', () => {
   })
 })
 
+describe('Antigravity launcher: denials per turn', () => {
+  it('passes on only what is new since the last result, since agy lists every denial of the process', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cockpit-agy-denied-'))
+    const exe = join(dir, 'agy')
+    // Each message gets a result; the first two turns are refused, the third is not; agy's list keeps growing.
+    writeFileSync(exe, `#!/bin/sh
+n=0
+while IFS= read -r line; do
+  n=$((n+1))
+  case $n in
+    1) d='[{"action":"command","display_name":"RunCommand"}]' ;;
+    2) d='[{"action":"command","display_name":"RunCommand"},{"action":"read_file","display_name":"ReadFile"}]' ;;
+    *) d='[{"action":"command","display_name":"RunCommand"},{"action":"read_file","display_name":"ReadFile"}]' ;;
+  esac
+  printf '{"event":"result","result":{"conversation_id":"c","status":"SUCCESS","response":"","denied_actions":%s}}\\n' "$d"
+done
+`)
+    chmodSync(exe, 0o755)
+    const found: AgentCapabilities = { agent: 'antigravity', context: 'default', settings: {}, auth: { state: 'signed_in' }, models: { state: 'not_checked' },
+      executable: { state: 'found', identity: { command: 'agy', path: exe, realpath: exe, fingerprint: 'f', version: '1.3.3' } } }
+    const events: NormalizedEvent[] = []
+    const session = launchAntigravity({ cwd: dir, permissionMode: 'manual' }, (e) => events.push(e), { check: async () => found })
+    const results = () => events.filter((e): e is Extract<NormalizedEvent, { kind: 'result' }> => e.kind === 'result')
+    for (const [n, text] of ['one', 'two', 'three'].entries()) {
+      session.send(text)
+      await expect.poll(() => results().length, { timeout: 10_000 }).toBe(n + 1)
+    }
+    await session.close()
+    expect(results().map((r) => r.denied)).toEqual([[{ action: 'command', label: 'RunCommand' }], [{ action: 'read_file', label: 'ReadFile' }], undefined])
+  })
+})
+
 describe('blockedStepFollowUp', () => {
   const at = (event: NormalizedEvent): StoredEvent => ({ ts: '2026-10-12T09:00:00.000Z', event })
   const ask: NormalizedEvent = { kind: 'user_text', text: 'list files' }
   const owed = (events: NormalizedEvent[]): string | undefined => blockedStepFollowUp(events.map(at), 'Ask before acting')
-
-  it('never from the result\'s denials alone: they are the whole session\'s', () => {
-    expect(owed([ask, { kind: 'result', ok: true, text: '', denied: [{ action: 'command', label: 'RunCommand' }] }])).toBeUndefined()
-  })
 
   it('not for a refusal you made on a Cockpit card, a turn with a reply, text on the result, or a failed result', () => {
     const card: NormalizedEvent[] = [ask, { kind: 'tool_use', id: 't', name: 'x', input: {} }, { kind: 'tool_result', toolUseId: 't', content: 'Denied from Agent Cockpit', isError: true }]
@@ -142,6 +191,12 @@ describe('blockedStepFollowUp', () => {
     expect(owed([ask, refusedTurn(1)[0]!, ...turn.slice(0, 1), { kind: 'assistant_text', messageId: 'm', text: 'Blocked.' }, { kind: 'result', ok: true }])).toBeUndefined()
     expect(owed([ask, ...refusedTurn(1).slice(0, 2), { kind: 'result', ok: true, text: 'said something' }])).toBeUndefined()
     expect(owed([ask, ...refusedTurn(1).slice(0, 2), { kind: 'result', ok: false }])).toBeUndefined()
+  })
+
+  it('with only this turn\'s `denied` to go on, names the turn\'s last step', () => {
+    expect(owed([ask, ...refusedTurnLive(1)])).toContain('(running `find . -maxdepth 1 -type f`)')
+    expect(owed([ask, { kind: 'result', ok: true, text: '', denied: [{ action: 'command', label: 'RunCommand' }] }])).toContain('(RunCommand)')
+    expect(turnOutcomes([ask, ...refusedTurnLive(1)].map(at), 'antigravity').map((r) => r.outcome)).toEqual(['silent_after_refusal'])
   })
 
   it('looks only at the turn that just ended', () => {

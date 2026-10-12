@@ -442,6 +442,17 @@ describe('a turn that ended without a reply after a refused step', () => {
     expect(items.at(-1)).toMatchObject({ type: 'failure', retryText: 'look for bugs' })
   })
 
+  it('agy 1.3.3\'s live shape: a done step with no output, refused per the result, shows as not allowed', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'user_text', text: 'list the files' }),
+      at(1, { kind: 'tool_use', id: 't', name: 'run_command', input: { CommandLine: 'find . -maxdepth 1 -type f' } }),
+      at(2, { kind: 'tool_result', toolUseId: 't', content: '', isError: false }),
+      at(3, { kind: 'result', ok: true, text: '', denied: [{ action: 'command', label: 'RunCommand' }] }),
+    ], 'antigravity', 'manual')
+    expect(items.find((i) => i.type === 'step')).toMatchObject({ label: 'Not allowed: running find . -maxdepth 1 -type f', denied: true })
+    expect(lastNote(items)).toMatchObject({ tone: 'error', text: expect.stringContaining('after a step was not allowed (running find . -maxdepth 1 -type f)') })
+  })
+
   it('says why, names the Plan mode it ran in, and what to switch to from Plan', () => {
     const note = lastNote(buildTranscript(silentTurn(0), 'antigravity', 'plan'))
     expect(note).toMatchObject({ tone: 'error' })

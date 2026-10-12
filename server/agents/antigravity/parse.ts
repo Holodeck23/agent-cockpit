@@ -45,8 +45,8 @@ const resultSchema = z.looseObject({
   duration_seconds: z.number().optional(),
   num_turns: z.number().optional(),
   usage: z.unknown().optional(),
-  // What agy's permission policy refused. Cumulative for the session (1.3.3): a later turn still
-  // lists an earlier turn's denials, so it labels a refusal and never detects one on its own.
+  // What agy's permission policy refused. Cumulative for the process (1.3.3): a later turn still
+  // lists an earlier turn's denials. Passed on whole; the launcher keeps what is new each turn.
   denied_actions: z.array(z.looseObject({ action: z.string(), display_name: z.string().optional() })).optional(),
 })
 
