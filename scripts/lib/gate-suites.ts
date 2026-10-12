@@ -62,6 +62,8 @@ export const GATE_SUITES: readonly GateSuite[] = [
   { name: 'director', script: 'proof:director', covers: ['EA-D17'] },
   { name: 'antigravity', script: 'proof:antigravity', covers: ['I2', 'L3'] },
   { name: 'opencode', script: 'proof:opencode', covers: ['I2'] },
+  // Projects area (docs/plans/projects-area.md).
+  { name: 'tabs', script: 'proof:tabs', covers: ['NAV-01–NAV-05'] },
 ]
 
 export interface SuiteResult {

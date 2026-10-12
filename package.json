@@ -49,6 +49,7 @@
     "proof:settings": "tsx scripts/proof-settings.ts",
     "proof:dock": "tsx scripts/proof-dock.ts",
     "proof:project-settings": "tsx scripts/proof-project-settings.ts",
+    "proof:tabs": "tsx scripts/proof-tabs.ts",
     "proof:files-extras": "tsx scripts/proof-files-extras.ts",
     "proof:states": "tsx scripts/proof-states.ts",
     "proof:lifecycle": "tsx scripts/proof-lifecycle.ts",

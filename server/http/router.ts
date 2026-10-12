@@ -546,6 +546,14 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
         return true
       }
+      // The tab bar's order (drag or ⌥⇧←/→): rewrites pinOrder only.
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'order' && method === 'POST') {
+        if (viaPhone) throw new HttpError(403, 'Tabs can only be arranged on the Mac')
+        const { paths } = parseBody(z.object({ paths: z.array(z.string().min(1).max(1000)).min(1).max(200) }), await readJson(req))
+        try { sendJson(res, 200, { data: projects.reorderPins(paths) }) }
+        catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
+        return true
+      }
       // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
       // P3: writes a plugin into the project folder, so the Mac only (W10-04).
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'agy-mcp' && method === 'POST' && agyMcp) {
