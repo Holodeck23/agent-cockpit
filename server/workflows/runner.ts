@@ -7,6 +7,9 @@ import { expandWorkflows, resolveWorkflows, type Workflow, type WorkflowStore } 
 import { titleFor } from './title.ts'
 import { isBusy as busyStatus } from '../threads/status.ts'
 
+/** A run refused for a reason the person can fix (its project folder is gone): not an unexpected failure. */
+export class WorkflowRunRefusedError extends Error {}
+
 /** When a schedule fires next after `after`; undefined when the workflow has no schedule. */
 export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calendar'>, after: number): number | undefined {
   if (workflow.calendar) return nextCalendarRun(workflow.calendar, after)
@@ -31,7 +34,7 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     const workflow = requireWorkflow(id)
     if (isBusy(id)) throw new Error('This workflow already has a running conversation')
     try {
-      if (!statSync(workflow.projectPath).isDirectory()) throw new Error('Project folder is unavailable')
+      if (!statSync(workflow.projectPath, { throwIfNoEntry: false })?.isDirectory()) throw new WorkflowRunRefusedError('Project folder is unavailable')
       const resolved = resolveWorkflows(workflow.prompt, workflow.projectPath, store)
       const agentText = expandFiles(resolved.text, workflow.projectPath)
       const workspaceId = primaryWorkspace?.(workflow.projectPath)
