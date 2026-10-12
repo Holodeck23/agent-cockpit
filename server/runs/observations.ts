@@ -126,9 +126,14 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
     const folder = workspaceFolder(workspace, meta.projectPath, workspaceId || meta.workspaceId)
     return isRefusal(folder) ? undefined : folder.cwd
   }
+  // The folders a conversation is working in: where its runs in progress are, else the workspace it is in now.
+  const foldersWorking = (meta: ThreadMeta): Array<string | undefined> => {
+    const open = [...pending.values()].filter((entry) => entry.threadId === meta.id).map((entry) => entry.folder)
+    return open.length ? open : [folderOf(meta)]
+  }
   // "Concurrent" means the same workspace: two conversations in different worktrees do not disturb each other.
   const othersWorking = (threadId: string, projectPath: string, folder: string | undefined): string[] =>
-    manager.summaries().filter((s) => s.meta.id !== threadId && s.meta.projectPath === projectPath && folderOf(s.meta) === folder && isBusy(s.status)).map((s) => s.meta.title)
+    manager.summaries().filter((s) => s.meta.id !== threadId && s.meta.projectPath === projectPath && isBusy(s.status) && foldersWorking(s.meta).includes(folder)).map((s) => s.meta.title)
 
   const begin = (threadId: string, runId: string, workspaceId: string): void => {
     const meta = knownMeta(threadId)
@@ -178,7 +183,7 @@ export function observeRuns(manager: ThreadManager, store: RunObservationStore, 
       for (const entry of pending.values()) {
         if (entry.threadId === threadId) continue
         meta ??= knownMeta(threadId)
-        if (meta && entry.projectPath === meta.projectPath && entry.folder === folderOf(meta)) entry.concurrent.add(meta.title)
+        if (meta && entry.projectPath === meta.projectPath && entry.folder === folderOf(meta, workspaceId)) entry.concurrent.add(meta.title)
       }
     }
     switch (event.kind) {
