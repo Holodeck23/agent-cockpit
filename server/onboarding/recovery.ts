@@ -35,7 +35,7 @@ export const resumeRecoveryBody = z.object({
   key: z.string().min(1).max(250), agent: z.enum(['claude', 'codex', 'opencode']),
 })
 const recentTask = (events: readonly StoredEvent[], fallback: string): string => {
-  const event = events.findLast((e) => e.event.kind === 'user_text')?.event
+  const event = events.findLast((e) => e.event.kind === 'user_text' && !e.event.fromCockpit)?.event
   return (event?.kind === 'user_text' ? event.text : fallback).replace(/\s+/g, ' ').trim().slice(0, 280)
 }
 

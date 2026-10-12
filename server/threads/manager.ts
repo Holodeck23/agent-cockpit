@@ -20,10 +20,12 @@ import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { attribute, partition } from './workspace-events.ts'
 import { awaitingOf, TURN_GUIDANCE } from './turns.ts'
+import { blockedStepFollowUp, reportsBlockedSteps } from './blocked-step.ts'
+import { permissionLabel } from '../agents/permission-labels.ts'
 import type { ThreadStore } from './store.ts'
 import { createImageStore, MAX_ATTACHED_IMAGE_BYTES, type ImageStore } from './images.ts'
 import { bindingIdOf, inputHash, unfinishedRun } from './identity.ts'
-import type { ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
+import type { StoredEvent, ThreadMeta, ThreadSettings, ThreadStatus, ThreadSummary } from './types.ts'
 import { titleFromText } from './title.ts'
 
 export interface LaunchRequest {
@@ -447,6 +449,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (incoming.kind === 'exit') hostActions.forget(threadId, workspaceId ?? '')
     if (incoming.kind === 'agent_switch') { hostActions.cancel(threadId); hostActions.forget(threadId) }
     const entry = owner
+    const stopWasRequested = entry?.stopRequested === true
     // A dead process cannot finish its turn later. Do not apply this to protocol errors.
     if (incoming.kind === 'exit' && entry?.turnRunning) record(threadId, { kind: 'result', ok: false }, workspaceId)
     // A failed result right after the user pressed Stop is a stop, not an error.
@@ -497,6 +500,35 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       generations.delete(keyOf(threadId, workspaceId))
     }
     broadcast(threadId, event, workspaceId)
+    if (entry && event.kind === 'result' && !stopWasRequested && !entry.turnRunning) followUpBlockedStep(threadId, entry)
+  }
+
+  /**
+   * After a silent turn whose step the agent's own policy refused, one note asks the agent to report
+   * (blocked-step.ts). Sent on the next tick, so the agent has finished its own turn end, and only if
+   * nothing happened meanwhile: no message of yours, no Stop, no switch. The note's own turn never
+   * gets one, so a second silent end stays silent.
+   */
+  const followUpBlockedStep = (threadId: string, entry: Live): void => {
+    const meta = store.get(threadId)
+    if (!meta || entry.session.agent !== 'antigravity' || meta.settings.agent !== 'antigravity' || !reportsBlockedSteps(meta.settings)) return
+    const current = currentWorkspace(meta)
+    if (entry.workspaceId && current && entry.workspaceId !== current) return
+    const own = (e: StoredEvent): boolean => !entry.workspaceId || !e.workspaceId || e.workspaceId === entry.workspaceId
+    const seen = store.events(threadId).length
+    const text = blockedStepFollowUp(store.events(threadId).filter(own), permissionLabel(meta.settings.agent, meta.settings.permissionMode))
+    if (!text) return
+    setImmediate(() => {
+      const since = store.events(threadId).slice(seen)
+      if (deleted.has(threadId) || since.some((e) => e.event.kind !== 'exit' && e.event.kind !== 'usage') || busy(entryIn(threadId, entry.workspaceId))) return
+      const now = store.get(threadId)
+      if (!now || !reportsBlockedSteps(now.settings)) return
+      try {
+        send(threadId, text, text, undefined, undefined, [], undefined, Object.keys(now.bindings ?? {}).length ? entry.workspaceId : undefined, 'refused-step')
+      } catch (error) {
+        console.warn('[cockpit] could not ask Antigravity to report after a blocked step:', error instanceof Error ? error.message : error)
+      }
+    })
   }
 
   /**
@@ -707,7 +739,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     return meta
   }
 
-  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = [], operationId?: string, workspaceId?: string): { runId: string; replayed: boolean } => {
+  const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = [], operationId?: string, workspaceId?: string, fromCockpit?: 'refused-step'): { runId: string; replayed: boolean } => {
     if (deleted.has(threadId)) throw new Error('This conversation was deleted')
     const meta = requireMeta(threadId)
     const operation = operationId ? { id: operationId, inputHash: inputHash(text, attached) } : undefined
@@ -747,7 +779,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       store.update(threadId, { completed: false })
       record(threadId, { kind: 'completion_changed', completed: false })
     } else store.update(threadId, {})
-    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}), runId, ...(operation ? { operation } : {}), ...(binding ? { binding } : {}) }, target)
+    record(threadId, { kind: 'user_text', text, ...(fromConversation ? { fromConversation } : {}), ...(fromCockpit ? { fromCockpit } : {}), ...(workflows?.length ? { workflows } : {}), ...(queuedId ? { queuedId } : {}), runId, ...(operation ? { operation } : {}), ...(binding ? { binding } : {}) }, target)
     for (const { file, mediaType, image } of stored) record(threadId, { kind: 'image', file, mediaType, from: 'you', ...(image.name ? { name: image.name } : {}) }, target)
     entry.session.send(toAgent, queuedId, outgoing.length ? outgoing : undefined)
     return { runId, replayed: false }

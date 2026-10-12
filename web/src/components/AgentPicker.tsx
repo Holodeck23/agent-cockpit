@@ -24,6 +24,8 @@ export interface AgentChoice {
   readonly permissionMode: ThreadSettings['permissionMode']
   /** Use my Chrome (Claude only). */
   readonly chrome?: boolean
+  /** Antigravity only: false stops Cockpit asking it to report after a blocked step (absent: on). */
+  readonly reportBlocked?: boolean
 }
 
 const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
@@ -62,10 +64,11 @@ export function modelSummary(choice: AgentChoice, agyListed?: readonly ModelOpti
 }
 
 export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): Partial<ThreadSettings> {
-  const { model: _model, effort: _effort, useChrome: _chrome, ...rest } = base ?? { useHooks: false }
+  const { model: _model, effort: _effort, useChrome: _chrome, reportBlocked: _report, ...rest } = base ?? { useHooks: false }
   return {
     ...rest,
     ...(choice.agent === 'claude' && choice.chrome ? { useChrome: true } : {}),
+    ...(choice.agent === 'antigravity' && choice.reportBlocked === false ? { reportBlocked: false } : {}),
     agent: choice.agent,
     permissionMode: choice.permissionMode,
     ...(choice.model ? { model: choice.model } : {}),
@@ -123,6 +126,22 @@ function UseMyChrome({ checked, readiness, onChange }: { checked: boolean; readi
         Claude uses your own Chrome, with the sites you are signed in to, through the Claude extension.
         It is separate from Cockpit’s browser, and stopping never closes Chrome or its tabs.
         <br />{state}
+      </p>
+    </div>
+  )
+}
+
+/** Antigravity ends its turn silently when its policy refuses a step; Cockpit can ask it once to report. */
+function ReportBlocked({ checked, onChange }: { checked: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <div className="use-chrome">
+      <label className="check">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span>When a step is blocked, ask the agent to report anyway</span>
+      </label>
+      <p className="picker-note">
+        Antigravity stops without a word when its permissions refuse a step. Cockpit then sends it one note asking it to say what it was
+        trying to do and what it can tell you without that step. The note shows in the conversation as Cockpit’s, not yours.
       </p>
     </div>
   )
@@ -421,6 +440,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
             {current.agent === 'claude' ? (
               <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
             ) : null}
+            {current.agent === 'antigravity' ? <ReportBlocked checked={current.reportBlocked !== false} onChange={(on) => patch({ reportBlocked: on ? undefined : false })} /> : null}
             {projectPath && !phone ? <AccountChoice agent={current.agent} projectPath={projectPath} onSelected={setAccount} /> : null}
             <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} account={account?.agent === current.agent ? account : undefined} />
             <AgentCapabilityPanel caps={shownCaps} refreshing={refreshing} error={capsError} onRefresh={refresh} />

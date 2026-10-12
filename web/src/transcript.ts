@@ -341,6 +341,16 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let turnMode: ThreadSettings['permissionMode'] | undefined = currentMode
   let repliedThisTurn = false
   let refusedThisTurn: string | undefined
+  /** The last ended turn's refused step: Cockpit's follow-up (fromCockpit) reports on it. */
+  let refusedLastTurn: string | undefined
+  // Turn ends Cockpit followed up after a blocked step: the follow-up says what happened, so the
+  // end itself shows no note. If the follow-up ends silent too, the refused-step note shows there.
+  const followedUp = new Set<number>()
+  events.forEach(({ event }, index) => {
+    if (event.kind !== 'user_text' || !event.fromCockpit) return
+    const end = events.findLastIndex((e, i) => i < index && e.event.kind === 'result')
+    if (end >= 0) followedUp.add(end)
+  })
   const startTurn = (index: number, text: string, images: { file: string; name?: string }[]): void => {
     lastUserText = text; lastUserImages = images; failedThisTurn = false
     turnMode = index > lastChange ? currentMode : loggedMode
@@ -372,6 +382,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
+        if (event.kind === 'user_text' && event.fromCockpit) {
+          // Cockpit's note, not yours: a quiet line, and never what Retry sends again.
+          turnMode = index > lastChange ? currentMode : loggedMode
+          repliedThisTurn = false; refusedThisTurn = refusedLastTurn; turnOpen = true; failedThisTurn = false
+          items.push({ type: 'note', key, text: `Cockpit asked ${agentName(agent)} to report after a blocked step.`, tone: 'plain' })
+          return
+        }
         if (event.kind === 'user_text') {
           if (event.queuedId) { queuedSends.set(event.queuedId, { text: event.text, images: [] }); queuedSending = event.queuedId }
           else startTurn(index, event.text, [])
@@ -569,6 +586,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         } else if (failed && !failedThisTurn) {
           const words = failureWords(event.text)
           items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
+        } else if (followedUp.has(index) && event.ok && !event.stopped && !repliedThisTurn) {
+          // Cockpit's follow-up comes next and reports on it.
         } else if (event.ok && !event.stopped && !repliedThisTurn && refusedThisTurn) {
           items.push({ type: 'note', key, text: refusedTurnNote(agent, agentName(agent), turnMode, refusedThisTurn), tone: 'error', ...(event.runId ? { runId: event.runId } : {}) })
         } else if (!failed) {
@@ -577,6 +596,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (event.runId) items.push({ type: 'result', key: `${key}-evidence`, runId: event.runId,
           outcome: event.interrupted ? 'interrupted' : event.ok ? 'ok' : event.stopped ? 'stopped' : 'error' })
         failedThisTurn = false
+        refusedLastTurn = refusedThisTurn
         refusedThisTurn = undefined
         turnOpen = false
         return

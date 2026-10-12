@@ -423,6 +423,25 @@ describe('a turn that ended without a reply after a refused step', () => {
   ]
   const lastNote = (items: ReturnType<typeof buildTranscript>) => items.filter((i) => i.type === 'note').at(-1)
 
+  const cockpitNote = (second: number): StoredEvent => at(second, { kind: 'user_text', text: 'Cockpit note: your last step (running `npm run typecheck`) was blocked…', fromCockpit: 'refused-step' })
+
+  it('Cockpit\'s follow-up shows as a quiet note, not your message; a reply after it replaces the refused-step note', () => {
+    const items = buildTranscript([...silentTurn(0), cockpitNote(4),
+      at(5, { kind: 'assistant_text', messageId: 'm', text: 'I tried to run the typecheck; it was blocked.' }), at(6, { kind: 'result', ok: true, text: 'I tried…' })], 'antigravity', 'manual')
+    expect(items.filter((i) => i.type === 'message').map((i) => i.type === 'message' && i.author)).toEqual(['you', 'antigravity'])
+    expect(items.some((i) => i.type === 'message' && i.text.startsWith('Cockpit note'))).toBe(false)
+    const notes = items.filter((i) => i.type === 'note').map((i) => i.type === 'note' && [i.text, i.tone])
+    expect(notes).toEqual([['Cockpit asked Antigravity to report after a blocked step.', 'plain'], [expect.stringMatching(/^Turn finished/), 'plain']])
+  })
+
+  it('a follow-up that ends silent too shows the refused-step note once, and Retry still sends your message', () => {
+    const items = buildTranscript([...silentTurn(0), cockpitNote(4), at(5, { kind: 'result', ok: true, text: '' }), at(6, { kind: 'error', message: 'boom' })], 'antigravity', 'manual')
+    const errors = items.filter((i) => i.type === 'note' && i.tone === 'error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ text: expect.stringContaining('Antigravity stopped without replying after a step was not allowed (running npm run typecheck)') })
+    expect(items.at(-1)).toMatchObject({ type: 'failure', retryText: 'look for bugs' })
+  })
+
   it('says why, names the Plan mode it ran in, and what to switch to from Plan', () => {
     const note = lastNote(buildTranscript(silentTurn(0), 'antigravity', 'plan'))
     expect(note).toMatchObject({ tone: 'error' })

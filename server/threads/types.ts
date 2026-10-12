@@ -15,6 +15,8 @@ export const threadSettingsSchema = z.object({
   useHooks: z.boolean().default(false),
   /** Use my Chrome (H4, Claude only): applies at the next launch, so only while the conversation is idle. */
   useChrome: z.boolean().optional(),
+  /** When a step is blocked, ask the agent to report anyway (Antigravity; absent: on). See blocked-step.ts. */
+  reportBlocked: z.boolean().optional(),
 })
 export type ThreadSettings = z.output<typeof threadSettingsSchema>
 
