@@ -87,6 +87,33 @@ describe('thread manager', () => {
     expect(manager.status(meta.id)).toBe('done')
   })
 
+  it('persists Claude leaving Plan mode after approval, including across a resumed process', () => {
+    const { store, manager, agent } = setup()
+    const settings = threadSettingsSchema.parse({ agent: 'claude', permissionMode: 'plan' })
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'plan it' })
+    agent.emit({ kind: 'session', sessionId: meta.sessionId })
+    agent.emit({ kind: 'approval_request', requestId: 'exit-plan', toolName: 'ExitPlanMode', input: { plan: 'Do it' }, suggestions: [] })
+    manager.approve(meta.id, openApprovals(store.events(meta.id))[0]!, 'allow')
+
+    expect(store.get(meta.id)?.settings.permissionMode).toBe('manual')
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'settings_changed', permissionMode: 'manual' })
+
+    agent.emit({ kind: 'result', ok: true })
+    agent.emit({ kind: 'exit', code: 0 })
+    manager.send(meta.id, 'resume the work')
+    expect(agent.requests.at(-1)?.settings.permissionMode).toBe('manual')
+  })
+
+  it('keeps Claude in Plan mode when ExitPlanMode is denied', () => {
+    const { store, manager, agent } = setup()
+    const settings = threadSettingsSchema.parse({ agent: 'claude', permissionMode: 'plan' })
+    const meta = manager.create({ projectPath: '/tmp', settings, text: 'plan it' })
+    agent.emit({ kind: 'approval_request', requestId: 'exit-plan', toolName: 'ExitPlanMode', input: { plan: 'Do it' }, suggestions: [] })
+    manager.approve(meta.id, openApprovals(store.events(meta.id))[0]!, 'deny')
+    expect(store.get(meta.id)?.settings.permissionMode).toBe('plan')
+    expect(store.events(meta.id).some((row) => row.event.kind === 'settings_changed')).toBe(false)
+  })
+
   it('does not ask twice for a Cockpit tool that Cockpit approves itself', () => {
     const { store, manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'start the server' })

@@ -18,6 +18,8 @@ export type ApprovalOutcome = ApprovalBehavior | 'expired' | 'canceled'
 
 export interface PendingApproval {
   readonly requestId: string
+  /** The provider tool being approved, when this came from a tool request. */
+  readonly toolName?: string
   readonly input: unknown
   readonly suggestions: readonly unknown[]
 }

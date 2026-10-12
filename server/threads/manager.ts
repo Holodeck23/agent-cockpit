@@ -644,7 +644,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       } else if (event.kind === 'approval_request') {
         const publicId = randomUUID()
         requestIds.set(event.requestId, publicId)
-        pending.set(publicId, { requestId: event.requestId, input: event.input, suggestions: event.suggestions })
+        pending.set(publicId, { requestId: event.requestId, toolName: event.toolName, input: event.input, suggestions: event.suggestions })
         record(meta.id, { ...event, requestId: publicId, cwd }, workspaceId ?? '')
       } else if (event.kind === 'question') {
         const publicId = randomUUID()
@@ -805,6 +805,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (!request || !entry.turnRunning) throw new Error('Unknown or expired approval request')
       entry.pending.delete(requestId)
       entry.session.respondApproval(request, behavior)
+      // Claude changes its live policy after an approved ExitPlanMode request. Keep Cockpit's
+      // durable authority in step with that provider state so the composer is truthful now and a
+      // later resume does not silently put the conversation back into Plan mode.
+      const current = requireMeta(threadId)
+      if (behavior !== 'deny' && entry.session.agent === 'claude' && request.toolName === 'ExitPlanMode' && current.settings.permissionMode === 'plan') {
+        const settings = { ...current.settings, permissionMode: 'manual' as const }
+        store.update(threadId, { settings })
+        record(threadId, {
+          kind: 'settings_changed',
+          ...(settings.model ? { model: settings.model } : {}),
+          ...(settings.effort ? { effort: settings.effort } : {}),
+          permissionMode: settings.permissionMode,
+        })
+      }
     },
     async unqueue(threadId, queuedId) {
       const entry = entriesOf(threadId).find((e) => e.waiting.has(queuedId))
