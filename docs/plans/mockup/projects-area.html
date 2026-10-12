@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cockpit Projects Area</title>
+<style>
+/* Layout: Cockpit's window (tab bar, sidebar, Map) inside a frame; a mockup strip above it switches theme and width.
+   Colours are Cockpit's own tokens (web/src/styles/tokens.css), restated per theme. All data is invented. */
+:root {
+  --topbar: #e5e5df; --canvas: #fafaf9; --panel: #fff; --content: #fff; --field: #f0f0eb;
+  --strong: #242523; --body: #353630; --secondary: #5e6058; --muted: #72736d;
+  --border: #e5e5df; --input-border: #cdcec5;
+  --blue: #2878ef; --blue-shadow: #1d56ac; --halo-soft: #2459e824;
+  --needs-bg: #fff1df; --needs-border: #e8bf8e; --needs-ink: #844214;
+  --p-blue: #2878ef; --p-pink: #b53270; --p-orange: #f58220; --p-green: #3b8a55; --p-purple: #7b5bd6; --p-gray: #72736d;
+  --ring-fill: #5e6058; --ring-empty: #e5e5df; --ring-stale: #c4c4bc; --page: #ecebe6;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --round: 'Arial Rounded MT Bold', ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --topbar: #171717; --canvas: #202020; --panel: #191919; --content: #121212; --field: #2a2a2a;
+  --strong: #f2f2f2; --body: #d8d8d8; --secondary: #d8d8d8; --muted: #a7a7a7;
+  --border: #ffffff13; --input-border: #4a4a4a; --halo-soft: #90b0ff29;
+  --needs-bg: #342b23; --needs-border: #70543a; --needs-ink: #ffd392;
+  --p-pink: #f394be; --p-green: #7cc793; --p-purple: #b3a0f0; --p-gray: #a7a7a7;
+  --ring-fill: #c8c8c8; --ring-empty: #333; --ring-stale: #555; --page: #0d0d0d; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --topbar: #171717; --canvas: #202020; --panel: #191919; --content: #121212; --field: #2a2a2a;
+  --strong: #f2f2f2; --body: #d8d8d8; --secondary: #d8d8d8; --muted: #a7a7a7;
+  --border: #ffffff13; --input-border: #4a4a4a; --halo-soft: #90b0ff29;
+  --needs-bg: #342b23; --needs-border: #70543a; --needs-ink: #ffd392;
+  --p-pink: #f394be; --p-green: #7cc793; --p-purple: #b3a0f0; --p-gray: #a7a7a7;
+  --ring-fill: #c8c8c8; --ring-empty: #333; --ring-stale: #555; --page: #0d0d0d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 12px 16px 24px; background: var(--page); color: var(--body); font: 14px/1.45 var(--font); }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; max-width: 1280px; margin: 0 auto 10px; font-size: 12.5px; color: var(--muted); }
+.strip b { color: var(--strong); font-weight: 600; }
+.seg-ctl { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--field); }
+.seg-ctl button { padding: 3px 9px; border-radius: 6px; }
+.seg-ctl button[aria-pressed="true"] { background: var(--panel); color: var(--strong); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.frame { position: relative; max-width: 1280px; height: min(760px, calc(100dvh - 70px)); min-height: 560px; margin: 0 auto; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--canvas); box-shadow: 0 24px 60px -30px rgb(0 0 0 / .45); }
+.frame.narrow { max-width: 390px; }
+.app { container-type: inline-size; display: grid; grid-template-rows: 46px minmax(0, 1fr); height: 100%; }
+/* tab bar (chrome.css) */
+.tabbar { display: flex; align-items: flex-end; gap: 6px; min-width: 0; padding: 0 10px 0 12px; background: var(--topbar); user-select: none; }
+.home-mark { align-self: center; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; flex: none; }
+.home-mark:hover { background: var(--field); }
+.tabs { display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tab { display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 4px; border-radius: 10px 10px 0 0; flex: none; }
+.tab.active { background: var(--canvas); }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--blue); }
+.tab.dragging { opacity: .4; }
+.tab-main { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px; border-radius: 8px; color: var(--muted); font-size: 15px; }
+.tab.active .tab-main { color: var(--strong); font-weight: 500; }
+.tab:not(.active) .tab-main:hover { background: color-mix(in srgb, var(--strong) 6%, transparent); color: var(--body); }
+.tab-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-x, .tab-pin { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--muted); }
+.tab-x { opacity: .5; }
+.tab:hover .tab-x, .tab.active .tab-x, .tab-x:focus-visible { opacity: 1; }
+.tab-x:hover, .tab-pin:hover { background: var(--field); color: var(--strong); }
+.tab-pin { width: 26px; height: 26px; background: var(--field); }
+.tab-pin.on { color: var(--avatar); }
+.spacer { flex: 1; }
+.projects-btn { align-self: center; height: 32px; padding: 0 12px; border-radius: 8px; background: var(--canvas); color: var(--body); flex: none; }
+.avatar { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 7px; font: 600 14px/1 var(--round);
+  color: var(--avatar); background: color-mix(in srgb, var(--avatar) 18%, transparent); }
+.avatar.solid { color: #fff; background: var(--avatar); }
+.avatar.sm { width: 18px; height: 18px; border-radius: 5px; font-size: 11px; }
+.c-blue { --avatar: var(--p-blue); } .c-pink { --avatar: var(--p-pink); } .c-orange { --avatar: var(--p-orange); }
+.c-green { --avatar: var(--p-green); } .c-purple { --avatar: var(--p-purple); } .c-gray { --avatar: var(--p-gray); }
+.needs { display: inline-flex; align-items: center; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 9px;
+  background: var(--needs-bg); color: var(--needs-ink); font-size: 11.5px; font-weight: 650; justify-content: center; }
+.bars { width: 12px; height: 12px; fill: var(--blue); flex: none; }
+.bars rect { transform-box: fill-box; transform-origin: bottom; animation: bounce 1s ease-in-out infinite; }
+.bars rect:nth-child(2) { animation-delay: .18s; } .bars rect:nth-child(3) { animation-delay: .36s; }
+@keyframes bounce { 50% { transform: scaleY(.45); } }
+@media (prefers-reduced-motion: reduce) { .bars rect { animation: none; } }
+/* body: sidebar + main */
+.body { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 0; }
+.sidebar { overflow-y: auto; padding: 10px 8px 16px; border-right: 1px solid var(--border); background: var(--canvas); font-size: 13.5px; }
+.sb-row { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 28px; padding: 3px 8px; border-radius: 7px; text-align: left; color: var(--body); }
+.sb-row:hover { background: color-mix(in srgb, var(--strong) 5%, transparent); }
+.sb-row[aria-current="page"] { background: var(--field); color: var(--strong); font-weight: 500; }
+.sb-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-row .kbd { color: var(--muted); font-size: 12px; }
+.sb-lib { margin: 14px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.sb-area { color: var(--secondary); font-weight: 500; }
+.chev { width: 12px; height: 12px; flex: none; color: var(--muted); transition: transform .12s; }
+.chev.open { transform: rotate(90deg); }
+.chev.none { visibility: hidden; }
+.sb-convo { padding-left: 46px; color: var(--secondary); font-size: 13px; }
+.sb-quiet { padding-left: 46px; color: var(--muted); font-size: 12.5px; }
+[role="group"] { margin: 0; padding: 0; list-style: none; }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.lock { width: 12px; height: 12px; flex: none; color: var(--muted); }
+main { overflow-y: auto; background: var(--content); min-width: 0; }
+/* the Map */
+.map { padding: 22px 28px 40px; display: grid; gap: 26px; }
+.map h1 { margin: 0; font: 400 24px/1.2 var(--round); color: var(--strong); }
+.map-sub { margin: 4px 0 0; color: var(--muted); }
+.callout { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--needs-border); border-radius: 12px;
+  background: var(--needs-bg); color: var(--needs-ink); text-align: left; width: 100%; }
+.area-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.area-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--strong); }
+.area-head .lib { font-size: 12px; color: var(--muted); }
+.macbadge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.card { position: relative; display: grid; gap: 8px; padding: 12px 12px 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.card:hover { border-color: var(--input-border); }
+.card.needs-you { border-color: var(--needs-border); background: var(--needs-bg); }
+.card-top { display: flex; align-items: center; gap: 10px; }
+.card-open { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left; }
+.card-name { font-weight: 600; color: var(--strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-meta { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); min-height: 18px; }
+.card.needs-you .card-meta { color: var(--needs-ink); }
+.more { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--muted); flex: none; }
+.more:hover { background: var(--field); color: var(--strong); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 2px 8px; border-radius: 999px; background: var(--field); font-size: 12px; color: var(--secondary); }
+.next { font-size: 12px; color: var(--muted); }
+.shelf-line { display: flex; align-items: center; gap: 8px; color: var(--muted); padding: 4px 0; }
+.ring .seg { fill: none; stroke-width: 5; }
+.ring .empty { stroke: var(--ring-empty); } .ring .full { stroke: var(--ring-fill); } .ring .stale { stroke: var(--ring-stale); }
+.rename { font: inherit; font-weight: 600; width: 100%; padding: 2px 6px; border: 1px solid var(--input-border); border-radius: 6px; background: var(--panel); color: var(--strong); }
+/* project view */
+.proj { padding: 22px 28px 40px; display: grid; gap: 18px; max-width: 860px; }
+.proj-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.proj-head h1 { margin: 0; font: 400 22px/1.2 var(--round); color: var(--strong); flex: 1; }
+.subnav { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.subnav span { padding: 6px 11px; border-radius: 8px; color: var(--secondary); }
+.subnav span:first-child { background: var(--field); color: var(--strong); font-weight: 500; }
+.layers { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 18px; margin: 0; padding: 0; list-style: none; }
+.layers li { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+.layers b { color: var(--strong); font-weight: 600; min-width: 92px; }
+.layers .st { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; background: var(--field); color: var(--strong); }
+.btn.primary { background: var(--blue); color: #fff; box-shadow: 0 2px 0 var(--blue-shadow); }
+.convos { display: grid; gap: 2px; }
+.convo { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 8px; }
+.convo:hover { background: var(--field); }
+.convo span:last-child { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.composer { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--input-border); border-radius: 14px; background: var(--panel); }
+.composer textarea { min-height: 96px; border: 0; resize: vertical; background: none; color: var(--strong); font: 13.5px/1.5 var(--font); outline: none; }
+.composer .hint { font-size: 12px; color: var(--muted); }
+/* menus, search, toast */
+.menu { position: absolute; z-index: 30; min-width: 220px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / .4), 0 0 0 1px color-mix(in srgb, var(--strong) 4%, transparent); }
+.mi { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border-radius: 8px; text-align: left; color: var(--strong); }
+.mi:hover, .mi:focus-visible { background: var(--field); outline: none; }
+.mi.danger { color: var(--p-pink); }
+.mlabel { margin: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.swatches { display: flex; gap: 8px; padding: 4px 10px 8px; }
+.sw { width: 20px; height: 20px; border-radius: 50%; background: var(--avatar); }
+.sw[aria-checked="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--avatar); }
+.sep { height: 1px; margin: 5px 4px; background: var(--border); }
+.scrim { position: absolute; inset: 0; z-index: 40; display: grid; justify-items: center; align-content: start; padding-top: 70px; background: rgb(0 0 0 / .22); }
+.search { width: min(520px, calc(100% - 32px)); border: 1px solid var(--border); border-radius: 14px; background: var(--panel); box-shadow: 0 30px 70px -30px rgb(0 0 0 / .5); overflow: hidden; }
+.search input { width: 100%; padding: 14px 16px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--strong); font: 16px var(--font); outline: none; }
+.search ul { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow-y: auto; }
+.search li[aria-selected="true"] .mi { background: var(--field); }
+.toast { position: absolute; left: 50%; bottom: 18px; z-index: 50; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 8px 14px; border-radius: 10px;
+  background: var(--strong); color: var(--canvas); font-size: 13px; }
+/* narrow (390 px): the sidebar is desktop only; tabs scroll; cards stack */
+@container (max-width: 640px) {
+  .body { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { display: none; }
+  .map, .proj { padding: 16px; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .tab-name { max-width: 90px; }
+  .projects-btn { padding: 0 8px; }
+}
+</style>
+</head>
+<body>
+<div class="strip" role="group" aria-label="Mockup controls">
+  <span><b>Projects area mockup</b> · invented data · right-click a tab, drag tabs, press ⌘K</span>
+  <span class="seg-ctl" id="theme-ctl"><button id="t-sys" data-theme-set="">System</button><button id="t-light" data-theme-set="light">Light</button><button id="t-dark" data-theme-set="dark">Dark</button></span>
+  <span class="seg-ctl" id="width-ctl"><button id="w-desk" data-width="">Desktop</button><button id="w-narrow" data-width="narrow">390 px</button></span>
+</div>
+<div class="frame" id="frame">
+  <div class="app" id="app">
+    <header class="tabbar" id="tabbar"></header>
+    <div class="body">
+      <nav class="sidebar" id="sidebar" aria-label="Projects sidebar"></nav>
+      <main id="main"></main>
+    </div>
+  </div>
+  <div id="overlay"></div>
+</div>
+<script>
+'use strict'
+const LAYERS = [
+  ['Identity', 'who this is for and how it talks'], ['Substrate', 'what it knows: context and notes'],
+  ['Rules & hooks', 'what it must and must not do'], ['Skills', 'how it does repeat jobs'],
+  ['Tools', 'what it can reach'], ['Agents', 'who it can hand work to'],
+]
+const COLORS = ['blue', 'pink', 'orange', 'green', 'purple', 'gray']
+const LIBS = [{ id: 'code', name: 'Code' }, { id: 'notes', name: 'Notes' }, { id: 'private', name: 'Private', macOnly: true }]
+let areas = [
+  { id: 'apps', name: 'Apps', lib: 'code' }, { id: 'sketches', name: 'Sketches', lib: 'code' },
+  { id: 'shelf', name: 'Shelf', lib: 'code', shelf: true }, { id: 'garden', name: 'Garden', lib: 'notes' },
+  { id: 'writing', name: 'Writing', lib: 'notes' }, { id: 'table', name: 'Kitchen Table', lib: 'private' },
+]
+// layers: one digit per layer, 2 = present or solid, 1 = in progress, 0 = missing. stale: 1 = untouched for 30+ days.
+const P = (id, name, area, color, layers, last, o = {}) => ({ id, name, area, color, layers, last, stale: '000000', pin: 0, status: '', n: 0, parent: null, macOnly: false, ...o })
+let projects = [
+  P('tidepool', 'Tidepool', 'apps', 'blue', '222120', 4, { pin: 1, status: 'needs', n: 1 }),
+  P('lantern', 'Lantern', 'apps', 'orange', '221100', 40, { pin: 2, status: 'working' }),
+  P('lantern-docs', 'Lantern Docs', 'apps', 'orange', '210000', 2880, { parent: 'lantern' }),
+  P('paperboat', 'Paperboat', 'apps', 'green', '222222', 1440, { stale: '000100' }),
+  P('quillmark', 'Quillmark', 'apps', 'purple', '220100', 7200),
+  P('moth', 'Moth Radio', 'sketches', 'pink', '100000', 300),
+  P('sundial', 'Sundial', 'sketches', 'gray', '210000', 10080),
+  P('bramble', 'Bramble', 'sketches', 'green', '200100', 20160),
+  P('kiln', 'Kiln', 'sketches', 'orange', '220000', 4320),
+  P('orchard', 'Old Orchard', 'shelf', 'gray', '220000', 129600, { stale: '110000' }),
+  P('copperline', 'Copperline', 'shelf', 'gray', '200000', 216000, { stale: '100000' }),
+  P('fernwood', 'Fernwood', 'shelf', 'gray', '210000', 259200, { stale: '110000' }),
+  P('driftwood', 'Driftwood', 'shelf', 'gray', '000000', 302400),
+  P('atlas', 'Atlas', 'garden', 'purple', '222211', 90, { pin: 3, status: 'working' }),
+  P('atlas-maps', 'Atlas Maps', 'garden', 'purple', '120000', 4320, { parent: 'atlas' }),
+  P('fieldguide', 'Field Guide', 'garden', 'green', '221000', 2880),
+  P('readingroom', 'Reading Room', 'garden', 'blue', '210000', 50400, { stale: '010000' }),
+  P('letters', 'Letters', 'writing', 'pink', '222100', 600, { pin: 4 }),
+  P('talks', 'Talk Drafts', 'writing', 'orange', '110000', 14400),
+  P('budget', 'Home Budget', 'table', 'green', '221000', 2880),
+  P('running', 'Running Log', 'table', 'blue', '200000', 8640),
+  P('travel', 'Travel 2027', 'table', 'purple', '100000', 30240),
+]
+const TITLES = ['Fix the sign-in loop', 'Plan the next release', 'Tidy the notes folder', 'Write the welcome email', 'Check the backup script',
+  'Sketch the settings page', 'Summarise last week', 'Rename the image files', 'Draft the FAQ', 'Compare two layouts']
+const convosFor = (p) => { const seed = p.id.length; return [0, 1, 2, 3, 4, 5, 6].slice(0, 3 + (seed % 5)).map((i) =>
+  ({ title: TITLES[(seed + i * 3) % TITLES.length], mins: p.last + i * i * 1700 })) }
+const S = { view: 'home', active: null, expanded: new Set(['tidepool']), closedAreas: new Set(['shelf']), earlier: new Set(), shelfOpen: false,
+  menu: null, search: null, renaming: null, composer: null, toast: '' }
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const byId = (id) => projects.find((p) => p.id === id)
+const update = (id, patch) => { projects = projects.map((p) => (p.id === id ? { ...p, ...patch } : p)) }
+const libOf = (area) => LIBS.find((l) => l.id === area.lib)
+const areaOf = (p) => areas.find((a) => a.id === p.area)
+const macOnly = (p) => p.macOnly || !!areaOf(p).macOnly || !!libOf(areaOf(p)).macOnly
+const ago = (m) => m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : m < 2880 ? 'yesterday' : `${Math.round(m / 1440)} days ago`
+const pinned = () => projects.filter((p) => p.pin).sort((a, b) => a.pin - b.pin)
+const tabs = () => { const t = pinned(); const a = S.active && byId(S.active); return a && !a.pin ? [...t, a] : t }
+const missing = (p) => [...p.layers].filter((d) => d === '0').length
+const ICON = {
+  x: '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  pin: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2h4l-.5 4 2.5 2v1.5H4V8l2.5-2zM8 9.5V14" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>',
+  more: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>',
+  chev: '<svg class="chev CLS" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>',
+  lock: '<svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5.5" rx="1.5" fill="currentColor"/><path d="M4 5.5V4a2 2 0 014 0v1.5" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>',
+  mark: '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="var(--blue)"/><g fill="#fff"><rect x="6" y="11.5" width="2.8" height="6.5" rx="1.4"/><rect x="10.6" y="6" width="2.8" height="12" rx="1.4"/><rect x="15.2" y="9" width="2.8" height="9" rx="1.4"/></g></svg>',
+  bars: '<svg class="bars" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="5" width="2.4" height="7" rx="1.2"/><rect x="4.8" y="0" width="2.4" height="12" rx="1.2"/><rect x="8.6" y="3" width="2.4" height="9" rx="1.2"/></svg>',
+}
+const avatar = (p, cls = '') => `<span class="avatar c-${p.color} ${cls}" aria-hidden="true">${esc(p.name[0])}</span>`
+const stateWord = (p, i) => p.layers[i] === '2' ? (p.stale[i] === '1' ? 'present, untouched 30+ days' : 'present') : p.layers[i] === '1' ? 'in progress' : 'missing'
+function ring(p, size = 36) {
+  const c = size / 2, r = c - 4, pt = (deg) => [c + r * Math.cos(deg * Math.PI / 180), c + r * Math.sin(deg * Math.PI / 180)]
+  const arc = (a0, a1, cls) => { const [x0, y0] = pt(a0), [x1, y1] = pt(a1); return `<path class="seg ${cls}" d="M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}"/>` }
+  const segs = LAYERS.map((_, i) => { const a0 = -90 + i * 60 + 4, a1 = a0 + 52, d = p.layers[i]
+    if (d === '0') return arc(a0, a1, 'empty')
+    if (d === '1') return arc(a0, a1, 'empty') + arc(a0, a0 + 26, 'full')
+    return arc(a0, a1, p.stale[i] === '1' ? 'stale' : 'full') }).join('')
+  const label = LAYERS.map(([n], i) => `${n}: ${stateWord(p, i)}`).join('. ')
+  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(label)}"><title>${esc(LAYERS.map(([n, w], i) => `${n} (${w}): ${stateWord(p, i)}`).join('\n'))}</title>${segs}</svg>`
+}
+const status = (p) => p.status === 'needs' ? `<span class="needs" aria-label="${p.n} needs you">${p.n}</span>` : p.status === 'working' ? `<span aria-label="working">${ICON.bars}</span>` : ''
+
+function renderTabs() {
+  const t = tabs()
+  $('tabbar').innerHTML = `<button class="home-mark" data-act="home" title="Home (⇧⌘H)" aria-label="Home">${ICON.mark}</button>
+  <div class="tabs" role="tablist" aria-label="Projects">${t.map((p) => { const on = p.id === S.active; return `
+    <div class="tab c-${p.color}${on ? ' active' : ''}" data-tab="${p.id}" draggable="true" role="presentation">
+      <button class="tab-main" role="tab" aria-selected="${on}" data-act="open" data-id="${p.id}" title="${esc(p.name)} · right-click for colour and more">
+        ${avatar(p, on ? 'solid' : '')}<span class="tab-name">${esc(p.name)}</span>${status(p)}</button>
+      ${on ? `<button class="tab-pin${p.pin ? ' on' : ''}" data-act="pin" data-id="${p.id}" aria-label="${p.pin ? 'Unpin' : 'Pin'} ${esc(p.name)}" title="${p.pin ? 'Unpin tab' : 'Pin tab'}">${ICON.pin}</button>` : ''}
+      <button class="tab-x" data-act="close" data-id="${p.id}" aria-label="Close ${esc(p.name)}" title="Close tab (stays in Cockpit)">${ICON.x}</button>
+    </div>` }).join('')}</div><div class="spacer"></div><button class="projects-btn" data-act="toast" data-msg="The existing Projects menu stays as it is.">Projects ▾</button>`
+}
+function convoRows(p) {
+  const list = convosFor(p).sort((a, b) => a.mins - b.mins).slice(0, 5)
+  const recent = list.filter((c) => c.mins <= 20160), older = list.filter((c) => c.mins > 20160), open = S.earlier.has(p.id)
+  const row = (c) => `<li role="treeitem"><button class="sb-row sb-convo" data-act="open" data-id="${p.id}"><span class="name">${esc(c.title)}</span></button></li>`
+  return recent.map(row).join('') + (older.length ? `<li role="treeitem" aria-expanded="${open}"><button class="sb-row sb-quiet" data-act="earlier" data-id="${p.id}">${ICON.chev.replace('CLS', open ? 'open' : '')}Earlier · ${older.length}</button>
+    ${open ? `<ul role="group">${older.map(row).join('')}</ul>` : ''}</li>` : '') +
+    `<li role="treeitem"><button class="sb-row sb-quiet" data-act="open" data-id="${p.id}">All conversations</button></li>`
+}
+function projectRow(p, depth) {
+  const kids = projects.filter((k) => k.parent === p.id), open = S.expanded.has(p.id)
+  return `<li role="treeitem" aria-expanded="${open}"><button class="sb-row" style="padding-left:${8 + depth * 14}px" data-act="sbopen" data-id="${p.id}"
+    ${S.view === 'project' && S.active === p.id ? 'aria-current="page"' : ''}>${ICON.chev.replace('CLS', open ? 'open' : '')}${avatar(p, 'sm')}<span class="name">${esc(p.name)}</span>${status(p)}</button>
+    ${open ? `<ul role="group">${kids.map((k) => projectRow(k, depth + 1)).join('')}${convoRows(p)}</ul>` : ''}</li>`
+}
+function renderSidebar() {
+  const home = `<button class="sb-row" data-act="home" ${S.view === 'home' ? 'aria-current="page"' : ''}><span class="name">Home</span><span class="kbd">⇧⌘H</span></button>
+    <button class="sb-row" data-act="search"><span class="name">Search</span><span class="kbd">⌘K</span></button>`
+  $('sidebar').innerHTML = home + `<ul role="tree" aria-label="Projects">${LIBS.map((l) => `<li role="none"><div class="sb-lib">${esc(l.name)}${l.macOnly ? ' · Mac only' : ''}</div>
+    <ul role="group">${areas.filter((a) => a.lib === l.id && !a.hidden).map((a) => { const open = !S.closedAreas.has(a.id)
+      const top = projects.filter((p) => p.area === a.id && !p.parent && !p.removed)
+      return `<li role="treeitem" aria-expanded="${open}"><button class="sb-row sb-area" data-act="area" data-id="${a.id}">${ICON.chev.replace('CLS', open ? 'open' : '')}<span class="name">${esc(a.name)}${a.shelf ? ` · ${top.length}` : ''}</span>${a.macOnly ? ICON.lock : ''}</button>
+        ${open ? `<ul role="group">${top.map((p) => projectRow(p, 1)).join('')}</ul>` : ''}</li>` }).join('')}</ul></li>`).join('')}</ul>`
+}
+function card(p) {
+  const kids = projects.filter((k) => k.parent === p.id && !k.removed)
+  const name = S.renaming === p.id ? `<input class="rename" id="rename-input" value="${esc(p.name)}" aria-label="Project name">` : `<span class="card-name">${esc(p.name)}</span>`
+  const meta = p.status === 'needs' ? `Needs you · ${p.n} question` : p.status === 'working' ? `${ICON.bars} Working` : ago(p.last)
+  const firstMissing = LAYERS[[...p.layers].indexOf('0')]
+  return `<article class="card${p.status === 'needs' ? ' needs-you' : ''}" data-card="${p.id}">
+    <div class="card-top"><button class="card-open" data-act="${S.renaming === p.id ? '' : 'open'}" data-id="${p.id}">${avatar(p)}${name}</button>
+      ${macOnly(p) && !libOf(areaOf(p)).macOnly ? `<span title="Mac only">${ICON.lock}</span>` : ''}${ring(p)}
+      <button class="more" data-act="cardmenu" data-id="${p.id}" aria-label="More for ${esc(p.name)}" aria-haspopup="menu">${ICON.more}</button></div>
+    <div class="card-meta">${meta}</div>
+    ${kids.length ? `<div class="chips">${kids.map((k) => `<button class="chip" data-act="open" data-id="${k.id}">${esc(k.name)}</button>`).join('')}</div>` : ''}
+    ${missing(p) >= 3 ? `<div class="next">Next: ${firstMissing[0]}</div>` : ''}</article>`
+}
+function renderMap() {
+  const needy = projects.filter((p) => p.status === 'needs' && !p.removed)
+  const visible = projects.filter((p) => !p.removed)
+  return `<div class="map"><div><h1>Home</h1><p class="map-sub">${visible.length} projects in ${areas.filter((a) => !a.hidden).length} areas</p></div>
+    ${needy.map((p) => `<button class="callout" data-act="open" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b> has a question for you</span></button>`).join('')}
+    ${areas.filter((a) => !a.hidden).map((a) => { const list = projects.filter((p) => p.area === a.id && !p.parent && !p.removed), lib = libOf(a)
+      if (a.shelf && !S.shelfOpen) return `<section><button class="shelf-line" data-act="shelf">${ICON.chev.replace('CLS', '')}Shelf · ${list.length}</button></section>`
+      return `<section aria-label="${esc(a.name)}"><div class="area-head">${a.shelf ? `<button class="shelf-line" data-act="shelf">${ICON.chev.replace('CLS', 'open')}</button>` : ''}<h2>${esc(a.name)}</h2>
+        <span class="lib">${esc(lib.name)}</span>${lib.macOnly || a.macOnly ? `<span class="macbadge">${ICON.lock}Mac only</span>` : ''}</div>
+        <div class="cards">${list.map(card).join('')}</div></section>` }).join('')}</div>`
+}
+function renderProject(p) {
+  const convos = convosFor(p).sort((a, b) => a.mins - b.mins)
+  const composer = S.composer === p.id ? `<div class="composer"><textarea id="grow-text" aria-label="Message">Look at this folder as an AI operating system with six layers: identity, substrate, rules and hooks, skills, tools, agents. Score each as missing, started, solid or compounding against what this folder is for, then name the three moves that matter most, in order. Do not change any files.</textarea>
+    <span class="hint">New conversation in ${esc(p.name)}. Nothing is sent until you press Send. (If the os-coach skill is installed, this reads /os-coach audit.)</span></div>` : ''
+  return `<div class="proj"><div class="proj-head">${avatar(p, 'solid')}<h1>${esc(p.name)}</h1>${macOnly(p) ? `<span class="macbadge">${ICON.lock}Mac only</span>` : ''}
+      <button class="btn" data-act="grow" data-id="${p.id}">Grow this OS</button><button class="btn primary" data-act="toast" data-msg="Starts a new conversation (mockup).">New conversation</button></div>
+    <div class="subnav" aria-hidden="true"><span>Conversations</span><span>Files</span><span>Workflows</span><span>Memory</span><span>Processes</span></div>
+    ${composer}
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${ring(p, 64)}<ul class="layers">${LAYERS.map(([n, w], i) => `<li><b>${n}</b><span>${w}</span><span class="st">${stateWord(p, i)}</span></li>`).join('')}</ul></div>
+    <div class="convos">${convos.map((c) => `<div class="convo"><span>${esc(c.title)}</span><span>${ago(c.mins)}</span></div>`).join('')}</div></div>`
+}
+function renderOverlay() {
+  let html = ''
+  if (S.menu) {
+    const p = byId(S.menu.id), m = S.menu
+    const items = m.kind === 'tab'
+      ? `<div class="mlabel">Colour</div><div class="swatches" role="radiogroup" aria-label="Colour">${COLORS.map((c) => `<button class="sw c-${c}" role="menuitemradio" aria-checked="${p.color === c}" aria-label="${c}" data-act="color" data-id="${p.id}" data-color="${c}"></button>`).join('')}</div><div class="sep"></div>
+        <button class="mi" role="menuitem" data-act="pin" data-id="${p.id}">${p.pin ? 'Unpin' : 'Pin'}</button><button class="mi" role="menuitem" data-act="close" data-id="${p.id}">Close tab</button>
+        <button class="mi" role="menuitem" data-act="toast" data-msg="Project settings open here, as today.">Project settings…</button><div class="sep"></div>
+        <button class="mi danger" role="menuitem" data-act="remove" data-id="${p.id}">Remove from Cockpit…</button>`
+      : m.kind === 'move' ? `<div class="mlabel">Move ${esc(p.name)} to</div>${areas.filter((a) => a.id !== p.area && !a.hidden).map((a) => `<button class="mi" role="menuitem" data-act="moveto" data-id="${p.id}" data-area="${a.id}">${esc(a.name)}</button>`).join('')}`
+      : `<button class="mi" role="menuitem" data-act="pin" data-id="${p.id}">${p.pin ? 'Unpin tab' : 'Pin as tab'}</button>
+        <button class="mi" role="menuitem" data-act="move" data-id="${p.id}">Move to area…</button><button class="mi" role="menuitem" data-act="rename" data-id="${p.id}">Rename…</button>
+        <button class="mi" role="menuitem" data-act="toast" data-msg="Opens the folder in Finder. Nothing on disk moves when you arrange the Map.">Open folder</button>
+        <button class="mi" role="menuitem" data-act="maconly" data-id="${p.id}">${macOnly(p) ? '✓ ' : ''}Mac only</button><div class="sep"></div>
+        <button class="mi" role="menuitem" data-act="grow" data-id="${p.id}">Grow this OS</button>`
+    html += `<div class="menu" role="menu" id="menu" style="left:${m.x}px;top:${m.y}px">${items}</div>`
+  }
+  if (S.search !== null) {
+    const q = S.search.toLowerCase(), hits = projects.filter((p) => !p.removed && p.name.toLowerCase().includes(q)).slice(0, 8)
+    html += `<div class="scrim" data-act="scrim"><div class="search" role="dialog" aria-label="Search"><input id="search-input" placeholder="Search projects and conversations" value="${esc(S.search)}" aria-label="Search">
+      <ul role="listbox">${hits.map((p, i) => `<li role="option" aria-selected="${i === 0}"><button class="mi" data-act="open" data-id="${p.id}">${avatar(p, 'sm')}${esc(p.name)}<span class="spacer"></span><span style="color:var(--muted);font-size:12px">${esc(areaOf(p).name)}</span></button></li>`).join('') || '<li class="mi" style="color:var(--muted)">No matches</li>'}</ul></div></div>`
+  }
+  if (S.toast) html += `<div class="toast" role="status">${esc(S.toast)}</div>`
+  $('overlay').innerHTML = html
+}
+function render() {
+  renderTabs(); renderSidebar()
+  const p = S.active && byId(S.active)
+  $('main').innerHTML = S.view === 'project' && p ? renderProject(p) : renderMap()
+  renderOverlay()
+  const at = document.querySelector('.tab.active'); if (at) at.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  const ri = $('rename-input'); if (ri) { ri.focus(); ri.select() }
+  const si = $('search-input'); if (si && document.activeElement !== si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length) }
+}
+let toastTimer
+const toast = (msg) => { S.toast = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = ''; renderOverlay() }, 2600) }
+const openProject = (id) => { S.active = id; S.view = 'project'; S.menu = null; S.search = null; S.composer = null; render() }
+const goHome = () => { S.active = null; S.view = 'home'; S.menu = null; render() }
+function closeTab(id) {
+  const t = tabs(), i = t.findIndex((p) => p.id === id), wasActive = S.active === id, name = byId(id).name
+  update(id, { pin: 0 }); renumber()
+  if (wasActive) { const rest = tabs().filter((p) => p.id !== id); const next = rest[Math.min(i, rest.length - 1)]; next ? openProject(next.id) : goHome() }
+  toast(`${name} closed. It's still on Home and in the sidebar.`); render()
+}
+const renumber = () => pinned().forEach((p, i) => update(p.id, { pin: i + 1 }))
+function reorder(ids) { ids.forEach((id, i) => update(id, { pin: i + 1 })) }
+function openMenu(kind, id, x, y) {
+  const fr = $('frame').getBoundingClientRect()
+  S.menu = { kind, id, x: Math.max(8, Math.min(x - fr.left, fr.width - 236)), y: Math.max(8, Math.min(y - fr.top, fr.height - 280)) }
+  renderOverlay(); const first = document.querySelector('#menu [role^="menuitem"]'); if (first) first.focus()
+}
+const ACT = {
+  home: goHome, open: (d) => openProject(d.id), search: () => { S.search = ''; renderOverlay() },
+  pin: (d) => { const p = byId(d.id); update(d.id, { pin: p.pin ? 0 : 999 }); renumber(); S.menu = null; render() },
+  close: (d) => { S.menu = null; closeTab(d.id) },
+  color: (d) => { update(d.id, { color: d.color }); S.menu = null; render() },
+  remove: (d) => { const p = byId(d.id); update(d.id, { removed: true, pin: 0 }); renumber(); S.menu = null; if (S.active === d.id) goHome(); toast(`${p.name} removed from Cockpit. The folder stays on disk.`); render() },
+  sbopen: (d) => { S.expanded.has(d.id) ? S.expanded.delete(d.id) : S.expanded.add(d.id); openProject(d.id) },
+  area: (d) => { S.closedAreas.has(d.id) ? S.closedAreas.delete(d.id) : S.closedAreas.add(d.id); renderSidebar() },
+  earlier: (d) => { S.earlier.has(d.id) ? S.earlier.delete(d.id) : S.earlier.add(d.id); renderSidebar() },
+  shelf: () => { S.shelfOpen = !S.shelfOpen; render() },
+  cardmenu: (d, el) => { const r = el.getBoundingClientRect(); openMenu('card', d.id, r.right - 220, r.bottom + 4) },
+  move: (d) => { S.menu = { ...S.menu, kind: 'move' }; renderOverlay() },
+  moveto: (d) => { update(d.id, { area: d.area }); S.menu = null; toast(`Moved on the Map only. Nothing moved on disk.`); render() },
+  rename: (d) => { S.renaming = d.id; S.menu = null; render() },
+  maconly: (d) => { const p = byId(d.id); update(d.id, { macOnly: !p.macOnly }); S.menu = null; toast(byId(d.id).macOnly ? `${p.name} is Mac only: never shown on the phone.` : `${p.name} can show on the phone again.`); render() },
+  grow: (d) => { S.composer = d.id; S.active = d.id; S.view = 'project'; S.menu = null; render() },
+  toast: (d) => { S.menu = null; toast(d.msg); renderOverlay() },
+  scrim: (d, el, e) => { if (e.target === el) { S.search = null; renderOverlay() } },
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]')
+  if (S.menu && !e.target.closest('#menu') && !(el && el.dataset.act === 'cardmenu')) { S.menu = null; renderOverlay() }
+  if (el && el.dataset.act && ACT[el.dataset.act]) ACT[el.dataset.act](el.dataset, el, e)
+})
+document.addEventListener('contextmenu', (e) => { const t = e.target.closest('[data-tab]'); if (!t) return; e.preventDefault(); openMenu('tab', t.dataset.tab, e.clientX, e.clientY) })
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); S.search = ''; renderOverlay(); return }
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'h') { e.preventDefault(); goHome(); return }
+  if (e.key === 'Escape') { if (S.renaming) { S.renaming = null; render() } else { S.menu = null; S.search = null; renderOverlay() } return }
+  const tab = e.target.closest && e.target.closest('[data-tab]')
+  if (tab && ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu')) { e.preventDefault(); const r = tab.getBoundingClientRect(); openMenu('tab', tab.dataset.tab, r.left, r.bottom); return }
+  if (tab && e.altKey && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault(); const ids = pinned().map((p) => p.id), i = ids.indexOf(tab.dataset.tab), j = i + (e.key === 'ArrowLeft' ? -1 : 1)
+    if (i < 0 || j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; reorder(ids); render()
+    document.querySelector(`[data-tab="${tab.dataset.tab}"] .tab-main`).focus(); return }
+  if (e.target.id === 'rename-input' && e.key === 'Enter') { const v = e.target.value.trim(); if (v) update(S.renaming, { name: v }); S.renaming = null; render() }
+  if (e.target.id === 'search-input' && e.key === 'Enter') { const b = document.querySelector('.search [role="option"] [data-id]'); if (b) openProject(b.dataset.id) }
+})
+document.addEventListener('input', (e) => { if (e.target.id === 'search-input') { S.search = e.target.value; renderOverlay() } })
+document.addEventListener('focusout', (e) => { if (e.target.id === 'rename-input' && S.renaming) { const v = e.target.value.trim(); if (v) update(S.renaming, { name: v }); S.renaming = null; setTimeout(render) } })
+// Tab drag: the browser's own drag threshold keeps a click a click (the app uses an explicit 4 px threshold).
+let dragId = null
+document.addEventListener('dragstart', (e) => { const t = e.target.closest && e.target.closest('[data-tab]'); if (!t) return; dragId = t.dataset.tab; t.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId) })
+document.addEventListener('dragover', (e) => { const t = e.target.closest && e.target.closest('[data-tab]'); if (!dragId || !t) return; e.preventDefault()
+  document.querySelectorAll('.drop-before').forEach((n) => n.classList.remove('drop-before')); if (t.dataset.tab !== dragId) t.classList.add('drop-before') })
+document.addEventListener('drop', (e) => { const t = e.target.closest && e.target.closest('[data-tab]'); if (!dragId || !t) return; e.preventDefault()
+  const ids = pinned().map((p) => p.id).filter((id) => id !== dragId), at = ids.indexOf(t.dataset.tab)
+  if (!byId(dragId).pin) update(dragId, { pin: 999 }); ids.splice(at < 0 ? ids.length : at, 0, dragId); reorder(ids); dragId = null; render() })
+document.addEventListener('dragend', () => { dragId = null; document.querySelectorAll('.dragging,.drop-before').forEach((n) => n.classList.remove('dragging', 'drop-before')) })
+// Mockup controls: theme and width.
+function syncControls() {
+  const theme = document.documentElement.dataset.theme || '', narrow = $('frame').classList.contains('narrow')
+  document.querySelectorAll('[data-theme-set]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeSet === theme)))
+  document.querySelectorAll('[data-width]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.width === 'narrow') === narrow)))
+}
+document.querySelectorAll('[data-theme-set]').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.themeSet) document.documentElement.dataset.theme = b.dataset.themeSet; else delete document.documentElement.dataset.theme; syncControls() }))
+document.querySelectorAll('[data-width]').forEach((b) => b.addEventListener('click', () => { $('frame').classList.toggle('narrow', b.dataset.width === 'narrow'); syncControls() }))
+syncControls(); render()
+</script>
+</body>
+</html>
