@@ -13,6 +13,7 @@ import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { parseClaudeLine } from './parse.ts'
 import { probeClaude, validateClaudeArgs } from './capabilities.ts'
 import { watchChrome } from './chrome-watch.ts'
+import { inheritedEnv } from '../inherited-env.ts'
 
 export interface ClaudeLaunchDeps {
   /** Override for tests or a non-PATH install. */
@@ -32,12 +33,13 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   // Use my Chrome: the first Chrome call gets a bounded wait (chrome-watch.ts).
   const onEvent: EventSink = input.chrome ? watchChrome(events, () => session?.interrupt()) : events
   let ended = false
-  let pending: { readonly text: string; readonly images?: readonly OutgoingImage[] } | undefined
+  // Every message sent before the --help probe resolves waits here, in order, and is written once Claude is up.
+  let pending: readonly { readonly text: string; readonly queuedId?: string; readonly images?: readonly OutgoingImage[] }[] = []
   let replays = false
   const finish = (error?: unknown, stopped = false) => {
     if (ended) return
     ended = true
-    pending = undefined
+    pending = []
     if (error) onEvent({ kind: 'error', message: error instanceof Error ? error.message : 'Could not check Claude Code compatibility' })
     onEvent({ kind: 'result', ok: false, ...(stopped ? { stopped: true } : {}) })
     onEvent({ kind: 'exit', code: null })
@@ -45,7 +47,7 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   // Defer spawning until callers can register the session (or immediately close
   // it). In particular, never abort an execFile whose spawn has already failed.
   const ready = Promise.resolve().then(() => ended ? undefined :
-    probeClaude(deps.executable ?? 'claude', input.cwd, { ...process.env, ...deps.env }, controller.signal))
+    probeClaude(deps.executable ?? 'claude', input.cwd, { ...inheritedEnv(), ...deps.env }, controller.signal))
     .then((capabilities) => {
       if (ended || !capabilities) return
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
@@ -58,19 +60,35 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
         prompt?.remove()
         throw error
       }
-      if (pending !== undefined) { session.send(pending.text, undefined, pending.images); pending = undefined }
+      const waiting = pending
+      pending = []
+      for (const message of waiting) {
+        session.send(message.text, message.queuedId, message.images)
+        // Without --replay-user-messages Claude never says when it takes a message, so one the manager is
+        // waiting on counts as taken once it is written, as a message sent after startup would have.
+        if (message.queuedId && !replays) onEvent({ kind: 'user_taken', text: message.text, id: message.queuedId })
+      }
     }).catch((error: unknown) => finish(error))
   return {
     agent: 'claude',
     send(text, queuedId, images) {
       if (session) session.send(text, queuedId, images)
-      else if (!ended && pending === undefined) pending = { text, ...(images ? { images } : {}) }
-      else onEvent({ kind: 'error', message: ended ? 'Agent process is not running' : 'Claude Code is still starting' })
+      else if (!ended) pending = [...pending, { text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) }]
+      else onEvent({ kind: 'error', message: 'Agent process is not running' })
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
     respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
-    queues: () => Boolean(session && replays),
-    cancelQueued: (queuedId) => session?.cancelQueued?.(queuedId) ?? Promise.resolve(false),
+    // A message sent mid-turn while Claude is still starting waits in `pending` and counts as queued, so the manager
+    // tracks it like any other; whether Claude replays it is known once Claude is up.
+    queues: () => session ? replays : !ended,
+    cancelQueued(queuedId) {
+      if (session) return session.cancelQueued?.(queuedId) ?? Promise.resolve(false)
+      // Not written yet: taking it back is dropping it from the wait.
+      const kept = pending.filter((message) => message.queuedId !== queuedId)
+      const dropped = kept.length < pending.length
+      pending = kept
+      return Promise.resolve(dropped)
+    },
     interrupt() {
       if (session) session.interrupt()
       else { finish(undefined, true); controller.abort() }
@@ -101,7 +119,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...process.env, ...deps.env },
+    env: { ...inheritedEnv(), ...deps.env },
   })
   let exited = false
   const stderrTail: string[] = []
@@ -146,7 +164,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     if (stderrTail.length > 20) stderrTail.shift()
   })
   child.on('error', (error) => {
-    onEvent({ kind: 'error', message: startErrorMessage('claude', error) })
+    onEvent({ kind: 'error', message: startErrorMessage('claude', error, input.cwd) })
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true

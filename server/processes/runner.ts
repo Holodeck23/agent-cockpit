@@ -3,6 +3,7 @@ import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'n
 import { z } from 'zod'
 import { GROUP_GRACE_MS, groupAlive, stopGroup } from './group.ts'
 import { createOutputBuffer, detectLocalUrl, DEFAULT_OUTPUT_BYTES, type OutputBuffer, type OutputSlice } from './output.ts'
+import { inheritedEnv } from '../agents/inherited-env.ts'
 
 // Long-running project commands (dev servers, watchers) that an agent starts
 // and then keeps an eye on. They live as long as the app does: stopped on
@@ -188,6 +189,11 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
     await stopGroup(pid, graceMs)
     // A daemon that escaped the group can hold the pipes open; don't wait on it forever.
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, graceMs))])
+    // 'close' waits for the output pipes, so a daemon holding them leaves a dead command 'stopping'
+    // for good, and restart() would reuse that row instead of starting anything. The command is gone: say so.
+    if (entryOf(id).info.status !== 'exited' && (child.exitCode !== null || child.signalCode !== null)) {
+      update(id, { status: 'exited', exitCode: child.exitCode, signal: child.signalCode, endedAt: new Date().toISOString() })
+    }
     return entryOf(id).info
   }
 
@@ -217,7 +223,7 @@ export function createProcessRunner(options: RunnerOptions = {}): ProcessRunner 
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
         // BROWSER=none: dev servers must not pop a browser; open_preview does that on request.
-        env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0' },
+        env: { ...inheritedEnv(), BROWSER: 'none', FORCE_COLOR: '0' },
       })
       const output = createOutputBuffer(options.maxOutputBytes ?? DEFAULT_OUTPUT_BYTES)
       const info: ProcessInfo = {

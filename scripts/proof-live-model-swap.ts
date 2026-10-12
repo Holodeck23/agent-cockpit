@@ -53,7 +53,7 @@ try {
   // In an open conversation the picker changes it only on Apply (a new conversation takes the choice at once).
   await page.getByRole('button', { name: 'Agent settings' }).click()
   const panel = page.getByRole('dialog', { name: 'Agent settings' })
-  await panel.getByLabel('Model').fill('sonnet')
+  await panel.getByLabel('Model').selectOption('sonnet')
   await panel.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.keyboard.press('Escape')
   await page.screenshot({ path: join(PROOF_DIR, 'model-swap-after-change.png') })

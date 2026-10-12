@@ -23,6 +23,7 @@ import {
   type GateProcessLeak,
 } from './lib/gate-processes.ts'
 import { hashPackageTree } from './lib/package-hash.ts'
+import { createRunFolder, removeRunFolder } from './lib/temp-run.ts'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const flag = (name: string): string | undefined => {
@@ -41,6 +42,21 @@ if (!Number.isInteger(runs) || runs < 1) fail('--runs must be a whole number of 
 const only = flag('only')?.split(',').filter(Boolean)
 const suites = only ? GATE_SUITES.filter((suite) => only.includes(suite.name)) : GATE_SUITES
 if (only && suites.length !== only.length) fail(`unknown suite in --only: ${only.filter((n) => !GATE_SUITES.some((s) => s.name === n)).join(', ')}`)
+
+// Keep every suite's temporary files under one short folder. The short name leaves enough room
+// for Chromium's unix socket, and the exit hook removes the whole run after either verdict.
+const previousTempDir = process.env.TMPDIR
+const runTempDir = createRunFolder()
+process.env.TMPDIR = runTempDir
+let tempRemoved = false
+const removeGateTemp = (): void => {
+  if (tempRemoved) return
+  tempRemoved = true
+  if (previousTempDir === undefined) delete process.env.TMPDIR
+  else process.env.TMPDIR = previousTempDir
+  removeRunFolder(runTempDir)
+}
+process.once('exit', removeGateTemp)
 
 const asarPath = join(app, 'Contents/Resources/app.asar')
 if (!existsSync(asarPath)) fail(`no packaged app at ${app}`)
@@ -136,6 +152,13 @@ const summaryFile = join(out, 'gate.json')
 const save = (extra: Record<string, unknown> = {}): void => writeFileSync(summaryFile, `${JSON.stringify({ ...record, ...extra }, null, 2)}\n`)
 const line = (text: string): void => { console.log(text); writeFileSync(join(out, 'summary.txt'), `${text}\n`, { flag: 'a' }) }
 
+function runClean(when: 'before' | 'after'): void {
+  const result = spawnSync('npm', ['run', 'clean'], { cwd: ROOT, env: process.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  writeFileSync(join(out, `clean-${when}.txt`), `${result.stdout}${result.stderr}`)
+  if (result.status !== 0) fail(`npm run clean failed ${when} the gate; see ${join(out, `clean-${when}.txt`)}`)
+}
+
+runClean('before')
 line(`gate ${record.commit.slice(0, 12)}${record.dirty ? ' (DIRTY TREE)' : ''} · app ${record.appVersion} · package ${startPackage.slice(0, 12)} · app.asar ${startAsar.slice(0, 12)} · ${suites.length} suites × ${runs}`)
 let voided = ''
 let processLeak = ''
@@ -173,6 +196,7 @@ if (!voided && endPackage !== startPackage) voided = 'proof package changed duri
 if (!voided && endAsar !== startAsar) voided = 'app.asar changed during the gate'
 const verdict = gateVerdict(record.results, suites.map((suite) => suite.name), runs)
 const passed = gatePassesProcessCleanup(verdict.passed && !voided && !only && !record.dirty, record.leftovers)
+runClean('after')
 save({ finishedAt: new Date().toISOString(), endPackageSha256: endPackage, endAsarSha256: endAsar, voided: voided || null,
   processLeak: processLeak || null, verdict: { ...verdict, passed } })
 line(`GATE ${passed ? 'PASS' : 'FAIL'}: ${verdict.cleanRuns}/${runs} clean passes${voided ? `; ${voided}` : ''}${record.dirty ? '; dirty tree' : ''}`

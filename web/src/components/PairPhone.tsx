@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api.ts'
+import { api, ApiError } from '../api.ts'
 import { Mark } from './icons.tsx'
 
 // First visit from a phone: ask the Mac for approval, show the code to compare,
@@ -27,7 +27,9 @@ export function PairPhone({ login }: { login: string }) {
           if (status === 'approved') window.location.reload()
           else if (status === 'denied') setStep({ kind: 'denied' })
         },
-        () => setStep({ kind: 'expired' }),
+        // Only the Mac saying the request is gone is "expired". A dropped connection or a proxy's reply is tried again on the next
+        // tick: the request lives for minutes, and giving up here would leave the Mac's approval unredeemed.
+        (e: unknown) => { if (e instanceof ApiError && e.status === 404) setStep({ kind: 'expired' }) },
       )
     }, 2000)
     return () => clearInterval(timer)

@@ -2,7 +2,7 @@
 // ever set as HTML), raw HTML in a reply is shown as the text it is, links must be http(s) and
 // open beside the chat in the in-app browser (G5), or in the default browser with ⌘ or where there
 // is none, and images are never fetched: they show as their alt text.
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, isValidElement, useContext, useMemo, useState, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { commitOf, COMMIT_SCHEME, isCommitHash, linkCommitsInProse } from './commit-links.ts'
@@ -22,6 +22,9 @@ export const ReplyContext = createContext<{
   /** Opens a web link in the conversation's browser pane; absent where there is none. */
   onOpenWeb?: (url: string) => void
 }>({})
+
+/** True inside a link or a button made of one: a code span there is just code, so one click does one thing. */
+const InLink = createContext(false)
 
 /** The address if it is an absolute http(s) URL, else ''. */
 export function safeUrl(url: string): string {
@@ -46,8 +49,11 @@ function htmlAsText() {
   return (tree: MdNode): void => walk(tree)
 }
 
+// The words a reader sees, formatting (bold, italic, code) included.
 const textOf = (node: ReactNode): string =>
-  typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(textOf).join('') : ''
+  typeof node === 'string' || typeof node === 'number' ? String(node)
+    : Array.isArray(node) ? node.map(textOf).join('')
+      : isValidElement(node) ? textOf((node.props as { children?: ReactNode }).children) : ''
 const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } }
 
 /**
@@ -71,7 +77,7 @@ function WebLink({ href, children, className }: { href: string; children: ReactN
         event.preventDefault()
         onOpenWeb(href)
       }}>
-      {children}{real ? <span className="link-real-host"> ↗ {real}</span> : null}
+      <InLink.Provider value>{children}</InLink.Provider>{real ? <span className="link-real-host"> ↗ {real}</span> : null}
     </a>
   )
 }
@@ -85,7 +91,7 @@ function FileButton({ target, children }: { target: FileTarget; children: ReactN
   return (
     <button type="button" className="file-link" data-path={target.path} data-line={target.line} data-end-line={target.endLine}
       title={`Open ${target.path}${where} in Files`} onClick={() => onOpenFile?.(target)}>
-      {children}
+      <InLink.Provider value>{children}</InLink.Provider>
     </button>
   )
 }
@@ -101,7 +107,7 @@ function CommitButton({ hash, children }: { hash: string; children: ReactNode })
   }
   return (
     <>
-      <button type="button" className="file-link commit-link" data-commit={hash} title={`Open commit ${hash}`} onClick={click}>{children}</button>
+      <button type="button" className="file-link commit-link" data-commit={hash} title={`Open commit ${hash}`} onClick={click}><InLink.Provider value>{children}</InLink.Provider></button>
       {note ? <span className="commit-note" role="status"> {note}</span> : null}
     </>
   )
@@ -113,15 +119,17 @@ function buildComponents(projectPath: string | undefined): Components {
       if (href && safeUrl(href)) return external(href, children)
       const hash = href && projectPath ? commitOf(href) : undefined
       if (hash) return <CommitButton hash={hash}>{children}</CommitButton>
-      const target = href ? fileLink(href, projectPath) : undefined
+      const target = href ? fileLink(href, projectPath, 'link') : undefined
       return target ? <FileButton target={target}>{children}</FileButton> : <span>{children}</span>
     },
     img: ({ src, alt }) => external(typeof src === 'string' ? safeUrl(src) || undefined : undefined, alt || 'image', 'reply-image'),
     // A code span that is exactly a file reference opens it. Block code ends in a newline and never does.
-    code: ({ className, children }) => {
+    code: function Code({ className, children }) {
+      const inLink = useContext(InLink)
       const text = typeof children === 'string' ? children : ''
-      const target = !className && text && !text.includes('\n') ? fileLink(text, projectPath) : undefined
       const code = <code className={className}>{children}</code>
+      if (inLink) return code
+      const target = !className && text && !text.includes('\n') ? fileLink(text, projectPath) : undefined
       if (target) return <FileButton target={target}>{code}</FileButton>
       return projectPath && !className && isCommitHash(text) ? <CommitButton hash={text}>{code}</CommitButton> : code
     },
@@ -134,7 +142,7 @@ export function ReplyMarkdown({ text }: { text: string }) {
   const plugins = useMemo(() => [remarkGfm, htmlAsText, linkFilesInProse(projectPath), ...(projectPath ? [linkCommitsInProse] : [])], [projectPath])
   // Web addresses pass; a file reference passes to the link renderer, which checks it again.
   const urlTransform = (url: string): string | undefined =>
-    safeUrl(url) || (fileLink(url, projectPath) || (url.startsWith(COMMIT_SCHEME) && commitOf(url)) ? url : undefined)
+    safeUrl(url) || (fileLink(url, projectPath, 'link') || (url.startsWith(COMMIT_SCHEME) && commitOf(url)) ? url : undefined)
   return (
     <Markdown remarkPlugins={plugins} components={components} urlTransform={urlTransform}>
       {text}

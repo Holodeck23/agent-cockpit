@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { findIn } from '../editor-find.ts'
 import { stepIndex } from '../find.ts'
 import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from './icons.tsx'
 
@@ -102,15 +103,20 @@ export function EditorFindBar({ adapter, contentKey, withReplace, readOnly, onCl
     setCurrent((at) => (found === 0 ? -1 : at < 0 ? 0 : Math.min(at, found - 1)))
   }, [query, matchCase, contentKey])
 
+  // The query too: new matches with the same count and position still need painting.
   useEffect(() => {
     adapterRef.current.paint(current)
     if (current >= 0) adapterRef.current.reveal(current)
-  }, [current, count, contentKey])
+  }, [current, count, contentKey, query, matchCase])
 
   const step = (direction: 1 | -1): void => setCurrent((at) => stepIndex(at, count, direction))
   const replaceOne = (): void => {
     if (current < 0 || readOnly) return
     adapterRef.current.replace(current, replacement)
+    // Move past the text just written: one that still holds the query is itself a match at this position.
+    const found = adapterRef.current.search(query, matchCase)
+    setCount(found)
+    setCurrent(found === 0 ? -1 : (current + findIn(replacement, query, matchCase).length) % found)
   }
   const replaceAll = (): void => {
     if (count === 0 || readOnly) return

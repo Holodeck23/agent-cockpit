@@ -2,6 +2,7 @@
 // prompt or starts a session; each has a timeout; a failure is reported, never guessed around.
 import { execFile } from 'node:child_process'
 import { parseClaudeHelp } from '../claude/capabilities.ts'
+import { claudeModels } from '../claude/models.ts'
 import { queryAppServer, type AppServerQuery } from '../codex/app-server-query.ts'
 import type { AgentId } from '../types.ts'
 import type { AuthCapability, Capability, ModelOption } from './types.ts'
@@ -50,10 +51,15 @@ const CLAUDE_SETTINGS = {
   chrome: '--chrome',
 } as const
 
-async function claudeSettings(path: string, run: Runner, timeoutMs: number): Promise<Record<string, Capability>> {
+async function claudeHelp(path: string, run: Runner, timeoutMs: number): Promise<Pick<AgentProbe, 'settings' | 'models'>> {
   const result = await run(path, ['--help'], timeoutMs)
+  const source = 'claude --help'
   const all = (capability: Capability): Record<string, Capability> => Object.fromEntries(Object.keys(CLAUDE_SETTINGS).map((name) => [name, capability]))
-  if (!result.ok) return all({ state: 'unavailable', reason: failure('claude --help', result, timeoutMs) })
+  const unlisted = (reason: string): AgentProbe['models'] => ({ state: 'unavailable', reason: `${NOT_LISTED.claude} (${reason})`, source })
+  if (!result.ok) {
+    const reason = failure('claude --help', result, timeoutMs)
+    return { settings: all({ state: 'unavailable', reason }), models: unlisted(reason) }
+  }
   try {
     const caps = parseClaudeHelp(result.stdout)
     const has: Record<keyof typeof CLAUDE_SETTINGS, boolean> = {
@@ -64,10 +70,13 @@ async function claudeSettings(path: string, run: Runner, timeoutMs: number): Pro
       appendSystemPromptFile: caps.appendSystemPromptFile,
       chrome: caps.chrome,
     }
-    return Object.fromEntries(Object.entries(CLAUDE_SETTINGS).map(([name, flag]) => [name, has[name as keyof typeof has]
-      ? { state: 'supported' } : { state: 'unsupported', reason: `This Claude Code does not declare ${flag}.` }]))
+    const settings: Record<string, Capability> = Object.fromEntries(Object.entries(CLAUDE_SETTINGS).map(([name, flag]) => [name, has[name as keyof typeof has]
+      ? { state: 'supported' as const } : { state: 'unsupported' as const, reason: `This Claude Code does not declare ${flag}.` }]))
+    const models = caps.modelAliases.length > 0 ? { state: 'supported' as const, value: claudeModels(caps.modelAliases), source } : unlisted('--model names no aliases')
+    return { settings, models }
   } catch (error) {
-    return all({ state: 'unavailable', reason: error instanceof Error ? error.message : String(error) })
+    const reason = error instanceof Error ? error.message : String(error)
+    return { settings: all({ state: 'unavailable', reason }), models: unlisted(reason) }
   }
 }
 
@@ -147,7 +156,7 @@ async function codexModels(path: string, query: AppServerQuery, timeoutMs: numbe
 }
 
 const NOT_LISTED: Record<Exclude<AgentId, 'antigravity'>, string> = {
-  claude: 'Claude Code has no model list command: type an alias (haiku, sonnet, opus) or a full model id, or leave it blank for your default.',
+  claude: 'Claude Code did not name its model aliases: pick Other for a full model id, or leave it on Default.',
   codex: 'Codex did not list its models: type a model id, or leave it blank for your default.',
   opencode: 'OpenCode takes provider/model ids such as openrouter/…; Cockpit does not list them.',
 }
@@ -156,8 +165,8 @@ const NOT_LISTED: Record<Exclude<AgentId, 'antigravity'>, string> = {
 export async function probeAgent(agent: AgentId, path: string, run: Runner, timeoutMs: number, query: AppServerQuery = queryAppServer): Promise<AgentProbe> {
   switch (agent) {
     case 'claude': {
-      const [settings, auth] = await Promise.all([claudeSettings(path, run, timeoutMs), claudeAuth(path, run, timeoutMs)])
-      return { settings, auth, models: { state: 'unavailable', reason: NOT_LISTED.claude } }
+      const [help, auth] = await Promise.all([claudeHelp(path, run, timeoutMs), claudeAuth(path, run, timeoutMs)])
+      return { ...help, auth }
     }
     case 'codex': {
       const [auth, models] = await Promise.all([codexAuth(path, run, timeoutMs), codexModels(path, query, timeoutMs)])

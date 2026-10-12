@@ -64,7 +64,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const compacting = useMemo(() => running && compactingNow(events), [events, running])
   const turn = useMemo(() => latestTurn(events), [events])
   const now = useNow(isWorking(shown))
-  const items = useMemo(() => buildTranscript(events, meta.settings.agent), [events, meta.settings.agent])
+  const items = useMemo(() => buildTranscript(events, meta.settings.agent, meta.settings.permissionMode), [events, meta.settings.agent, meta.settings.permissionMode])
   // J2: a click puts the text in the box to edit; sending uses whatever the picker says then.
   const followUps = useMemo(() => followUpSuggestions(events), [events])
   const activity = useMemo(() => buildActivity(events, running), [events, running])
@@ -238,7 +238,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           streaming={streaming}
           streamingAuthor={meta.settings.agent}
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
-          onAnswer={(requestId, answers) => guard(api.answerQuestion(meta.id, requestId, answers))}
+          onAnswer={(requestId, answers) => { const done = api.answerQuestion(meta.id, requestId, answers); guard(done); return done }}
           onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text, images }) => setRestore({ text, restore: true, images })))}
           onSendNow={() => guard(api.interrupt(meta.id, twoRunning ? focused : undefined))}
           workspaceName={inSeveral ? workspace?.nameOf : undefined}
@@ -297,6 +297,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         // With two workspaces, the box speaks for the one you are looking at.
         placeholder={focusedRunning ? 'Add to the current turn…' : 'Add a follow-up…'}
         working={isWorking(status) && focusedRunning}
+        onStop={focusedRunning ? () => guard(api.interrupt(meta.id, inSeveral ? focused : undefined)) : undefined}
+        stopLabel={inSeveral && focused !== undefined ? `Stop current turn in ${workspace!.nameOf(focused)}` : undefined}
         onSubmit={(text, images) => send(text, images).then(() => undefined)}
         picker={phone ? (
           <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>

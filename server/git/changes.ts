@@ -89,6 +89,8 @@ export const MAX_DIFF_LINES = 20_000
 export const MAX_COUNTED_BYTES = 16 * 1024 * 1024
 // `run` disables fsmonitor globally; this additionally disables external diff helpers.
 const SAFE = ['-c', 'diff.external=']
+// A changed path is a name, not a pattern: git would otherwise read `[id]`, `*` or `?` in it as a glob and diff its siblings too.
+const LITERAL = [...SAFE, '--literal-pathspecs']
 const DIFF_FLAGS = ['--no-ext-diff', '--no-textconv', '--no-color', '-M']
 
 interface StatusEntry {
@@ -192,7 +194,7 @@ export type WorktreeRead =
   | { readonly kind: 'outside' }
   | { readonly kind: 'other' }
   | { readonly kind: 'too-large'; readonly size: number; readonly mtimeMs: number }
-  | { readonly kind: 'file'; readonly bytes: Buffer; readonly binary: boolean }
+  | { readonly kind: 'file'; readonly bytes: Buffer; readonly binary: boolean; readonly size: number; readonly mtimeMs: number }
 
 export function readWorktreeFile(workspace: string, path: string, limit = MAX_FILE_BYTES): WorktreeRead {
   const file = join(workspace, path)
@@ -221,7 +223,7 @@ export function readWorktreeFile(workspace: string, path: string, limit = MAX_FI
       read += n
     }
     const kept = bytes.subarray(0, read)
-    return { kind: 'file', bytes: kept, binary: isBinary(kept) }
+    return { kind: 'file', bytes: kept, binary: isBinary(kept), size, mtimeMs: stat.mtimeMs }
   } finally {
     closeSync(fd)
   }
@@ -326,7 +328,7 @@ export async function fileDiff(projectPath: string, path: string): Promise<FileD
   const baseRev = changes.head ? 'HEAD' : EMPTY_TREE
   const paths = file.oldPath ? [file.oldPath, file.path] : [file.path]
   if (file.submodule) {
-    const { stdout } = await run(projectPath, [...SAFE, 'diff', baseRev, ...DIFF_FLAGS, '--relative', '--submodule=short', '--', ...paths])
+    const { stdout } = await run(projectPath, [...LITERAL, 'diff', baseRev, ...DIFF_FLAGS, '--relative', '--submodule=short', '--', ...paths])
     const from = /^-Subproject commit ([0-9a-f]+)/m.exec(stdout)?.[1]
     const to = /^\+Subproject commit ([0-9a-f]+)/m.exec(stdout)?.[1]
     return { ...none, omitted: 'submodule', submodule: { ...(from ? { from } : {}), ...(to ? { to } : {}), modified: file.submodule.modified, untracked: file.submodule.untracked } }
@@ -338,12 +340,12 @@ export async function fileDiff(projectPath: string, path: string): Promise<FileD
   if (current?.kind === 'outside') return { ...none, omitted: 'outside' }
   if (file.symlink && current?.kind === 'symlink') {
     // The link's own text is what changed; its target is never read.
-    const { stdout } = await run(projectPath, [...SAFE, 'diff', baseRev, ...DIFF_FLAGS, '--relative', '--', ...paths])
+    const { stdout } = await run(projectPath, [...LITERAL, 'diff', baseRev, ...DIFF_FLAGS, '--relative', '--', ...paths])
     return { ...common, ...parseUnified(stdout), symlinkTarget: current.target }
   }
   const before = changes.head ? await baseSize(projectPath, file.oldPath ?? path) : undefined
   if (before !== undefined && before > MAX_FILE_BYTES) return { ...none, omitted: 'too-large', size: before }
-  const { stdout } = await run(projectPath, [...SAFE, 'diff', baseRev, ...DIFF_FLAGS, '--relative', '--', ...paths], undefined, 8_000_000)
+  const { stdout } = await run(projectPath, [...LITERAL, 'diff', baseRev, ...DIFF_FLAGS, '--relative', '--', ...paths], undefined, 8_000_000)
   const parsed = parseUnified(stdout)
   return parsed.binary ? { ...none, binary: true, omitted: 'binary' } : { ...common, ...parsed }
 }

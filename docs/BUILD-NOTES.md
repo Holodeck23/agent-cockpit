@@ -362,3 +362,9 @@ A five-surface red team was run against the repair branch: the local API and win
   - An agent can still screenshot any non-Cockpit localhost page, as its shell can already reach it.
   - The router's phone check on the documents space stays as a second line behind the route allowlist.
 
+## Build and test cleanup (2026-10-12)
+
+Vitest and the cumulative packaged-app gate now put all of a run's temporary files under one short, marked folder and remove that folder on exit. `npm run clean` also removes abandoned marked run folders and `cockpit-*` temp entries untouched for more than an hour. The release build runs the cleaner before verification and after the candidate is bound; the gate runs it before and after its suites and keeps the reports in its evidence folder.
+
+Release pruning is deliberately conservative. It never touches `release/mac-arm64`, `release/parked`, the package's current version, the previous published version, a gate fixture named by `scripts/lib/gate-suites.ts` (including `release/v0.1.5/proof`), or a release package named by a running process. If tags or the process table cannot be read, release folders are left alone. Use `npm run clean -- --dry-run` to inspect the exact plan without removing anything.
+

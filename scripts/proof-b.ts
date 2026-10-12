@@ -199,7 +199,7 @@ async function b3(): Promise<void> {
   check('three suggestion cards', (await page.locator('.suggestion').count()) === 3)
   check('composer placeholder for a new conversation', (await messageBox(page).getAttribute('placeholder')) === 'Describe what you want…')
   await chooseAgent(page, { model: 'haiku' })
-  check('agent picker shows agent, model and effort', (await page.locator('.picker-button').textContent()) === 'Claude CodeHaiku · Default effort')
+  check('agent picker shows agent and model (the Effort button shows the effort)', (await page.locator('.picker-button').textContent()) === 'Claude CodeHaiku')
   await page.screenshot({ path: join(PROOF_DIR, 'phase-B3-empty.png') })
 
   // A finished turn with a tool call, in Bakery.

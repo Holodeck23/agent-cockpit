@@ -1,4 +1,5 @@
 import type { ModelOption } from '../../server/agents/capabilities/types.ts'
+import { claudeModels } from '../../server/agents/claude/models.ts'
 import { defaultAgyLevel, groupAgyModels, locateAgyModel, resolveAgyModel, type AgyLevel, type AgyModel } from '../../server/agents/antigravity/models.ts'
 
 export interface ModelChoice {
@@ -48,4 +49,22 @@ export function agyChoiceLabel(listed: readonly ModelOption[], model: string, ef
   const found = locateAgyModel(groupAgyModels(listed), resolved.id)
   if (!found) return undefined
   return found.level ? `${found.group.label} · ${found.level.charAt(0).toUpperCase()}${found.level.slice(1)}` : found.group.label
+}
+
+/** The Model menu value that reveals a box for a full Claude model id. */
+export const OTHER_MODEL = '__other__'
+
+/** Before `claude --help` has been read: the aliases it names today. */
+const CLAUDE_HELP_ALIASES = ['fable', 'opus', 'sonnet']
+
+/**
+ * Claude Code's Model menu: Default, the aliases `claude --help` names (plus Haiku), then Other for a
+ * full model id. A stored id that is not an alias shows as Other with the id in its box.
+ */
+export function claudeMenu(listed: readonly ModelOption[] | undefined, model: string, otherChosen = false): { readonly models: readonly ModelChoice[]; readonly selected: string; readonly other: boolean } {
+  const aliases = listed && listed.length > 0 ? listed : claudeModels(CLAUDE_HELP_ALIASES)
+  const models = [{ value: '', label: 'Default model' }, ...aliases.map((m) => ({ value: m.id, label: m.label ?? m.id })), { value: OTHER_MODEL, label: 'Other…' }]
+  const listedModel = aliases.some((m) => m.id === model)
+  const other = otherChosen ? !listedModel || model === '' : model !== '' && !listedModel
+  return { models, selected: other ? OTHER_MODEL : model, other }
 }

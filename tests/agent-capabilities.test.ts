@@ -226,7 +226,29 @@ describe('Antigravity probing (W10-01, W10-03)', () => {
     agyBin(dir, `printf 'm-1\\tOne\\n'; cp "$0" "$0.new"; echo '# updated' >> "$0.new"; mv "$0.new" "$0"`)
     const caps = await service.get('antigravity', { refresh: true })
     expect(caps.changedDuringProbe).toBe(true)
-    expect((await service.get('antigravity')).models.state).toBe('not_checked')
+    // The record is not kept, but the model list is, labelled as an older check, so the picker still has models.
+    const view = await service.get('antigravity')
+    if (view.executable.state === 'found') expect(view.executable.identity.version).toBeUndefined()
+    expect(view.stale).toBe(true)
+    expect(view.models).toMatchObject({ state: 'supported', value: [{ id: 'm-1', label: 'One' }] })
+  })
+
+  it('shows the last model list after agy updated itself and after a restart, without running agy', SLOW, async () => {
+    const { root, dir } = setup()
+    const listingsFile = join(root, 'state', 'agy-models.json')
+    agyBin(dir)
+    await createCapabilityService({ pathEnv: () => dir, home: root, timeoutMs: 6000, listingsFile }).get('antigravity', { refresh: true })
+    // A self-update replaces the file; then Cockpit restarts.
+    agyBin(dir, `printf 'gemini-new-low\\tGemini New (Low)\\n'`)
+    const before = calls(dir).length
+    const caps = await createCapabilityService({ pathEnv: () => dir, home: root, timeoutMs: 6000, listingsFile }).get('antigravity')
+    expect(calls(dir)).toHaveLength(before)
+    expect(caps.stale).toBe(true)
+    expect(caps.probedAt).toBe(new Date(Date.parse(caps.probedAt!)).toISOString())
+    expect(caps.models).toMatchObject({ state: 'supported', value: [{ id: 'gemini-3.8-flash-high' }, { id: 'claude-sonnet-5-5-low' }] })
+    // A damaged file is no listing, not a crash.
+    writeFileSync(listingsFile, '{"antigravity\\u0000default":{"models":[{"id":"bad id!"}],"at":"x"}}')
+    expect((await createCapabilityService({ pathEnv: () => dir, home: root, listingsFile }).get('antigravity')).models.state).toBe('not_checked')
   })
 })
 

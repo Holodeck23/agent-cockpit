@@ -150,10 +150,18 @@ export function createWorkspaceStore(root: string): WorkspaceStore {
       const projects = [...data.projects]
       const workspaces = [...data.workspaces]
       const now = new Date().toISOString()
+      let refreshed = false
       for (const path of paths) {
         if (!isAbsolute(path)) continue
         const canonical = canonicalPath(path)
-        if (projects.some((p) => p.canonicalPath === canonical)) continue
+        const known = projects.find((p) => p.canonicalPath === canonical)
+        if (known) {
+          // A folder opened before `git init` has no repository recorded: pick it up once there is one.
+          const at = workspaces.findIndex((w) => w.projectId === known.id && w.kind === 'primary' && w.gitCommonDir === null)
+          const common = at >= 0 ? gitCommonDir(canonical) : null
+          if (at >= 0 && common) { workspaces[at] = { ...workspaces[at]!, gitCommonDir: common, revision: workspaces[at]!.revision + 1 }; refreshed = true }
+          continue
+        }
         // A worktree Cockpit registered is a workspace of its project, not a project of its own.
         if (workspaces.some((w) => w.kind === 'worktree' && w.canonicalCwd === canonical)) continue
         const project: ProjectIdentity = { id: randomUUID(), path, canonicalPath: canonical, createdAt: now }
@@ -161,7 +169,7 @@ export function createWorkspaceStore(root: string): WorkspaceStore {
         workspaces.push({ id: randomUUID(), projectId: project.id, kind: 'primary', cwd: path, canonicalCwd: canonical,
           gitCommonDir: gitCommonDir(canonical), managed: false, lifecycle: 'active', revision: 1, createdAt: now })
       }
-      if (projects.length === data.projects.length) return
+      if (projects.length === data.projects.length && !refreshed) return
       write({ ...data, revision: data.revision + 1, projects, workspaces })
     },
     primaryFor: (path) => primaryIn(read(), path),

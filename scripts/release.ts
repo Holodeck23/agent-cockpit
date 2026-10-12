@@ -137,6 +137,7 @@ async function build(): Promise<void> {
   if (packageVersion() !== version) fail(`package.json is ${packageVersion()}; run prepare ${version} first`)
   requireCleanTree()
   requireTagAbsent()
+  await run('clean-before.log', 'npm', ['run', 'clean'])
   await run('verify.log', 'npm', ['run', 'verify'])
   await run('check-installers.log', 'npm', ['run', 'check:installers'])
   await run('landing-render.log', 'node', ['landing/check-render.mjs', 'landing/index.html', '--width', '390,768,1280'])
@@ -169,6 +170,7 @@ async function build(): Promise<void> {
   console.log(`install check: v${verification.version}, signature ok, app.asar matches the packaged build`)
   await run('installed-lockdown.log', 'npx', ['tsx', 'scripts/check-release-lockdown.ts', INSTALLED])
   writeCandidateBinding(verification)
+  await run('clean-after.log', 'npm', ['run', 'clean'])
 
   const bytes = readFileSync(DMG).length
   const landing = readFileSync(LANDING, 'utf8')

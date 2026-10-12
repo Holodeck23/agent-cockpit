@@ -5,7 +5,7 @@ import { BranchPicker } from './BranchPicker.tsx'
 import { ContextPicker } from './ContextPicker.tsx'
 import { useMentionMenu } from './MentionMenu.tsx'
 import { ReferenceChips } from './ReferenceChips.tsx'
-import { ArrowUpIcon } from './icons.tsx'
+import { ArrowUpIcon, StopIcon } from './icons.tsx'
 import { chipToSend, useComposerAttach } from '../useComposerAttach.ts'
 import type { MessageImage } from '../api.ts'
 
@@ -35,6 +35,9 @@ interface ComposerProps {
   disabled?: boolean
   /** A turn is running: the composer's edge shows the scanner (D12, styles/scanner.css). */
   working?: boolean
+  /** Stops the turn this composer targets, independently of the draft or sending restrictions. */
+  onStop?: () => void
+  stopLabel?: string
   /** The agent picker, shown in the bottom row. */
   picker: ReactNode
   /** Re-reads the branch pill when it changes, e.g. the conversation's status. */
@@ -70,7 +73,7 @@ export function draftAfterSend(current: string, sent: string): string {
   return current.trim() === sent ? '' : current
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, onStop, stopLabel = 'Stop current turn', picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [confirmedDestination, setConfirmedDestination] = useState<string>()
   const destinationKey = `${draftKey}:${confirmDestination ?? ''}`
@@ -140,12 +143,16 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
     if (!trimmed || sending || disabled || blocked || needsDestination) return
     setSending(true)
     setSubmitError(undefined)
-    const sentFrom = draftKey
+    const sentImages = attach.images
+    const sentNote = attach.note
     try {
-      await onSubmit(trimmed, attach.images.map(chipToSend))
+      await onSubmit(trimmed, sentImages.map(chipToSend))
       // Whatever you typed while it was sending stays; only the sent text leaves the box.
       update(draftAfterSend(box.current?.value ?? '', trimmed))
-      attach.clear(sentFrom)
+      // Likewise an image added meanwhile stays. This `attach` is from the render that sent, so
+      // `remove` takes the chips out of the draft they were sent from, even if the view has moved on.
+      for (const { id } of sentImages) attach.remove(id)
+      attach.clearNote(sentNote)
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -213,9 +220,12 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
           {picker}
           {projectPath ? <BranchPicker key={workspaceId ?? 'main'} projectPath={projectPath} workspaceId={workspaceId} threadId={threadId} refreshKey={branchRefreshKey} /> : null}
           <span className="composer-spacer" />
-          <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
-            <ArrowUpIcon />
-          </button>
+          <span className="composer-actions">
+            {onStop ? <button type="button" className="composer-stop" aria-label={stopLabel} title={stopLabel} onClick={onStop}><StopIcon /></button> : null}
+            <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
+              <ArrowUpIcon />
+            </button>
+          </span>
         </div>
       </div>
     </form>

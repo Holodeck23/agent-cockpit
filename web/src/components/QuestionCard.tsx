@@ -8,8 +8,8 @@ interface QuestionCardProps {
   item: QuestionItem
   /** The agent is still waiting for these answers. */
   open: boolean
-  /** Undefined closes the questions without answers. */
-  onAnswer: (answers: Record<string, string> | undefined) => void
+  /** Undefined closes the questions without answers. A promise that rejects (the request failed) gives the card back to you. */
+  onAnswer: (answers: Record<string, string> | undefined) => void | Promise<unknown>
   /** The workspace whose agent asks, once the conversation has run in more than one. */
   where?: string
 }
@@ -34,7 +34,7 @@ export function QuestionCard({ item, open, onAnswer, where }: QuestionCardProps)
     setPicked((now) => ({ ...now, [q.id]: q.multiSelect ? (on ? [...(now[q.id] ?? []), label] : (now[q.id] ?? []).filter((l) => l !== label)) : [label] }))
   const answer = (value: Record<string, string> | undefined): void => {
     setSending(true)
-    onAnswer(value)
+    void Promise.resolve(onAnswer(value)).catch(() => setSending(false))
   }
 
   return (
@@ -67,6 +67,7 @@ export function QuestionCard({ item, open, onAnswer, where }: QuestionCardProps)
                 aria-label={`Your own answer: ${q.question}`}
                 placeholder={q.options.length ? 'Or answer in your own words' : 'Your answer'}
                 value={other[q.id] ?? ''}
+                maxLength={4000}
                 onChange={(e) => setOther((now) => ({ ...now, [q.id]: e.target.value }))}
               />
             </>

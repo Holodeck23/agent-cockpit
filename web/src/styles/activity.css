@@ -13,7 +13,8 @@
 .activity-toggle[aria-expanded='true'] .activity-badge { background: var(--panel); }
 
 .activity-pane {
-  position: relative; grid-column: 2; grid-row: 1 / -1; display: grid; grid-template-rows: auto minmax(0, 1fr);
+  /* Span past the thread's three explicit rows: the follow-ups and the Chrome bar push the composer into an implicit fourth. */
+  position: relative; grid-column: 2; grid-row: 1 / span 4; display: grid; grid-template-rows: auto minmax(0, 1fr);
   min-height: 0; border-left: 1px solid var(--border); background: var(--subtle);
 }
 .activity-resize { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; z-index: 2; cursor: col-resize; touch-action: none; }

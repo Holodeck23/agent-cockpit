@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { Observation } from '../git/observe.ts'
 import { GROUP_GRACE_MS, stopGroup } from '../processes/group.ts'
 import { stripAnsi } from '../processes/output.ts'
+import { StoreReadError } from '../state/read-error.ts'
 import { MAX_DECLARED_INPUTS, safeInputPath, takeFingerprint } from './fingerprint.ts'
 import type { CheckDefinition, CheckOutcome, CheckRecord, ResultStore } from './store.ts'
 
@@ -119,12 +120,23 @@ export function createCheckRunner(store: ResultStore, options: { look?: (path: s
       const root = input.cwd ?? input.projectPath
       const cwd = resolveCwd(root, definition.cwd)
       const id = `chk-${randomUUID()}`
-      // What it runs against, read before it starts.
-      const subject = await takeFingerprint(root, definition.inputs, ...(options.look ? [options.look] : []))
-      const prepared = save({
-        id, runId: input.runId, threadId: input.threadId, projectPath: input.projectPath, ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-        operationId: input.operationId, definition, inputHash, approval: { by: 'user', at: now() }, origin: 'host', phase: 'prepared', preparedAt: now(), subject,
-      })
+      // Live before the first await: Stop, delete and quit reach a check that is still reading its subject.
+      let resolveDone!: () => void
+      const entry: Live = { threadId: input.threadId, runId: input.runId, cancelled: false, timedOut: false, done: new Promise<void>((r) => { resolveDone = r }) }
+      live.set(id, entry)
+      const settle = (): void => { live.delete(id); resolveDone() }
+      let prepared: CheckRecord
+      try {
+        // What it runs against, read before it starts.
+        const subject = await takeFingerprint(root, definition.inputs, ...(options.look ? [options.look] : []))
+        prepared = save({
+          id, runId: input.runId, threadId: input.threadId, projectPath: input.projectPath, ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+          operationId: input.operationId, definition, inputHash, approval: { by: 'user', at: now() }, origin: 'host', phase: 'prepared', preparedAt: now(), subject,
+        })
+      } catch (error) {
+        settle()
+        throw error
+      }
 
       const env: Record<string, string> = { FORCE_COLOR: '0', NO_COLOR: '1', CI: '1' }
       const secrets: string[] = []
@@ -151,10 +163,6 @@ export function createCheckRunner(store: ResultStore, options: { look?: (path: s
         if (held.length > MAX_HELD_OUTPUT) { held = held.slice(-MAX_HELD_OUTPUT); heldTruncated = true }
       }
 
-      let resolveDone!: () => void
-      const entry: Live = { threadId: input.threadId, runId: input.runId, cancelled: false, timedOut: false, done: new Promise<void>((r) => { resolveDone = r }) }
-      live.set(id, entry)
-
       let terminal = false
       let timer: ReturnType<typeof setTimeout> | undefined
       const finish = (outcome: CheckOutcome, reason: string, exitCode: number | null, signal: string | null): void => {
@@ -175,10 +183,21 @@ export function createCheckRunner(store: ResultStore, options: { look?: (path: s
         } catch (error) {
           console.warn('[cockpit] a check’s output was not stored:', error instanceof Error ? error.message : error)
         }
-        const current = find(input.runId, id) ?? prepared
-        save({ ...current, phase: 'terminal', outcome, reason, endedAt: now(), exitCode, signal, ...(output ? { output } : {}) })
-        live.delete(id)
-        resolveDone()
+        try {
+          const current = find(input.runId, id) ?? prepared
+          save({ ...current, phase: 'terminal', outcome, reason, endedAt: now(), exitCode, signal, ...(output ? { output } : {}) })
+        } catch (error) {
+          // The record stays as it was (read back as interrupted); the check itself must still settle, or cancel and quit wait on it for ever.
+          console.warn('[cockpit] a check’s result was not stored:', error instanceof Error ? error.message : error)
+        } finally {
+          settle()
+        }
+      }
+
+      // Stopped while its subject was being read: it never runs, and the receipt says so.
+      if (entry.cancelled) {
+        finish('cancelled', 'Cancelled before it started.', null, null)
+        return find(input.runId, id)!
       }
 
       let child
@@ -225,7 +244,9 @@ export function createCheckRunner(store: ResultStore, options: { look?: (path: s
       const entry = live.get(checkId)
       if (!entry) {
         for (const runId of store.runs()) {
-          const found = store.get(runId)?.checks.find((c) => c.id === checkId)
+          let found: CheckRecord | undefined
+          // A damaged or newer result file hides its own run only.
+          try { found = store.get(runId)?.checks.find((c) => c.id === checkId) } catch (error) { if (!(error instanceof StoreReadError)) throw error }
           if (found) return found
         }
         return undefined

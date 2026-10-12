@@ -41,6 +41,13 @@ describe('shouldCarryKey', () => {
 })
 
 describe('debugSwitches', () => {
+  it('refuses Chromium single-dash switches and switches reported by the native parser', () => {
+    const flags = ['-remote-debugging-port=0', '-remote-debugging-pipe', '-remote-debugging-address=127.0.0.1', '-inspect=0', '-inspect-brk', '-inspect-port=0', '-inspect-wait', '-debug']
+    expect(debugSwitches(['/App', ...flags])).toEqual(flags)
+    expect(debugSwitches(['/App'], (name) => name === 'remote-debugging-port')).toEqual(['--remote-debugging-port'])
+    expect(debugSwitches(['-remote-debugging-port=0'], (name) => name === 'remote-debugging-port')).toEqual(['-remote-debugging-port=0'])
+    expect(debugSwitches(['---inspect', '-remote-debugging-ports', 'inspect', '-x=--inspect'])).toEqual([])
+  })
   it('names the switches that let another program drive the app', () => {
     expect(debugSwitches(['/App', '--remote-debugging-port=9222', '--inspect=0', '--inspect-brk', '--remote-debugging-pipe'])).toEqual(
       ['--remote-debugging-port=9222', '--inspect=0', '--inspect-brk', '--remote-debugging-pipe'])

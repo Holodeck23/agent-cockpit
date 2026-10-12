@@ -2,7 +2,7 @@ import type { ApprovalBehavior } from '../agents/types.ts'
 import { HttpError, parseBody } from '../http/json.ts'
 import type { McpGrant } from '../mcp/sessions.ts'
 import type { HostActionOptions } from '../threads/host-actions.ts'
-import { browserInputs, INPUT_OPERATIONS, originClass, originOf, pageKeyOf, type BrowserLeases, type BrowserOperation } from './agent-policy.ts'
+import { APPROVAL_SECONDS, browserInputs, INPUT_OPERATIONS, originClass, originOf, pageKeyOf, type BrowserLeases, type BrowserOperation } from './agent-policy.ts'
 
 // Agents driving the in-app browser (H3, wave 9). The host (electron/browser-agent-host.ts) owns
 // the pages; this decides, for every call, which page, whether it may happen, and whether the
@@ -57,14 +57,29 @@ export type ActOutcome =
 export interface Capture { readonly data: string; readonly mimeType: 'image/png'; readonly width: number; readonly height: number; readonly page: AgentPageInfo }
 
 /** The pages, as the desktop app's main process holds them. */
+export interface NavigationGuardOptions {
+  /**
+   * True once the run behind the guard is over. From then on a navigation the person causes (a click or a key in the
+   * pane) passes, and takes the page back from the guard, as typing an address does; one the page starts on its own
+   * (a script, a timer, a refresh header, a popup, a restore) still goes through `authorize` and is refused.
+   */
+  readonly over?: () => boolean
+}
+
 export interface BrowserHost {
+  /** Enforced before each main-frame network request, including redirects and later page scripts. */
+  guardNavigation(key: string, authorize: (url: string) => Promise<void>, options?: NavigationGuardOptions): void
   info(key: string): AgentPageInfo | undefined
   /**
    * Creates the conversation's page (hidden, in the workspace's partition) when it has none: blank,
    * or reloaded at its last address if Cockpit unloaded it. Rejects when every loaded page is in use.
    */
   ensure(key: string, projectPath: string): Promise<AgentPageInfo>
-  /** Loads `url`; resolves when it has loaded, failed, or a bounded wait has passed. */
+  /**
+   * Loads `url`; resolves when it has loaded, failed, or a bounded wait has passed. Every main-frame request
+   * (a redirect hop included) is held for the guard from guardNavigation; a request the guard refused rejects
+   * the call with its reason, and the page has moved nowhere.
+   */
   goto(key: string, url: string): Promise<AgentPageInfo>
   /** Where Back or Forward would go, if anywhere. */
   historyUrl(key: string, direction: 'back' | 'forward'): string | undefined
@@ -88,7 +103,8 @@ export interface BrowserAgentDeps {
   readonly approve: (grant: McpGrant, toolName: string, input: Record<string, unknown>, options: HostActionOptions, signal: AbortSignal) => Promise<ApprovalBehavior>
 }
 
-const APPROVAL_SECONDS = 45
+/** Sites one navigation may be redirected through, each one asked about, before the page is stopped. */
+const MAX_REDIRECT_HOPS = 5
 
 const ACTION_WORDS: Record<BrowserOperation, string> = {
   read: 'Read the page', screenshot: 'Take a screenshot of the page', navigate: 'Open a page',
@@ -120,6 +136,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
         description: `${ACTION_WORDS[op]} in this conversation’s browser on ${local ? `your local app (${host})` : host}. ${warning} Answer within ${APPROVAL_SECONDS} seconds.`,
         grant: { label: `Allow on ${host} for this run` },
       }, signal)
+      if (behavior === 'deny') throw new Error('Browser action denied by the user')
     } catch (error) {
       deps.leases.revokeThread(grant.threadId)
       throw new HttpError(409, error instanceof Error ? error.message : String(error))
@@ -166,6 +183,28 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     if (!runId) throw new HttpError(409, 'This conversation is not working (or Stop was pressed), so it cannot use the browser now.')
     deps.leases.keepRun(grant.threadId, runId)
     const ports = deps.cockpitPorts()
+    // Install before ensure(): restoring an unloaded page can itself send a signed-in request.
+    // This stays armed after the tool returns so timers, popups and late redirects cannot bypass it.
+    let approvedTarget: string | undefined
+    /** The address this call is navigating to, so a hop away from it is asked about as a redirect. */
+    let navigatingTo: string | undefined
+    /** Remote requests asked about in this call's navigation, past the one explicitly approved. */
+    let hops = 0
+    const activeRun = (): boolean => !signal.aborted && deps.currentRun(grant.threadId, grant.workspaceId) === runId
+    host.guardNavigation(key, async (url) => {
+      if (!activeRun()) throw new Error('The browser run ended or was stopped; navigation was blocked.')
+      const kind = originClass(url, deps.cockpitPorts())
+      if (kind === 'refused') throw new Error('This address cannot be opened by an agent.')
+      const alreadyApproved = url === approvedTarget
+      approvedTarget = undefined // The explicit approval covers exactly the first requested address.
+      if (kind === 'remote' && !alreadyApproved) {
+        const origin = originOf(url)!
+        // A page that keeps sending the browser on to new sites is stopped, not asked about for ever.
+        if (++hops > MAX_REDIRECT_HOPS) throw new Error(`The page kept redirecting to other sites; stopped at ${origin}.`)
+        await permit(grant, runId, 'navigate', origin, { url, ...(navigatingTo && navigatingTo !== url ? { redirectedFrom: navigatingTo } : {}) }, signal)
+      }
+      if (!activeRun()) throw new Error('The browser run ended or was stopped; navigation was blocked.')
+    }, { over: () => !activeRun() })
 
     if (operation === 'read' || operation === 'screenshot') {
       const page = await ensure(host, key, grant.cwd)
@@ -186,8 +225,15 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
       if (!target) throw new HttpError(409, `There is no page to go ${action} to.`)
       const kind = originClass(target, ports)
       if (kind === 'refused') throw new HttpError(400, `The browser opens http and https sites only, never Cockpit itself: ${target.slice(0, 200)}`)
-      if (kind === 'remote') await permit(grant, runId, 'navigate', originOf(target)!, { url: target, ...(action ? { action } : {}) }, signal)
-      return url ? host.goto(key, url) : host.history(key, action!)
+      const approved = kind === 'remote' ? originOf(target)! : undefined
+      if (approved) await permit(grant, runId, 'navigate', approved, { url: target, ...(action ? { action } : {}) }, signal)
+      approvedTarget = approved ? new URL(target).href : undefined
+      navigatingTo = target
+      try {
+        return await conflict(url ? host.goto(key, url) : host.history(key, action!))
+      } finally {
+        navigatingTo = undefined
+      }
     }
 
     // Input: always needs a grant for the page's exact origin, local app or not.

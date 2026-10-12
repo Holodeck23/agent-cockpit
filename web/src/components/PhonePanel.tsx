@@ -59,11 +59,12 @@ export function PairingRequests({ status, onError }: PhonePanelProps) {
 export function PhonePanel({ status, onError, onOpenChange }: PhoneButtonProps) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>()
   useEffect(() => onOpenChange(open), [open, onOpenChange])
-  const [busy, setBusy] = useState(false)
+  // Which way the request in flight goes: both buttons wait for it, but only the one that asked says so.
+  const [busy, setBusy] = useState<'on' | 'off'>()
   const pending = status?.pairings.length ?? 0
   const toggle = (enabled: boolean): void => {
-    setBusy(true)
-    api.setRemote(enabled).catch((e: unknown) => onError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false))
+    setBusy(enabled ? 'on' : 'off')
+    api.setRemote(enabled).catch((e: unknown) => onError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(undefined))
   }
   const running = Boolean(status?.enabled && status.running && status.url)
 
@@ -97,7 +98,7 @@ export function PhonePanel({ status, onError, onOpenChange }: PhoneButtonProps) 
                   (e: unknown) => onError(String(e)))}>Send a test notification</button>
               ) : null}
               <PhonePreviews onError={onError} />
-              <button type="button" className="phone-toggle off" disabled={busy} onClick={() => toggle(false)}>Turn off phone access</button>
+              <button type="button" className="phone-toggle off" disabled={busy !== undefined} onClick={() => toggle(false)}>Turn off phone access</button>
             </div>
           ) : (
             <div className="phone-body">
@@ -105,9 +106,11 @@ export function PhonePanel({ status, onError, onOpenChange }: PhoneButtonProps) 
                 Check on conversations and answer approvals from your phone, over Tailscale. Only your Tailscale account can connect, and each phone is approved here first.
               </p>
               {status?.error ? <p className="phone-error" role="alert">{status.error}</p> : null}
-              <button type="button" className="phone-toggle" disabled={busy} onClick={() => toggle(true)}>
-                {busy ? 'Turning on…' : status?.enabled ? 'Try again' : 'Turn on phone access'}
+              <button type="button" className="phone-toggle" disabled={busy !== undefined} onClick={() => toggle(true)}>
+                {busy === 'on' ? 'Turning on…' : status?.enabled ? 'Try again' : 'Turn on phone access'}
               </button>
+              {/* On but not running (Tailscale down at launch): it can still be turned off. */}
+              {status?.enabled ? <button type="button" className="phone-toggle off" disabled={busy !== undefined} onClick={() => toggle(false)}>{busy === 'off' ? 'Turning off…' : 'Turn off phone access'}</button> : null}
             </div>
           )}
         </div>

@@ -27,6 +27,7 @@ import { originClass } from '../server/browser/agent-policy.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
 import { registerBrowserIpc } from './browser-ipc.ts'
 import { createBrowserAgentHost } from './browser-agent-host.ts'
+import { guardLocalPreview } from './preview-navigation.ts'
 import { RESIDENCY } from './browser-policy.ts'
 import type { BrowserHost } from '../server/browser/agent.ts'
 
@@ -46,6 +47,8 @@ let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
 let browser: BrowserService | undefined
 let browserHost: BrowserHost | undefined
+/** Conversations with an open_preview loading their page (how many): each shows the pane itself, once, when it is done. */
+const openingPreview = new Map<string, number>()
 // Quit ends with app.exit, which skips the window's close event, so it saves the place itself.
 let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
@@ -56,8 +59,9 @@ const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init)
 installCrashGuard(process, join(defaultRoot(), 'logs', 'main-errors.log'))
 
 // A released app will not run under a debugger (electron/debug-flags.ts).
-if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
-  console.error(`Cockpit does not start with ${debugSwitches(process.argv).join(' ')}.`)
+const debuggerFlags = debugSwitches(process.argv, (name) => app.commandLine.hasSwitch(name))
+if (IS_RELEASE_BUILD && debuggerFlags.length > 0) {
+  console.error(`Cockpit does not start with ${debuggerFlags.join(' ')}.`)
   process.exit(1)
 }
 
@@ -129,6 +133,7 @@ async function boot(): Promise<void> {
   })
   // An agent's navigation shows its page beside that conversation, without bringing the window forward.
   browserHost = createBrowserAgentHost(browser, (key, url) => {
+    if (openingPreview.has(key)) return
     const threadId = key.startsWith('thread:') ? key.slice('thread:'.length) : undefined
     const projectPath = threadId ? running?.store.get(threadId)?.projectPath : undefined
     if (threadId && projectPath && /^https?:\/\//.test(url) && mainWindow && !mainWindow.isDestroyed()) {
@@ -143,8 +148,9 @@ async function boot(): Promise<void> {
   running.manager.subscribe((update) => { if (update.event.kind === 'thread_deleted') pages.close(`thread:${update.threadId}`) })
   registerBrowserIpc(new URL(running.url).origin, browser, isFolder, (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents))
   mainWindow = createWindow(running.url)
+  // Not a count of all windows: a hidden preview-capture window would hide the missing one.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && running) mainWindow = createWindow(running.url)
+    if ((!mainWindow || mainWindow.isDestroyed()) && running) mainWindow = createWindow(running.url)
   })
 }
 
@@ -214,12 +220,20 @@ function sendToPage(channel: string, ...args: unknown[]): void {
  */
 async function showPreview(preview: PreviewOpen): Promise<void> {
   const url = assertLocalUrl(preview.url)
-  if (preview.threadId && browser && browserHost) {
+  if (preview.threadId && browserHost) {
     const key = `thread:${preview.threadId}`
+    guardLocalPreview(browserHost, key, cockpitPorts)
     const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
+    // The host reports every move an agent makes so the pane follows it; this one is shown below, not twice.
     if (page.url !== url) {
-      const refused = browser.load(key, url)
-      if (refused) throw new Error(refused)
+      openingPreview.set(key, (openingPreview.get(key) ?? 0) + 1)
+      try {
+        await browserHost.goto(key, url)
+      } finally {
+        const left = (openingPreview.get(key) ?? 1) - 1
+        if (left > 0) openingPreview.set(key, left)
+        else openingPreview.delete(key)
+      }
     }
     sendToPage('cockpit:preview-open', { ...preview, url, loaded: true })
     return
@@ -236,6 +250,7 @@ async function inspectPreview(preview: PreviewOpen): Promise<PreviewCapture> {
   const url = assertLocalUrl(preview.url)
   if (!preview.threadId || !browserHost) return capturePreview(url)
   const key = `thread:${preview.threadId}`
+  guardLocalPreview(browserHost, key, cockpitPorts)
   const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
   if (page.origin !== new URL(url).origin) await browserHost.goto(key, url)
   const shot = await browserHost.capture(key)
@@ -398,12 +413,9 @@ function showNotification(value: unknown): void {
   const release = (): void => { shownNotifications.delete(note) }
   note.on('click', () => {
     release()
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
-    if (!win) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-    win.webContents.send('cockpit:open-thread', threadId)
+    // The window may have been closed since this was posted: it reopens, then opens the thread.
+    sendToPage('cockpit:open-thread', threadId)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus()
   })
   note.on('close', release)
   shownNotifications.add(note)

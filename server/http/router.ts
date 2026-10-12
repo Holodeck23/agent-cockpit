@@ -632,12 +632,16 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         const { runId, replayed } = manager.send(threadId, text, expanded.agentText, expanded.workflows, undefined, decodeImages(attached, (file) => images.read(threadId, file)?.bytes), operationId, workspaceId)
         sendJson(res, 202, { data: { status: manager.status(threadId), runId, replayed } })
       } else if (method === 'POST' && action === 'approvals' && parts[4]) {
-        manager.approve(threadId, parts[4], parseBody(approvalBody, await readJson(req)).behavior)
+        const { behavior } = parseBody(approvalBody, await readJson(req))
+        // A card another device already answered, or one whose turn ended, is a conflict, not a failure.
+        try { manager.approve(threadId, parts[4], behavior) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'queued' && parts[4] && parts[5] === 'remove') {
-        sendJson(res, 200, { data: await manager.unqueue(threadId, parts[4]) })
+        // The agent may have taken the message first.
+        try { sendJson(res, 200, { data: await manager.unqueue(threadId, parts[4]) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
       } else if (method === 'POST' && action === 'questions' && parts[4]) {
-        manager.answerQuestion(threadId, parts[4], parseBody(questionBody, await readJson(req)).answers)
+        const { answers } = parseBody(questionBody, await readJson(req))
+        try { manager.answerQuestion(threadId, parts[4], answers) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
         sendJson(res, 200, { data: { status: manager.status(threadId) } })
       } else if (method === 'POST' && action === 'interrupt') {
         const { workspaceId } = parseBody(interruptBody, await readJson(req))
@@ -671,7 +675,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         sendJson(res, 200, { data: manager.handoffPreview(threadId) })
       } else if (method === 'POST' && action === 'agent') {
         const { settings, handoff } = parseBody(agentSwitchBody, await readJson(req))
-        sendJson(res, 200, { data: manager.switchAgent(threadId, settings, handoff) })
+        try { sendJson(res, 200, { data: manager.switchAgent(threadId, settings, handoff) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
       } else {
         throw new HttpError(404, 'Not found')
       }

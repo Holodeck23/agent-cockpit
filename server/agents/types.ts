@@ -93,6 +93,8 @@ export type NormalizedEvent =
   | { kind: 'user_taken'; text: string; id?: string }
   /** You took a queued message back before the agent took it (J1); it went back to your draft. */
   | { kind: 'user_unqueued'; id: string }
+  /** A queued message never reached the agent: its session ended (a failed start, a crash) before it took it. */
+  | { kind: 'user_undelivered'; id: string }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }

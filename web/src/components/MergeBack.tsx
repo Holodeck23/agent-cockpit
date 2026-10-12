@@ -39,6 +39,8 @@ export function MergeBack({ workspaceId, onShowFiles, onDone }: { workspaceId: s
             {onShowFiles ? <button type="button" className="button-soft" onClick={onShowFiles}>Show in Files</button> : null}
             <button type="button" className="button-primary" disabled={busy} onClick={() => act(async () => finished((await api.continueMerge(operation.id)).operation))}>Continue</button>
             <button type="button" className="button-soft" disabled={busy} onClick={() => act(async () => finished((await api.abortMerge(operation.id)).operation))}>Abort merge</button>
+            {/* Resolved and committed, or aborted, in a terminal: Continue and Abort refuse then, and a look finds the merge closed. */}
+            <button type="button" className="button-soft" disabled={busy} onClick={check}>Check again</button>
           </div>
         </>
       ) : operation?.stage === 'merged' ? (

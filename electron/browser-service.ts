@@ -40,7 +40,26 @@ interface Page {
   lastUsed: number
   downloads: number
   reloaded: boolean
+  /** Why the guard refused the navigation in flight: Chromium reports only ERR_BLOCKED_BY_CLIENT afterwards. */
+  denied?: string
+  /** When the person last pressed a key or a mouse button in this page (0: never). The agent's own input does not count. */
+  personAt: number
+  /** The agent's input being sent right now: Chromium reports it through the same events as the person's. */
+  agentInput: number
 }
+
+/** What the agent holds a page to (server/browser/agent.ts): every main-frame request is asked of `authorize`. */
+interface NavigationGuard {
+  readonly authorize: (url: string) => Promise<void>
+  /** True once the run behind the guard is over: the person's navigation then passes and ends the guard. */
+  readonly over?: () => boolean
+}
+
+/**
+ * How long after the person's click or key a navigation counts as theirs: a link, a form's Enter or a click
+ * handler that navigates at once. A page's own timer or script that fires later is not theirs.
+ */
+export const PERSON_INPUT_MS = 3000
 
 /** A page's size before the pane has ever placed it (an agent opened it in the background). */
 export const DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const
@@ -69,19 +88,52 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   const pages = new Map<string, Page>()
   const guarded = new Set<Session>()
   const destroyedListeners = new Set<(key: string) => void>()
+  const navigationGuards = new Map<string, NavigationGuard>()
   const limits = deps.limits ?? RESIDENCY
   /** Pages Cockpit unloaded while idle, with the address each was on. */
   const unloaded = new Map<string, string>()
   let lastShown: string | undefined
   let revisions = 0
   const bump = (page: Page): void => { page.revision = ++revisions }
+  const notifyDestroyed = (key: string): void => { for (const listener of destroyedListeners) listener(key) }
 
   // Installed once per partition, never on the control session (whose one onBeforeSendHeaders
   // listener carries the window key, electron/window-key.ts).
   function guard(web: Session): void {
     if (guarded.has(web)) return
     guarded.add(web)
-    web.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !isAllowedRequest(details.url, deps.cockpitPorts()) }))
+    web.webRequest.onBeforeRequest((details, callback) => {
+      if (!isAllowedRequest(details.url, deps.cockpitPorts())) { callback({ cancel: true }); return }
+      if (details.resourceType !== 'mainFrame') { callback({ cancel: false }); return }
+      const entry = [...pages].find(([, p]) => p.view.webContents.id === details.webContentsId)
+      // A request without a live owner must not inherit a different page's approval.
+      if (!entry) { callback({ cancel: true }); return }
+      const [key, page] = entry
+      const guard = navigationGuards.get(key)
+      if (!guard) { callback({ cancel: false }); return } // Explicit human navigation.
+      // The run behind the guard is over and the person just clicked or pressed a key here: this navigation is
+      // theirs. It ends the guard, as typing an address does. A script, a timer, a refresh header or a popup
+      // that fires without such input is not, and goes to the guard below.
+      if (guard.over?.() && Date.now() - page.personAt <= PERSON_INPUT_MS) {
+        navigationGuards.delete(key)
+        callback({ cancel: false })
+        return
+      }
+      // Unlike did-navigate, this holds the request before HTTP data/cookies reach the destination.
+      void Promise.resolve().then(() => guard.authorize(details.url)).then(() => {
+        callback({ cancel: pages.get(key) !== page || navigationGuards.get(key) !== guard })
+      }, (error: unknown) => {
+        if (pages.get(key) === page && navigationGuards.get(key) === guard) {
+          page.denied = error instanceof Error ? error.message : 'Navigation was denied'
+          // Cancelling the request alone would commit Chromium's error page for the refused address: the page
+          // would be there, and the agent's next read would ask about that site. Stopping the navigation first
+          // leaves the page on the document it was on. The reason is kept for the call that asked (takeDenial).
+          if (!page.view.webContents.isDestroyed()) page.view.webContents.stop()
+          publish(key)
+        }
+        callback({ cancel: true })
+      })
+    })
     web.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
     web.setPermissionCheckHandler(() => false)
     // Downloads: no save path is set, so Electron asks the person where to save (or they cancel).
@@ -119,7 +171,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     // backgroundThrottling off: a page the person is not looking at still takes hover and wheel
     // input from its agent (order 11 input experiment); W9-10 residency bounds what that costs.
     const view = new WebContentsView({ webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
-    const page: Page = { view, partition, projectPath, attached: false, revision: 0, lastUsed: Date.now(), downloads: 0, reloaded: unloaded.delete(key) }
+    const page: Page = { view, partition, projectPath, attached: false, revision: 0, lastUsed: Date.now(), downloads: 0, reloaded: unloaded.delete(key), personAt: 0, agentInput: 0 }
     bump(page)
     view.setBounds({ x: 0, y: 0, ...DEFAULT_VIEWPORT })
     view.setVisible(false)
@@ -133,16 +185,25 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     contents.on('will-navigate', stay)
     contents.on('will-redirect', stay)
     contents.on('will-frame-navigate', (details) => { if (!isAllowedRequest(details.url, deps.cockpitPorts())) details.preventDefault() })
-    contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) page.error = undefined })
+    // Chromium reports the agent's synthetic input (sendAgentInput) through these events too, at once, before
+    // sendInputEvent returns, so only input outside such a call is the person's.
+    const fromPerson = (): void => { if (page.agentInput === 0) page.personAt = Date.now() }
+    contents.on('before-input-event', (_event, input) => { if (input.type === 'keyDown') fromPerson() })
+    contents.on('before-mouse-event', (_event, mouse) => { if (mouse.type === 'mouseDown' || mouse.type === 'mouseUp') fromPerson() })
+    contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) { page.error = undefined; page.denied = undefined } })
     contents.on('did-navigate', () => bump(page))
     contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => { if (isMainFrame) bump(page) })
+    // A page dropped by close() or forgetAll() was announced there. Its WebContents finishes
+    // dying later, maybe after a new page holds the key, and must not touch that page's grants.
     contents.once('destroyed', () => {
-      if (pages.get(key) === page) pages.delete(key)
-      for (const listener of destroyedListeners) listener(key)
+      if (pages.get(key) !== page) return
+      pages.delete(key)
+      notifyDestroyed(key)
     })
     contents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
       // -3 is an aborted load: a new navigation replaced it, or Stop.
-      if (isMainFrame && code !== -3) page.error = { code, description, url }
+      // The guard's own reason replaces Chromium's generic one for the request the guard cancelled.
+      if (isMainFrame && code !== -3) page.error = { code, description: code === -20 && page.denied ? page.denied : description, url }
       publish(key)
     })
     contents.on('will-prevent-unload', (event) => event.preventDefault())
@@ -209,6 +270,13 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   }
 
   const service = {
+    /**
+     * Agent policy remains attached until this page closes or the person explicitly navigates (the address
+     * bar, Back, Forward, Reload, or a click or key in the page once `over` says the run is over).
+     */
+    guardNavigation(key: string, authorize: (url: string) => Promise<void>, options: { readonly over?: () => boolean } = {}): void {
+      navigationGuards.set(key, { authorize, ...(options.over ? { over: options.over } : {}) })
+    },
     /** Opens `url` in the conversation's page, creating it in the workspace's partition if needed. */
     async open(key: string, projectPath: string, url: string): Promise<PageState | { error: string } | CapacityRefusal> {
       if (!isNavigable(url, deps.cockpitPorts())) return { error: 'Only http and https pages open here, and not Cockpit itself.' }
@@ -217,8 +285,10 @@ export function createBrowserService(deps: BrowserServiceDeps) {
         if (full) return full
       }
       const page = pages.get(key) ?? create(key, projectPath)
+      navigationGuards.delete(key)
       touch(page)
       page.error = undefined
+      page.denied = undefined
       // Not awaited: a page that never finishes loading must not hold the caller. Progress,
       // the final address and any error arrive as state events.
       void page.view.webContents.loadURL(url).catch(() => undefined)
@@ -232,10 +302,29 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       if (!isNavigable(url, deps.cockpitPorts())) return 'Only http and https pages open here, and not Cockpit itself.'
       touch(page)
       page.error = undefined
+      page.denied = undefined
       void page.view.webContents.loadURL(url).catch(() => undefined)
       return undefined
     },
-        /** The page's place in the window; undefined hides it. Showing one page hides the others. */
+    /** Why the guard refused the navigation that just ran, once; the page stayed on the document it was on. */
+    takeDenial(key: string): string | undefined {
+      const page = pages.get(key)
+      const reason = page?.denied
+      if (page) page.denied = undefined
+      return reason
+    },
+    /** The agent's input to its page. The person's is told apart from it by `before-input-event` and `before-mouse-event`. */
+    sendAgentInput(key: string, event: Parameters<WebContents['sendInputEvent']>[0]): void {
+      const page = pages.get(key)
+      if (!page || page.view.webContents.isDestroyed()) return
+      page.agentInput++
+      try {
+        page.view.webContents.sendInputEvent(event)
+      } finally {
+        page.agentInput--
+      }
+    },
+    /** The page's place in the window; undefined hides it. Showing one page hides the others. */
     place(key: string, rect: unknown): void {
       const page = pages.get(key)
       if (!page) return
@@ -252,9 +341,11 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       page.view.setBounds(bounds)
       page.view.setVisible(true)
     },
-    navigate(key: string, action: NavAction): void {
+    navigate(key: string, action: NavAction, agent = false): void {
       const contents = pages.get(key)?.view.webContents
       if (!contents) return
+      if (!agent && action !== 'stop') navigationGuards.delete(key)
+      if (agent && action !== 'stop') { const page = pages.get(key); if (page) page.denied = undefined }
       touch(pages.get(key))
       if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
       else if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward()
@@ -274,10 +365,12 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const page = pages.get(key)
       if (!page) return
       pages.delete(key)
+      navigationGuards.delete(key)
       if (lastShown === key) lastShown = undefined
       const win = deps.window()
       if (page.attached && win && !win.isDestroyed()) win.contentView.removeChildView(page.view)
       if (!page.view.webContents.isDestroyed()) page.view.webContents.close()
+      notifyDestroyed(key)
     },
     /** Clears one workspace's website data (logins, storage, cache), refused while one of its pages loads. */
     async clearData(projectPath: string): Promise<string | undefined> {
@@ -288,11 +381,14 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       await web.clearCache()
       return undefined
     },
-    /** The window was closed: its views went with it. */
+    /** The window was closed. Electron does not tear a child view's WebContents down with it. */
     forgetAll(): void {
-      const keys = [...pages.keys()]
+      const forgotten = [...pages]
       pages.clear()
-      for (const key of keys) for (const listener of destroyedListeners) listener(key)
+      navigationGuards.clear()
+      lastShown = undefined
+      for (const [, page] of forgotten) if (!page.view.webContents.isDestroyed()) page.view.webContents.close()
+      for (const [key] of forgotten) notifyDestroyed(key)
     },
     /** For the agent tools (electron/browser-agent-host.ts): the page itself, never handed to the renderer. */
     agentPage(key: string): { readonly contents: WebContents; readonly revision: number; readonly viewport: { width: number; height: number } } | undefined {
@@ -315,6 +411,13 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const page = create(key, projectPath)
       if (last) void page.view.webContents.loadURL(last).catch(() => undefined)
       return undefined
+    },
+    /** The person has seen the "Cockpit unloaded this page" notice: stop reporting it for this page. */
+    acknowledgeReload(key: string): void {
+      const page = pages.get(key)
+      if (!page?.reloaded) return
+      page.reloaded = false
+      publish(key)
     },
     /** For the capacity explanation: does this page hold unsaved typing? */
     async hasUnsaved(key: string): Promise<boolean> {

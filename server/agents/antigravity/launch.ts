@@ -13,6 +13,7 @@ import { withImagePaths } from '../image-input.ts'
 import { brainDir, newTurnImages } from './images.ts'
 import { resolveAgyModel } from './models.ts'
 import { parseAntigravityLine } from './parse.ts'
+import { inheritedEnv } from '../inherited-env.ts'
 
 const inputSchema = z.object({
   cwd: z.string().min(1),
@@ -101,7 +102,12 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
     const target = antigravityLaunchTarget(caps, value.model, antigravityEffort(value.effort))
     if ('refused' in target) { finish(target.refused); return }
     const resolved = target.effortInModel ? { ...value, model: target.model, effort: undefined } : value
-    session = spawnAntigravity(resolved, onEvent, target.executable, deps.env)
+    // A start that throws (the images folder cannot be made, a spawn that fails at once) ends the turn here:
+    // thrown inside this callback it would only reject `ready`, which nothing handles.
+    try { session = spawnAntigravity(resolved, onEvent, target.executable, deps.env) } catch (error) {
+      finish(`Could not start Antigravity: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
     for (const message of pending) session.send(message.text, message.queuedId, message.images)
     pending = []
   }, (error: unknown) => finish(`Could not check Antigravity before starting it (${error instanceof Error ? error.message : String(error)}). Retry, or Refresh it in the agent picker. No agent turn was started.`))
@@ -134,12 +140,16 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
   const child = spawn(executable, buildAntigravityArgs(value), {
     cwd: value.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...process.env, ...env },
+    env: { ...inheritedEnv(), ...env },
   })
   let exited = false
   let firstTurn = true
   // Set by Stop until the next message: what agy reports about the stopped turn is not shown as a failure.
   let stopping = false
+  // A message is with agy and its result has not come yet (images made since the first message are shown at its end).
+  let turnOpen = false
+  // Results agy still owes for turns that were stopped: they arrive after Stop, and a message sent meanwhile is not given them.
+  let owed = 0
   const stderrTail: string[] = []
   // Images agy's image-generator saved during a turn are shown at its end, each once (images.ts).
   const home = env?.HOME ?? process.env.HOME ?? homedir()
@@ -166,8 +176,15 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
     for (const event of events) {
       if (event.kind === 'session') conversationId = event.sessionId
       // After Stop the turn has already ended as stopped: agy's own "interrupted" result is not a failure.
-      if (stopping && (event.kind === 'result' || event.kind === 'error')) continue
-      if (event.kind === 'result') for (const image of turnImages()) onEvent(image)
+      // A success while a newer message waits is that message's: the stopped turn's result is not coming.
+      if (event.kind === 'result' && owed > 0 && !(turnOpen && event.ok)) { owed -= 1; continue }
+      if (stopping && !turnOpen && (event.kind === 'result' || event.kind === 'error')) continue
+      if (event.kind === 'result') {
+        for (const image of turnImages()) onEvent(image)
+        turnOpen = false
+        owed = 0
+        stopping = false
+      }
       onEvent(event)
     }
   })
@@ -176,7 +193,7 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
     if (stderrTail.length > 20) stderrTail.shift()
   })
   child.on('error', (error) => {
-    onEvent({ kind: 'error', message: startErrorMessage('antigravity', error) })
+    onEvent({ kind: 'error', message: startErrorMessage('antigravity', error, value.cwd) })
     // A failed spawn has no exit event. Complete the turn and release the session now.
     if (!child.pid && !exited) {
       exited = true
@@ -206,8 +223,11 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
         ? `<cockpit-instructions>\n${value.instructions}\n</cockpit-instructions>\n\n${message}`
         : message
       firstTurn = false
-      stopping = false
-      turnStartedAt = Date.now()
+      // Until agy has ended the stopped turn, what it says is still that turn's, so Stop's quiet stays on.
+      if (owed === 0) stopping = false
+      // A message added to a running turn does not move its start: images made so far still belong to it.
+      if (!turnOpen) turnStartedAt = Date.now()
+      turnOpen = true
       child.stdin.write(`${JSON.stringify({ event: 'user', message: { content } })}\n`)
     },
     respondApproval() {
@@ -216,6 +236,8 @@ function spawnAntigravity(value: z.output<typeof inputSchema>, onEvent: EventSin
     interrupt() {
       if (!exited) {
         stopping = true
+        if (turnOpen) owed += 1
+        turnOpen = false
         onEvent({ kind: 'result', ok: false, stopped: true })
         // The whole group: a shell command agy is running stops too, not only agy (dogfood 10-08: `sleep 45`).
         signalAgent(child, 'SIGINT')

@@ -179,11 +179,16 @@ export function createResultService(deps: ResultDeps) {
     if (changes.state === 'incomplete') gaps.push('The workspace was observed before this run but not after it.')
     for (const reason of changes.comparison?.uncertain ?? []) gaps.push(`Changes uncertain: ${reason}`)
     if (!checks.length) gaps.push('No checks were run for this result.')
-    // The newest check of each command speaks for it.
+    // The newest run of each check speaks for it: the same command in another folder, or against other output or inputs, is another check.
     const latest = new Map<string, CheckView>()
-    for (const c of checks) if (!latest.has(c.definition.command)) latest.set(c.definition.command, c)
+    for (const c of checks) {
+      const { command, cwd, criterion, env, inputs } = c.definition
+      const identity = JSON.stringify([command, cwd || '.', criterion, [...env].sort(), [...inputs].sort()])
+      if (!latest.has(identity)) latest.set(identity, c)
+    }
     for (const c of latest.values()) {
-      const name = `“${c.definition.command}”`
+      const folder = c.definition.cwd && c.definition.cwd !== '.' ? ` in ${c.definition.cwd}` : ''
+      const name = `“${c.definition.command}”${folder}`
       if (c.phase !== 'terminal') continue
       if (c.outcome !== 'passed') gaps.push(`${name} ${outcomeWord[c.outcome ?? 'error'] ?? c.outcome}.`)
       else if (c.freshness?.state === 'stale') gaps.push(`${name} passed against an earlier state of the workspace: ${c.freshness.reasons.join(' ')}`)

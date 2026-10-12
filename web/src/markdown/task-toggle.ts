@@ -8,6 +8,8 @@ export const taskToggle = $prose(() => new Plugin({
   props: {
     handleDOMEvents: {
       mousedown(view, event) {
+        // Only a plain primary press: a right or ctrl-click opens the context menu, a shift-click selects.
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false
         const item = event.target instanceof HTMLElement ? event.target : undefined
         if (!item || item.tagName !== 'LI' || item.dataset.itemType !== 'task' || !view.editable) return false
         if (event.clientX - item.getBoundingClientRect().left > 26) return false

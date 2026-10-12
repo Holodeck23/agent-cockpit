@@ -28,8 +28,13 @@ export async function chooseAgent(page: Page, choice: { agent?: 'claude' | 'code
   if (choice.model !== undefined) {
     // A menu once the agent has listed its models (Antigravity after a check), a text box otherwise.
     const model = panel.getByLabel('Model')
-    if (await model.evaluate((el) => el.tagName === 'SELECT')) await model.selectOption(choice.model)
-    else await model.fill(choice.model)
+    // Claude Code's menu takes a full model id through Other.
+    const listed = await model.evaluate((el, value) => el instanceof HTMLSelectElement && [...el.options].some((o) => o.value === value), choice.model)
+    if (listed) await model.selectOption(choice.model)
+    else if (await model.evaluate((el) => el.tagName === 'SELECT')) {
+      await model.selectOption('__other__')
+      await panel.getByLabel('Claude model id').fill(choice.model)
+    } else await model.fill(choice.model)
   }
   if (choice.effort !== undefined) await panel.getByLabel('Effort').selectOption(choice.effort)
   if (choice.permissions) await panel.getByLabel('Permissions').selectOption(choice.permissions)

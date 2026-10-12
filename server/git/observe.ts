@@ -18,6 +18,8 @@ export interface ObservedFile {
   readonly status: ChangeStatus
   /** sha256 of the bytes; "link:<target>", "missing", or "stat:<size>:<mtime>" for a file too large to hash. */
   readonly fingerprint: string
+  /** "stat:<size>:<mtime>" of a hashed file too, so a file hashed in one observation and only sized in the other can still be compared. */
+  readonly stat?: string
 }
 
 export interface Observation {
@@ -36,12 +38,14 @@ export function fingerprint(workspace: string, path: string, limit = MAX_HASHED_
   return print(workspace, path, limit).fingerprint
 }
 
-function print(workspace: string, path: string, limit: number): { fingerprint: string; hashed: number } {
+const statOf = (size: number, mtimeMs: number): string => `stat:${size}:${Math.round(mtimeMs)}`
+
+function print(workspace: string, path: string, limit: number): { fingerprint: string; hashed: number; stat?: string } {
   const read = readWorktreeFile(workspace, path, limit)
   switch (read.kind) {
-    case 'file': return { fingerprint: createHash('sha256').update(read.bytes).digest('hex'), hashed: read.bytes.length }
+    case 'file': return { fingerprint: createHash('sha256').update(read.bytes).digest('hex'), hashed: read.bytes.length, stat: statOf(read.size, read.mtimeMs) }
     case 'symlink': return { fingerprint: `link:${read.target}`, hashed: 0 }
-    case 'too-large': return { fingerprint: `stat:${read.size}:${Math.round(read.mtimeMs)}`, hashed: 0 }
+    case 'too-large': return { fingerprint: statOf(read.size, read.mtimeMs), hashed: 0 }
     case 'outside': return { fingerprint: 'outside', hashed: 0 }
     case 'other': return { fingerprint: 'other', hashed: 0 }
     default: return { fingerprint: 'missing', hashed: 0 }
@@ -55,9 +59,9 @@ async function sample(workspace: string): Promise<Observation> {
   const all = changes.truncated ? await allPaths(workspace) : changes.files
   let budget = MAX_HASHED_BYTES
   const files = all.slice(0, MAX_OBSERVED_PATHS).map((f): ObservedFile => {
-    const { fingerprint, hashed } = print(workspace, f.path, Math.min(MAX_HASHED_FILE, budget))
+    const { fingerprint, hashed, stat } = print(workspace, f.path, Math.min(MAX_HASHED_FILE, budget))
     budget -= hashed
-    return { path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.status, fingerprint }
+    return { path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.status, fingerprint, ...(stat ? { stat } : {}) }
   })
   return { repo: true, observedAt: changes.observedAt, head: changes.head, branch: changes.branch, files, truncated: all.length > files.length, stable: true }
 }
@@ -101,6 +105,19 @@ export interface RunComparison {
   readonly uncertain: readonly string[]
 }
 
+/**
+ * Whether a file's content is the same in two observations. Bytes are hashed only while the shared
+ * budget lasts, so a file can be hashed in one and only sized in the other without being touched;
+ * those two are compared by size and modification time instead.
+ */
+function sameContent(a: ObservedFile, b: ObservedFile): boolean {
+  if (a.fingerprint === b.fingerprint) return true
+  const sizedA = a.fingerprint.startsWith('stat:'), sizedB = b.fingerprint.startsWith('stat:')
+  if (sizedA === sizedB) return false
+  const statA = sizedA ? a.fingerprint : a.stat, statB = sizedB ? b.fingerprint : b.stat
+  return statA !== undefined && statA === statB
+}
+
 /** What differs between a run's two observations. Never says who made a change. */
 export function compareObservations(before: Observation, after: Observation): RunComparison {
   const was = new Map(before.files.map((f) => [f.path, f]))
@@ -108,7 +125,7 @@ export function compareObservations(before: Observation, after: Observation): Ru
   const files: Array<RunComparison['files'][number]> = []
   for (const f of after.files) {
     const earlier = was.get(f.path)
-    const change: RunFileChange = !earlier ? 'changed' : earlier.fingerprint === f.fingerprint && earlier.status === f.status ? 'unchanged' : 'changed-again'
+    const change: RunFileChange = !earlier ? 'changed' : sameContent(earlier, f) && earlier.status === f.status ? 'unchanged' : 'changed-again'
     files.push({ path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.status, change })
   }
   for (const f of before.files) if (!now.has(f.path)) files.push({ path: f.path, change: 'cleaned' })

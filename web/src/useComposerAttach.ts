@@ -77,6 +77,8 @@ export function useComposerAttach({ projectPath, draftKey, onInsert }: { project
     remove: (id: string) => change(draftKey, (chips) => chips.filter((image) => image.id !== id)),
     /** After a send: that draft's chips go (`key`: the draft it was sent from, if the view has moved on since). */
     clear: (key: string = draftKey) => { change(key, () => []); setNote(undefined) },
+    /** After a send: the drop or paste notice that was showing when it left goes too, unless a newer drop has replaced it since. */
+    clearNote: (sent: string | undefined) => setNote((now) => (now === sent ? undefined : now)),
     /** Puts back the images of a message you took back, as chips that send them by name. */
     restore: (threadId: string, taken: readonly { file: string; name?: string }[]) => change(draftKey, (chips) => [...chips,
       ...taken.map(({ file, name }) => ({ id: crypto.randomUUID(), name: name ?? 'image', stored: file, url: `/api/threads/${threadId}/images/${file}` }))]),
@@ -100,7 +102,9 @@ export function useComposerAttach({ projectPath, draftKey, onInsert }: { project
     onPaste: (event: ClipboardEvent) => {
       const files = Array.from(event.clipboardData.files)
       if (files.length === 0) return
-      // Pasted files are taken over; pasted text stays a normal paste.
+      // Pasted files are taken over; pasted text stays a normal paste. So does text that comes with
+      // an image that is no file on disk: spreadsheet cells carry a picture of themselves.
+      if (event.clipboardData.getData('text/plain') && files.every((file) => !native?.pathForFile(file))) return
       event.preventDefault()
       take(files, files.map(() => false))
     },

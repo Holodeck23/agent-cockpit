@@ -146,6 +146,11 @@ function AddAccount({ agent, takesCode, onDone }: { agent: AgentId; takesCode: b
   const [signin, setSignin] = useState<SigninView>()
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
+  // The sign-in still open on the server. Leaving the form (another account picked, the panel closed)
+  // abandons it: cancel it then, or the server keeps it for ten minutes and refuses a new one for this agent.
+  const openId = useRef<string | undefined>(undefined)
+  openId.current = signin && !signin.endedAt ? signin.id : undefined
+  useEffect(() => () => { if (openId.current) void api.cancelAccountSignin(openId.current).catch(() => undefined) }, [])
 
   // Followed while it is open; it ends by itself (done, failed, timed out) or on Cancel.
   useEffect(() => {
@@ -153,7 +158,7 @@ function AddAccount({ agent, takesCode, onDone }: { agent: AgentId; takesCode: b
     const timer = setInterval(() => {
       api.accountSignin(signin.id).then((next) => {
         setSignin(next)
-        if (next.state === 'verified') onDone(next.account)
+        if (next.state === 'verified') { openId.current = undefined; onDone(next.account) }
       }, (e: unknown) => setError(message(e)))
     }, 800)
     return () => clearInterval(timer)

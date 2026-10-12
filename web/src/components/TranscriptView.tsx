@@ -26,7 +26,8 @@ interface TranscriptViewProps {
   streaming: string
   streamingAuthor: AgentId
   onApprove: (requestId: string, behavior: ApprovalBehavior) => void
-  onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void
+  /** May return the request's promise: a rejection gives the question card back. */
+  onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void | Promise<unknown>
   /** Takes a waiting message back to the draft (J1). */
   onUnqueue?: (queuedId: string) => void
   /** Stops the current turn so waiting messages run now (J1). */
@@ -55,6 +56,7 @@ function useTick(active: boolean): number {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (!active) return
+    setNow(Date.now()) // `now` may be hours old if nothing has ticked since the view mounted
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [active])
@@ -155,6 +157,9 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                     {onUnqueue ? <button type="button" className="button-soft" onClick={() => onUnqueue(item.queuedId!)}>Remove</button> : null}
                     {onSendNow ? <button type="button" className="button-soft" onClick={onSendNow}>Stop and send now</button> : null}
                   </div>
+                ) : null}
+                {item.undelivered ? (
+                  <div className="waiting-row" role="status"><span>Not delivered: the agent stopped before it took this message</span></div>
                 ) : null}
                 {/* A waiting message's own buttons sit where Copy would; Remove gives the text back anyway. */}
                 {item.text.trim() && !(item.queuedId && running) ? <CopyButton text={item.text} /> : null}

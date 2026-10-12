@@ -27,9 +27,9 @@
 .file-preview header button { flex: none; }
 .file-preview pre { font-family: var(--mono); font-size: 13px; line-height: 1.7; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--subtle); overflow: auto; tab-size: 2; }
 .file-editor { display: flex; flex-direction: column; gap: 12px; }
-.file-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border); margin: -12px -12px 4px; padding: 0 8px; flex: none; }
+.file-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: -12px -12px 4px; padding: 0 8px; flex: none; }
 .file-tab { display: flex; align-items: center; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; flex: none; }
-.file-tab.active { background: var(--panel); border-color: var(--border); margin-bottom: -1px; }
+.file-tab.active { background: var(--panel); border-color: var(--border); }
 .file-tab button { background: transparent; border: none; color: var(--body); padding: 8px 6px 8px 12px; font-size: 13px; white-space: nowrap; }
 .file-tab .file-tab-close { padding: 8px 10px 8px 4px; color: var(--muted); }
 .file-dirty { margin-left: 6px; color: var(--link); font-size: 10px; }
@@ -98,7 +98,6 @@
 .file-tabs-button .icon { width: 16px; height: 16px; }
 .file-tabs-menu .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 220px; }
 .file-tabs-menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
-.file-tabs { overflow: visible; }
 .file-status { display: flex; gap: 16px; padding: 6px 2px 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
 .file-status-dirty { color: var(--link); font-weight: 600; }
 .file-source { display: flex; flex: 1; min-height: 320px; border: 1px solid var(--border); border-radius: 10px; background: var(--subtle); overflow: hidden; }
@@ -109,7 +108,8 @@
 
 /* Hideable explorer (F7): the editor takes the whole width. */
 .files-layout.explorer-hidden { grid-template-columns: minmax(0, 1fr); }
-.file-tab-list { display: contents; }
+/* The tabs scroll in their own box. The strip stays unclipped for the Open tabs popover, and the -1px lets the active tab cover the strip's line. */
+.file-tab-list { display: flex; gap: 4px; min-width: 0; margin-bottom: -1px; overflow-x: auto; scrollbar-width: none; }
 .file-explorer-toggle { flex: none; align-self: center; margin-right: 4px; }
 .file-explorer-toggle[aria-pressed='true'] { color: var(--body); }
 @media (max-width: 800px) { .files-layout.explorer-hidden { grid-template-columns: minmax(0, 1fr); } }

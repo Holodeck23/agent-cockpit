@@ -68,9 +68,16 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const listWidth = useListWidth()
   const [listDraft, setListDraft] = useState<number>()
   const { notify, setNotify } = useNotifySettings()
+  const [section, setSectionState] = useState<Section>('conversations')
+  // A project removed from Cockpit keeps its stored conversations, but they are in no tab or list:
+  // nothing in the window could answer or dismiss one, so none of them calls for you.
+  const shownThreads = useMemo(() => {
+    const paths = new Set(projects.all.map((p) => p.path))
+    return cockpit.threads.filter((t) => paths.has(t.meta.projectPath))
+  }, [cockpit.threads, projects.all])
   // Desktop only: the phone has its own notifications. The conversation you are looking at (open,
-  // window focused) never chimes or notifies; every other one can.
-  useAttention(local ? cockpit.threads : NO_THREADS, () => (document.hasFocus() ? cockpit.selectedId : undefined), (changes) => {
+  // shown in Conversations, window focused) never chimes or notifies; every other one can.
+  useAttention(local ? shownThreads : NO_THREADS, () => (document.hasFocus() && section === 'conversations' ? cockpit.selectedId : undefined), (changes) => {
     const sound = soundForChanges(changes, sounds)
     if (sound) playSound(sound)
     for (const change of changes.filter((c) => notify[c.kind]).slice(0, 3)) {
@@ -79,12 +86,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     }
   })
   // The Dock icon: moving bars while any agent works, a badge with how many need you (every project).
-  const working = cockpit.threads.filter((t) => isWorking(t.status)).length
-  const needs = cockpit.threads.filter(needsYou).length
+  const working = shownThreads.filter((t) => isWorking(t.status)).length
+  const needs = shownThreads.filter(needsYou).length
   useEffect(() => { if (local) native?.setActivity({ working, needs }) }, [local, working, needs])
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
-  const [section, setSectionState] = useState<Section>('conversations')
   // Set only by the new-conversation pointer; any other way into Workflows opens the list.
   const [galleryFirst, setGalleryFirst] = useState(false)
   const setSection = useCallback((next: Section) => { setGalleryFirst(false); setSectionState(next) }, [])
@@ -196,14 +202,28 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }, [])
   const { select: selectProject } = projects
   const { select: selectThread } = cockpit
-  useEffect(() => local ? native?.onOpenThread((id) => {
+  const openThread = useCallback((id: string): void => {
     const thread = threadsRef.current.find((t) => t.meta.id === id)
     if (!thread) return
     focusWorkspaceOf(thread.meta)
     selectProject(thread.meta.projectPath)
     setSection('conversations')
     selectThread(id)
-  }) : undefined, [local, selectProject, selectThread, setSection, focusWorkspaceOf])
+  }, [selectProject, selectThread, setSection, focusWorkspaceOf])
+  // A notification clicked while the window was closed reopens it, and the preload hands the click over
+  // the moment this page subscribes: before the thread list has been read. The id waits for the list.
+  const threadsLoadedRef = useRef(cockpit.threadsLoaded)
+  threadsLoadedRef.current = cockpit.threadsLoaded
+  const [wantedThread, setWantedThread] = useState<string>()
+  useEffect(() => local ? native?.onOpenThread((id) => {
+    if (threadsLoadedRef.current) openThread(id)
+    else setWantedThread(id)
+  }) : undefined, [local, openThread])
+  useEffect(() => {
+    if (!wantedThread || !cockpit.threadsLoaded) return
+    setWantedThread(undefined)
+    openThread(wantedThread)
+  }, [wantedThread, cockpit.threadsLoaded, openThread])
 
   // ⌘1–9 project tabs, ⌥⌘1–5 sections (shortcuts.ts). The same moves as clicking the tab or section.
   const tabsRef = useRef(projects.tabs)

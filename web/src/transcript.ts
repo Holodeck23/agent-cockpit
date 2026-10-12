@@ -5,6 +5,8 @@ import type { AgentId, AgentQuestion, ApprovalOutcome, WorkflowSnapshot } from '
 import type { StoredEvent } from '../../server/threads/types.ts'
 import { describeAttachments } from '../../server/files/references.ts'
 import { PERMISSION_LABEL } from './permission-labels.ts'
+import { refusedTurnNote } from './refused-turn.ts'
+import type { ThreadSettings } from './api.ts'
 import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
 import { attribute, partition } from '../../server/threads/workspace-events.ts'
@@ -27,6 +29,8 @@ export type TranscriptItem =
       conclusion?: 'question' | 'blocker'
       /** Sent mid-turn and not taken by the agent yet (J1): it can still be taken back. */
       queuedId?: string
+      /** Sent while the agent was busy or starting, and the session ended before it took it. */
+      undelivered?: true
       /** The workspace it was sent in or came from, once the conversation has more than one (W12-15). */
       workspace?: string
     }
@@ -307,7 +311,7 @@ export function followUpSuggestions(events: readonly StoredEvent[]): string[] {
   return [...new Set(texts)].slice(-3)
 }
 
-export function buildTranscript(events: readonly StoredEvent[], currentAgent: AgentId): TranscriptItem[] {
+export function buildTranscript(events: readonly StoredEvent[], currentAgent: AgentId, currentMode?: ThreadSettings['permissionMode']): TranscriptItem[] {
   const firstSwitch = events.find((e) => e.event.kind === 'agent_switch')?.event
   let agent: AgentId = firstSwitch?.kind === 'agent_switch' ? firstSwitch.from : currentAgent
 
@@ -316,6 +320,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const workspaceOf = partition(events).size > 1 ? attribute(events) : undefined
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
+  const undelivered = new Set(events.flatMap((e) => (e.event.kind === 'user_undelivered' ? [e.event.id] : [])))
   // A message you took back went to your draft; it, and the images sent with it, are no longer
   // part of the conversation (the switch handoff uses the same rule).
   const takenBack = takenBackPositions(events)
@@ -329,8 +334,26 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let lastUserText: string | undefined
   /** The images sent with that message; Retry sends them again (R8). */
   let lastUserImages: { file: string; name?: string }[] = []
+  // A message sent while a turn runs waits in the agent's queue. It starts the next turn when taken
+  // after the running one has ended; until then it is not what the running turn would retry.
+  let turnOpen = false
+  const queuedSends = new Map<string, { text: string; images: { file: string; name?: string }[] }>()
+  let queuedSending: string | undefined
   /** A failure card already stands for the current turn, so its failed result adds nothing. */
   let failedThisTurn = false
+  // The permission mode a turn ran in: the last change before it, or the current one once nothing
+  // changed after it. A switch's new mode is not in the log, so turns between a switch and the
+  // next change have none.
+  const lastChange = events.findLastIndex((e) => e.event.kind === 'settings_changed' || e.event.kind === 'agent_switch')
+  let loggedMode: ThreadSettings['permissionMode'] | undefined
+  let turnMode: ThreadSettings['permissionMode'] | undefined = currentMode
+  let repliedThisTurn = false
+  let refusedThisTurn: string | undefined
+  const startTurn = (index: number, text: string, images: { file: string; name?: string }[]): void => {
+    lastUserText = text; lastUserImages = images; failedThisTurn = false
+    turnMode = index > lastChange ? currentMode : loggedMode
+    repliedThisTurn = false; refusedThisTurn = undefined; turnOpen = true
+  }
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
     const item = compacting === undefined ? undefined : items[compacting]
     if (compacting !== undefined && item?.type === 'compaction') replace(compacting, { ...item, state, endedAt: ts, ...sizes })
@@ -353,10 +376,14 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
     const key = `${ts}-${index}`
     const last = items.at(-1)
     if (takenBack.has(index)) return
+    if (event.kind !== 'image') queuedSending = undefined
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
-        if (event.kind === 'user_text') { lastUserText = event.text; lastUserImages = []; failedThisTurn = false }
+        if (event.kind === 'user_text') {
+          if (event.queuedId) { queuedSends.set(event.queuedId, { text: event.text, images: [] }); queuedSending = event.queuedId }
+          else startTurn(index, event.text, [])
+        } else repliedThisTurn = true
         const author = event.kind === 'user_text' ? 'you' : agent
         const workspace = workspaceOf?.[index]
         const sameWorkspace = !workspaceOf || (last?.type === 'message' && last.workspace === workspace)
@@ -371,7 +398,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
             .replace(/[ \t]+\n/g, '\n').trim()
           const { attachments } = described
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(workspace ? { workspace } : {}), ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
-            ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}) })
+            ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}),
+            ...(event.queuedId && undelivered.has(event.queuedId) ? { undelivered: true as const } : {}) })
         } else {
           const role = roles.get(index)
           const parsed = role === 'conclusion' ? parseConclusion(event.text) : undefined
@@ -383,7 +411,11 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       }
       case 'image': {
         const ref: ImageRef = { file: event.file, ...(event.name ? { name: event.name } : {}) }
-        if (event.from === 'you') lastUserImages = [...lastUserImages, ref]
+        if (event.from === 'you') {
+          const queued = queuedSending ? queuedSends.get(queuedSending) : undefined
+          if (queued) queued.images = [...queued.images, ref]
+          else lastUserImages = [...lastUserImages, ref]
+        }
         if (event.from === 'you' && last?.type === 'message' && last.author === 'you') {
           replace(items.length - 1, { ...last, images: [...(last.images ?? []), ref] })
         } else {
@@ -403,6 +435,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           const byCard = event.isError && deniedCards > 0
           if (byCard) deniedCards -= 1
           const denied = byCard || (event.isError && isDenial(event.content))
+          if (denied) refusedThisTurn ??= lowerFirst(step.label)
           replace(at, {
             ...step,
             endedAt: ts,
@@ -452,6 +485,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         return
       }
       case 'settings_changed': {
+        loggedMode = event.permissionMode in PERMISSION_LABEL ? event.permissionMode as ThreadSettings['permissionMode'] : undefined
         const mode = (PERMISSION_LABEL as Record<string, string>)[event.permissionMode] ?? event.permissionMode
         const chrome = event.chrome === undefined ? '' : event.chrome ? ', using your Chrome' : ', not using your Chrome'
         items.push({ type: 'note', key, text: `Now ${event.model ?? 'the default model'}, ${event.effort ? `${event.effort} effort` : 'default effort'}, ${mode}${chrome}. Applies from your next message.`, tone: 'plain' })
@@ -531,6 +565,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
       case 'agent_switch':
         endRunningHelpers(ts)
         agent = event.to
+        loggedMode = undefined
         items.push({ type: 'note', key, text: `Handed over from ${agentName(event.from)} to ${agentName(event.to)}. The conversation so far goes with it.`, tone: 'plain' })
         return
       case 'result': {
@@ -542,12 +577,21 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         } else if (failed && !failedThisTurn) {
           const words = failureWords(event.text)
           items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
+        } else if (event.ok && !event.stopped && !repliedThisTurn && refusedThisTurn) {
+          items.push({ type: 'note', key, text: refusedTurnNote(agent, agentName(agent), turnMode, refusedThisTurn), tone: 'error', ...(event.runId ? { runId: event.runId } : {}) })
         } else if (!failed) {
           items.push({ type: 'note', key, text: RESULT_NOTE(event.ok, event.stopped, event.durationMs), tone: 'plain', ...(event.runId ? { runId: event.runId } : {}) })
         }
         if (event.runId) items.push({ type: 'result', key: `${key}-evidence`, runId: event.runId,
           outcome: event.interrupted ? 'interrupted' : event.ok ? 'ok' : event.stopped ? 'stopped' : 'error' })
         failedThisTurn = false
+        refusedThisTurn = undefined
+        turnOpen = false
+        return
+      }
+      case 'user_taken': {
+        const queued = event.id ? queuedSends.get(event.id) : undefined
+        if (queued && !turnOpen) startTurn(index, queued.text, queued.images)
         return
       }
       case 'error':

@@ -22,10 +22,12 @@ function Row({ worktree, project, workspaces, threads, onShowFiles }: {
   const conversations = threadsIn(threads, worktree.id, project.workspaceId).length
   const archived = worktree.lifecycle === 'archived'
 
-  const act = (work: () => Promise<unknown>): void => {
+  // A refused removal (the worktree changed after the check, new blockers) leaves the check out of date:
+  // drop it, so the row offers a fresh check instead of a button that is refused the same way.
+  const act = (work: () => Promise<unknown>, removing = false): void => {
     setBusy(true)
     setNote('')
-    work().then(() => setCheck(undefined), (e: unknown) => setNote(message(e))).finally(() => setBusy(false))
+    work().then(() => setCheck(undefined), (e: unknown) => { if (removing) setCheck(undefined); setNote(message(e)) }).finally(() => setBusy(false))
   }
   const lose = check ? uniqueWork(check) : undefined
 
@@ -56,7 +58,7 @@ function Row({ worktree, project, workspaces, threads, onShowFiles }: {
         ) : (
           <>
             {check?.removable ? (
-              <button type="button" className="button-danger" disabled={busy} onClick={() => act(() => workspaces.change(worktree.id, { remove: check.fingerprint }))}>Remove with Git</button>
+              <button type="button" className="button-danger" disabled={busy} onClick={() => act(() => workspaces.change(worktree.id, { remove: check.fingerprint }), true)}>Remove with Git</button>
             ) : (
               <button type="button" className="button-soft" disabled={busy} onClick={() => { setBusy(true); setNote(''); api.workspaceRemoval(worktree.id).then(setCheck, (e: unknown) => setNote(message(e))).finally(() => setBusy(false)) }}>
                 Remove…

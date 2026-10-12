@@ -70,14 +70,18 @@ export function insideRepository(projectPath: string): boolean {
 }
 
 /** The path of one `git status --porcelain=v2` entry. */
-function changedPath(line: string): string {
+function changedPath(line: string, nul: boolean): string {
   const fields = line.split(' ')
   if (line.startsWith('1 ')) return fields.slice(8).join(' ')
-  if (line.startsWith('2 ')) return fields.slice(9).join(' ').split('\t')[0] ?? ''
+  if (line.startsWith('2 ')) { const path = fields.slice(9).join(' '); return nul ? path : path.split('\t')[0] ?? '' }
   if (line.startsWith('u ')) return fields.slice(10).join(' ')
   return line.slice(2) // '? path' and '! path'
 }
 
+/**
+ * Read with `-z` (NUL-terminated, paths never quoted); newline-terminated output is read too. A
+ * rename's original path is a field of its own under `-z`, after the entry's.
+ */
 export function parseStatus(output: string): Omit<GitState, 'repo' | 'branches'> {
   let branch: string | undefined
   let head: string | undefined
@@ -85,7 +89,10 @@ export function parseStatus(output: string): Omit<GitState, 'repo' | 'branches'>
   let ahead: number | undefined
   let behind: number | undefined
   const changes: string[] = []
-  for (const line of output.split('\n')) {
+  const nul = output.includes('\0')
+  const lines = output.split(nul ? '\0' : '\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
     if (!line) continue
     if (line.startsWith('# branch.head ')) {
       const name = line.slice('# branch.head '.length)
@@ -99,7 +106,8 @@ export function parseStatus(output: string): Omit<GitState, 'repo' | 'branches'>
       const match = /^# branch\.ab \+(\d+) -(\d+)$/.exec(line)
       if (match) { ahead = Number(match[1]); behind = Number(match[2]) }
     } else if (!line.startsWith('#')) {
-      changes.push(changedPath(line))
+      changes.push(changedPath(line, nul))
+      if (nul && line.startsWith('2 ')) i++
     }
   }
   return {
@@ -114,7 +122,7 @@ const NOT_A_REPO: GitState = { repo: false, branches: [], changes: [], changeCou
 export async function gitState(projectPath: string): Promise<GitState> {
   if (!insideRepository(projectPath)) return NOT_A_REPO
   const [status, refs] = await Promise.all([
-    run(projectPath, ['status', '--porcelain=v2', '--branch', '--untracked-files=normal']),
+    run(projectPath, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=normal']),
     run(projectPath, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', `--count=${MAX_BRANCHES}`, 'refs/heads']),
   ])
   const branches = refs.stdout.split('\n').filter(Boolean)

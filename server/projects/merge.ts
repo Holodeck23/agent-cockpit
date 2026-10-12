@@ -157,9 +157,25 @@ export function createMergeService(root: string, { workspaces, activeIn }: Merge
     if (head && contains) return advance(operation, { stage: 'merged', resultHead: head })
     return advance(operation, { stage: 'failed', error: 'Cockpit stopped before Git merged; nothing was merged. Check again and merge.' })
   }
+  /**
+   * A recorded conflict whose merge the repository no longer shows (resolved and committed, or aborted, in a terminal or
+   * by an agent in the main checkout) is closed, so it stops blocking the worktree. Only a look does this: Continue and
+   * Abort still refuse `unsafe` for it. A repository Git cannot read leaves the record as it is.
+   */
+  const reconcile = async (operation: Operation): Promise<Operation> => {
+    if (operation.stage !== 'conflict') return operation
+    const gitDir = await gitDirOf(operation.targetCwd)
+    if (!gitDir) return operation
+    const mergeHead = existsSync(join(gitDir, 'MERGE_HEAD')) ? readFileSync(join(gitDir, 'MERGE_HEAD'), 'utf8').trim() : undefined
+    if (mergeHead === operation.sourceHead) return operation
+    const head = await out(operation.targetCwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])
+    const merged = head !== undefined && head !== operation.targetHeadBefore
+      && await run(operation.targetCwd, ['merge-base', '--is-ancestor', operation.sourceHead, head]).then(() => true, () => false)
+    return head && merged ? advance(operation, { stage: 'merged', conflicts: [], resultHead: head }) : advance(operation, { stage: 'aborted', conflicts: [] })
+  }
   const openFor = async (sourceId: string): Promise<Operation | undefined> => {
     for (const op of all().filter((o) => o.sourceWorkspaceId === sourceId && (o.stage === 'started' || o.stage === 'conflict'))) {
-      const settled = await settle(op)
+      const settled = await reconcile(await settle(op))
       if (settled.stage === 'conflict') return settled
     }
     return undefined

@@ -58,8 +58,9 @@
 
 /* Keep words intact; controls wrap as units when space is limited. */
 .composer-foot { flex-wrap: wrap; }
-.picker-group { flex: 1 1 240px; flex-wrap: wrap; gap: 4px; }
-.picker-group > .picker:first-child { flex: 1 1 130px; min-width: 0; }
+/* Agent and Effort stay together at their natural width; only whole controls wrap in the foot. It
+   shrinks (names ellipsize) only when it alone is wider than the foot. */
+.picker-group { flex: 0 1 auto; max-width: 100%; flex-wrap: nowrap; gap: 4px; }
 .picker-button { min-width: 0; max-width: 100%; }
 .picker-text { min-width: 0; }
 .picker-name, .picker-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

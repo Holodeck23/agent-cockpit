@@ -47,6 +47,8 @@ export type Plan =
     readonly destination?: string
     /** What the user should expect: a browser, a code, a silent download. */
     readonly interaction: string
+    /** The command to run yourself if this one fails, when it is not the agent's own `<command> update`. */
+    readonly manual?: string
   }
   | { readonly available: false; readonly reason: string; readonly manual?: string }
 
@@ -70,7 +72,7 @@ export function updatePlanFor(caps: AgentCapabilities, tools: { readonly brew?: 
     if (!writable(caskDir)) return { available: false, reason: `Homebrew's folder ${dirname(caskDir)} is not writable by you, so Cockpit cannot update it.`, manual }
     if (agent === 'codex') return run(BREW_ENV)
     if (!tools.brew) return { available: false, reason: 'Homebrew is not on the PATH Cockpit uses.', manual }
-    return { available: true, executable: tools.brew, args: ['upgrade', '--cask', cask[1]!], env: BREW_ENV, destination: realpath, interaction: UPDATE_INTERACTION }
+    return { available: true, executable: tools.brew, args: ['upgrade', '--cask', cask[1]!], env: BREW_ENV, destination: realpath, interaction: UPDATE_INTERACTION, manual }
   }
   // A Bun install run through its Node launcher looks like npm's to the CLI's own updater, which then
   // updates npm's copy and leaves this one old (first tester, v0.1.5): Bun's own command instead.

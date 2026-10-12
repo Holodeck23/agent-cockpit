@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
-import { effortsFor, PERMISSION_MODES } from '../../../server/agents/claude/flags.ts'
+import { useEffect, useState, type KeyboardEvent } from 'react'
+import { effortsFor, PERMISSION_MODES, type Effort } from '../../../server/agents/claude/flags.ts'
+import { CODEX_MODEL_EFFORTS, codexEffort } from '../../../server/agents/codex/efforts.ts'
 import type { AgentId } from '../../../server/agents/types.ts'
 import type { ModelOption } from '../../../server/agents/capabilities/types.ts'
 import { api, type AccountView, type AgentCapabilities, type AgentStatus, type HandoffPreview, type Preset, type ThreadSettings } from '../api.ts'
 import { agentName } from '../transcript.ts'
 import { loadMemory, permissionModesFor, recall, remember, saveMemory, type AgentMemory } from '../agent-memory.ts'
 import { focusComposer } from '../focus-composer.ts'
-import { agyChoiceLabel, agyEffortFor, agyMenus } from '../model-choices.ts'
+import { agyChoiceLabel, agyEffortFor, agyMenus, claudeMenu, OTHER_MODEL } from '../model-choices.ts'
 import { permissionLabel, permissionDescription, needsPermissionConfirmation } from '../permission-labels.ts'
 import { usePopover } from '../usePopover.ts'
 import { formatWhen, usageLine } from '../usage.ts'
@@ -26,7 +27,8 @@ export interface AgentChoice {
 }
 
 const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
-  claude: ['haiku', 'sonnet', 'opus'],
+  // Claude Code has its own menu (claudeMenu).
+  claude: [],
   // Account-specific model ids can be typed; blank uses the user's CLI default.
   codex: [],
   // Listed by the installed agy itself (`agy models`, on Refresh); blank uses Antigravity's default.
@@ -39,6 +41,9 @@ export { PERMISSION_LABEL } from '../permission-labels.ts'
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
 
+/** The panel sits inside the composer's and the workflow editor's form; Enter in a text box would submit that form. */
+const keepFormUnsubmitted = (e: KeyboardEvent<HTMLInputElement>): void => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault() }
+
 export function choiceSummary(choice: AgentChoice, agyListed?: readonly ModelOption[]): string {
   // Antigravity's model by name and effort, once agy has listed them; its ids are not for reading.
   const named = choice.agent === 'antigravity' && choice.model && agyListed?.length ? agyChoiceLabel(agyListed, choice.model, choice.effort) : undefined
@@ -46,6 +51,14 @@ export function choiceSummary(choice: AgentChoice, agyListed?: readonly ModelOpt
   // Provider/model names (openrouter/…) are shown as typed; OpenCode has no effort setting of its own.
   const model = choice.model ? (choice.model.includes('/') ? choice.model : capitalize(choice.model)) : 'Default model'
   return choice.agent === 'opencode' ? model : `${model} · ${choice.effort ? capitalize(choice.effort) : 'Default effort'}`
+}
+
+/** The agent button's subtitle: the model only, since the Effort button beside it shows the effort. */
+export function modelSummary(choice: AgentChoice, agyListed?: readonly ModelOption[]): string {
+  if (!choice.model) return 'Default model'
+  const named = choice.agent === 'antigravity' && agyListed?.length ? agyMenus(agyListed, choice.model, choice.effort).model?.label : undefined
+  // Aliases read as names (Opus); full ids and provider/model names show as typed.
+  return named ?? (/^[a-z]+$/.test(choice.model) ? capitalize(choice.model) : choice.model)
 }
 
 export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): Partial<ThreadSettings> {
@@ -138,10 +151,13 @@ const CLOSE_KEY = 'cockpit:picker-close-after'
 const readCloseAfter = (): boolean => { try { return localStorage.getItem(CLOSE_KEY) === 'true' } catch { return false } }
 
 /** One click to the agent's effort, beside the picker (OpenCode has no effort setting). */
-function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disabled?: string; onPick: (effort: string) => void }) {
+function EffortButton({ value, agyListed, disabled, onPick }: { value: AgentChoice; /** Antigravity's models as agy last listed them. */ agyListed?: readonly ModelOption[]; disabled?: string; onPick: (effort: string) => void }) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>({ onEscape: () => focusComposer(ref.current) })
   if (value.agent === 'opencode') return null
   const label = value.effort ? capitalize(value.effort) : 'Default'
+  // A model agy lists comes in only the efforts agy lists for it (some just Low and High); another is refused at launch.
+  const levels = value.agent === 'antigravity' && agyListed?.length ? agyMenus(agyListed, value.model, value.effort).model?.levels : undefined
+  const efforts: readonly string[] = levels?.length ? levels : ['', ...effortsFor(value.agent, value.model)]
   return (
     <div className="picker effort-picker" ref={ref}>
       <button type="button" className="effort-button" aria-label={`Effort: ${label}`} aria-expanded={open} title={disabled ?? 'Effort'} disabled={disabled !== undefined} onClick={() => setOpen(!open)}>
@@ -150,7 +166,7 @@ function EffortButton({ value, disabled, onPick }: { value: AgentChoice; disable
       </button>
       {open ? (
         <div className="menu effort-menu" role="menu" aria-label="Effort">
-          {['', ...effortsFor(value.agent, value.model)].map((effort) => (
+          {efforts.map((effort) => (
             <button key={effort || 'default'} type="button" role="menuitemradio" aria-checked={value.effort === effort} className="menu-item"
               onClick={() => { onPick(effort); setOpen(false); focusComposer(ref.current) }}>
               {effort ? capitalize(effort) : 'Default'}
@@ -221,6 +237,9 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   // The chip names an Antigravity model from agy's last listing. Reading it never runs agy; the phone
   // is refused capabilities, and without a listing the chip shows the stored value as it is.
   const [agyListed, setAgyListed] = useState<readonly ModelOption[] | undefined>(undefined)
+  /** Claude's Other was picked and its box may still be empty. */
+  const [claudeOther, setClaudeOther] = useState(false)
+  useEffect(() => { setClaudeOther(false) }, [value.agent, open])
   useEffect(() => {
     if (value.agent !== 'antigravity' || document.documentElement.classList.contains('phone')) return
     let live = true
@@ -272,6 +291,8 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   // Antigravity, once agy has listed its models: a model by name, then the efforts that model offers.
   const agy = current.agent === 'antigravity' && listedChoices ? agyMenus(listedChoices, current.model, current.effort) : undefined
   const modelOptions = listedModels ?? MODEL_SUGGESTIONS[current.agent]
+  // Claude Code: Default, the aliases its --help names (plus Haiku), then Other for a full id.
+  const claude = current.agent === 'claude' ? claudeMenu(listedChoices, current.model, claudeOther) : undefined
 
   const commitChoice = (next: AgentChoice): void => {
     const remembered = remember(memory, next)
@@ -285,7 +306,13 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
     commitChoice(next)
     return true
   }
-  const patch = (change: Partial<AgentChoice>): void => { set({ ...current, ...change }) }
+  const patch = (change: Partial<AgentChoice>): void => {
+    const next = { ...current, ...change }
+    // A Codex model that has levels of its own takes the effort a run would use for the saved one, so the box, the chip and the run
+    // agree. A name still being typed is not a model yet: it leaves the effort alone, so Ultra survives on the way to one that has it.
+    const clamp = change.model !== undefined && change.effort === undefined && next.agent === 'codex' && Object.hasOwn(CODEX_MODEL_EFFORTS, next.model)
+    set(clamp ? { ...next, effort: codexEffort(next.model, (next.effort || undefined) as Effort | undefined) ?? '' } : next)
+  }
   const close = (): void => { setOpen(false); focusComposer(ref.current) }
 
   // Named settings: one click applies them (in a conversation, Apply/Switch still confirms).
@@ -331,7 +358,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
           <AgentGlyph author={value.agent} />
           <span className="picker-text">
             <span className="picker-name">{agentName(value.agent)}</span>
-            <span className="picker-sub">{choiceSummary(value, chipListed)}</span>
+            <span className="picker-sub">{modelSummary(value, chipListed)}</span>
           </span>
           <ChevronDownIcon className="chevron" />
         </button>
@@ -409,6 +436,22 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                     <option key={m.value || 'default'} value={m.value}>{m.label}</option>
                   ))}
                 </select>
+              ) : claude ? (
+                <>
+                  <select value={claude.selected} onChange={(e) => {
+                    const model = e.target.value
+                    setClaudeOther(model === OTHER_MODEL)
+                    patch({ model: model === OTHER_MODEL ? (claude.other ? current.model : '') : model })
+                  }}>
+                    {claude.models.map((m) => (
+                      <option key={m.value || 'default'} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  {claude.other ? (
+                    <input aria-label="Claude model id" value={current.model} placeholder="Full model id, e.g. claude-opus-5-5" autoFocus={claudeOther}
+                      onChange={(e) => patch({ model: e.target.value.trim() })} onKeyDown={keepFormUnsubmitted} />
+                  ) : null}
+                </>
               ) : (
                 <>
                   <input
@@ -416,6 +459,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
                     value={current.model}
                     placeholder="Default model"
                     onChange={(e) => patch({ model: e.target.value.trim() })}
+                    onKeyDown={keepFormUnsubmitted}
                   />
                   <datalist id={`models-${current.agent}`}>
                     {modelOptions.map((m) => (
@@ -505,7 +549,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
         setDraft(value); setPermissionConfirm(undefined); setReview(undefined); setOpen(true)
         requestAnimationFrame(() => ref.current?.querySelector<HTMLSelectElement>('select[data-permissions]')?.focus())
       }}>{permissionLabel(value.agent, value.permissionMode)}</button>
-      <EffortButton value={value} disabled={existing ? lockedReason : undefined} onPick={pickEffort} />
+      <EffortButton value={value} agyListed={chipListed} disabled={existing ? lockedReason : undefined} onPick={pickEffort} />
     </div>
   )
 }

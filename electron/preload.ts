@@ -7,6 +7,35 @@ import type { CapacityRefusal, NavAction, PageState } from './browser-service.ts
 
 type CopyOutcome = { copied: string[]; skipped: Array<{ name: string; reason: string }> } | { error: string }
 
+type Receive = (event: IpcRendererEvent, value: unknown) => void
+
+const HELD_MAX = 20
+
+/**
+ * An event main pushes to the page. It is received from the moment this script runs and held until
+ * the first subscriber: a window just reopened has finished loading long before React mounts and
+ * subscribes (it awaits the server and the beta terms first), and Electron drops an event that
+ * finds no listener.
+ */
+function pushed(channel: string): (receive: Receive) => () => void {
+  const receivers = new Set<Receive>()
+  let held: ReadonlyArray<readonly [IpcRendererEvent, unknown]> = []
+  ipcRenderer.on(channel, (event, value: unknown) => {
+    if (receivers.size === 0) held = [...held, [event, value] as const].slice(-HELD_MAX)
+    else for (const receive of receivers) receive(event, value)
+  })
+  return (receive) => {
+    receivers.add(receive)
+    const due = held
+    held = []
+    for (const [event, value] of due) receive(event, value)
+    return () => { receivers.delete(receive) }
+  }
+}
+const previewOpen = pushed('cockpit:preview-open')
+const openThread = pushed('cockpit:open-thread')
+const showReleaseNotes = pushed('cockpit:show-release-notes')
+
 // The only native surface the page gets. Everything else goes through the
 // loopback HTTP API, exactly as in the browser.
 const cockpit = {
@@ -36,8 +65,7 @@ const cockpit = {
       const preview = value as Partial<PreviewOpen> | undefined
       if (preview && typeof preview.url === 'string' && typeof preview.projectPath === 'string' && (preview.threadId === undefined || typeof preview.threadId === 'string')) listener(preview as PreviewOpen)
     }
-    ipcRenderer.on('cockpit:preview-open', receive)
-    return () => ipcRenderer.removeListener('cockpit:preview-open', receive)
+    return previewOpen(receive)
   },
   /** The in-app browser (wave 9): one page per conversation, drawn by the host over `rect`. */
   browser: {
@@ -48,6 +76,8 @@ const cockpit = {
     navigate: (key: string, action: NavAction): void => ipcRenderer.send('cockpit:browser-nav', { key, action }),
     state: (key: string): Promise<PageState | undefined> => ipcRenderer.invoke('cockpit:browser-state', key) as Promise<PageState | undefined>,
     openExternal: (key: string): void => ipcRenderer.send('cockpit:browser-external', key),
+    /** The person dismissed the "Reloaded" notice: main stops reporting the page as reloaded. */
+    reloadSeen: (key: string): void => ipcRenderer.send('cockpit:browser-reload-seen', key),
     close: (key: string): void => ipcRenderer.send('cockpit:browser-close', key),
     /** Resolves to an error message, if any. */
     clearData: (projectPath: string): Promise<string | undefined> => ipcRenderer.invoke('cockpit:browser-clear', projectPath) as Promise<string | undefined>,
@@ -65,8 +95,7 @@ const cockpit = {
   notify: (notification: { threadId: string; title: string; body: string }): void => ipcRenderer.send('cockpit:notify', notification),
   onOpenThread: (listener: (threadId: string) => void): (() => void) => {
     const receive = (_event: IpcRendererEvent, id: unknown): void => { if (typeof id === 'string') listener(id) }
-    ipcRenderer.on('cockpit:open-thread', receive)
-    return () => ipcRenderer.removeListener('cockpit:open-thread', receive)
+    return openThread(receive)
   },
   appVersion: (): Promise<string | undefined> => ipcRenderer.invoke('cockpit:app-version') as Promise<string | undefined>,
   /** The beta terms (crash reports are a condition): read whether they are accepted, accept them, or decline and quit. */
@@ -74,11 +103,7 @@ const cockpit = {
   /** An uncaught page error, for a crash report (dropped until the beta terms are accepted). */
   pageError: (error: { message: string; stack?: string }): void => ipcRenderer.send('cockpit:page-error', error),
   releaseNotes: (): Promise<ReleaseNotes> => ipcRenderer.invoke('cockpit:release-notes') as Promise<ReleaseNotes>,
-  onShowReleaseNotes: (listener: () => void): (() => void) => {
-    const receive = (): void => listener()
-    ipcRenderer.on('cockpit:show-release-notes', receive)
-    return () => ipcRenderer.removeListener('cockpit:show-release-notes', receive)
-  },
+  onShowReleaseNotes: (listener: () => void): (() => void) => showReleaseNotes(() => listener()),
   onFullScreen: (listener: (fullScreen: boolean) => void): (() => void) => {
     const receive = (_event: IpcRendererEvent, value: unknown): void => { if (typeof value === 'boolean') listener(value) }
     ipcRenderer.on('cockpit:full-screen', receive)

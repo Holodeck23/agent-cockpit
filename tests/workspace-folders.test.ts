@@ -262,7 +262,7 @@ describe('the conversation\'s browser page', () => {
   it('is created for the workspace folder the session runs in', async () => {
     const folders: string[] = []
     const page = { pageId: 'thread:t1', revision: 1, url: 'about:blank', origin: 'null', title: '' }
-    const host = { ensure: async (_key: string, folder: string) => { folders.push(folder); return page }, goto: async () => page, info: () => page } as unknown as BrowserHost
+    const host = { guardNavigation: () => {}, ensure: async (_key: string, folder: string) => { folders.push(folder); return page }, goto: async () => page, info: () => page } as unknown as BrowserHost
     const agent = createBrowserAgent({ host: () => host, leases: createBrowserLeases(), cockpitPorts: () => [4000], currentRun: () => 'r1', approve: async () => 'allow' })
     const grant: McpGrant = { threadId: 't1', projectPath: '/work/garden', cwd: '/work/garden-worktree-abc123', workspaceId: randomUUID() }
     await agent.handle(grant, 'navigate', { url: 'http://localhost:5173/' }, new AbortController().signal)

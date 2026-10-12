@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { NormalizedEvent } from '../../../server/agents/types.ts'
 import { native } from '../native.ts'
 import { usePopover } from '../usePopover.ts'
@@ -40,6 +40,8 @@ export function ThreadMenu({ transcriptPath, usage, completed, onToggleCompleted
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const setOpen = (next: boolean): void => { setPopover(next); if (!next) setConfirming(false) }
+  // Escape and a click outside close the popover without going through setOpen: the next open is never the armed Delete.
+  useEffect(() => { if (!open) setConfirming(false) }, [open])
 
   if (open && confirming && onDelete) {
     return (
