@@ -238,6 +238,15 @@ describe('settings changes', () => {
       { type: 'note', text: 'Now the default model, default effort, Ask before acting. Applies from your next message.' },
     ])
   })
+
+  it('says when a provider changed permissions during the current turn', () => {
+    const items = buildTranscript([
+      at(0, { kind: 'settings_changed', permissionMode: 'manual', immediate: true }),
+    ], 'claude')
+    expect(items).toMatchObject([
+      { type: 'note', text: 'Now the default model, default effort, Ask before acting. Applies now.' },
+    ])
+  })
 })
 
 describe('helpers in the transcript (J7)', () => {

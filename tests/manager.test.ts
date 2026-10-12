@@ -96,7 +96,7 @@ describe('thread manager', () => {
     manager.approve(meta.id, openApprovals(store.events(meta.id))[0]!, 'allow')
 
     expect(store.get(meta.id)?.settings.permissionMode).toBe('manual')
-    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'settings_changed', permissionMode: 'manual' })
+    expect(store.events(meta.id).at(-1)?.event).toMatchObject({ kind: 'settings_changed', permissionMode: 'manual', immediate: true })
 
     agent.emit({ kind: 'result', ok: true })
     agent.emit({ kind: 'exit', code: 0 })

@@ -488,7 +488,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         loggedMode = event.permissionMode in PERMISSION_LABEL ? event.permissionMode as ThreadSettings['permissionMode'] : undefined
         const mode = (PERMISSION_LABEL as Record<string, string>)[event.permissionMode] ?? event.permissionMode
         const chrome = event.chrome === undefined ? '' : event.chrome ? ', using your Chrome' : ', not using your Chrome'
-        items.push({ type: 'note', key, text: `Now ${event.model ?? 'the default model'}, ${event.effort ? `${event.effort} effort` : 'default effort'}, ${mode}${chrome}. Applies from your next message.`, tone: 'plain' })
+        items.push({ type: 'note', key, text: `Now ${event.model ?? 'the default model'}, ${event.effort ? `${event.effort} effort` : 'default effort'}, ${mode}${chrome}. ${event.immediate ? 'Applies now.' : 'Applies from your next message.'}`, tone: 'plain' })
         return
       }
       case 'chrome_connection': {

@@ -817,6 +817,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
           ...(settings.model ? { model: settings.model } : {}),
           ...(settings.effort ? { effort: settings.effort } : {}),
           permissionMode: settings.permissionMode,
+          immediate: true,
         })
       }
     },

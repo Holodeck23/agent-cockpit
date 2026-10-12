@@ -116,6 +116,26 @@ describe('Stop beside the message box', () => {
     expect(host.querySelector('[aria-label="Stop"]')).not.toBeNull()
   })
 
+  it('shows scanner state for the selected workspace, not a more urgent one elsewhere', async () => {
+    const data = detail('needs_input')
+    const events: StoredEvent[] = [
+      { workspaceId: 'main', ts: '2026-10-11T08:00:00Z', event: { kind: 'user_text', text: 'Main turn' } },
+      { workspaceId: 'main', ts: '2026-10-11T08:00:01Z', event: { kind: 'approval_request', requestId: 'approval', toolName: 'Bash', input: {}, suggestions: [] } },
+      { workspaceId: 'rose', ts: '2026-10-11T08:00:02Z', event: { kind: 'user_text', text: 'Rose turn' } },
+    ]
+    const meta = { ...data.meta, workspaceId: 'main', bindings: {
+      rose: { agent: 'antigravity' as const, bindingId: 'rose-binding', sessionId: 'rose-session', sessionStarted: true, cursor: 0 },
+    } }
+
+    await renderThread({ ...data, meta, events }, workspace('rose'))
+    expect(host.querySelector('.composer-card')?.classList.contains('working')).toBe(true)
+    expect(host.querySelector('.composer-card')?.classList.contains('needs-input')).toBe(false)
+
+    await renderThread({ ...data, meta, events }, workspace('main'))
+    expect(host.querySelector('.composer-card')?.classList.contains('working')).toBe(false)
+    expect(host.querySelector('.composer-card')?.classList.contains('needs-input')).toBe(true)
+  })
+
   it('reports an interrupt failure through the existing conversation error handler', async () => {
     vi.mocked(api.interrupt).mockRejectedValue(new Error('Could not interrupt'))
     const onError = vi.fn()
