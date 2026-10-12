@@ -46,6 +46,8 @@ let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
 let browser: BrowserService | undefined
 let browserHost: BrowserHost | undefined
+/** Conversations with an open_preview loading their page (how many): each shows the pane itself, once, when it is done. */
+const openingPreview = new Map<string, number>()
 // Quit ends with app.exit, which skips the window's close event, so it saves the place itself.
 let saveWindowPlace: (() => void) | undefined
 let shutdownFinished = false
@@ -129,6 +131,7 @@ async function boot(): Promise<void> {
   })
   // An agent's navigation shows its page beside that conversation, without bringing the window forward.
   browserHost = createBrowserAgentHost(browser, (key, url) => {
+    if (openingPreview.has(key)) return
     const threadId = key.startsWith('thread:') ? key.slice('thread:'.length) : undefined
     const projectPath = threadId ? running?.store.get(threadId)?.projectPath : undefined
     if (threadId && projectPath && /^https?:\/\//.test(url) && mainWindow && !mainWindow.isDestroyed()) {
@@ -226,7 +229,17 @@ async function showPreview(preview: PreviewOpen): Promise<void> {
   if (preview.threadId && browserHost) {
     const key = `thread:${preview.threadId}`
     const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
-    if (page.url !== url) stayedLocal(await browserHost.goto(key, url))
+    // The host reports every move an agent makes so the pane follows it; this one is shown below, not twice.
+    if (page.url !== url) {
+      openingPreview.set(key, (openingPreview.get(key) ?? 0) + 1)
+      try {
+        stayedLocal(await browserHost.goto(key, url))
+      } finally {
+        const left = (openingPreview.get(key) ?? 1) - 1
+        if (left > 0) openingPreview.set(key, left)
+        else openingPreview.delete(key)
+      }
+    }
     sendToPage('cockpit:preview-open', { ...preview, url, loaded: true })
     return
   }

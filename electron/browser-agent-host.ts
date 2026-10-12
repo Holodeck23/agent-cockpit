@@ -122,7 +122,8 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
         blocked = end()
       }
       const page = info(key) ?? gone(key)
-      if (page.url) navigated(key, page.url)
+      // A hop the service stopped moved nothing: the page is where it was, and that is not a move to report.
+      if (page.url && !blocked) navigated(key, page.url)
       return blocked ? { ...page, blocked } : page
     })
   }
