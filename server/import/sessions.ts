@@ -47,17 +47,17 @@ const injected = (text: string): boolean => {
 }
 const asText = (value: unknown): string => (typeof value === 'string' ? value : JSON.stringify(value ?? ''))
 
-/** Adds a turn's end (a successful result) before each later message of yours and at the end. */
+/** Adds a turn's end (a successful result, marked synthetic) before each later message of yours and at the end. */
 function withTurnEnds(events: StoredEvent[]): StoredEvent[] {
   const out: StoredEvent[] = []
   let open = false
   for (const e of events) {
-    if (e.event.kind === 'user_text' && open) out.push({ ts: e.ts, event: { kind: 'result', ok: true } })
+    if (e.event.kind === 'user_text' && open) out.push({ ts: e.ts, event: { kind: 'result', ok: true, synthetic: true } })
     if (e.event.kind === 'user_text') open = true
     if (e.event.kind === 'result') open = false
     out.push(e)
   }
-  if (open && out.at(-1)?.event.kind !== 'result') out.push({ ts: out.at(-1)!.ts, event: { kind: 'result', ok: true } })
+  if (open && out.at(-1)?.event.kind !== 'result') out.push({ ts: out.at(-1)!.ts, event: { kind: 'result', ok: true, synthetic: true } })
   return out
 }
 

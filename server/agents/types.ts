@@ -82,6 +82,8 @@ export type NormalizedEvent =
   /** `queuedId` is set when you sent it while the agent was working and the agent queues it (J1). */
   | {
       kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[]; queuedId?: string
+      /** Cockpit sent it, not you: after a silent turn whose step was refused, it asks the agent to report. */
+      fromCockpit?: 'refused-step'
       /** The run this request opens; legacy events derive one (threads/identity.ts). */
       runId?: string
       /** The caller's operation ID and a hash of its input, so a repeated request has one effect (ID-05). */
@@ -136,8 +138,11 @@ export type NormalizedEvent =
   | { kind: 'approval_resolved'; requestId: string; behavior: ApprovalBehavior; outcome?: ApprovalOutcome }
   /** usedPercent only when the provider reports one; status stays the provider's own word. */
   | { kind: 'usage'; limitType: string; status: string; resetsAt?: number; usedPercent?: number }
-  /** `interrupted`: Cockpit stopped running (a crash) before the agent finished; recorded at the next start. */
-  | { kind: 'result'; ok: boolean; stopped?: boolean; interrupted?: boolean; runId?: string; text?: string; costUsd?: number; durationMs?: number }
+  /**
+   * `interrupted`: Cockpit stopped running (a crash) before the agent finished; recorded at the next start.
+   * `synthetic`: the importer closed an imported turn here; the agent reported nothing.
+   */
+  | { kind: 'result'; ok: boolean; stopped?: boolean; interrupted?: boolean; synthetic?: true; runId?: string; text?: string; costUsd?: number; durationMs?: number }
   | { kind: 'agent_switch'; from: AgentId; to: AgentId }
   | { kind: 'exit'; code: number | null }
   | { kind: 'error'; message: string }

@@ -11,6 +11,7 @@ import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
 import { attribute, partition } from '../../server/threads/workspace-events.ts'
 import { takenBackPositions } from '../../server/threads/taken-back.ts'
+import { isRefusal } from '../../server/threads/refusals.ts'
 import { failureWords } from './agent-errors.ts'
 import { revealHidden } from '../../server/files/visible-name.ts'
 
@@ -227,15 +228,6 @@ function grantLabel(suggestions: readonly unknown[]): string | undefined {
   return grant?.label.slice(0, 120)
 }
 
-/**
- * A tool result that says you (or the agent's own permission policy) refused the call, in each
- * agent's words: Cockpit's card, Claude Code, Antigravity, ACP, Codex's `declined`. An OS
- * "Permission denied" from a command that did run is not one.
- */
-export function isDenial(content: string): boolean {
-  return /^(denied|declined)$|denied from agent cockpit|denied permission|has been denied|denied by the user|doesn't want to proceed|tool use was rejected/i.test(content.trim())
-}
-
 /** "Running x" → "running x", leaving an acronym ("NPM …") as it is. */
 function lowerFirst(text: string): string {
   return /^[A-Z][^A-Z]/.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text
@@ -434,7 +426,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (at !== undefined && step?.type === 'step') {
           const byCard = event.isError && deniedCards > 0
           if (byCard) deniedCards -= 1
-          const denied = byCard || (event.isError && isDenial(event.content))
+          const denied = byCard || (event.isError && isRefusal(event.content))
           if (denied) refusedThisTurn ??= lowerFirst(step.label)
           replace(at, {
             ...step,
