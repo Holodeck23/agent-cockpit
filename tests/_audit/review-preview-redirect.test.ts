@@ -196,7 +196,8 @@ describe('open_preview on a local address that redirects to a website', () => {
   it('arms the local-preview guard before the page is restored or loaded, and it lets only a local app through', async () => {
     h.host.goto.mockResolvedValue(pageAt(APP))
     await h.openUrl!(THREAD)
-    expect(h.host.guardNavigation).toHaveBeenCalledWith('thread:t1', expect.any(Function))
+    // The person's own click in their app is theirs to follow: the guard says it can be lifted.
+    expect(h.host.guardNavigation).toHaveBeenCalledWith('thread:t1', expect.any(Function), { over: expect.any(Function) })
     expect(h.host.guardNavigation.mock.invocationCallOrder[0]).toBeLessThan(h.host.ensure.mock.invocationCallOrder[0]!)
     await expect(h.guard!(APP)).resolves.toBeUndefined()
     await expect(h.guard!(SHOP)).rejects.toThrow(/not your local app/)

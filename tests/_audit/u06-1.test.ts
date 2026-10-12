@@ -19,7 +19,6 @@ import { isNavigable } from '../../electron/browser-policy.ts'
 const REMOTE = 'https://shop.test'
 const REMOTE_TARGET = `${REMOTE}/delete?id=1`
 const grant = { threadId: 't1', projectPath: '/work/one', cwd: '/work/one' }
-const signal = new AbortController().signal
 
 let local: Server
 let localUrl = ''
@@ -39,7 +38,9 @@ afterAll(async () => { await new Promise((resolve) => local.close(resolve)) })
  * before the request goes out, and a refusal rejects the call. It records every URL the page actually
  * requested, so we can see what went out.
  */
-function harness(cockpitPorts: number[], remoteRedirects: (url: string) => string | undefined = () => undefined) {
+function harness(cockpitPorts: number[], remoteRedirects: (url: string) => string | undefined = () => undefined, hangUp = new AbortController()) {
+  let run: string | undefined = 'r1'
+  let over: (() => boolean) | undefined
   let url = 'about:blank'
   let revision = 1
   const requested: string[] = []
@@ -49,7 +50,7 @@ function harness(cockpitPorts: number[], remoteRedirects: (url: string) => strin
   const page = (): AgentPageInfo => ({ pageId: 'thread:t1', revision, url, origin: originOf(url) ?? 'null', title: '', loading: false, viewport: { width: 800, height: 600 }, timestamp: 'now' })
   let authorize: (url: string) => Promise<void> = async () => {}
   const host: BrowserHost = {
-    guardNavigation: (_key, guard) => { authorize = guard },
+    guardNavigation: (_key, guard, options) => { authorize = guard; over = options?.over },
     info: () => page(),
     ensure: async () => page(),
     goto: async (_key, target) => {
@@ -83,14 +84,14 @@ function harness(cockpitPorts: number[], remoteRedirects: (url: string) => strin
     host: () => host,
     leases: createBrowserLeases(),
     cockpitPorts: () => cockpitPorts,
-    currentRun: () => 'r1',
+    currentRun: () => run,
     approve: async (_grant, tool, input) => {
       asked.push({ tool, input })
       if (answer === 'deny' || refusedOrigins.has(input.origin as string)) throw new Error('Browser action denied by the user')
       return answer
     },
   })
-  return { call: (op: string, body: unknown = {}) => agent.handle(grant, op, body, signal), requested, asked, setAnswer: (a: ApprovalBehavior | 'deny') => { answer = a }, refuse: (origin: string) => { refusedOrigins.add(origin) }, current: () => url }
+  return { call: (op: string, body: unknown = {}) => agent.handle(grant, op, body, hangUp.signal), requested, asked, endRun: () => { run = undefined }, guardOver: () => over?.(), authorize: (target: string) => authorize(target), setAnswer: (a: ApprovalBehavior | 'deny') => { answer = a }, refuse: (origin: string) => { refusedOrigins.add(origin) }, current: () => url }
 }
 
 describe('u06-1: a local page cannot carry the browser to a remote site unasked', () => {
@@ -156,5 +157,35 @@ describe('u06-1: the host stops a redirect to a remote site until the person has
     h.setAnswer('allow')
     await expect(h.call('navigate', { url: 'https://r0.test/' })).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/kept redirecting/) })
     expect(h.asked.length).toBeLessThan(10)
+  })
+})
+
+// Recheck of the merge of PR #58, problem 1: the guard stays on the page after the call returns, and says when the run
+// behind it is over so that the person's own navigation can take the page back (electron/browser-service.ts).
+describe('u06-1: the guard says when its run is over', () => {
+  it('not while the run is going, though the call has returned', async () => {
+    const h = harness([4000])
+    h.setAnswer('allow')
+    await h.call('navigate', { url: localUrl })
+    expect(h.guardOver()).toBe(false)
+  })
+
+  it('once the run has ended or been stopped; the guard itself still refuses', async () => {
+    const h = harness([4000])
+    h.setAnswer('allow')
+    await h.call('navigate', { url: localUrl })
+    h.endRun()
+    expect(h.guardOver()).toBe(true)
+    await expect(h.authorize('http://127.0.0.1:3000/next')).rejects.toThrow('The browser run ended or was stopped')
+  })
+
+  it('once the caller has hung up', async () => {
+    const hangUp = new AbortController()
+    const h = harness([4000], () => undefined, hangUp)
+    h.setAnswer('allow')
+    await h.call('navigate', { url: localUrl })
+    expect(h.guardOver()).toBe(false)
+    hangUp.abort()
+    expect(h.guardOver()).toBe(true)
   })
 })

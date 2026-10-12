@@ -131,9 +131,12 @@ const THREAD = { url: APP, projectPath: '/Users/example/project', threadId: 't1'
 function makeService(): Record<string, unknown> {
   const contents = { isDestroyed: () => false, isLoading: () => false }
   let guard: ((url: string) => Promise<void>) | undefined
+  // A request the guard refuses stops the navigation, as the real service does: the page stays where it was, and
+  // the reason is kept for the call that asked (takeDenial) instead of becoming an error page.
+  let denial: string | undefined
   const request = async (url: string): Promise<boolean> => {
     try { await guard?.(url); return true } catch (error) {
-      h.page.error = { code: -20, description: error instanceof Error ? error.message : String(error), url }
+      denial = error instanceof Error ? error.message : String(error)
       return false
     }
   }
@@ -142,8 +145,10 @@ function makeService(): Record<string, unknown> {
     agentPage: () => ({ contents, revision: 1, viewport: { width: 800, height: 600 } }),
     state: () => ({ key: KEY, url: h.page.url, title: '', canGoBack: false, canGoForward: false, loading: false, ...(h.page.error ? { error: h.page.error } : {}) }),
     ensure: async () => undefined,
+    takeDenial: () => { const reason = denial; denial = undefined; return reason },
     load: (_key: string, url: string) => {
       h.page.error = undefined
+      denial = undefined
       void (async () => {
         let next = url
         for (let hop = 0; hop < 5; hop++) {
