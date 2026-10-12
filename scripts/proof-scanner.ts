@@ -201,8 +201,8 @@ try {
   check('POL-01 Needs you: the idle placeholder sweep pauses', !(await textareaAnimations(page)).includes('scanner-placeholder'))
   check('POL-01 Needs you: the composer does not claim Working', !(await isWorkingCard(page)))
   await shot(page, 'dark-needs-you')
-  await page.locator('.thread-head').getByRole('button', { name: 'Stop', exact: true }).click()
-  await until('needs input ended', async () => !(await isNeedsInputCard(page)))
+  await page.locator('.question-card').getByRole('button', { name: 'Dismiss', exact: true }).click()
+  check('POL-01 Needs you: answering returns the composer to idle', await until('needs input ended', async () => !(await isNeedsInputCard(page))))
 
   // ---------- light ----------
   await setTheme(page, 'Light')
@@ -265,7 +265,8 @@ try {
   check('POL-01 reduce motion Needs you: a still amber line remains', reducedNeeds.content !== 'none' && reducedNeeds.animation === 'none', JSON.stringify(reducedNeeds))
   check('POL-01 reduce motion Needs you: no glow', (await pseudo(page, '::before')).content === 'none')
   await shot(page, 'reduced-needs-you')
-  await page.locator('.thread-head').getByRole('button', { name: 'Stop', exact: true }).click()
+  await page.locator('.question-card').getByRole('button', { name: 'Dismiss', exact: true }).click()
+  check('POL-01 reduce motion Needs you: answering removes the line', await until('reduced needs input ended', async () => !(await isNeedsInputCard(page))))
   await page.emulateMedia({ reducedMotion: null })
 } catch (err) {
   check('proof ran to the end', false, err instanceof Error ? err.message.split('\n')[0] : String(err))
