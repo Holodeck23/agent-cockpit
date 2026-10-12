@@ -20,6 +20,7 @@ const ADD_TIMEOUT_MS = 120_000
 export type WorktreeRefusal =
   | { readonly code: 'unknown-project' }
   | { readonly code: 'not-git' }
+  | { readonly code: 'not-repository-top'; readonly top: string }
   | { readonly code: 'unborn' }
   | { readonly code: 'operation-in-progress'; readonly operation: string }
   | { readonly code: 'conflicted' }
@@ -201,7 +202,8 @@ export function createWorktreeService(root: string, workspaces: WorkspaceStore, 
     // A worktree is of the whole repository and sits beside the folder: only the repository's top can have one.
     // From a subfolder it would nest inside the repository and could never merge back.
     const top = await out(cwd, ['rev-parse', '--show-toplevel'])
-    if (!top || canonicalPath(top) !== canonicalPath(cwd)) refuse({ code: 'not-git' })
+    if (!top) return refuse({ code: 'not-git' })
+    if (canonicalPath(top) !== canonicalPath(cwd)) return refuse({ code: 'not-repository-top', top: canonicalPath(top) })
     if (!(await ok(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']))) refuse({ code: 'unborn' })
     const gitDir = await out(cwd, ['rev-parse', '--absolute-git-dir'])
     for (const [marker, operation] of IN_PROGRESS) if (gitDir && existsSync(join(gitDir, marker))) refuse({ code: 'operation-in-progress', operation })

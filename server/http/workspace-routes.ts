@@ -72,6 +72,7 @@ export function describeRefusal(refusal: WorktreeRefusal): string {
   switch (refusal.code) {
     case 'unknown-project': return 'Unknown project'
     case 'not-git': return 'This folder is not a Git repository. Worktrees need Git.'
+    case 'not-repository-top': return `This project is a folder inside the Git repository at ${refusal.top}. Worktrees are made for the whole repository: open that top folder as the project to create one.`
     case 'unborn': return 'This repository has no commits yet. Make a first commit, then create a worktree.'
     case 'operation-in-progress': return `A Git ${refusal.operation} is in progress in this project. Finish or abort it first.`
     case 'conflicted': return 'This project has unresolved merge conflicts. Resolve them first.'
