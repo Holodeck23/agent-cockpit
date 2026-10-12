@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> **v0.1.7 prerelease.** See the [user guide](guide.md) for what this version does.
+> **v0.1.8 candidate.** The public prerelease remains v0.1.7. See the [user guide](guide.md) for this candidate’s behavior.
 
 When issues occur, Cockpit is designed to fail safely and preserve your work.
 

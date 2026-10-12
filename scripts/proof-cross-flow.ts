@@ -182,8 +182,13 @@ try {
   const target = new Date(Math.ceil((Date.now() + 60_000) / 60_000) * 60_000)
   await page.getByLabel('Repeat', { exact: true }).selectOption('weekly')
   const days = page.getByRole('group', { name: 'Days' })
-  await days.getByRole('button', { name: DAY[target.getDay()]!, exact: true }).click()
-  if (target.getDay() !== 1) await days.getByRole('button', { name: 'Mon', exact: true }).click()
+  // Monday is selected by default. Toggle only mismatches: clicking Monday on a Monday used
+  // to clear the only day, so the correct disabled Save button stopped this proof every Monday.
+  for (const [index, name] of DAY.entries()) {
+    const button = days.getByRole('button', { name, exact: true })
+    const selected = await button.getAttribute('aria-pressed') === 'true'
+    if (selected !== (index === target.getDay())) await button.click()
+  }
   await page.getByLabel('At', { exact: true }).fill(hhmm(target))
   await page.getByRole('button', { name: 'Save and enable schedule', exact: true }).click()
   await page.getByText(/^Scheduled · /).first().waitFor()
