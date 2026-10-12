@@ -35,6 +35,8 @@ import type { ResultService } from '../results/service.ts'
 import type { PresetStore } from '../presets/store.ts'
 import { handleMcpRoute, type McpRouteDeps } from './mcp-routes.ts'
 import { handleProcessRoute } from './process-routes.ts'
+import { createMapService, handleNavigationRoute } from './navigation-routes.ts'
+import { createNavigationStore, type NavigationStore } from '../projects/navigation.ts'
 import { handleWorkflowRoute, type WorkflowDeps } from './workflow-routes.ts'
 import { handleResultRoute } from './result-routes.ts'
 import { resolveWorkflows } from '../workflows/store.ts'
@@ -156,6 +158,8 @@ export interface ApiDeps {
   /** Merge a worktree back into the main checkout (W12.3); desktop only. */
   readonly merges?: MergeService
   readonly memory?: MemoryStore
+  /** The Projects area's arrangement (navigation.json); defaults to the one beside the thread store. */
+  readonly navigation?: NavigationStore
   /** Named agent settings for the picker. */
   readonly presets?: PresetStore
   /** Where the CLIs keep their sessions (~), for Import conversations; tests point it elsewhere. */
@@ -186,10 +190,11 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, worktrees, memory, presets, runs, results, checks, observingRun, navigation, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   const scope = createWorkspaceScope(projects, workspaces)
+  const mapService = createMapService({ navigation: navigation ?? createNavigationStore(store.root), projects, summaries: () => manager.summaries() })
   // The agent gets attachments and workflow instructions inlined; the thread keeps what the user wrote.
   // The workflows used are kept with the message, as they were at send time.
   // @file attachments come from the workspace the message works in (`folder`); workflows stay the project's.
@@ -493,6 +498,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         }, viaPhone)
         return true
       }
+      if ((parts[1] === 'map' || parts[1] === 'navigation') && await handleNavigationRoute(req, res, url, parts, mapService, viaPhone)) return true
       if (parts[1] === 'processes') {
         await handleProcessRoute(req, res, url, parts, processes, scope)
         return true
