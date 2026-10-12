@@ -150,7 +150,8 @@ export function previewOf(events: readonly StoredEvent[]): string {
   const roles = turnRoles(events)
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]?.event
-    if (event?.kind === 'user_text') return event.text.slice(0, 140)
+    // Cockpit's own note after a blocked step is not your message; the reply it asks for is the preview.
+    if (event?.kind === 'user_text' && !event.fromCockpit) return event.text.slice(0, 140)
     if (event?.kind === 'assistant_text' && roles.get(i) === 'conclusion') return parseConclusion(event.text).text.slice(0, 140)
   }
   return ''

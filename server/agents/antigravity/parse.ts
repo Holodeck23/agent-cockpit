@@ -45,6 +45,9 @@ const resultSchema = z.looseObject({
   duration_seconds: z.number().optional(),
   num_turns: z.number().optional(),
   usage: z.unknown().optional(),
+  // What agy's permission policy refused. Cumulative for the process (1.3.3): a later turn still
+  // lists an earlier turn's denials. Passed on whole; the launcher keeps what is new each turn.
+  denied_actions: z.array(z.looseObject({ action: z.string(), display_name: z.string().optional() })).optional(),
 })
 
 // Token counts as agy reports them per turn (1.3.0). agy reports no quota or plan, so none is shown.
@@ -154,11 +157,13 @@ export function parseAntigravityLine(line: string): NormalizedEvent[] {
       text: data.response,
     })
   }
+  const denied = data.denied_actions?.map((d) => ({ action: d.action, ...(d.display_name ? { label: d.display_name } : {}) }))
   events.push({
     kind: 'result',
     ok: data.status === 'SUCCESS',
     text: data.error || data.response,
     durationMs: data.duration_seconds === undefined ? undefined : Math.round(data.duration_seconds * 1000),
+    ...(denied?.length ? { denied } : {}),
   })
   return events
 }
