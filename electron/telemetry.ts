@@ -30,12 +30,13 @@ const OFF: Telemetry = {
   pageError: () => undefined,
 }
 
-export function startTelemetry(options: { dsn: string | undefined; termsFile: string; version: string; releaseBuild: boolean }): Telemetry {
+export function startTelemetry(options: { dsn: string | undefined; termsFile: string; version: string; releaseBuild: boolean; privateRoots?: () => readonly string[] }): Telemetry {
   const { dsn, termsFile, version, releaseBuild } = options
   if (!dsn) return OFF
   let accepted = readTerms(termsFile) !== undefined
   const allowed = (): boolean => accepted
   const home = homedir()
+  const privateRoots = (): readonly string[] => { try { return options.privateRoots?.() ?? [] } catch { return [] } }
   const gate = (inner: Transport): Transport => ({
     send: (envelope) => {
       const filtered = allowed() ? reportEnvelope(envelope) : undefined
@@ -58,7 +59,7 @@ export function startTelemetry(options: { dsn: string | undefined; termsFile: st
     ipcMode: 0 as Sentry.IPCMode,
     integrations: (defaults) => defaults.filter((integration) => !DROPPED_INTEGRATIONS.has(integration.name)),
     beforeBreadcrumb: () => null,
-    beforeSend: (event) => scrubEvent(event, home),
+    beforeSend: (event) => scrubEvent(event, home, privateRoots()),
     // The crash guard (electron/crash-guard.ts) decides what an uncaught error does: Cockpit keeps
     // running. The SDK only reports it, never exits or shows Electron's error dialog.
     onFatalError: () => undefined,

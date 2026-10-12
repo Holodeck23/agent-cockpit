@@ -32,6 +32,8 @@ export interface MapArea {
   readonly name: string
   /** The library the area came from; absent for areas the person made and "Other projects". */
   readonly library?: string
+  /** The area's folder (real path), for areas proposed from a library. */
+  readonly root?: string
   readonly private: boolean
   readonly shelf: boolean
   readonly hidden: boolean
@@ -101,11 +103,11 @@ export function buildMap({ navigation, scans, known, summaries, realpath }: MapI
   }
 
   // 1. Areas proposed by each library.
-  type Draft = { id: string; name: string; library?: string; private: boolean; shelf: boolean; custom: boolean; order: number; projects: MapProject[] }
+  type Draft = { id: string; name: string; library?: string; root?: string; private: boolean; shelf: boolean; custom: boolean; order: number; projects: MapProject[] }
   let drafts: Draft[] = scans.flatMap((scan, si) => {
     const lib = navigation.libraries[si]
     return scan.areas.map((a, ai): Draft => ({
-      id: a.id, name: a.name, library: lib?.root ?? scan.root, private: a.private, shelf: a.shelf, custom: false,
+      id: a.id, name: a.name, library: lib?.root ?? scan.root, root: a.root, private: a.private, shelf: a.shelf, custom: false,
       order: 10_000 + si * 1_000 + ai, projects: a.projects.flatMap((p) => toProject(p) ?? []),
     }))
   })
@@ -151,6 +153,7 @@ export function buildMap({ navigation, scans, known, summaries, realpath }: MapI
       id: d.id,
       name: n?.name ?? d.name,
       ...(d.library ? { library: d.library } : {}),
+      ...(d.root ? { root: d.root } : {}),
       private: areaPrivate,
       shelf: d.shelf,
       hidden: n?.hidden === true,

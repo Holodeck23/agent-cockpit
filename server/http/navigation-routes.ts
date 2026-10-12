@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { realpathSync, statSync } from 'node:fs'
+import { privateRoots as rootsOf } from '../projects/privacy.ts'
 import { scanLibrary, type Library, type LibraryScan } from '../projects/libraries.ts'
 import { buildMap, type ProjectMap } from '../projects/map.ts'
 import { NavigationError, navigationOpSchema, type NavigationOp, type NavigationStore } from '../projects/navigation.ts'
@@ -25,6 +26,8 @@ export interface MapServiceDeps {
 export interface MapService {
   map(refresh?: boolean): ProjectMap
   apply(op: NavigationOp): ProjectMap
+  /** Mac-only folders; recomputed when navigation.json or the library scans change. */
+  privateRoots(): readonly string[]
 }
 
 export function createMapService(deps: MapServiceDeps): MapService {
@@ -32,6 +35,10 @@ export function createMapService(deps: MapServiceDeps): MapService {
   const scan = deps.scan ?? ((library, others, known) => scanLibrary(library, others, undefined, known))
   const now = deps.now ?? Date.now
   let cache: { key: string; at: number; scans: LibraryScan[] } | undefined
+  let roots: { key: string; value: string[] } | undefined
+  const fileKey = (): string => {
+    try { const s = statSync(deps.navigation.file); return `${s.mtimeMs}:${s.ino}:${s.size}` } catch { return 'none' }
+  }
 
   const scans = (refresh: boolean): LibraryScan[] => {
     const nav = deps.navigation.read()
@@ -63,6 +70,14 @@ export function createMapService(deps: MapServiceDeps): MapService {
 
   return {
     map,
+    privateRoots() {
+      const key = `${fileKey()}|${cache?.at ?? 0}`
+      if (roots?.key !== key) {
+        const value = rootsOf(map())
+        roots = { key: `${fileKey()}|${cache?.at ?? 0}`, value }
+      }
+      return roots.value
+    },
     apply(op) {
       const resolved: NavigationOp = op.op === 'addLibrary' ? { ...op, root: resolveFolder(op.root) }
         : op.op === 'removeLibrary' || op.op === 'setLibraryPrivate' ? { ...op, root: realOr(op.root) }
@@ -74,6 +89,7 @@ export function createMapService(deps: MapServiceDeps): MapService {
         const ids = new Set(map().areas.map((a) => a.id))
         if (refs.some((r) => !ids.has(r))) throw new HttpError(404, 'Unknown area')
       }
+      roots = undefined
       try { deps.navigation.update(resolved) } catch (error) {
         if (error instanceof NavigationError) throw new HttpError(400, error.message)
         throw error
