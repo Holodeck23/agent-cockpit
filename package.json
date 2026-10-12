@@ -16,6 +16,7 @@
     "check:installers": "tsx scripts/check-installers.ts",
     "verify": "npm run check:paths && npm run typecheck && npm test && npm run build && npm run build:electron",
     "release": "tsx scripts/release.ts",
+    "clean": "tsx scripts/clean.ts",
     "smoke:codex": "tsx scripts/smoke-codex.ts",
     "smoke:antigravity": "tsx scripts/smoke-antigravity.ts",
     "smoke:updates": "tsx scripts/smoke-updates.ts",
