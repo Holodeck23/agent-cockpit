@@ -8,6 +8,7 @@ import { dirname } from 'node:path'
 import type { AgentId } from '../types.ts'
 import { detectManager } from './manager.ts'
 import { failure, probeAgent, runCommand, type Runner } from './probes.ts'
+import type { AppServerQuery } from '../codex/app-server-query.ts'
 import { resolveExecutable, type ResolvedExecutable } from './resolve.ts'
 import { AGENT_COMMANDS, type AgentCapabilities, type ExecutableIdentity, type ModelOption } from './types.ts'
 
@@ -22,6 +23,7 @@ export interface CapabilityServiceOptions {
   readonly home?: string
   readonly timeoutMs?: number
   readonly run?: Runner
+  readonly query?: AppServerQuery
   /** Where agy's last model list is kept across restarts; memory only when absent. */
   readonly listingsFile?: string
 }
@@ -135,7 +137,7 @@ export function createCapabilityService(options: CapabilityServiceOptions = {}):
         models: { state: 'not_checked', reason }, settings: {}, auth: { state: 'not_checked', reason } }
     } else {
       const identity = identityOf(agent, found, version.stdout.trim().split('\n')[0]?.trim() ?? '')
-      caps = { ...base, executable: { state: 'found', identity }, ...(await probeAgent(agent, found.path, run, timeoutMs)) }
+      caps = { ...base, executable: { state: 'found', identity }, ...(await probeAgent(agent, found.path, run, timeoutMs, options.query)) }
     }
     keepListing(key, caps)
     // A self-updater may have replaced the file meanwhile (agy does, seconds after any run).

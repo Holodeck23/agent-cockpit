@@ -9,26 +9,34 @@ export interface AppServerAnswer {
   readonly error?: string
 }
 
-export type AppServerQuery = (executable: string, method: string, params: unknown, options: { env?: Readonly<Record<string, string>>; timeoutMs: number }) => Promise<AppServerAnswer>
+export type AppServerQuery = (executable: string, method: string, params: unknown, options: { env?: Readonly<Record<string, string>>; timeoutMs: number; signal?: AbortSignal }) => Promise<AppServerAnswer>
 
-export const queryAppServer: AppServerQuery = (executable, method, params, { env, timeoutMs }) =>
+export const queryAppServer: AppServerQuery = (executable, method, params, { env, timeoutMs, signal }) =>
   new Promise((resolve) => {
+    if (signal?.aborted) { resolve({ error: 'Cockpit is shutting down' }); return }
     let settled = false
+    let answer: AppServerAnswer | undefined
     const child = spawn(executable, ['app-server'], { env: { ...(env ?? process.env) }, stdio: ['pipe', 'pipe', 'ignore'] })
-    const done = (answer: AppServerAnswer): void => {
+    const done = (result: AppServerAnswer): void => {
       if (settled) return
       settled = true
+      answer = result
       clearTimeout(timer)
-      child.kill('SIGKILL')
-      resolve(answer)
+      signal?.removeEventListener('abort', abort)
+      // Resolve only after the owned helper's process and stdio have actually closed.
+      if (child.pid && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
     }
+    const abort = (): void => done({ error: 'Cockpit is shutting down' })
     const timer = setTimeout(() => done({ error: `codex app-server did not answer ${method} within ${Math.round(timeoutMs / 1000)} s` }), timeoutMs)
+    signal?.addEventListener('abort', abort, { once: true })
     child.on('error', (error) => done({ error: `codex app-server could not start (${(error as NodeJS.ErrnoException).code ?? error.message})` }))
     child.on('exit', () => done({ error: `codex app-server ended before answering ${method}` }))
+    child.on('close', () => { done({ error: `codex app-server ended before answering ${method}` }); resolve(answer!) })
     child.stdin.on('error', () => {})
     let buffer = ''
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (chunk: string) => {
+      if (settled) return
       buffer += chunk
       let newline: number
       while ((newline = buffer.indexOf('\n')) >= 0) {
@@ -46,3 +54,21 @@ export const queryAppServer: AppServerQuery = (executable, method, params, { env
     })
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '1' }, capabilities: null } })}\n`)
   })
+
+/** One server owns its non-generating helpers, including probes still starting during Quit. */
+export function createAppServerQueryScope(): { query: AppServerQuery; close(): Promise<void> } {
+  const controller = new AbortController()
+  const pending = new Set<Promise<AppServerAnswer>>()
+  return {
+    query: (executable, method, params, options) => {
+      const promise = queryAppServer(executable, method, params, { ...options, signal: controller.signal })
+      pending.add(promise)
+      void promise.then(() => pending.delete(promise), () => pending.delete(promise))
+      return promise
+    },
+    async close() {
+      controller.abort()
+      await Promise.all([...pending])
+    },
+  }
+}
