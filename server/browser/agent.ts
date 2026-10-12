@@ -2,7 +2,7 @@ import type { ApprovalBehavior } from '../agents/types.ts'
 import { HttpError, parseBody } from '../http/json.ts'
 import type { McpGrant } from '../mcp/sessions.ts'
 import type { HostActionOptions } from '../threads/host-actions.ts'
-import { APPROVAL_SECONDS, browserInputs, INPUT_OPERATIONS, originClass, originOf, pageKeyOf, type BrowserLeases, type BrowserOperation } from './agent-policy.ts'
+import { browserInputs, INPUT_OPERATIONS, originClass, originOf, pageKeyOf, type BrowserLeases, type BrowserOperation } from './agent-policy.ts'
 
 // Agents driving the in-app browser (H3, wave 9). The host (electron/browser-agent-host.ts) owns
 // the pages; this decides, for every call, which page, whether it may happen, and whether the
@@ -132,8 +132,7 @@ export function createBrowserAgent(deps: BrowserAgentDeps) {
     try {
       behavior = await deps.approve(grant, `mcp__cockpit__browser_${op}`, { page: 'This conversation’s browser', origin, ...summary }, {
         label: 'Browser action',
-        timeoutMs: APPROVAL_SECONDS * 1000,
-        description: `${ACTION_WORDS[op]} in this conversation’s browser on ${local ? `your local app (${host})` : host}. ${warning} Answer within ${APPROVAL_SECONDS} seconds.`,
+        description: `${ACTION_WORDS[op]} in this conversation’s browser on ${local ? `your local app (${host})` : host}. ${warning} Cockpit waits until you answer or this turn ends.`,
         grant: { label: `Allow on ${host} for this run` },
       }, signal)
       if (behavior === 'deny') throw new Error('Browser action denied by the user')

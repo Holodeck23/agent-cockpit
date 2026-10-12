@@ -5,9 +5,6 @@ import { isLoopbackHost } from './address.ts'
 // Rules for agents driving the in-app browser (H3, wave 9). Pure, so they are tested without
 // Electron; server/browser/agent.ts applies them to every browser_* call.
 
-/** How long the person has to answer a browser approval before it expires. */
-export const APPROVAL_SECONDS = 45
-
 /** A conversation's own page. The server derives it from the session grant, never from the request. */
 export const pageKeyOf = (threadId: string): string => `thread:${threadId}`
 

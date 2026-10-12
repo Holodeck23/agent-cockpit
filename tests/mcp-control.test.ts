@@ -147,11 +147,15 @@ describe('host-approved conversation control', () => {
     await expect(h.act(start('broken'))).rejects.toThrow(/unreadable/)
     expect(readFileSync(record, 'utf8')).toBe('unique recoverable bytes')
   })
-  it('expires host requests and preserves provenance when rendering messages', async () => {
+  it('keeps host requests open until answered and preserves provenance when rendering messages', async () => {
     const h = setup(); vi.useFakeTimers()
     const p = h.manager.requestHostAction(h.source.id, 'control', { description: 'exact task' }).catch((e: Error) => e.message)
     await vi.advanceTimersByTimeAsync(45_001)
-    expect(await p).toMatch(/expired/); expect(openApprovals(h.store.events(h.source.id))).toHaveLength(0)
+    const [approval] = openApprovals(h.store.events(h.source.id))
+    expect(approval).toBeDefined()
+    h.manager.approve(h.source.id, approval!, 'deny')
+    expect(await p).toMatch(/denied/)
+    expect(openApprovals(h.store.events(h.source.id))).toHaveLength(0)
     const items = buildTranscript([{ ts: new Date().toISOString(), event: { kind: 'user_text', text: 'task', fromConversation: { id: h.source.id, title: 'Controller' } } }], 'claude')
     expect(items[0]).toMatchObject({ fromConversation: { title: 'Controller' } })
   })

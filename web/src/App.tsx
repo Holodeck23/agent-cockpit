@@ -75,9 +75,10 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     const paths = new Set(projects.all.map((p) => p.path))
     return cockpit.threads.filter((t) => paths.has(t.meta.projectPath))
   }, [cockpit.threads, projects.all])
-  // Desktop only: the phone has its own notifications. The conversation you are looking at (open,
-  // shown in Conversations, window focused) never chimes or notifies; every other one can.
+  // Desktop only: the phone has its own notifications. Ordinary replies stay quiet in the focused
+  // conversation, but a decision always calls for you there too.
   useAttention(local ? shownThreads : NO_THREADS, () => (document.hasFocus() && section === 'conversations' ? cockpit.selectedId : undefined), (changes) => {
+    if (changes.some((change) => change.kind === 'decision')) native?.requestAttention?.()
     const sound = soundForChanges(changes, sounds)
     if (sound) playSound(sound)
     for (const change of changes.filter((c) => notify[c.kind]).slice(0, 3)) {
@@ -89,6 +90,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const working = shownThreads.filter((t) => isWorking(t.status)).length
   const needs = shownThreads.filter(needsYou).length
   useEffect(() => { if (local) native?.setActivity({ working, needs }) }, [local, working, needs])
+  useEffect(() => {
+    if (!local) return
+    document.title = needs > 0 ? `${needs > 1 ? `${needs} waiting on you` : 'Waiting on you'} · Cockpit` : 'Cockpit'
+    return () => { document.title = 'Cockpit' }
+  }, [local, needs])
   const [fileDraft, setFileDraft] = useState<{ projectPath: string; text: string; threadId?: string }>()
   const clearFileDraft = useCallback(() => setFileDraft(undefined), [])
   // Set only by the new-conversation pointer; any other way into Workflows opens the list.

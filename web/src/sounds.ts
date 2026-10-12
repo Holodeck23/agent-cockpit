@@ -1,5 +1,5 @@
-// Optional sounds: one when an agent finishes replying, one when it needs a decision. Both off
-// by default and kept per device. The tones are synthesised here (Web Audio), no sound files.
+// Optional sounds: one when an agent finishes replying, one when it needs a decision. Decision
+// calls are on by default and kept per device. The tones are synthesised here (Web Audio).
 import { useEffect, useRef, useState } from 'react'
 import type { ThreadSummary } from './api.ts'
 import { isWorking } from './conversation-meta.ts'
@@ -9,14 +9,17 @@ export interface SoundSettings {
   readonly reply: boolean
   readonly decision: boolean
 }
-export const DEFAULT_SOUNDS: SoundSettings = { reply: false, decision: false }
-const KEY = 'cockpit:sounds'
+export const DEFAULT_SOUNDS: SoundSettings = { reply: false, decision: true }
+// v1 wrote the old off-by-default value even when the person never chose it. A new key makes the
+// approval call audible after upgrade; anyone who wants it quiet can switch it off again explicitly.
+const KEY = 'cockpit:sounds-v2'
 
 export function parseSounds(raw: string | null): SoundSettings {
+  if (!raw) return DEFAULT_SOUNDS
   try {
-    const stored: unknown = raw ? JSON.parse(raw) : {}
+    const stored: unknown = JSON.parse(raw)
     const s = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {}
-    return { reply: s.reply === true, decision: s.decision === true }
+    return { reply: s.reply === true, decision: typeof s.decision === 'boolean' ? s.decision : DEFAULT_SOUNDS.decision }
   } catch {
     return DEFAULT_SOUNDS
   }
@@ -39,18 +42,17 @@ export interface AttentionChange {
  *  - decision: a conversation that is now waiting and either wasn't before, or has new activity
  *    since (a fresh approval), or is new since the last update;
  *  - reply: a turn that ended (done or idle) after working or waiting.
- * `previous` is undefined on the first look, which reports nothing. `focusedId` is the
- * conversation you are looking at (open, window focused): it never calls for you.
+ * `previous` is undefined on the first look, which reports nothing. A focused conversation skips
+ * ordinary reply alerts, but a decision still calls for you: an approval must not hide in plain sight.
  */
 export function attentionChanges(previous: Seen | undefined, threads: readonly Row[], focusedId?: string): AttentionChange[] {
   if (!previous) return []
   const changes: AttentionChange[] = []
   for (const t of threads) {
-    if (t.meta.id === focusedId) continue
     const before = previous.get(t.meta.id)
     const status = effective(t)
     if (status === 'needs_input' && (before?.status !== 'needs_input' || before.lastActivityAt !== t.lastActivityAt)) changes.push({ id: t.meta.id, kind: 'decision' })
-    else if (before && ENDED.has(status) && (isWorking(before.status) || before.status === 'needs_input')) changes.push({ id: t.meta.id, kind: 'reply' })
+    else if (t.meta.id !== focusedId && before && ENDED.has(status) && (isWorking(before.status) || before.status === 'needs_input')) changes.push({ id: t.meta.id, kind: 'reply' })
   }
   return changes
 }
