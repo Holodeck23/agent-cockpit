@@ -141,8 +141,12 @@ export type NormalizedEvent =
   /**
    * `interrupted`: Cockpit stopped running (a crash) before the agent finished; recorded at the next start.
    * `synthetic`: the importer closed an imported turn here; the agent reported nothing.
+   * `denied`: steps the agent's own permission policy refused so far in its session (Antigravity).
    */
-  | { kind: 'result'; ok: boolean; stopped?: boolean; interrupted?: boolean; synthetic?: true; runId?: string; text?: string; costUsd?: number; durationMs?: number }
+  | {
+      kind: 'result'; ok: boolean; stopped?: boolean; interrupted?: boolean; synthetic?: true; runId?: string; text?: string; costUsd?: number; durationMs?: number
+      denied?: readonly { action: string; label?: string }[]
+    }
   | { kind: 'agent_switch'; from: AgentId; to: AgentId }
   | { kind: 'exit'; code: number | null }
   | { kind: 'error'; message: string }
