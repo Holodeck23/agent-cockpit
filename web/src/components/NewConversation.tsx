@@ -13,6 +13,8 @@ import { MAIN_CHECKOUT, type ThreadWorkspace } from '../workspaces.ts'
 interface NewConversationProps {
   onBrowseFiles?: () => void
   initialDraft?: string
+  /** An explicit New action: bypass recovery and focus the existing draft without sending. */
+  freshRequest?: number
   onDraftLoaded?: () => void
   project: Project | undefined
   onOpenProject: (path: string) => Promise<void>
@@ -81,7 +83,7 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false, workspace }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, freshRequest, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false, workspace }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
@@ -90,11 +92,18 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
   // Unknown until loaded; a failed check just leaves the cards and the pointer out.
   const [workflows, setWorkflows] = useState<Workflow[]>()
   const noWorkflows = workflows?.length === 0
-  const [fresh, setFresh] = useState(Boolean(initialDraft))
+  const [fresh, setFresh] = useState(Boolean(initialDraft) || Boolean(freshRequest))
   // F16: the workflow editor opens here, over the start screen; the composer and its draft stay put.
   const [newWorkflow, setNewWorkflow] = useState(false)
   const [savingWorkflow, setSavingWorkflow] = useState(false)
   const screen = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!freshRequest) return
+    setFresh(true)
+    setNewWorkflow(false)
+    const frame = requestAnimationFrame(() => screen.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [freshRequest])
   const projectPath = project?.path
   const loadWorkflows = useCallback(() => {
     if (!projectPath) return () => undefined
