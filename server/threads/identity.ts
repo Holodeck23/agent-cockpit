@@ -45,9 +45,9 @@ export function runsOf(threadId: string, events: readonly StoredEvent[]): RunSum
   const runs: Array<{ runId: string; index: number; queued: boolean; ended: boolean; outcome?: RunOutcome }> = []
   events.forEach(({ event }, index) => {
     if (event.kind === 'user_text') runs.push({ runId: runIdAt(threadId, events, index), index, queued: Boolean(event.queuedId), ended: false })
-    else if (event.kind === 'user_unqueued') {
+    else if (event.kind === 'user_unqueued' || event.kind === 'user_undelivered') {
       const run = runs.find((r) => r.queued && events[r.index]!.event.kind === 'user_text' && (events[r.index]!.event as { queuedId?: string }).queuedId === event.id)
-      if (run) { run.ended = true; run.outcome = 'stopped' }
+      if (run) { run.ended = true; run.outcome = event.kind === 'user_unqueued' ? 'stopped' : 'error' }
     } else if (event.kind === 'result') {
       const run = event.runId ? runs.find((r) => r.runId === event.runId) : runs.findLast((r) => !r.ended)
       if (!run) return

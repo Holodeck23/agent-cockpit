@@ -428,6 +428,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         if (entry.idleTimer) clearTimeout(entry.idleTimer)
       }
     }
+    // A session that has ended takes nothing more: the messages still waiting for it were never delivered.
+    // Settled before the result or exit that follows, which would otherwise find the conversation busy
+    // for them and fail the same start a second time.
+    if (owner && (incoming.kind === 'result' || incoming.kind === 'exit') && owner.waiting.size > 0 && !owner.session.alive()) {
+      for (const id of [...owner.waiting]) {
+        owner.waiting.delete(id)
+        owner.queuedRuns.delete(id)
+        record(threadId, { kind: 'user_undelivered', id }, workspaceId)
+      }
+    }
     // A run's end cancels only its own workspace's pending Cockpit actions; a switch ends them all.
     if (incoming.kind === 'result' || incoming.kind === 'exit') hostActions.cancel(threadId, workspaceId ?? '')
     if (incoming.kind === 'exit') hostActions.forget(threadId, workspaceId ?? '')

@@ -59,7 +59,7 @@ function waitingMessagesIn(events: readonly StoredEvent[]): string[] {
     if (event.kind === 'session_boundary' || event.kind === 'exit' || event.kind === 'agent_switch') waiting.clear()
     else if (event.kind === 'user_text' && event.queuedId) waiting.add(event.queuedId)
     else if (event.kind === 'user_taken' && event.id) waiting.delete(event.id)
-    else if (event.kind === 'user_unqueued') waiting.delete(event.id)
+    else if (event.kind === 'user_unqueued' || event.kind === 'user_undelivered') waiting.delete(event.id)
   }
   return [...waiting]
 }

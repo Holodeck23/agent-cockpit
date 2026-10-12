@@ -158,6 +158,9 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                     {onSendNow ? <button type="button" className="button-soft" onClick={onSendNow}>Stop and send now</button> : null}
                   </div>
                 ) : null}
+                {item.undelivered ? (
+                  <div className="waiting-row" role="status"><span>Not delivered: the agent stopped before it took this message</span></div>
+                ) : null}
                 {/* A waiting message's own buttons sit where Copy would; Remove gives the text back anyway. */}
                 {item.text.trim() && !(item.queuedId && running) ? <CopyButton text={item.text} /> : null}
               </section>

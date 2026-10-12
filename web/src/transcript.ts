@@ -29,6 +29,8 @@ export type TranscriptItem =
       conclusion?: 'question' | 'blocker'
       /** Sent mid-turn and not taken by the agent yet (J1): it can still be taken back. */
       queuedId?: string
+      /** Sent while the agent was busy or starting, and the session ended before it took it. */
+      undelivered?: true
       /** The workspace it was sent in or came from, once the conversation has more than one (W12-15). */
       workspace?: string
     }
@@ -318,6 +320,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const workspaceOf = partition(events).size > 1 ? attribute(events) : undefined
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
+  const undelivered = new Set(events.flatMap((e) => (e.event.kind === 'user_undelivered' ? [e.event.id] : [])))
   // A message you took back went to your draft; it, and the images sent with it, are no longer
   // part of the conversation (the switch handoff uses the same rule).
   const takenBack = takenBackPositions(events)
@@ -395,7 +398,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
             .replace(/[ \t]+\n/g, '\n').trim()
           const { attachments } = described
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(workspace ? { workspace } : {}), ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
-            ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}) })
+            ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}),
+            ...(event.queuedId && undelivered.has(event.queuedId) ? { undelivered: true as const } : {}) })
         } else {
           const role = roles.get(index)
           const parsed = role === 'conclusion' ? parseConclusion(event.text) : undefined
