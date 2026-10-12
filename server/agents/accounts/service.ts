@@ -94,6 +94,9 @@ export function createAccountService(options: AccountServiceOptions) {
   const signins = new Map<string, SigninEntry>()
   const listeners = new Set<(view: SigninView) => void>()
   let refreshing: Promise<void> | undefined
+  /** Projects whose conversations wait for an account's sign-out (agent + project -> the account's label). */
+  const leaving = new Map<string, string>()
+  const leavingKey = (projectPath: string, agent: AgentId): string => `${agent}\0${projectPath}`
 
   const dirFor = (account: Account): string | undefined => (account.mode === 'managed' ? store.profileDir(account.id) : undefined)
   const resolve = (account: Account): ResolvedAccount => resolved(account, dirFor(account))
@@ -204,8 +207,16 @@ export function createAccountService(options: AccountServiceOptions) {
   const service = {
     support,
     list: (): AccountView[] => store.list().map(viewOf),
-    /** The binding the thread manager launches with. */
-    resolve: (projectPath: string, agent: AgentId): ResolvedAccount => resolve(store.selected(projectPath, agent)),
+    /**
+     * The binding the thread manager launches with. Refused while the project's account is being removed: the
+     * project already selects the default, but if the sign-out fails it goes back, and a conversation launched
+     * on the default meanwhile would stay there.
+     */
+    resolve(projectPath: string, agent: AgentId): ResolvedAccount {
+      const removing = leaving.get(leavingKey(projectPath, agent))
+      if (removing !== undefined) throw new ThreadBusyError(`“${removing}” is being removed from this project: its sign-out has not finished. Send this again in a moment.`)
+      return resolve(store.selected(projectPath, agent))
+    },
     describe(accountId: string): AccountRef | undefined {
       const account = store.get(accountId)
       return account ? refOf(account) : undefined
@@ -311,13 +322,14 @@ export function createAccountService(options: AccountServiceOptions) {
       mkdirSync(logDir, { recursive: true, mode: 0o700 })
       const logFile = join(logDir, `remove-${account.id}.log`)
       // Only the selections move before the sign-out, which can still fail: putting a selection back is an exact undo,
-      // where rebinding a project's conversations (a new native session, a note each way) is not. A conversation that
-      // starts meanwhile already launches on the default.
+      // where rebinding a project's conversations (a new native session, a note each way) is not. So no conversation of
+      // a moved project launches until the sign-out settles: one launched now would bind to the default for good.
       const moved: string[] = []
       try {
         for (const project of choosing) {
           store.select(project, account.agent, defaultAccountId(account.agent))
           moved.push(project)
+          leaving.set(leavingKey(project, account.agent), account.label)
         }
         const exit = await logout(account.agent, envFor(account), logFile)
         if (exit.code !== 0) {
@@ -328,9 +340,12 @@ export function createAccountService(options: AccountServiceOptions) {
         // The profile stays, so a project this call moved goes back to it: a refused removal changes no selection.
         for (const project of moved) store.select(project, account.agent, account.id)
         throw error
+      } finally {
+        // After the selections are back (or kept): a launch from here reads the settled choice.
+        for (const project of moved) leaving.delete(leavingKey(project, account.agent))
       }
       // Signed out: the moved projects' conversations follow now, while the profile can still be named in their note.
-      // One that started working since already launched on the default, and is bound to it.
+      // One that launched after the sign-out settled is already bound to the default.
       for (const project of moved) {
         await options.sessions.rebindProject(project, account.agent, service.resolve(project, account.agent)).catch((rebindError: unknown) => {
           console.warn(`[cockpit] could not move the conversations of ${project} off “${account.label}” yet:`, rebindError instanceof Error ? rebindError.message : rebindError)
