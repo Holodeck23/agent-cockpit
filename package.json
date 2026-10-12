@@ -5,7 +5,7 @@
   "description": "Desktop cockpit for coding-agent CLIs (Claude Code, Codex): parallel threads, approvals, workflows.",
   "scripts": {
     "doctor": "tsx scripts/doctor.ts",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "tsx watch server/index.ts --development",
     "dev:web": "vite",
     "start": "tsx server/index.ts",
     "build": "vite build",
