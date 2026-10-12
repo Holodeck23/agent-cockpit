@@ -3,6 +3,8 @@ import { api, subscribe, type ProcessInfo, type RemoteStatus, type StoredEvent, 
 
 export interface Cockpit {
   readonly threads: ThreadSummary[]
+  /** True once the first thread list has arrived: before that `threads` is empty because nothing was read, not because there are none. */
+  readonly threadsLoaded: boolean
   readonly selectedId: string | undefined
   readonly detail: ThreadDetail | undefined
   /** Text streamed for the current turn but not yet finalized. */
@@ -81,6 +83,7 @@ function withLateDeltas(snapshot: Readonly<Record<string, string>>, late: Readon
 /** `local` is the Mac's own window; the phone gets no phone-access settings. */
 export function useCockpit(local = true): Cockpit {
   const [threads, setThreads] = useState<ThreadSummary[]>([])
+  const [threadsLoaded, setThreadsLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string>()
   const [detail, setDetail] = useState<ThreadDetail>()
   const [streams, setStreams] = useState<Readonly<Record<string, string>>>({})
@@ -94,7 +97,7 @@ export function useCockpit(local = true): Cockpit {
   const listVersion = useRef(0)
   const refresh = useCallback(() => {
     const version = ++listVersion.current
-    api.listThreads().then((rows) => { if (version === listVersion.current) setThreads(rows) }, (e: unknown) => setError(String(e)))
+    api.listThreads().then((rows) => { if (version === listVersion.current) { setThreads(rows); setThreadsLoaded(true) } }, (e: unknown) => setError(String(e)))
   }, [])
 
   useEffect(refresh, [refresh])
@@ -205,6 +208,7 @@ export function useCockpit(local = true): Cockpit {
 
   return {
     threads,
+    threadsLoaded,
     selectedId,
     detail,
     streaming,

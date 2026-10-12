@@ -202,14 +202,28 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }, [])
   const { select: selectProject } = projects
   const { select: selectThread } = cockpit
-  useEffect(() => local ? native?.onOpenThread((id) => {
+  const openThread = useCallback((id: string): void => {
     const thread = threadsRef.current.find((t) => t.meta.id === id)
     if (!thread) return
     focusWorkspaceOf(thread.meta)
     selectProject(thread.meta.projectPath)
     setSection('conversations')
     selectThread(id)
-  }) : undefined, [local, selectProject, selectThread, setSection, focusWorkspaceOf])
+  }, [selectProject, selectThread, setSection, focusWorkspaceOf])
+  // A notification clicked while the window was closed reopens it, and the preload hands the click over
+  // the moment this page subscribes: before the thread list has been read. The id waits for the list.
+  const threadsLoadedRef = useRef(cockpit.threadsLoaded)
+  threadsLoadedRef.current = cockpit.threadsLoaded
+  const [wantedThread, setWantedThread] = useState<string>()
+  useEffect(() => local ? native?.onOpenThread((id) => {
+    if (threadsLoadedRef.current) openThread(id)
+    else setWantedThread(id)
+  }) : undefined, [local, openThread])
+  useEffect(() => {
+    if (!wantedThread || !cockpit.threadsLoaded) return
+    setWantedThread(undefined)
+    openThread(wantedThread)
+  }, [wantedThread, cockpit.threadsLoaded, openThread])
 
   // ⌘1–9 project tabs, ⌥⌘1–5 sections (shortcuts.ts). The same moves as clicking the tab or section.
   const tabsRef = useRef(projects.tabs)
