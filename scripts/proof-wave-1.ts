@@ -131,7 +131,7 @@ try {
   check('A7 the file shows as a clip with its path', await clips.locator('[title="notes.md"]').isVisible())
   check('A7 the workflow token is replaced by a clip', (await page.locator('.bubble.user').first().innerText()).startsWith('Check this') && await clips.locator('.workflow-clip').isVisible())
   await clips.locator('.workflow-clip summary').click()
-  check('A7 the workflow clip opens to the instructions it sent', await clips.getByText('Review the diff for risky changes.').isVisible())
+  check('A7 the workflow clip opens to the instructions it sent', await clips.locator('.workflow-clip > pre').filter({ hasText: 'Review the diff for risky changes.' }).isVisible())
   await shot(page, 'a7-clips')
 
   // B3 + B4: a question needs you until dismissed; a completed conversation never does.
@@ -150,7 +150,7 @@ try {
   check('B4 reopening does not bring the question back', await until('still no badge', async () => (await badge()) === '', 1500) || (await badge()) === '')
 
   // B1 + B2: other conversations notify (and chime); the one you are looking at stays quiet.
-  await page.evaluate(() => localStorage.setItem('cockpit:sounds', JSON.stringify({ reply: true, decision: true })))
+  await page.evaluate(() => localStorage.setItem('cockpit:sounds-v2', JSON.stringify({ reply: true, decision: true })))
   await page.reload()
   await page.getByRole('tab', { selected: true }).first().waitFor()
   await setLooking(app, page, true)

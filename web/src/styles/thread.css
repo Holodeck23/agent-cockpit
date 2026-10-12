@@ -76,7 +76,12 @@
 /* ---------- transcript ---------- */
 /* The composer's fade lies over the scroller's foot: the padding keeps the last line above it. */
 .thread { --composer-fade: 14px; }
-.events { overflow-y: auto; padding: 26px 26px calc(12px + var(--composer-fade, 0px)); }
+.events {
+  overflow-y: auto; padding: 26px 26px calc(12px + var(--composer-fade, 0px));
+  /* React owns follow-at-bottom. Browser scroll anchoring must not move a reader who scrolled up
+     when a late message is appended above the currently focused composer. */
+  overflow-anchor: none;
+}
 .transcript { display: flex; flex-direction: column; gap: 28px; max-width: 880px; margin: 0 auto; }
 .message { position: relative; display: grid; gap: 8px; }
 /* Copy sits on the bubble's lower edge, out of the layout, visible on hover or keyboard focus. */
