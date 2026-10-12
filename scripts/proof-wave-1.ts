@@ -131,7 +131,7 @@ try {
   check('A7 the file shows as a clip with its path', await clips.locator('[title="notes.md"]').isVisible())
   check('A7 the workflow token is replaced by a clip', (await page.locator('.bubble.user').first().innerText()).startsWith('Check this') && await clips.locator('.workflow-clip').isVisible())
   await clips.locator('.workflow-clip summary').click()
-  check('A7 the workflow clip opens to the instructions it sent', await clips.getByText('Review the diff for risky changes.').isVisible())
+  check('A7 the workflow clip opens to the instructions it sent', await clips.locator('.workflow-clip > pre').filter({ hasText: 'Review the diff for risky changes.' }).first().isVisible())
   await shot(page, 'a7-clips')
 
   // B3 + B4: a question needs you until dismissed; a completed conversation never does.
