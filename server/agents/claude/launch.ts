@@ -62,7 +62,12 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
       }
       const waiting = pending
       pending = []
-      for (const message of waiting) session.send(message.text, message.queuedId, message.images)
+      for (const message of waiting) {
+        session.send(message.text, message.queuedId, message.images)
+        // Without --replay-user-messages Claude never says when it takes a message, so one the manager is
+        // waiting on counts as taken once it is written, as a message sent after startup would have.
+        if (message.queuedId && !replays) onEvent({ kind: 'user_taken', text: message.text, id: message.queuedId })
+      }
     }).catch((error: unknown) => finish(error))
   return {
     agent: 'claude',
@@ -73,8 +78,17 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     },
     respondApproval: (approval, behavior) => session?.respondApproval(approval, behavior),
     respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
-    queues: () => Boolean(session && replays),
-    cancelQueued: (queuedId) => session?.cancelQueued?.(queuedId) ?? Promise.resolve(false),
+    // A message sent mid-turn while Claude is still starting waits in `pending` and counts as queued, so the manager
+    // tracks it like any other; whether Claude replays it is known once Claude is up.
+    queues: () => session ? replays : !ended,
+    cancelQueued(queuedId) {
+      if (session) return session.cancelQueued?.(queuedId) ?? Promise.resolve(false)
+      // Not written yet: taking it back is dropping it from the wait.
+      const kept = pending.filter((message) => message.queuedId !== queuedId)
+      const dropped = kept.length < pending.length
+      pending = kept
+      return Promise.resolve(dropped)
+    },
     interrupt() {
       if (session) session.interrupt()
       else { finish(undefined, true); controller.abort() }
