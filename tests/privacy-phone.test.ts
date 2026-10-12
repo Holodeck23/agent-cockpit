@@ -223,7 +223,7 @@ describe('Mac only in crash reports and the predicate', () => {
         { id: 'a3', name: 'apps', library: '/lib', root: '/lib/apps', private: false, shelf: false, hidden: false, collapsed: false, custom: false, projects: [project('/lib/apps/two', false)] },
       ],
     }
-    expect(privateRoots(map).sort()).toEqual(['/lib/table', '/lib/one', '/vault'])
+    expect(privateRoots(map).sort()).toEqual(['/lib/one', '/lib/table', '/vault'])
     const privacy = createPrivacy(() => privateRoots(map), (p) => p)
     expect(privacy.macOnly('/vault/clients/x')).toBe(true)
     expect(privacy.macOnly('/lib/table/y')).toBe(true)
