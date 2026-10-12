@@ -1,7 +1,8 @@
 /* D12 scanner signature: a red light sweeping back and forth, the way KITT's does.
    Idle: a slow pass across the composer's placeholder, a fainter one a few seconds later, then a rest.
    A turn running (.composer-card.working): a dotted LED line with a bright core travels the
-   composer's bottom edge, and stops when the turn ends.
+   composer's bottom edge, and stops when the turn ends. Needs you (.needs-input): an amber
+   double pulse, visually distinct from both the idle sweep and working motion.
    Light theme: a thin solid line, no glow. Reduce motion: the plain placeholder, and a still line
    while a turn runs. Paint only: nothing here takes space or moves another element.
    Colours: --scanner-* in tokens.css. */
@@ -13,7 +14,8 @@
 /* The LED line sits over the bottom border, inset by the corner radius so it never runs off the
    rounded corners. The mask cuts it into LEDs (one solid line in light, where --scanner-led-gap is
    opaque) and keeps light to its bottom two pixels (--scanner-thick is transparent there). */
-.composer-card.working::after {
+.composer-card.working::after,
+.composer-card.needs-input::after {
   content: '';
   position: absolute;
   left: var(--r-lg);
@@ -26,15 +28,19 @@
   mask-composite: intersect;
 }
 
+.composer-card.needs-input::after {
+  background: linear-gradient(var(--needs-ink), var(--needs-ink));
+}
+
 @media (prefers-reduced-motion: no-preference) {
   /* ---------- idle: the placeholder sweep ---------- */
   /* The band lives in a background three times the text's width; 100% → 0% carries it left to
      right. It jumps back while out of sight, so every pass runs the same way.
      fit-content keeps the placeholder box as wide as its words, so the pass crosses the text. */
-  .composer-card:not(.working) textarea:placeholder-shown:not(:disabled) {
+  .composer-card:not(.working):not(.needs-input) textarea:placeholder-shown:not(:disabled) {
     animation: scanner-placeholder 9s ease-in-out infinite;
   }
-  .composer-card:not(.working) textarea:not(:disabled)::placeholder {
+  .composer-card:not(.working):not(.needs-input) textarea:not(:disabled)::placeholder {
     width: fit-content;
     color: transparent;
     background: linear-gradient(90deg, var(--muted) 0 42%, var(--scanner-band) 50%, var(--muted) 58% 100%) var(--scanner-sweep) 0 / 300% 100% no-repeat;
@@ -61,6 +67,23 @@
     background: radial-gradient(closest-side, var(--scanner-glow), transparent) 0 0 / 22% 100% no-repeat;
     animation: scanner-edge 1.5s ease-in-out infinite alternate;
   }
+
+  /* Needs you does not pretend the agent is working: the whole amber line calls twice, then rests. */
+  .composer-card.needs-input::after {
+    background: linear-gradient(var(--needs-ink), var(--needs-ink));
+    animation: scanner-needs 1.8s ease-in-out infinite;
+  }
+  .composer-card.needs-input::before {
+    content: '';
+    position: absolute;
+    left: var(--r-lg);
+    right: var(--r-lg);
+    bottom: -7px;
+    height: 14px;
+    pointer-events: none;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--needs-ink) 55%, transparent), transparent) 50% 0 / 100% 100% no-repeat;
+    animation: scanner-needs 1.8s ease-in-out infinite;
+  }
 }
 
 /* A full pass, a pause, a fainter pass (the band mixed halfway back to the placeholder grey), a rest. */
@@ -73,4 +96,9 @@
 @keyframes scanner-edge {
   from { background-position: 0% 0, 0 0; }
   to { background-position: 100% 0, 0 0; }
+}
+@keyframes scanner-needs {
+  0%, 42%, 100% { opacity: 0.28; }
+  10%, 20%, 30% { opacity: 1; }
+  15%, 25% { opacity: 0.5; }
 }

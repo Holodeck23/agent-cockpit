@@ -61,6 +61,20 @@ describe('Stop beside the message box', () => {
     expect(api.interrupt).toHaveBeenCalledTimes(1)
   })
 
+  it('names a running send as a queued steer and gives Needs you its own scanner state', async () => {
+    await renderThread(detail('working'))
+    expect(host.querySelector('textarea')?.placeholder).toBe('Queue a steer for the next step…')
+    expect(host.querySelector('.composer-destination')?.textContent).toContain('Queue for next step')
+    expect(host.querySelector('.send')?.getAttribute('aria-label')).toBe('Queue for next step')
+    expect(host.querySelector('.composer-card')?.classList.contains('working')).toBe(true)
+
+    await renderThread(detail('needs_input'))
+    const card = host.querySelector('.composer-card')!
+    expect(card.classList.contains('working')).toBe(false)
+    expect(card.classList.contains('needs-input')).toBe(true)
+    expect(host.querySelector('.send')?.getAttribute('aria-label')).toBe('Queue for next step')
+  })
+
   it.each(['idle', 'done', 'error'] as const)('hides Stop when %s', async (status) => {
     await renderThread(detail(status))
     expect(stop()).toBeNull()

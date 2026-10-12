@@ -295,8 +295,10 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         // With two workspaces, the box speaks for the one you are looking at.
-        placeholder={focusedRunning ? 'Add to the current turn…' : 'Add a follow-up…'}
+        placeholder={focusedRunning ? 'Queue a steer for the next step…' : 'Add a follow-up…'}
         working={isWorking(status) && focusedRunning}
+        needsInput={shown === 'needs_input'}
+        queueing={focusedRunning}
         onStop={focusedRunning ? () => guard(api.interrupt(meta.id, inSeveral ? focused : undefined)) : undefined}
         stopLabel={inSeveral && focused !== undefined ? `Stop current turn in ${workspace!.nameOf(focused)}` : undefined}
         onSubmit={(text, images) => send(text, images).then(() => undefined)}
