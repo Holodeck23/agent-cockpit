@@ -1,5 +1,5 @@
 import { RecoveryCard } from './RecoveryCard.tsx'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type Project, type ThreadMeta, type MessageImage, type Workflow, type WorkflowInput } from '../api.ts'
 import { displayTitle } from '../workflow-list.ts'
 import { native } from '../native.ts'
@@ -97,12 +97,11 @@ export function NewConversation({ onBrowseFiles, initialDraft, freshRequest, onD
   const [newWorkflow, setNewWorkflow] = useState(false)
   const [savingWorkflow, setSavingWorkflow] = useState(false)
   const screen = useRef<HTMLElement>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!freshRequest) return
     setFresh(true)
     setNewWorkflow(false)
-    const frame = requestAnimationFrame(() => screen.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus())
-    return () => cancelAnimationFrame(frame)
+    screen.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus()
   }, [freshRequest])
   const projectPath = project?.path
   const loadWorkflows = useCallback(() => {
