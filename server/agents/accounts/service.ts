@@ -114,6 +114,16 @@ export function createAccountService(options: AccountServiceOptions) {
     update(id, { state, endedAt: new Date().toISOString(), ...patch })
   }
 
+  /** A change of account is refused while a conversation of that agent in the project is working or holds queued input. */
+  const requireIdle = (projectPath: string, agent: AgentId): void => {
+    const { busy, queued } = options.sessions.activity(projectPath, agent)
+    if (busy > 0 || queued > 0) {
+      throw new AccountBusyError(queued > 0
+        ? `A ${label(agent)} conversation in this project has a queued message. Let it be sent, or take it back, then change the account.`
+        : `A ${label(agent)} conversation in this project is still working. Change the account when it has finished.`)
+    }
+  }
+
   /** The CLI's own sign-out in one profile's context, bounded. */
   async function logout(agent: AgentId, env: Record<string, string>, logFile: string): Promise<HelperExit> {
     const executable = await options.executable(agent)
@@ -212,12 +222,7 @@ export function createAccountService(options: AccountServiceOptions) {
       if (!account || account.agent !== agent) throw new Error(`That account is not a ${label(agent)} account`)
       const previous = store.selected(projectPath, agent)
       if (previous.id !== account.id) {
-        const { busy, queued } = options.sessions.activity(projectPath, agent)
-        if (busy > 0 || queued > 0) {
-          throw new AccountBusyError(queued > 0
-            ? `A ${label(agent)} conversation in this project has a queued message. Let it be sent, or take it back, then change the account.`
-            : `A ${label(agent)} conversation in this project is still working. Change the account when it has finished.`)
-        }
+        requireIdle(projectPath, agent)
         store.select(projectPath, agent, account.id)
         try {
           await options.sessions.rebindProject(projectPath, agent, resolve(account))
@@ -301,12 +306,17 @@ export function createAccountService(options: AccountServiceOptions) {
       await options.sessions.closeIdle(account.id)
       // A turn may have started while the idle ones closed: still never sign out under it.
       if (options.sessions.inUse(account.id) > 0) throw new AccountInUseError(`A conversation started on “${account.label}” just now. Try again when it has finished.`)
+      // Every project is checked before the first moves, so a busy one refuses the removal with nothing changed.
+      for (const project of choosing) requireIdle(project, account.agent)
       mkdirSync(logDir, { recursive: true, mode: 0o700 })
       const logFile = join(logDir, `remove-${account.id}.log`)
+      // Only the selections move before the sign-out, which can still fail: putting a selection back is an exact undo,
+      // where rebinding a project's conversations (a new native session, a note each way) is not. A conversation that
+      // starts meanwhile already launches on the default.
       const moved: string[] = []
       try {
         for (const project of choosing) {
-          await service.select(project, account.agent, defaultAccountId(account.agent))
+          store.select(project, account.agent, defaultAccountId(account.agent))
           moved.push(project)
         }
         const exit = await logout(account.agent, envFor(account), logFile)
@@ -316,12 +326,15 @@ export function createAccountService(options: AccountServiceOptions) {
         }
       } catch (error) {
         // The profile stays, so a project this call moved goes back to it: a refused removal changes no selection.
-        for (const project of moved) {
-          await service.select(project, account.agent, account.id).catch((restoreError: unknown) => {
-            console.warn(`[cockpit] could not put ${project} back on “${account.label}”:`, restoreError instanceof Error ? restoreError.message : restoreError)
-          })
-        }
+        for (const project of moved) store.select(project, account.agent, account.id)
         throw error
+      }
+      // Signed out: the moved projects' conversations follow now, while the profile can still be named in their note.
+      // One that started working since already launched on the default, and is bound to it.
+      for (const project of moved) {
+        await options.sessions.rebindProject(project, account.agent, service.resolve(project, account.agent)).catch((rebindError: unknown) => {
+          console.warn(`[cockpit] could not move the conversations of ${project} off “${account.label}” yet:`, rebindError instanceof Error ? rebindError.message : rebindError)
+        })
       }
       store.deleteProfileDir(account.id)
       store.remove(account.id)
