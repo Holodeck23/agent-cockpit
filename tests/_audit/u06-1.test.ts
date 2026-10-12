@@ -34,10 +34,12 @@ afterAll(async () => { await new Promise((resolve) => local.close(resolve)) })
 /**
  * A stand-in for electron/browser-agent-host.ts + browser-service.ts: goto() really fetches the local
  * server, and follows each redirect exactly as the host's will-redirect handler does, i.e. it lets a hop
- * through whenever the real isNavigable() (electron/browser-policy.ts) says yes. It records every URL the
- * page actually requested, so we can see what went out.
+ * through whenever the real isNavigable() (electron/browser-policy.ts) says yes. Like the service's
+ * onBeforeRequest, it holds every main-frame request for the guard the agent installed (guardNavigation)
+ * before the request goes out, and a refusal rejects the call. It records every URL the page actually
+ * requested, so we can see what went out.
  */
-function harness(cockpitPorts: number[], gated = false, remoteRedirects: (url: string) => string | undefined = () => undefined) {
+function harness(cockpitPorts: number[], remoteRedirects: (url: string) => string | undefined = () => undefined) {
   let url = 'about:blank'
   let revision = 1
   const requested: string[] = []
@@ -45,15 +47,15 @@ function harness(cockpitPorts: number[], gated = false, remoteRedirects: (url: s
   let answer: ApprovalBehavior | 'deny' = 'deny'
   const refusedOrigins = new Set<string>()
   const page = (): AgentPageInfo => ({ pageId: 'thread:t1', revision, url, origin: originOf(url) ?? 'null', title: '', loading: false, viewport: { width: 800, height: 600 }, timestamp: 'now' })
+  let authorize: (url: string) => Promise<void> = async () => {}
   const host: BrowserHost = {
+    guardNavigation: (_key, guard) => { authorize = guard },
     info: () => page(),
     ensure: async () => page(),
-    // `gated` is the host after the fix: electron/browser-service.ts stops a hop to a remote origin the call
-    // did not approve (`allow`) before it is requested, and reports it as `blocked`. Ungated is the old host.
-    goto: async (_key, target, allow = []) => {
+    goto: async (_key, target) => {
       let next = target
-      let blocked: string | undefined
       for (let hop = 0; hop < 30; hop++) {
+        await authorize(next)
         requested.push(next)
         url = next
         let location: string | null | undefined
@@ -66,11 +68,10 @@ function harness(cockpitPorts: number[], gated = false, remoteRedirects: (url: s
         if (!location) break
         const hopUrl = new URL(location, next).toString()
         if (!isNavigable(hopUrl, cockpitPorts)) break // will-redirect -> preventDefault
-        if (gated && originClass(hopUrl, cockpitPorts) === 'remote' && !allow.includes(originOf(hopUrl)!)) { blocked = hopUrl; break }
         next = hopUrl
       }
       revision++
-      return { ...page(), ...(blocked ? { blocked } : {}) }
+      return page()
     },
     historyUrl: () => undefined,
     history: async () => page(),
@@ -110,14 +111,14 @@ describe('u06-1: a local page cannot carry the browser to a remote site unasked'
     expect(h.asked.map((a) => a.input.origin)).toContain(REMOTE)
     // ... and having said no, the agent must not be handed the remote page as a successful navigation.
     expect(result.ok).toBe(false)
+    expect(h.requested).not.toContain(REMOTE_TARGET)
   })
 })
 
-// The host's own stop: the redirect is vetoed before its request goes out (the ungated tests above cover
-// the after-the-fact ask that remains for a redirect the host never saw).
+// The guard holds the redirect before its request goes out, and asks with the address the call was heading for.
 describe('u06-1: the host stops a redirect to a remote site until the person has said yes', () => {
   it('a Deny means the remote site is never requested and the page stays where it was', async () => {
-    const h = harness([4000], true)
+    const h = harness([4000])
     await expect(h.call('navigate', { url: localUrl })).rejects.toMatchObject({ status: 409 })
     expect(h.asked.map((a) => a.input.origin)).toEqual([REMOTE])
     expect(h.asked[0]!.input).toMatchObject({ url: REMOTE_TARGET, redirectedFrom: localUrl })
@@ -125,7 +126,7 @@ describe('u06-1: the host stops a redirect to a remote site until the person has
   })
 
   it('an Allow follows the redirect once, and the agent is handed the page without the host\'s note', async () => {
-    const h = harness([4000], true)
+    const h = harness([4000])
     h.setAnswer('allow')
     const page = await h.call('navigate', { url: localUrl }) as AgentPageInfo
     expect(h.requested).toEqual([localUrl, REMOTE_TARGET])
@@ -136,12 +137,12 @@ describe('u06-1: the host stops a redirect to a remote site until the person has
 
   it('asks about each remote site on a chain, and stops asking when one is denied', async () => {
     const redirects = (u: string): string | undefined => (u === 'https://a.test/' ? 'https://b.test/x' : undefined)
-    const allowBoth = harness([4000], true, redirects)
+    const allowBoth = harness([4000], redirects)
     allowBoth.setAnswer('allow')
     expect((await allowBoth.call('navigate', { url: 'https://a.test/' }) as AgentPageInfo).url).toBe('https://b.test/x')
     expect(allowBoth.asked.map((a) => a.input.origin)).toEqual(['https://a.test', 'https://b.test'])
 
-    const denySecond = harness([4000], true, redirects)
+    const denySecond = harness([4000], redirects)
     denySecond.setAnswer('allow')
     denySecond.refuse('https://b.test')
     await expect(denySecond.call('navigate', { url: 'https://a.test/' })).rejects.toMatchObject({ status: 409 })
@@ -151,7 +152,7 @@ describe('u06-1: the host stops a redirect to a remote site until the person has
   })
 
   it('gives up on a page that keeps redirecting to new sites', async () => {
-    const h = harness([4000], true, (u) => `https://r${Number(/r(\d+)\.test/.exec(u)?.[1] ?? 0) + 1}.test/`)
+    const h = harness([4000], (u) => `https://r${Number(/r(\d+)\.test/.exec(u)?.[1] ?? 0) + 1}.test/`)
     h.setAnswer('allow')
     await expect(h.call('navigate', { url: 'https://r0.test/' })).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/kept redirecting/) })
     expect(h.asked.length).toBeLessThan(10)

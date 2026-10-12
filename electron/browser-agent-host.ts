@@ -1,5 +1,5 @@
 import type { WebContents } from 'electron'
-import type { ActOutcome, AgentInput, AgentPageInfo, BrowserHost, Capture, Landing, PageRead } from '../server/browser/agent.ts'
+import type { ActOutcome, AgentInput, AgentPageInfo, BrowserHost, Capture, PageRead } from '../server/browser/agent.ts'
 import { originOf } from '../server/browser/agent-policy.ts'
 import { dragPath, insideViewport, KEY_EVENTS, refParts, samePage } from './browser-policy.ts'
 import type { BrowserService } from './browser-service.ts'
@@ -99,32 +99,40 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
   const run = <T>(contents: WebContents, code: string): Promise<T> =>
     withinTime(contents.executeJavaScriptInIsolatedWorld(WORLD, [{ code }]) as Promise<T>, SCRIPT_MS, `The page did not answer within ${SCRIPT_MS / 1000} s`)
 
-  /** Until the page stops loading, or a bounded wait passes; the result says if it is still loading. */
-  async function settle(contents: WebContents): Promise<void> {
-    const deadline = Date.now() + LOAD_WAIT_MS
+  /** Pages whose navigation is held for the guard right now (the person may be deciding), with how many requests wait. */
+  const deciding = new Map<string, number>()
+  const DECISION_WAIT_MS = 60_000
+
+  /**
+   * Until the page stops loading, or a bounded wait passes; the result says if it is still loading. A request
+   * held while the person decides is not a slow load: the load's clock starts once they have, so a Deny
+   * always reaches the call that asked, however long they took (up to DECISION_WAIT_MS).
+   */
+  async function settle(contents: WebContents, key: string): Promise<void> {
+    const decisionBy = Date.now() + DECISION_WAIT_MS
+    let deadline = Date.now() + LOAD_WAIT_MS
     await sleep(50)
-    while (!contents.isDestroyed() && contents.isLoading() && Date.now() < deadline) await sleep(100)
+    while (!contents.isDestroyed()) {
+      if (deciding.has(key) && Date.now() < decisionBy) deadline = Date.now() + LOAD_WAIT_MS
+      else if (!contents.isLoading() || Date.now() >= deadline) break
+      await sleep(100)
+    }
   }
 
   /**
-   * An agent's navigation: runs `start`, waits for the page to settle, and reports the hop to another site
-   * that the service stopped (`blocked`) while only the origins in `allow` were approved.
+   * An agent's navigation: runs `start`, waits for the page to settle, and reports where it ended. The
+   * request-level guard (guardNavigation) has already held every hop to another site for the person's answer;
+   * one it refused moved nothing, so it is an error, never a page to report.
    */
-  function navigation(key: string, allow: readonly string[], start: () => void): Promise<Landing> {
+  function navigation(key: string, start: () => void): Promise<AgentPageInfo> {
     return serial(key, async () => {
       const contents = contentsOf(key)
-      const end = service.watchNavigation(key, allow)
-      let blocked: string | undefined
-      try {
-        start()
-        await settle(contents)
-      } finally {
-        blocked = end()
-      }
+      start()
+      await settle(contents, key)
       const page = info(key) ?? gone(key)
-      // A hop the service stopped moved nothing: the page is where it was, and that is not a move to report.
-      if (page.url && !blocked) navigated(key, page.url)
-      return blocked ? { ...page, blocked } : page
+      if (page.error?.code === -20) throw new Error(page.error.description)
+      if (page.url) navigated(key, page.url)
+      return page
     })
   }
 
@@ -222,13 +230,23 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
   }
 
   return {
+    guardNavigation: (key, authorize) => service.guardNavigation(key, async (url) => {
+      deciding.set(key, (deciding.get(key) ?? 0) + 1)
+      try {
+        await authorize(url)
+      } finally {
+        const left = (deciding.get(key) ?? 1) - 1
+        if (left > 0) deciding.set(key, left)
+        else deciding.delete(key)
+      }
+    }),
     info,
     async ensure(key, projectPath) {
       const full = await service.ensure(key, projectPath)
       if (full) throw new Error(full)
       return info(key) ?? gone(key)
     },
-    goto: (key, url, allow = []) => navigation(key, allow, () => {
+    goto: (key, url) => navigation(key, () => {
       const refused = service.load(key, url)
       if (refused) throw new Error(refused)
     }),
@@ -238,7 +256,7 @@ export function createBrowserAgentHost(service: BrowserService, navigated: (key:
       const index = history.getActiveIndex() + (direction === 'back' ? -1 : 1)
       return index >= 0 && index < history.length() ? history.getEntryAtIndex(index)?.url : undefined
     },
-    history: (key, action, allow = []) => navigation(key, allow, () => service.navigate(key, action)),
+    history: (key, action) => navigation(key, () => service.navigate(key, action, true)),
     async read(key): Promise<PageRead> {
       const contents = contentsOf(key)
       const page = info(key) ?? gone(key)

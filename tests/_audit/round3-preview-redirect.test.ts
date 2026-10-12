@@ -4,12 +4,12 @@ import { createBrowserAgentHost } from '../../electron/browser-agent-host.ts'
 
 // round 3 of the recheck of fe7ca68 (redirect gate for inspect_preview / open_preview). review-preview-redirect.test.ts
 // fakes the browser host, so it could not see what the REAL host does around the gate:
-//  - a navigation the service stopped (`blocked`) left the page where it was, yet the host still reported
+//  - a navigation the guard refused left the page where it was, yet the host still reported
 //    navigated(key, previousUrl) and main.ts opened the preview pane on that previous page, just before
 //    open_preview threw "redirects to ...";
 //  - a successful open_preview told the window to open the pane twice: once from the host's navigated callback,
 //    once from showPreview itself.
-// CORRECT behaviour: a blocked navigation moves nothing, so nothing is reported and no pane opens; a successful
+// CORRECT behaviour: a refused navigation moves nothing, so nothing is reported and no pane opens; a successful
 // open_preview opens the pane once; an agent's own navigation (browser_navigate) still opens it once.
 // Here the real createBrowserAgentHost runs (directly, and inside the real main.ts); only the browser service,
 // which needs Electron's WebContentsView, and Electron itself are fake.
@@ -20,9 +20,9 @@ const h = vi.hoisted(() => {
     windows: [] as Array<{ destroy(): void; webContents: EventEmitter }>,
     sent: [] as Array<{ channel: string; args: unknown[] }>,
     openUrl: undefined as undefined | ((preview: Record<string, unknown>) => Promise<void>),
-    browserHost: undefined as undefined | (() => { goto(key: string, url: string, allow?: readonly string[]): Promise<{ url: string; blocked?: string }> } | undefined),
-    // The fake service's one page: where it is, which addresses redirect (to a website, say), the agent's current watch.
-    page: { url: '', redirects: new Map<string, Redirect>(), watch: undefined as undefined | { allowed: Set<string>; blocked?: string } },
+    browserHost: undefined as undefined | (() => { goto(key: string, url: string): Promise<{ url: string }> } | undefined),
+    // The fake service's one page: where it is, which addresses redirect (to a website, say), why a request was refused.
+    page: { url: '', redirects: new Map<string, Redirect>(), error: undefined as undefined | { code: number; description: string; url: string } },
     service: undefined as unknown as Record<string, unknown>,
     url: 'http://127.0.0.1:45871',
   }
@@ -59,6 +59,8 @@ vi.mock('electron', async () => {
   return {
     app: {
       requestSingleInstanceLock: () => true,
+      // main.ts asks Electron's own command-line parser which debugger switches were passed.
+      commandLine: { hasSwitch: () => false },
       on: vi.fn(),
       whenReady: () => Promise.resolve(),
       getPath: () => process.env.COCKPIT_HOME,
@@ -121,24 +123,38 @@ const PREVIOUS = 'http://127.0.0.1:3000/'
 const SHOP = 'https://shop.test/landing?id=1'
 const THREAD = { url: APP, projectPath: '/Users/example/project', threadId: 't1' }
 
-/** What the service does for the host: it stops an unapproved hop to a website, as electron/browser-service.ts does. */
+/**
+ * What the service does for the host: every main-frame request of the page (the address, then each redirect hop)
+ * is held for the guard installed with guardNavigation, as electron/browser-service.ts does; a request the guard
+ * refuses fails the load with that reason (ERR_BLOCKED_BY_CLIENT, -20) and the page stays where it was.
+ */
 function makeService(): Record<string, unknown> {
   const contents = { isDestroyed: () => false, isLoading: () => false }
+  let guard: ((url: string) => Promise<void>) | undefined
+  const request = async (url: string): Promise<boolean> => {
+    try { await guard?.(url); return true } catch (error) {
+      h.page.error = { code: -20, description: error instanceof Error ? error.message : String(error), url }
+      return false
+    }
+  }
   return {
+    guardNavigation: (_key: string, authorize: (url: string) => Promise<void>) => { guard = authorize },
     agentPage: () => ({ contents, revision: 1, viewport: { width: 800, height: 600 } }),
-    state: () => ({ key: KEY, url: h.page.url, title: '', canGoBack: false, canGoForward: false, loading: false }),
+    state: () => ({ key: KEY, url: h.page.url, title: '', canGoBack: false, canGoForward: false, loading: false, ...(h.page.error ? { error: h.page.error } : {}) }),
     ensure: async () => undefined,
     load: (_key: string, url: string) => {
-      const to = h.page.redirects.get(url)?.to ?? url
-      const remote = new URL(to).origin !== new URL(url).origin && !to.startsWith('http://127.0.0.1')
-      if (remote && h.page.watch && !h.page.watch.allowed.has(new URL(to).origin)) { h.page.watch.blocked = to; return undefined }
-      h.page.url = to
+      h.page.error = undefined
+      void (async () => {
+        let next = url
+        for (let hop = 0; hop < 5; hop++) {
+          if (!(await request(next))) return
+          const to = h.page.redirects.get(next)?.to
+          if (!to) break
+          next = to
+        }
+        h.page.url = next
+      })()
       return undefined
-    },
-    watchNavigation: (_key: string, allow: readonly string[]) => {
-      const watch = { allowed: new Set(allow), blocked: undefined as string | undefined }
-      h.page.watch = watch
-      return () => { if (h.page.watch === watch) h.page.watch = undefined; return watch.blocked }
     },
     navigate: vi.fn(),
     onDestroyed: vi.fn(() => () => undefined),
@@ -162,47 +178,49 @@ beforeEach(async () => {
   h.sent.length = 0
   h.page.url = PREVIOUS
   h.page.redirects.clear()
-  h.page.watch = undefined
+  h.page.error = undefined
 })
 
-describe('the real host: a navigation the service stopped moves nothing, so it reports nothing', () => {
+describe('the real host: a navigation the guard refused moves nothing, so it reports nothing', () => {
+  const REFUSED = 'The preview redirects to https://shop.test, not your local app.'
   const setup = () => {
     const navigated = vi.fn()
-    return { navigated, host: createBrowserAgentHost(makeService() as never, navigated) }
+    const service = makeService()
+    const host = createBrowserAgentHost(service as never, navigated)
+    return { navigated, service, host }
   }
 
   it('does not report the previous page as the place the agent moved to', async () => {
     const { host, navigated } = setup()
+    host.guardNavigation(KEY, async (url) => { if (url === SHOP) throw new Error(REFUSED) })
     h.page.redirects.set(APP, { to: SHOP })
-    const landing = await host.goto(KEY, APP)
-    expect(landing.blocked).toBe(SHOP)
-    expect(landing.url).toBe(PREVIOUS)
+    await expect(host.goto(KEY, APP)).rejects.toThrow(REFUSED)
+    expect(h.page.url).toBe(PREVIOUS)
     expect(navigated).not.toHaveBeenCalled()
   })
 
   it('does not report it from history navigation either', async () => {
-    // history() goes through the same watch; here the service stops Back's hop to the website.
-    const service = makeService()
-    service.navigate = () => { h.page.watch!.blocked = SHOP }
-    const navigated = vi.fn()
-    const landing = await createBrowserAgentHost(service as never, navigated).history(KEY, 'back')
-    expect(landing.blocked).toBe(SHOP)
+    // history() goes through the same navigation; here Back's hop to the website is refused.
+    const { host, service, navigated } = setup()
+    service.navigate = () => { h.page.error = { code: -20, description: REFUSED, url: SHOP } }
+    await expect(host.history(KEY, 'back')).rejects.toThrow(REFUSED)
     expect(navigated).not.toHaveBeenCalled()
   })
 
   it('reports where the agent landed when the navigation went through (control)', async () => {
     const { host, navigated } = setup()
     const landing = await host.goto(KEY, APP)
-    expect(landing.blocked).toBeUndefined()
+    expect(landing.url).toBe(APP)
     expect(navigated).toHaveBeenCalledTimes(1)
     expect(navigated).toHaveBeenCalledWith(KEY, APP)
   })
 
-  it('reports it when the person approved the website for the call (control)', async () => {
+  it('reports it when the guard let the website through (control)', async () => {
     const { host, navigated } = setup()
+    host.guardNavigation(KEY, async () => {})
     h.page.redirects.set(APP, { to: SHOP })
-    const landing = await host.goto(KEY, APP, ['https://shop.test'])
-    expect(landing.blocked).toBeUndefined()
+    const landing = await host.goto(KEY, APP)
+    expect(landing.url).toBe(SHOP)
     expect(navigated).toHaveBeenCalledWith(KEY, SHOP)
   })
 })

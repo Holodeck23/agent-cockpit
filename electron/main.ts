@@ -23,12 +23,13 @@ import { installCrashGuard } from './crash-guard.ts'
 import { startTelemetry } from './telemetry.ts'
 import { reportingDsn } from './telemetry-choice.ts'
 import type { PreviewCapture, PreviewOpen } from '../server/preview/types.ts'
-import { originClass, originOf } from '../server/browser/agent-policy.ts'
+import { originClass } from '../server/browser/agent-policy.ts'
 import { createBrowserService, type BrowserService } from './browser-service.ts'
 import { registerBrowserIpc } from './browser-ipc.ts'
 import { createBrowserAgentHost } from './browser-agent-host.ts'
+import { guardLocalPreview } from './preview-navigation.ts'
 import { RESIDENCY } from './browser-policy.ts'
-import type { BrowserHost, Landing } from '../server/browser/agent.ts'
+import type { BrowserHost } from '../server/browser/agent.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -58,8 +59,9 @@ const updates = createUpdateChecker({ fetch: (input, init) => fetch(input, init)
 installCrashGuard(process, join(defaultRoot(), 'logs', 'main-errors.log'))
 
 // A released app will not run under a debugger (electron/debug-flags.ts).
-if (IS_RELEASE_BUILD && debugSwitches(process.argv).length > 0) {
-  console.error(`Cockpit does not start with ${debugSwitches(process.argv).join(' ')}.`)
+const debuggerFlags = debugSwitches(process.argv, (name) => app.commandLine.hasSwitch(name))
+if (IS_RELEASE_BUILD && debuggerFlags.length > 0) {
+  console.error(`Cockpit does not start with ${debuggerFlags.join(' ')}.`)
   process.exit(1)
 }
 
@@ -212,14 +214,6 @@ function sendToPage(channel: string, ...args: unknown[]): void {
 }
 
 /**
- * A local preview address that answers with a redirect to a website is not followed there: the host stopped
- * the hop before it was requested (`blocked`), and a website is opened with browser_navigate, which asks first.
- */
-function stayedLocal(landing: Landing): void {
-  if (landing.blocked) throw new Error(`The preview redirects to ${originOf(landing.blocked) ?? 'another site'}, not your local app. Use browser_navigate for other sites; it asks you first.`)
-}
-
-/**
  * open_preview: a conversation's preview opens in that conversation's own page (W9-11), loaded
  * here so it exists even while the person looks at another conversation; the window then shows
  * it beside the chat. The page remains the source of truth for pane layout.
@@ -228,12 +222,13 @@ async function showPreview(preview: PreviewOpen): Promise<void> {
   const url = assertLocalUrl(preview.url)
   if (preview.threadId && browserHost) {
     const key = `thread:${preview.threadId}`
+    guardLocalPreview(browserHost, key, cockpitPorts)
     const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
     // The host reports every move an agent makes so the pane follows it; this one is shown below, not twice.
     if (page.url !== url) {
       openingPreview.set(key, (openingPreview.get(key) ?? 0) + 1)
       try {
-        stayedLocal(await browserHost.goto(key, url))
+        await browserHost.goto(key, url)
       } finally {
         const left = (openingPreview.get(key) ?? 1) - 1
         if (left > 0) openingPreview.set(key, left)
@@ -255,8 +250,9 @@ async function inspectPreview(preview: PreviewOpen): Promise<PreviewCapture> {
   const url = assertLocalUrl(preview.url)
   if (!preview.threadId || !browserHost) return capturePreview(url)
   const key = `thread:${preview.threadId}`
+  guardLocalPreview(browserHost, key, cockpitPorts)
   const page = await browserHost.ensure(key, preview.cwd ?? preview.projectPath)
-  if (page.origin !== new URL(url).origin) stayedLocal(await browserHost.goto(key, url))
+  if (page.origin !== new URL(url).origin) await browserHost.goto(key, url)
   const shot = await browserHost.capture(key)
   if (originClass(shot.page.url, cockpitPorts()) !== 'local') {
     throw new Error(`The preview is now on ${shot.page.origin}, not your local app. Use browser_screenshot for other sites; it asks you first.`)

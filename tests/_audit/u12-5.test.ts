@@ -79,7 +79,7 @@ describe('u12-5: a worktree whose state cannot be read is not removable', () => 
     expect(readFileSync(join(wt.cwd, '.env'), 'utf8')).toBe('TOKEN=keep-me\n')
   })
 
-  it('a status too large for the default 2 MB read is still counted, so the ignored .env protects the folder', async () => {
+  it('a status too large for the 2 MB read blocks removal (it is not counted), so the ignored .env protects the folder', async () => {
     const { wt, lifecycle } = await worktreeWithIgnoredEnv()
     // Ignored one by one (`*.log`), so `git status --ignored=matching -uall` lists every file: well over 2 MB.
     const many = join(wt.cwd, 'cache')
@@ -88,6 +88,8 @@ describe('u12-5: a worktree whose state cannot be read is not removable', () => 
     for (let i = 0; i < 11_000; i++) writeFileSync(join(many, `${stem}-${i}.log`), '')
     expect(execFileSync('git', ['-C', wt.cwd, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'], { env, maxBuffer: 64_000_000 }).length).toBeGreaterThan(2_000_000)
 
+    // The read stays at the default limit on purpose (tests/worktree-removal-safety.test.ts): output Cockpit
+    // cannot read in full is a blocker, never a count it could have misjudged.
     const check = await lifecycle.removalCheck(wt.id)
     expect(check.removable).toBe(false)
     expect(check.unique.ignored > 0 || check.blockers.length > 0).toBe(true)

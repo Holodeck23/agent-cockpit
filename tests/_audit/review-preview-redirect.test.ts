@@ -1,15 +1,16 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// review of u06-1: the host now stops an agent's navigation that a local page redirects to a website, and
-// reports it as `blocked` on the Landing that goto() resolves to. electron/main.ts's two preview paths
+// review of u06-1: the host holds every main-frame request of an agent's page for the guard installed with
+// guardNavigation, and goto() rejects when the guard refuses one. electron/main.ts's two preview paths
 // also load agent-chosen local addresses on the conversation's own page:
-//  - inspect_preview ignored the Landing, so the page stayed on its previous document and that document
+//  - inspect_preview ignored a refused hop, so the page stayed on its previous document and that document
 //    was captured as if it were the preview (or, from a blank page, failed with "now on null");
 //  - open_preview loaded the address with no gate at all, so the redirect was followed to the website.
 // docs/ARCHITECTURE.md: neither tool can navigate to a remote origin.
-// CORRECT behaviour: both go through the gated goto, and a blocked hop is an error that names the website.
-// Main runs for real against a fake Electron and a fake browser host.
+// CORRECT behaviour: both arm the local-preview guard (electron/preview-navigation.ts) before the page is
+// restored or loaded, go through the host's goto, and a refused hop is an error that names the website.
+// Main runs for real against a fake Electron and a fake browser host that consults the installed guard.
 
 const h = vi.hoisted(() => {
   const state = {
@@ -17,7 +18,9 @@ const h = vi.hoisted(() => {
     sent: [] as Array<{ channel: string; args: unknown[] }>,
     openUrl: undefined as undefined | ((preview: Record<string, unknown>) => Promise<void>),
     inspectPreview: undefined as undefined | ((preview: Record<string, unknown>) => Promise<{ data: string }>),
-    host: { ensure: vi.fn(), goto: vi.fn(), capture: vi.fn() },
+    host: { guardNavigation: vi.fn(), ensure: vi.fn(), goto: vi.fn(), capture: vi.fn() },
+    /** The guard main.ts installed on the conversation's page; the fake host asks it for each address a page requests. */
+    guard: undefined as undefined | ((url: string) => Promise<void>),
     service: { load: vi.fn(), forgetAll: vi.fn(), onDestroyed: vi.fn(), close: vi.fn() },
     url: 'http://127.0.0.1:45871',
   }
@@ -54,6 +57,8 @@ vi.mock('electron', async () => {
   return {
     app: {
       requestSingleInstanceLock: () => true,
+      // main.ts asks Electron's own command-line parser which debugger switches were passed.
+      commandLine: { hasSwitch: () => false },
       on: vi.fn(),
       whenReady: () => Promise.resolve(),
       getPath: () => process.env.COCKPIT_HOME,
@@ -117,6 +122,8 @@ const pageAt = (url: string) => ({
   pageId: 'thread:t1', revision: 1, url, origin: url ? new URL(url).origin : 'null', title: '', loading: false,
   viewport: { width: 800, height: 600 }, timestamp: '2026-10-12T00:00:00.000Z',
 })
+/** A navigation that a local address answers with a redirect to `to`: the host asks the guard for it, as the service does. */
+const redirectsTo = (to: string): void => { h.host.goto.mockImplementation(async () => { await h.guard!(to); return pageAt(to) }) }
 const shot = (url: string) => ({ data: 'cG5n', mimeType: 'image/png', width: 1280, height: 800, page: pageAt(url) })
 
 async function boot(): Promise<void> {
@@ -127,21 +134,23 @@ async function boot(): Promise<void> {
 beforeEach(async () => {
   await boot()
   h.sent.length = 0
-  for (const fn of [h.host.ensure, h.host.goto, h.host.capture, h.service.load]) fn.mockReset()
+  for (const fn of [h.host.guardNavigation, h.host.ensure, h.host.goto, h.host.capture, h.service.load]) fn.mockReset()
+  h.guard = undefined
+  h.host.guardNavigation.mockImplementation((_key: string, authorize: (url: string) => Promise<void>) => { h.guard = authorize })
   h.host.ensure.mockResolvedValue(pageAt(PREVIOUS))
   h.host.capture.mockResolvedValue(shot(PREVIOUS))
 })
 
 describe('inspect_preview on a local address that redirects to a website', () => {
   it('says so instead of handing back the previous document as the preview', async () => {
-    h.host.goto.mockResolvedValue({ ...pageAt(PREVIOUS), blocked: SHOP })
+    redirectsTo(SHOP)
     await expect(h.inspectPreview!(THREAD)).rejects.toThrow(/redirects to https:\/\/shop\.test, not your local app/)
     expect(h.host.capture).not.toHaveBeenCalled()
   })
 
   it('says so from a blank page too, instead of "now on null"', async () => {
     h.host.ensure.mockResolvedValue(pageAt(''))
-    h.host.goto.mockResolvedValue({ ...pageAt(''), blocked: SHOP })
+    redirectsTo(SHOP)
     const outcome = await h.inspectPreview!(THREAD).then(() => undefined, (e: Error) => e.message)
     expect(outcome).toMatch(/shop\.test/)
     expect(outcome).not.toMatch(/null/)
@@ -154,6 +163,14 @@ describe('inspect_preview on a local address that redirects to a website', () =>
     expect(h.host.goto).toHaveBeenCalledWith('thread:t1', APP)
   })
 
+  it('arms the local-preview guard before the page is restored, even when nothing needs loading', async () => {
+    h.host.ensure.mockResolvedValue(pageAt('http://127.0.0.1:5173/about'))
+    h.host.capture.mockResolvedValue(shot('http://127.0.0.1:5173/about'))
+    await h.inspectPreview!(THREAD)
+    expect(h.host.guardNavigation.mock.invocationCallOrder[0]).toBeLessThan(h.host.ensure.mock.invocationCallOrder[0]!)
+    await expect(h.guard!(SHOP)).rejects.toThrow(/redirects to https:\/\/shop\.test, not your local app/)
+  })
+
   it('does not navigate a page that is already on that app (control)', async () => {
     h.host.ensure.mockResolvedValue(pageAt('http://127.0.0.1:5173/about'))
     h.host.capture.mockResolvedValue(shot('http://127.0.0.1:5173/about'))
@@ -164,7 +181,7 @@ describe('inspect_preview on a local address that redirects to a website', () =>
 
 describe('open_preview on a local address that redirects to a website', () => {
   it('stops at the gate: an error naming the website, and the pane is not told to show it', async () => {
-    h.host.goto.mockResolvedValue({ ...pageAt(PREVIOUS), blocked: SHOP })
+    redirectsTo(SHOP)
     await expect(h.openUrl!(THREAD)).rejects.toThrow(/redirects to https:\/\/shop\.test, not your local app/)
     expect(h.sent.filter((s) => s.channel === 'cockpit:preview-open')).toHaveLength(0)
   })
@@ -174,6 +191,15 @@ describe('open_preview on a local address that redirects to a website', () => {
     await h.openUrl!(THREAD)
     expect(h.host.goto).toHaveBeenCalledWith('thread:t1', APP)
     expect(h.service.load).not.toHaveBeenCalled()
+  })
+
+  it('arms the local-preview guard before the page is restored or loaded, and it lets only a local app through', async () => {
+    h.host.goto.mockResolvedValue(pageAt(APP))
+    await h.openUrl!(THREAD)
+    expect(h.host.guardNavigation).toHaveBeenCalledWith('thread:t1', expect.any(Function))
+    expect(h.host.guardNavigation.mock.invocationCallOrder[0]).toBeLessThan(h.host.ensure.mock.invocationCallOrder[0]!)
+    await expect(h.guard!(APP)).resolves.toBeUndefined()
+    await expect(h.guard!(SHOP)).rejects.toThrow(/not your local app/)
   })
 
   it('shows the pane once the page is on the app (control)', async () => {

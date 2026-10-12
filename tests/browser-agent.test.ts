@@ -19,10 +19,12 @@ function harness(start = 'http://localhost:5173/') {
   const answers: Array<ApprovalBehavior | Error> = []
   let run: string | undefined = 'r1'
   let changed: string | undefined
+  let authorize: (url: string) => Promise<void> = async () => {}
   const host: BrowserHost = {
+    guardNavigation: (_key, guard) => { authorize = guard },
     info: (key) => (key === 'thread:t1' ? page() : undefined),
     ensure: async () => page(),
-    goto: async (_key, next) => { url = next; revision++; return page() },
+    goto: async (_key, next) => { await authorize(next); url = next; revision++; return page() },
     historyUrl: () => 'https://back.test/',
     history: async () => page(),
     read: async () => { if (changed) throw new Error(changed); return { page: page(), text: 'hello', elements: [], scroll: { x: 0, y: 0 }, truncated: false } },
@@ -199,6 +201,7 @@ function pageAt(url: string): AgentPageInfo {
 }
 function hostFor(url: string): BrowserHost {
   return {
+    guardNavigation: () => {},
     info: () => pageAt(url), ensure: async () => pageAt(url), goto: async () => pageAt(url), historyUrl: () => undefined, history: async () => pageAt(url),
     read: async () => ({ page: pageAt(url), text: '', elements: [], scroll: { x: 0, y: 0 }, truncated: false }),
     capture: async () => ({ data: '', mimeType: 'image/png', width: 1, height: 1, page: pageAt(url) }),

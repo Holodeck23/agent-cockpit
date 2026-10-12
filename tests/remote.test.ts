@@ -134,6 +134,25 @@ async function setup(existingTarget?: string) {
   return { server, ts, local, root }
 }
 
+it('answers malformed phone request targets without hanging or losing the listener', async () => {
+  const { server, local } = await setup()
+  try {
+    await local('/api/remote', { enabled: true })
+    const port = server.remote.port()!
+    for (const path of ['//', '///']) {
+      const status = await new Promise<number>((resolve) => {
+        // No identity or device token: malformed input must not fail before the access guard.
+        const req = request({ host: '127.0.0.1', port, path, agent: false }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+        req.setTimeout(750, () => req.destroy())
+        req.on('error', () => resolve(0))
+        req.end()
+      })
+      expect(status).toBe(400)
+    }
+    expect((await call(port, '/', { headers: { host: HOST, 'x-forwarded-proto': 'https', 'tailscale-user-login': OWNER } })).status).toBe(200)
+  } finally { await server.close() }
+})
+
 const viaTailscale = (extra: Record<string, string> = {}) =>
   ({ host: HOST, 'x-forwarded-proto': 'https', 'tailscale-user-login': OWNER, ...extra })
 

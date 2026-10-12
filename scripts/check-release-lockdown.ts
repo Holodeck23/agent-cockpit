@@ -51,7 +51,7 @@ check('fuse: Node --inspect arguments are disabled', /EnableNodeCliInspectArgume
 check('fuse: NODE_OPTIONS is disabled', /EnableNodeOptionsEnvironmentVariable is Disabled/.test(fuseText))
 check('fuse: RunAsNode stays enabled (the cockpit MCP server needs it)', /RunAsNode is Enabled/.test(fuseText))
 
-for (const [flag, port] of [['--remote-debugging-port=9222', 9222], ['--inspect=9229', 9229]] as const) {
+for (const [flag, port] of [['--remote-debugging-port=9222', 9222], ['-remote-debugging-port=9222', 9222], ['--inspect=9229', 9229], ['-inspect=9229', 9229]] as const) {
   const busy = await listening(port)
   const { child } = launch([flag])
   const code = await exited(child, 15_000)

@@ -1,6 +1,5 @@
 import { realpathSync } from 'node:fs'
 import { shell, WebContentsView, session as sessions, type BrowserWindow, type Session, type WebContents } from 'electron'
-import { originClass, originOf } from '../server/browser/agent-policy.ts'
 import { evictions, isAllowedRequest, isNavigable, partitionFor, RESIDENCY, roomForPage, validBounds, type Bounds, type ResidentPage } from './browser-policy.ts'
 import { withinTime } from './one-at-a-time.ts'
 
@@ -41,8 +40,8 @@ interface Page {
   lastUsed: number
   downloads: number
   reloaded: boolean
-  /** While an agent's navigation settles (watchNavigation): what it may land on, and the hop that was stopped. */
-  agentNav?: { readonly allowed: ReadonlySet<string>; blocked?: string }
+  /** Why the guard refused the navigation in flight: Chromium reports only ERR_BLOCKED_BY_CLIENT afterwards. */
+  denied?: string
 }
 
 /** A page's size before the pane has ever placed it (an agent opened it in the background). */
@@ -72,6 +71,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   const pages = new Map<string, Page>()
   const guarded = new Set<Session>()
   const destroyedListeners = new Set<(key: string) => void>()
+  const navigationGuards = new Map<string, (url: string) => Promise<void>>()
   const limits = deps.limits ?? RESIDENCY
   /** Pages Cockpit unloaded while idle, with the address each was on. */
   const unloaded = new Map<string, string>()
@@ -85,7 +85,27 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   function guard(web: Session): void {
     if (guarded.has(web)) return
     guarded.add(web)
-    web.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !isAllowedRequest(details.url, deps.cockpitPorts()) }))
+    web.webRequest.onBeforeRequest((details, callback) => {
+      if (!isAllowedRequest(details.url, deps.cockpitPorts())) { callback({ cancel: true }); return }
+      if (details.resourceType !== 'mainFrame') { callback({ cancel: false }); return }
+      const entry = [...pages].find(([, p]) => p.view.webContents.id === details.webContentsId)
+      // A request without a live owner must not inherit a different page's approval.
+      if (!entry) { callback({ cancel: true }); return }
+      const [key, page] = entry
+      const authorize = navigationGuards.get(key)
+      if (!authorize) { callback({ cancel: false }); return } // Explicit human navigation.
+      // Unlike did-navigate, this holds the request before HTTP data/cookies reach the destination.
+      void Promise.resolve().then(() => authorize(details.url)).then(() => {
+        callback({ cancel: pages.get(key) !== page || navigationGuards.get(key) !== authorize })
+      }, (error: unknown) => {
+        if (pages.get(key) === page && navigationGuards.get(key) === authorize) {
+          page.denied = error instanceof Error ? error.message : 'Navigation was denied'
+          page.error = { code: -20, description: page.denied, url: details.url }
+          publish(key)
+        }
+        callback({ cancel: true })
+      })
+    })
     web.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
     web.setPermissionCheckHandler(() => false)
     // Downloads: no save path is set, so Electron asks the person where to save (or they cancel).
@@ -137,18 +157,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     contents.on('will-navigate', stay)
     contents.on('will-redirect', stay)
     contents.on('will-frame-navigate', (details) => { if (!isAllowedRequest(details.url, deps.cockpitPorts())) details.preventDefault() })
-    // An agent's navigation may not carry the page to a remote site nobody approved (a local address answering
-    // with a redirect to one): that hop is stopped before its request goes out, and noted for the agent's call to ask about.
-    const gate = (details: { readonly url: string; readonly isMainFrame: boolean; preventDefault(): void }): void => {
-      const nav = page.agentNav
-      if (!nav || !details.isMainFrame || originClass(details.url, deps.cockpitPorts()) !== 'remote' || nav.allowed.has(originOf(details.url)!)) return
-      details.preventDefault()
-      nav.blocked = details.url
-    }
-    contents.on('will-navigate', gate)
-    contents.on('will-redirect', gate)
-    contents.on('will-frame-navigate', gate)
-    contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) page.error = undefined })
+    contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) { page.error = undefined; page.denied = undefined } })
     contents.on('did-navigate', () => bump(page))
     contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => { if (isMainFrame) bump(page) })
     // A page dropped by close() or forgetAll() was announced there. Its WebContents finishes
@@ -160,7 +169,8 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     })
     contents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
       // -3 is an aborted load: a new navigation replaced it, or Stop.
-      if (isMainFrame && code !== -3) page.error = { code, description, url }
+      // The guard's own reason replaces Chromium's generic one for the request the guard cancelled.
+      if (isMainFrame && code !== -3) page.error = { code, description: code === -20 && page.denied ? page.denied : description, url }
       publish(key)
     })
     contents.on('will-prevent-unload', (event) => event.preventDefault())
@@ -227,6 +237,8 @@ export function createBrowserService(deps: BrowserServiceDeps) {
   }
 
   const service = {
+    /** Agent policy remains attached until this page closes or the person explicitly navigates. */
+    guardNavigation(key: string, authorize: (url: string) => Promise<void>): void { navigationGuards.set(key, authorize) },
     /** Opens `url` in the conversation's page, creating it in the workspace's partition if needed. */
     async open(key: string, projectPath: string, url: string): Promise<PageState | { error: string } | CapacityRefusal> {
       if (!isNavigable(url, deps.cockpitPorts())) return { error: 'Only http and https pages open here, and not Cockpit itself.' }
@@ -235,8 +247,10 @@ export function createBrowserService(deps: BrowserServiceDeps) {
         if (full) return full
       }
       const page = pages.get(key) ?? create(key, projectPath)
+      navigationGuards.delete(key)
       touch(page)
       page.error = undefined
+      page.denied = undefined
       // Not awaited: a page that never finishes loading must not hold the caller. Progress,
       // the final address and any error arrive as state events.
       void page.view.webContents.loadURL(url).catch(() => undefined)
@@ -250,21 +264,9 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       if (!isNavigable(url, deps.cockpitPorts())) return 'Only http and https pages open here, and not Cockpit itself.'
       touch(page)
       page.error = undefined
+      page.denied = undefined
       void page.view.webContents.loadURL(url).catch(() => undefined)
       return undefined
-    },
-        /**
-     * Until the returned function is called, a main-frame hop to a remote origin outside `allow` is stopped.
-     * The function ends the watch and returns the address of the hop that was stopped, if any.
-     */
-    watchNavigation(key: string, allow: readonly string[]): () => string | undefined {
-      const page = pages.get(key)
-      const nav = { allowed: new Set(allow) as ReadonlySet<string>, blocked: undefined as string | undefined }
-      if (page) page.agentNav = nav
-      return () => {
-        if (page && page.agentNav === nav) page.agentNav = undefined
-        return nav.blocked
-      }
     },
     /** The page's place in the window; undefined hides it. Showing one page hides the others. */
     place(key: string, rect: unknown): void {
@@ -283,9 +285,10 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       page.view.setBounds(bounds)
       page.view.setVisible(true)
     },
-    navigate(key: string, action: NavAction): void {
+    navigate(key: string, action: NavAction, agent = false): void {
       const contents = pages.get(key)?.view.webContents
       if (!contents) return
+      if (!agent && action !== 'stop') navigationGuards.delete(key)
       touch(pages.get(key))
       if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
       else if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward()
@@ -305,6 +308,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
       const page = pages.get(key)
       if (!page) return
       pages.delete(key)
+      navigationGuards.delete(key)
       if (lastShown === key) lastShown = undefined
       const win = deps.window()
       if (page.attached && win && !win.isDestroyed()) win.contentView.removeChildView(page.view)
@@ -324,6 +328,7 @@ export function createBrowserService(deps: BrowserServiceDeps) {
     forgetAll(): void {
       const forgotten = [...pages]
       pages.clear()
+      navigationGuards.clear()
       lastShown = undefined
       for (const [, page] of forgotten) if (!page.view.webContents.isDestroyed()) page.view.webContents.close()
       for (const [key] of forgotten) notifyDestroyed(key)

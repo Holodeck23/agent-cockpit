@@ -169,11 +169,13 @@ export function createRemoteAccess({ store, tailscale, serveStatic, port: portOv
   async function listen(port: number): Promise<void> {
     if (server?.listening) return
     const next = createServer((req, res) => {
+      // handleRemote answers a malformed target itself (400, before the access guard). Anything else it did not
+      // answer is logged and answered here, and the connection is closed: a failed request is never kept alive,
+      // and the phone's socket is never left hanging.
       void handleRemote(req, res).catch((err: unknown) => {
-        // Anything handleRemote did not answer itself: log it, and never leave the phone's socket hanging.
         console.warn('[cockpit] phone request failed:', err instanceof Error ? err.message : err)
         if (res.headersSent) return void res.destroy()
-        res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
+        res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8', 'connection': 'close' })
         res.end('Request failed')
       })
     })

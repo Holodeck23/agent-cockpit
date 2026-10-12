@@ -86,13 +86,9 @@ const IN_PROGRESS: readonly (readonly [string, string])[] = [
   ['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert'], ['BISECT_LOG', 'bisect'],
 ]
 
-const out = async (cwd: string, args: readonly string[], timeout?: number, maxBuffer?: number): Promise<string | undefined> => {
-  try { return (await run(cwd, args, timeout, maxBuffer)).stdout } catch { return undefined }
+const out = async (cwd: string, args: readonly string[]): Promise<string | undefined> => {
+  try { return (await run(cwd, args)).stdout } catch { return undefined }
 }
-
-/** The status read is the only guard for ignored files, so it gets room for a worktree full of them. */
-const STATUS_TIMEOUT_MS = 60_000
-const STATUS_MAX_BYTES = 64_000_000
 
 /** Counts `git status --porcelain=v1 -z` entries by kind (a rename carries its old path as the next field). */
 export function countStatus(output: string): Pick<UniqueWork, 'changed' | 'untracked' | 'ignored'> {
@@ -142,17 +138,20 @@ export function createWorktreeLifecycle({ workspaces, activeIn }: LifecycleDeps)
     if (!exists) blockers.push('Its folder is gone.')
     const head = exists ? (await out(workspace.cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']))?.trim() : undefined
     const gitDir = exists ? (await out(workspace.cwd, ['rev-parse', '--absolute-git-dir']))?.trim() : undefined
+    if (exists && !head) blockers.push('Git could not verify the worktree commit; removal is blocked.')
+    if (exists && !gitDir) blockers.push('Git could not locate its operation state; removal is blocked.')
     for (const [marker, operation] of IN_PROGRESS) if (gitDir && existsSync(join(gitDir, marker))) blockers.push(`A Git ${operation} is in progress in it.`)
-    const read = exists ? await out(workspace.cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'], STATUS_TIMEOUT_MS, STATUS_MAX_BYTES) : ''
-    // A state Git could not report is not an empty one: nothing is removed on a guess.
-    if (exists && (read === undefined || head === undefined)) blockers.push('Git could not report what is in it, so Cockpit does not remove it.')
-    const status = read ?? ''
-    const counts = countStatus(status)
+    const status = exists ? await out(workspace.cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching']) : undefined
+    // Timeout, output overflow and every other Git error mean unknown, never "clean".
+    // Normal git worktree remove deletes ignored files, so Git's own refusal is not a fallback.
+    if (exists && status === undefined) blockers.push('Git could not complete the file status check; removal is blocked. Keep or archive this worktree.')
+    const counts = countStatus(status ?? '')
     // Commits only this worktree's branch holds: every other branch, tag and remote is "elsewhere".
     const branch = workspace.branch
     const commits = head
       ? Number((await out(workspace.cwd, ['rev-list', '--count', head, '--not', ...(branch ? [`--exclude=${branch}`] : []), '--branches', '--tags', '--remotes']))?.trim() ?? 'NaN')
-      : 0
+      : NaN
+    if (!Number.isInteger(commits) || commits < 0) blockers.push('Git could not verify whether this worktree has unique commits; removal is blocked.')
     const unique: UniqueWork = { ...counts, commits: Number.isFinite(commits) ? commits : 1 }
     const nothingUnique = unique.changed === 0 && unique.untracked === 0 && unique.ignored === 0 && unique.commits === 0
     const fingerprint = createHash('sha256').update(JSON.stringify([workspace.revision, head ?? '', status, unique.commits, blockers])).digest('hex').slice(0, 32)

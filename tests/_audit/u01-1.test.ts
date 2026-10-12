@@ -54,6 +54,8 @@ vi.mock('electron', async () => {
   return {
     app: {
       requestSingleInstanceLock: () => true,
+      // main.ts asks Electron's own command-line parser which debugger switches were passed.
+      commandLine: { hasSwitch: () => false },
       on: vi.fn(),
       whenReady: () => Promise.resolve(),
       getPath: () => process.env.COCKPIT_HOME,
