@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -20,6 +20,8 @@ function setup(over: Partial<AccountSessions> = {}) {
   for (const dir of [join(home, '.claude'), join(home, '.codex')]) mkdirSync(dir, { recursive: true })
   writeFileSync(join(home, '.claude', '.fixture-identity'), 'a@example.com 10\n')
   writeFileSync(join(home, '.codex', '.fixture-identity'), 'a@example.com 10\n')
+  writeFileSync(join(home, '.claude', 'CLAUDE.md'), 'shared Claude rules\n')
+  writeFileSync(join(home, '.codex', 'AGENTS.md'), 'shared Codex rules\n')
   const calls: Array<{ kind: string; args: unknown[] }> = []
   const sessions: AccountSessions = {
     activity: () => ({ busy: 0, queued: 0 }),
@@ -33,6 +35,7 @@ function setup(over: Partial<AccountSessions> = {}) {
     stateRoot: join(root, 'state'),
     executable: async (agent) => join(FIXTURE, agent),
     env: () => ({ PATH: process.env.PATH ?? '', HOME: home }),
+    homeDir: home,
     sessions,
     timeoutMs: { signin: 15_000, logout: 5_000 },
   })
@@ -133,11 +136,16 @@ async function addClaude(service: ReturnType<typeof setup>['service'], label: st
 describe('choosing an account for a project (W12-02)', () => {
   it('changes an idle project and rebinds it; refuses while a conversation works or has a queued message', async () => {
     let activity = { busy: 0, queued: 0 }
-    const { service, calls } = setup({ activity: () => activity })
+    const { service, calls, home } = setup({ activity: () => activity })
     const b = await addClaude(service, 'B', 'b@example.com')
     expect((await service.select('/idle', 'claude', b.id)).claude).toBe(b.id)
     expect(calls).toMatchObject([{ kind: 'rebind', args: ['/idle', 'claude', { accountId: b.id, label: 'B' }] }])
     expect(service.resolve('/idle', 'claude').env).toHaveProperty('CLAUDE_CONFIG_DIR')
+    const profileDir = service.resolve('/idle', 'claude').env.CLAUDE_CONFIG_DIR!
+    expect(lstatSync(join(profileDir, 'CLAUDE.md')).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(join(profileDir, 'CLAUDE.md'))).toBe(join(home, '.claude', 'CLAUDE.md'))
+    expect(readFileSync(join(profileDir, 'CLAUDE.md'), 'utf8')).toBe('shared Claude rules\n')
+    expect(readdirSync(profileDir)).not.toContain('AGENTS.md')
     expect(service.resolve('/other', 'claude').env).toEqual({})
 
     activity = { busy: 1, queued: 0 }
