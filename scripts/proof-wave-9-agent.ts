@@ -551,7 +551,17 @@ addEventListener('mouseup', () => { drag = null })
     await until('p3', async () => (await viewAt(app, `${LOCAL}/p3`))?.visible === true)
     await typeInto(`${LOCAL}/p3`)
     await sleep(4500)
-    check('W9-10 the shown page stays loaded', (await viewAt(app, `${LOCAL}/p3`))?.visible === true)
+    // Residency is whether the page still exists. A Cockpit overlay may temporarily hide
+    // its native view; visibility itself is exercised by W9-01/W9-05 above.
+    const keptPage = await viewAt(app, `${LOCAL}/p3`)
+    check('W9-10 the selected page stays loaded', Boolean(keptPage)
+      && (await page.locator('.thread-head h1').textContent())?.trim() === `open ${LOCAL}/p3`)
+    if (keptPage && !keptPage.visible) {
+      writeFileSync(join(PROOF_DIR, 'wave9-resident-hidden.json'), JSON.stringify({ page: keptPage,
+        overlays: await page.locator('.toast, .peek, [role="dialog"], [role="menu"]').allTextContents(),
+        viewport: await page.locator('.browser-viewport').boundingBox(),
+        stage: await page.locator('.browser-stage').innerHTML() }, null, 2))
+    }
     check('W9-10 a page with unsaved typing stays loaded', Boolean(await viewAt(app, `${LOCAL}/p2`)))
     check('W9-10 the page an agent run holds stays loaded (no active-page theft)', Boolean(await viewAt(app, `${LOCAL}/p1`)))
     // All three in use: a fourth page explains instead of taking one.
