@@ -3,7 +3,7 @@
 // prompt. The email is hashed at once and only a hint is kept; tokens are never asked for.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { queryAppServer } from '../codex/app-server-query.ts'
+import { queryAppServer, type AppServerQuery } from '../codex/app-server-query.ts'
 import type { AgentId } from '../types.ts'
 import type { IdentityObservation } from './types.ts'
 
@@ -23,6 +23,7 @@ export interface IdentityProbeOptions {
   /** The full environment for the CLI: the profile's context variable is already in it. */
   readonly env: Readonly<Record<string, string>>
   readonly timeoutMs?: number
+  readonly query?: AppServerQuery
 }
 
 export type IdentityProbe = (agent: AgentId, options: IdentityProbeOptions) => Promise<IdentityObservation>
@@ -66,8 +67,8 @@ function claudeIdentity({ executable, env, timeoutMs = TIMEOUT_MS }: IdentityPro
   })
 }
 
-async function codexIdentity({ executable, env, timeoutMs = TIMEOUT_MS }: IdentityProbeOptions): Promise<IdentityObservation> {
-  const answer = await queryAppServer(executable, 'account/read', {}, { env, timeoutMs })
+async function codexIdentity({ executable, env, timeoutMs = TIMEOUT_MS, query = queryAppServer }: IdentityProbeOptions): Promise<IdentityObservation> {
+  const answer = await query(executable, 'account/read', {}, { env, timeoutMs })
   return answer.error !== undefined ? unknown('codex account/read', answer.error) : codexIdentityFrom(answer.result)
 }
 

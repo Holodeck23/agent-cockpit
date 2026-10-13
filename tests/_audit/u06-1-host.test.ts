@@ -270,17 +270,19 @@ describe('u06-1: goto waits for each ask in a redirect chain for its own approva
     expect(contents.url).toBe(SECOND)
   })
 
-  it('an ask nobody answers still ends the wait (with the page still loading), at its own window', async () => {
+  it('an unanswered ask does not expire and the navigation finishes after it is answered', async () => {
     vi.useFakeTimers()
     const { host } = await setup()
-    host.guardNavigation(KEY, () => new Promise<void>(() => {}))
+    let answer: (() => void) | undefined
+    host.guardNavigation(KEY, () => new Promise<void>((resolve) => { answer = resolve }))
     let settled = false
     const landing = host.goto(KEY, REMOTE).finally(() => { settled = true })
-    await vi.advanceTimersByTimeAsync(55_000)
+    await vi.advanceTimersByTimeAsync(80_000)
     expect(settled).toBe(false)
-    await vi.advanceTimersByTimeAsync(25_000)
+    answer!()
+    await vi.advanceTimersByTimeAsync(16_000)
     expect(settled).toBe(true)
-    expect(await landing).toMatchObject({ loading: true })
+    expect(await landing).toMatchObject({ url: REMOTE, loading: false })
   })
 })
 

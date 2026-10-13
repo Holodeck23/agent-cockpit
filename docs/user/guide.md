@@ -1,6 +1,6 @@
 # User Guide
 
-> **v0.1.7 prerelease.** This guide describes Cockpit 0.1.7: worktrees, account profiles, the handoff review before switching agents, phone live preview, Feedback, the Terminal install and the beta terms are all covered below. Independent other-Mac acceptance of this version is still open; see the [tester checklist](tester-checklist.md).
+> **v0.1.8 candidate.** The public prerelease remains v0.1.7. This guide describes the v0.1.8 candidate: worktrees, account profiles, the handoff review before switching agents, phone live preview, Feedback, the Terminal install and the beta terms are all covered below. Independent other-Mac acceptance of this version is still open; see the [tester checklist](tester-checklist.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
@@ -50,7 +50,7 @@ A project can run Claude Code or Codex on an account other than your CLI's defau
 -   **File and commit links:** `src/app.ts:42` in a reply opens Files with that line selected (ranges like `:10-20` too). A commit hash opens the commit on GitHub, GitLab or Bitbucket when the project's `origin` is there; otherwise it copies the hash. Agents are asked to name their commits by short hash.
 -   **Find:** ⌘F highlights matches in the open conversation and lists the matching messages under the bar; click one to jump to it.
 -   **Reading while it works:** the conversation stays where you are reading while the agent writes; **Jump to latest** brings you back to the end. **Copy** on a message puts its text on the clipboard. The conversation list can be resized by dragging its edge.
--   **Mac notifications:** Cockpit notifies you when an agent finishes or needs you, and clicking the notification opens that conversation. The conversation you are looking at makes no sound and shows no banner. A completed conversation never counts as needing you.
+-   **Mac notifications:** Cockpit notifies you when an agent finishes or needs you, and clicking the notification opens that conversation. Ordinary replies stay quiet in the conversation you are looking at; a pending decision still calls for attention. Decision sounds are on by default and can be switched off in Settings. A completed conversation never counts as needing you.
 -   **Dismiss:** a question from the agent can be dismissed without answering; the agent carries on without the answers.
 -   **Search:** The list's search looks through every message, not just titles, and includes completed conversations while you search.
 -   **Peek:** Hover a file or workflow clip on a sent message to see inside it; **Open in Files** opens the file.
@@ -129,7 +129,7 @@ A worktree is a separate checkout of the project on its own branch, so an agent 
 
 ## Agent-to-Agent MCP
 
-Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their own workspace. Tools marked *Cockpit asks* show Cockpit's own approval card. It appears however the agent calls the tool, and you have 45 seconds to answer before the request lapses; the agent can ask again.
+Cockpit exposes a Model Context Protocol (MCP) server so agents can manage their own workspace. Tools marked *Cockpit asks* show Cockpit's own approval card. It appears however the agent calls the tool, and it waits until you answer or the calling turn ends. Stop cancels an unanswered request; the agent can ask again on a new turn.
 -   **Available Now:**
     -   `list_conversations`: Lists conversations within the calling project.
     -   `read_conversation`: Reads a specific conversation within the calling project.

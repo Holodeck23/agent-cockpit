@@ -14,6 +14,7 @@ import { createCapabilityService, type CapabilityService } from './agents/capabi
 import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createAccountService, type AccountService } from './agents/accounts/service.ts'
+import { createAppServerQueryScope } from './agents/codex/app-server-query.ts'
 import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
 import { createProcessRunner, type ProcessRunner } from './processes/runner.ts'
@@ -203,7 +204,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agentWorkflowsAllowed = (projectPath: string): boolean =>
     projects.list({ includeHidden: true }).find((p) => p.path === projectPath)?.agentWorkflows === true
   // Tests that fake the version check get a fixed record: no real CLI is run.
-  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService({ listingsFile: join(root, 'agy-models.json') }))
+  const appServerQueries = createAppServerQueryScope()
+  const capabilities = options.capabilities ?? (options.agentProbe ? fixedCapabilities(options.agentProbe) : createCapabilityService({ listingsFile: join(root, 'agy-models.json'), query: appServerQueries.query }))
   const agyMcp = createAgyMcp(projects, options.mcp)
   // Created after the manager it watches; the manager asks it before starting a session.
   let lifecycle: Lifecycle | undefined
@@ -246,6 +248,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agentLifecycle = lifecycle
   accounts = createAccountService({
     stateRoot: root,
+    query: appServerQueries.query,
     // The CLI a launch would run: the resolved one when found, else its command on PATH.
     executable: async (agent) => {
       const caps = await capabilities.get(agent)
@@ -392,7 +395,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     closing ??= (async () => {
       workflows.runner.close()
       stopNotifier()
-      await Promise.all([manager.shutdown(), processes.shutdown(), remote.close(), phonePreviews.dispose(), checks.shutdown(), agentLifecycle.shutdown(), accountService.shutdown()])
+      await Promise.all([appServerQueries.close(), manager.shutdown(), processes.shutdown(), remote.close(), phonePreviews.dispose(), checks.shutdown(), agentLifecycle.shutdown(), accountService.shutdown()])
       runObserver.stop()
       await runObserver.settle()
       await new Promise<void>((resolve) => {

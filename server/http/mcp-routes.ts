@@ -73,18 +73,16 @@ export interface McpRouteDeps {
   readonly browser?: BrowserAgent
 }
 
-const APPROVAL_SECONDS = 45
-
 /** Runs `action` only after the user approves it; the approval is dropped if the agent hangs up. */
 async function approved<T>(deps: McpRouteDeps, grant: McpGrant, res: ServerResponse, tool: string, input: Record<string, unknown>,
-  options: Omit<HostActionOptions, 'timeoutMs' | 'label'> & { description: string }, action: () => T | Promise<T>): Promise<T> {
+  options: Omit<HostActionOptions, 'label'> & { description: string }, action: () => T | Promise<T>): Promise<T> {
   if (!deps.approve) throw new HttpError(503, 'Cockpit cannot ask for approval here')
   const abort = new AbortController()
   const disconnected = (): void => { if (!res.writableEnded) abort.abort() }
   res.once('close', disconnected)
   try {
-    await deps.approve(grant, `mcp__cockpit__${tool}`, input, { ...options, label: 'Cockpit action', timeoutMs: APPROVAL_SECONDS * 1000,
-      description: `${options.description} Answer within ${APPROVAL_SECONDS} seconds.` }, abort.signal)
+    await deps.approve(grant, `mcp__cockpit__${tool}`, input, { ...options, label: 'Cockpit action',
+      description: `${options.description} Cockpit waits until you answer or this turn ends.` }, abort.signal)
       .catch((error: Error) => { throw new HttpError(409, error.message) })
   } finally { res.removeListener('close', disconnected) }
   return action()

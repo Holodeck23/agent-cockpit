@@ -149,8 +149,8 @@ try {
   await page.getByRole('button', { name: 'Reopen' }).first().click()
   check('B4 reopening does not bring the question back', await until('still no badge', async () => (await badge()) === '', 1500) || (await badge()) === '')
 
-  // B1 + B2: other conversations notify (and chime); the one you are looking at stays quiet.
-  await page.evaluate(() => localStorage.setItem('cockpit:sounds', JSON.stringify({ reply: true, decision: true })))
+  // B1 + B2: other replies notify; a focused decision still calls for attention.
+  await page.evaluate(() => localStorage.setItem('cockpit:sounds-v2', JSON.stringify({ reply: true, decision: true })))
   await page.reload()
   await page.getByRole('tab', { selected: true }).first().waitFor()
   await setLooking(app, page, true)
@@ -180,10 +180,12 @@ try {
   check('B2 and does not chime', (await heard()) === 'reply', await heard())
   await app.evaluate(() => { (globalThis as unknown as { proofNotes: Electron.Notification[] }).proofNotes[0]!.emit('click') })
   check('B1 clicking the notification opens its conversation', await until('Long history opened', async () => (await page.getByRole('heading', { level: 1, name: 'Long history' }).count()) === 1))
-  await setLooking(app, page, false)
+  await setLooking(app, page, true)
   await page.getByRole('textbox', { name: 'Message' }).fill('ask')
   await page.getByRole('textbox', { name: 'Message' }).press('Enter')
-  check('B1 away from the window, even the open conversation notifies, with its question', await until('the question notification', async () => (await notes()).some((n) => n === 'Long history | Question: Staging or production?')), (await notes()).join(' / '))
+  check('B1 the focused conversation still notifies with its question', await until('the question notification', async () => (await notes()).some((n) => n === 'Long history | Question: Staging or production?')), (await notes()).join(' / '))
+  check('D24 the title makes the pending decision visible', await page.title() === 'Waiting on you · Cockpit')
+  check('D24 the focused decision sounds', await until('decision sound', async () => (await heard()).includes('decision')), await heard())
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('dialog', { name: 'Settings' }).getByRole('checkbox', { name: /^When an agent finishes a turn/ }).uncheck()
   await shot(page, 'b1-settings')

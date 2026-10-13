@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { NormalizedEvent } from '../server/agents/types.ts'
 import { createHostActions } from '../server/threads/host-actions.ts'
 
@@ -49,6 +49,7 @@ it('records deadlines, expiry and cancellation separately from a person denying'
   expect(events.at(-1)).toMatchObject({ behavior: 'deny', outcome: 'expired' })
   const controller = new AbortController()
   const canceled = actions.request('t', 'Read', {}, controller.signal)
+  expect(events.at(-1)).not.toHaveProperty('expiresAt')
   controller.abort()
   await expect(canceled).rejects.toThrow('disconnected')
   expect(events.at(-1)).toMatchObject({ behavior: 'deny', outcome: 'canceled' })
@@ -57,4 +58,26 @@ it('records deadlines, expiry and cancellation separately from a person denying'
   actions.approve('t', request.requestId, 'deny')
   await expect(denied).rejects.toThrow('denied by the user')
   expect(events.at(-1)).toEqual({ kind: 'approval_resolved', requestId: request.requestId, behavior: 'deny' })
+})
+
+
+it('keeps an unanswered host action blocked past the old deadline and cancels it when the turn ends', async () => {
+  vi.useFakeTimers()
+  try {
+    const events: NormalizedEvent[] = []
+    const actions = createHostActions((_id, event) => events.push(event))
+    const settled = vi.fn()
+    const waiting = actions.request('t', 'mcp__cockpit__start_process', { command: 'npm run dev' })
+      .then(settled, (error: Error) => { settled(error.message) })
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(settled).not.toHaveBeenCalled()
+    expect(events).toHaveLength(1)
+    expect(events[0]).not.toHaveProperty('expiresAt')
+    actions.cancel('t')
+    await waiting
+    expect(settled).toHaveBeenCalledWith('The calling turn ended; the Cockpit action was canceled')
+    expect(events.at(-1)).toMatchObject({ kind: 'approval_resolved', behavior: 'deny', outcome: 'canceled' })
+    const request = events[0] as Extract<NormalizedEvent, { kind: 'approval_request' }>
+    expect(actions.approve('t', request.requestId, 'allow')).toBe(false)
+  } finally { vi.useRealTimers() }
 })

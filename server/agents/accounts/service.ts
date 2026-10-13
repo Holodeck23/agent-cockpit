@@ -13,6 +13,7 @@ import type { AccountRef, AgentId } from '../types.ts'
 import { ThreadBusyError } from '../../threads/manager.ts'
 import { accountEnv, NO_BROWSER, resolved } from './env.ts'
 import { observeIdentity, type IdentityProbe } from './identity.ts'
+import type { AppServerQuery } from '../codex/app-server-query.ts'
 import { ensureSharedInstructions } from './instructions.ts'
 import { createAccountStore, LABEL_MAX, type AccountStore } from './store.ts'
 import { defaultAccountId, DEFAULT_ONLY_REASON, PROFILE_ISOLATION, supportsProfiles, usageKeyOf, viewOf, type Account, type AccountView, type ResolvedAccount } from './types.ts'
@@ -35,6 +36,7 @@ export interface AccountServiceOptions {
   /** The agent's environment without any account variable; defaults to Cockpit's own minus its secrets. */
   readonly env?: () => Record<string, string>
   readonly probe?: IdentityProbe
+  readonly query?: AppServerQuery
   readonly sessions: AccountSessions
   readonly timeoutMs?: { readonly signin?: number; readonly logout?: number }
   /** Override for tests; managed profiles otherwise share rules from the current user's home. */
@@ -156,7 +158,7 @@ export function createAccountService(options: AccountServiceOptions) {
   }
 
   async function observe(account: Account): Promise<{ account: Account; changed: boolean }> {
-    const identity = await probe(account.agent, { executable: await options.executable(account.agent), env: envFor(account) })
+    const identity = await probe(account.agent, { executable: await options.executable(account.agent), env: envFor(account), query: options.query })
     const before = refOf(account)
     const result = store.observe(account.id, identity)
     if (result.changed) await options.sessions.identityChanged(account.id, resolve(result.account), before)
@@ -191,7 +193,7 @@ export function createAccountService(options: AccountServiceOptions) {
       return
     }
     update(id, { state: 'checking', message: 'Checking which account signed in…' })
-    const identity = await probe(agent, { executable, env })
+    const identity = await probe(agent, { executable, env, query: options.query })
     if (entry.cancelled) { await discard(agent, profileId, logFile); finish(id, 'cancelled', { message: `Sign-in cancelled. ${unchanged}` }); return }
     if (identity.state !== 'known') {
       await discard(agent, profileId, logFile)

@@ -2,7 +2,7 @@
 
 Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your existing subscriptions or provider setup. Supported agents include Claude Code, Codex, Google Antigravity, and OpenCode (OpenRouter is accessed through OpenCode).
 
-> **v0.1.8 prerelease:** A reliability release with more than 120 fixes across conversations, agents, files, accounts, worktrees and previews. Browser navigation requested by an agent now waits for approval before any request leaves the current page, and a denied navigation stays put. The release app rejects debugger switches and inspector options. Stop is now beside Send, so an active turn is always within reach. Built on v0.1.7's clearer approvals and v0.1.6's worktrees, account profiles, handoff review, phone live preview and one-line Terminal install. Not notarized; Apple-silicon Macs only.
+> **v0.1.8 candidate; public prerelease remains v0.1.7:** This reliability candidate with more than 120 fixes across conversations, agents, files, accounts, worktrees and previews. Browser navigation requested by an agent now waits for approval before any request leaves the current page, and a denied navigation stays put. The release app rejects debugger switches and inspector options. Stop is now beside Send, so an active turn is always within reach. Built on v0.1.7's clearer approvals and v0.1.6's worktrees, account profiles, handoff review, phone live preview and one-line Terminal install. Not notarized; Apple-silicon Macs only.
 
 ## Pick up where you left off
 

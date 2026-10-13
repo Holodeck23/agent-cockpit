@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> **v0.1.7 prerelease.** See the [user guide](guide.md) for what this version does.
+> **v0.1.8 candidate.** The public prerelease remains v0.1.7. See the [user guide](guide.md) for this candidate’s behavior.
 
 When issues occur, Cockpit is designed to fail safely and preserve your work.
 
@@ -57,7 +57,7 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 *   **Recovery:** Open it only if you know where it came from. Rename it in Files (**⋯ → Rename…**) if the characters were not intended.
 
 **Symptom:** An agent's request to start a process, remember something or save a workflow failed with "approval expired" or "denied".
-*   **Likely Cause:** Cockpit asks before an agent starts or stops a process, saves a memory or saves a workflow, and the card waits 45 seconds. If nobody answers in time, the request lapses.
+*   **Likely Cause:** Cockpit asks before an agent starts or stops a process, saves a memory or saves a workflow, and the card waits until you answer or the calling turn ends. Stop, disconnecting the tool, or ending the turn cancels the request.
 *   **Recovery:** Ask the agent to try again and answer the card. For processes, **Allow for this session** covers the rest of that agent session.
 
 **Symptom:** Cockpit warns about a file conflict when saving an edit.

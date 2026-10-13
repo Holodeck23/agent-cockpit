@@ -1,7 +1,7 @@
 // U7 settings-and-sounds gate, run against the PACKAGED app (npm run package first): `npm run proof:settings`.
 // No agent usage: the agent is the stand-in that asks for two approvals each turn (scripts/fixtures/ask-agent).
-// Sounds are off by default and stay silent; switched on in Settings, a waiting approval plays the decision
-// sound and the finished turn plays the reply sound; the choices survive a restart. The app announces each
+// Decision sounds are on by default, including the focused conversation; reply sounds stay opt-in.
+// Explicit choices survive a restart, including turning decisions off. The app announces each
 // sound it plays as a `cockpit:sound` window event, which is what this proof listens for.
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -50,16 +50,17 @@ page.setDefaultTimeout(15_000)
 
 try {
   await openProject(page, project, 'Settings demo')
-  // The user is in another app, so the open conversation chimes too (B2 silences it only while you look).
-  await setLooking(app, page, false)
+  // Decisions must also call for attention while this conversation is focused.
+  await setLooking(app, page, true)
   await listen(page)
-  await runTurn(page, 'First run with sounds off')
-  check('sounds are off by default: a decision and a reply play nothing', JSON.stringify(await heard(page)) === '[]', (await heard(page)).join(', '))
+  await runTurn(page, 'First run with decision sounds by default')
+  check('decisions sound by default while replies stay quiet', JSON.stringify(await heard(page)) === '["decision","decision"]', (await heard(page)).join(', '))
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await dialog(page).waitFor()
-  check('Settings opens from the top bar with both sounds off', !(await toggle(page, 'When an agent replies').isChecked())
-    && !(await toggle(page, 'When an agent needs a decision').isChecked()))
+  check('Settings opens with decisions on and replies off', !(await toggle(page, 'When an agent replies').isChecked())
+    && await toggle(page, 'When an agent needs a decision').isChecked())
+  await listen(page)
   await toggle(page, 'When an agent replies').check()
   await toggle(page, 'When an agent needs a decision').check()
   await dialog(page).getByRole('button', { name: 'Play the decision sound' }).click()
@@ -93,6 +94,18 @@ try {
   await runTurn(page, 'Third run, decisions only')
   const third = await heard(page)
   check('with replies off, only decisions sound', JSON.stringify(third) === JSON.stringify(['decision', 'decision']), third.join(', '))
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await toggle(page, 'When an agent needs a decision').uncheck()
+  await dialog(page).getByRole('button', { name: 'Done' }).click()
+  await app.close()
+  app = await launchPackagedApp(env)
+  page = await app.firstWindow()
+  await page.locator('.card').first().waitFor()
+  await setLooking(app, page, true)
+  await listen(page)
+  await runTurn(page, 'Explicit quiet choice after restart')
+  check('an explicit quiet choice survives restart', JSON.stringify(await heard(page)) === '[]', (await heard(page)).join(', '))
 } catch (error) {
   check('proof ran to the end', false, error instanceof Error ? error.message : String(error))
   await page.screenshot({ path: join(PROOF_DIR, 'proof-settings-failure.png') }).catch(() => {})

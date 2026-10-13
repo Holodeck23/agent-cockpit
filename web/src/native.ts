@@ -21,6 +21,8 @@ export interface CockpitBridge {
   pathForFile(file: File): string
   fileAction(request: { projectPath: string; space: 'project' | 'documents'; path: string; action: 'open' | 'reveal' | 'trash' }): Promise<string | undefined>
   setActivity(activity: { working: number; needs: number }): void
+  /** Makes a newly waiting decision visible in the Dock, even if its badge count did not change. */
+  requestAttention?(): void
   onPreviewOpen(listener: (preview: PreviewOpen) => void): () => void
   copyText(text: string): void
   /** Report a bug / Send feedback: opens a filled-in GitHub issue in the browser; the Mac's details are added here only when asked. */
