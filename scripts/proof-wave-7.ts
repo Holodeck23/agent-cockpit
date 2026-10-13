@@ -83,8 +83,10 @@ try {
   const review = await apiPost(page, '/api/workflows', { projectPath: project, name: 'review', title: 'Code review', prompt: 'Review the changes' }) as { data: { id: string } }
   await page.reload()
   await page.getByRole('button', { name: 'New conversation' }).click()
-  // A project opened for the first time offers its recent work; Start fresh is the plain empty state.
-  await page.getByRole('button', { name: 'Start fresh', exact: true }).click()
+  // Explicit New bypasses Recent work, including for a newly opened project (#70).
+  check('W7-02 explicit New opens the focused composer without recovery',
+    await until('new composer focus', () => messageBox(page).evaluate((el) => el === document.activeElement))
+    && await page.getByRole('region', { name: 'Recent work' }).count() === 0)
 
   // F16 / W7-02: + New workflow beside Browse workflows; the editor opens with its instructions focused, the draft stays.
   const links = page.locator('.workflow-card-links')
