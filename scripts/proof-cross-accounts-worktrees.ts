@@ -19,6 +19,7 @@ import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Locator, type Page } from 'playwright-core'
 import { checker, launchPackagedApp, LAUNCHD_PATH, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { openProject } from './lib/ui.ts'
+import { isolateProofInput } from './lib/proof-window-input.ts'
 
 const { check, finish } = checker()
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'cockpit-cross-acct-wt-')))
@@ -166,6 +167,7 @@ try {
     HOME: home, USER: process.env.USER ?? '', LOGNAME: process.env.USER ?? '', SHELL: join(ROOT, 'scripts/fixtures/wave10-cli/login-shell'), TMPDIR: process.env.TMPDIR ?? '/tmp',
     PATH: LAUNCHD_PATH, COCKPIT_HOME: stateL, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/accounts-agent'), COCKPIT_PROOF_ACCOUNT_LOG: log,
   } })
+  await isolateProofInput(legacy)
   page = await legacy.firstWindow()
   page.setDefaultTimeout(20_000)
   await openProject(page, L, 'Legacy garden')

@@ -9,6 +9,7 @@ import { codexEffort } from './efforts.ts'
 import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
 import { inheritedEnv } from '../inherited-env.ts'
+import { createCodexStop } from './stop.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -108,6 +109,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   // Stop pressed after turn/start went out but before Codex named the turn: interrupt it on arrival.
   let interruptOnStart = false
   let turnStarting = false
+  let stopping = false
   let stopGeneration = 0
   const stream = createCodexStreamState()
   // Helper threads' running turns, so Stop stops the helpers too (J7).
@@ -120,21 +122,34 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
 
   const rpc = createRpcClient(child, {
     onNotification(method, params) {
+      stops.observe(method, params)
       const p = params as { threadId?: unknown; turn?: { id?: string } } | undefined
       const helper = typeof p?.threadId === 'string' && threadId !== undefined && p.threadId !== threadId ? p.threadId : undefined
       if (method === 'turn/started') {
         if (helper) { if (p?.turn?.id) childTurns.set(helper, p.turn.id) } else {
           currentTurnId = p?.turn?.id
           turnStarting = false
-          if (interruptOnStart && threadId && currentTurnId) rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
+          if (interruptOnStart && threadId && currentTurnId) stops.interrupt(threadId, currentTurnId)
           interruptOnStart = false
         }
       }
       if (method === 'turn/completed') {
         if (helper) childTurns.delete(helper)
-        else currentTurnId = undefined
+        // Main turn stays reserved until terminal cancellation is confirmed.
       }
-      for (const event of parseCodexNotification(method, params, stream)) onEvent(event)
+      const deliver = (errors: readonly string[] = []): void => {
+        if (exited) return
+        if (method === 'turn/completed' && !helper) currentTurnId = undefined
+        for (const event of parseCodexNotification(method, params, stream)) onEvent(event)
+        // Keep a failed cancellation visible after the model's stopped result.
+        for (const message of errors) onEvent({ kind: 'error', message })
+        if (method === 'turn/completed' && !helper) {
+          stopping = false
+          for (const turn of queued.splice(0)) startTurn(turn.text, turn.images)
+        }
+      }
+      if (method === 'turn/completed' && typeof p?.threadId === 'string' && p.turn?.id) stops.finish(p.threadId, p.turn.id, deliver)
+      else deliver()
     },
     onServerRequest(request) {
       const questions = request.method === QUESTION_METHOD ? codexQuestions(request.params) : undefined
@@ -159,8 +174,10 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     },
   })
 
+  const stops = createCodexStop(rpc, (message) => { if (!exited) onEvent({ kind: 'error', message }) })
+
   const startTurn = (text: string, images?: readonly OutgoingImage[]): void => {
-    if (!threadId) {
+    if (!threadId || stopping) {
       queued.push({ text, ...(images ? { images } : {}) })
       return
     }
@@ -173,9 +190,13 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     const fail = (error: unknown): void => {
       turnStarting = false
       interruptOnStart = false
+      stopping = false
       if (exited) return
       onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) })
-      if (!currentTurnId) onEvent({ kind: 'result', ok: false })
+      if (!currentTurnId) {
+        onEvent({ kind: 'result', ok: false })
+        for (const turn of queued.splice(0)) startTurn(turn.text, turn.images)
+      }
     }
     const start = (): Promise<unknown> => {
       // A late steering failure must not restart work canceled by Stop or session close.
@@ -193,7 +214,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   const policy = codexPolicy(opts.permissionMode)
   void (async () => {
     try {
-      await rpc.request('initialize', { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '0.1.0' }, capabilities: null })
+      await rpc.request('initialize', { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '0.1.0' }, capabilities: { experimentalApi: true } })
       rpc.notify('initialized')
       const common = { cwd: opts.cwd, ...policy, ...(opts.model ? { model: opts.model } : {}) }
       const response = opts.resume
@@ -261,14 +282,20 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     interrupt() {
       stopGeneration++
       if (threadId && currentTurnId) {
-        rpc.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => undefined)
+        stopping = true
+        queued.splice(0)
+        stops.interrupt(threadId, currentTurnId)
+      } else if (turnStarting) {
+        queued.splice(0)
+        stopping = true
+        interruptOnStart = true
       } else if (queued.length > 0) {
         // Still starting up: the messages never reach Codex, and the turn ends here as stopped.
         queued.splice(0)
         onEvent({ kind: 'result', ok: false, stopped: true })
-      } else if (turnStarting) interruptOnStart = true
+      }
       for (const [helper, turnId] of childTurns) {
-        rpc.request('turn/interrupt', { threadId: helper, turnId }).catch(() => undefined)
+        stops.interrupt(helper, turnId)
       }
     },
     close() {

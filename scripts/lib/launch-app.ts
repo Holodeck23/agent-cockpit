@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron, type ElectronApplication } from 'playwright-core'
+import { isolateProofInput } from './proof-window-input.ts'
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const PROOF_DIR = process.env.COCKPIT_PROOF_DIR ?? join(ROOT, 'docs/proof')
@@ -18,7 +19,7 @@ export const EXECUTABLE = join(APP_BUNDLE, 'Contents/MacOS/Cockpit')
  * adds Chromium switches, e.g. --host-resolver-rules so a test site can stand in for a remote one.
  */
 export async function launchPackagedApp(extraEnv: Readonly<Record<string, string>> = {}, args: readonly string[] = []): Promise<ElectronApplication> {
-  return electron.launch({
+  const app = await electron.launch({
     executablePath: EXECUTABLE,
     ...(args.length ? { args: [...args] } : {}),
     env: {
@@ -32,6 +33,8 @@ export async function launchPackagedApp(extraEnv: Readonly<Record<string, string
       ...extraEnv,
     },
   })
+  await isolateProofInput(app)
+  return app
 }
 
 export function checker(): { check: (name: string, ok: boolean, detail?: string) => void; finish: (label: string) => never } {

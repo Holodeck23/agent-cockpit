@@ -15,7 +15,19 @@ const project = join(root, 'app')
 mkdirSync(project)
 mkdirSync(PROOF_DIR, { recursive: true })
 const app = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
-const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `scanner-${name}.png`) })
+// Keep the exact capture operation and its full error when a compositor/font wait times out.
+// Capture failures still fail the proof; no retry or animation suppression is used.
+async function capture(page: Page, label: string, options: Parameters<Page['screenshot']>[0] = {}): Promise<Buffer> {
+  try {
+    return await page.screenshot(options)
+  } catch (err) {
+    const detail = `${label}\n${err instanceof Error ? err.stack ?? err.message : String(err)}\n`
+    writeFileSync(join(PROOF_DIR, 'scanner-capture-error.txt'), detail, { flag: 'a' })
+    console.error(detail)
+    throw err
+  }
+}
+const shot = (page: Page, name: string) => capture(page, name, { path: join(PROOF_DIR, `scanner-${name}.png`) })
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {
   const end = Date.now() + ms
@@ -58,7 +70,7 @@ const box = async (page: Page, selector: string): Promise<Box> => (await page.lo
 /** A strip over the composer's bottom edge: 6 px inside the card to 10 px below it. */
 async function edgeStrip(page: Page): Promise<Buffer> {
   const b = await box(page, '.composer-card')
-  return page.screenshot({ clip: { x: b.x, y: b.y + b.height - 6, width: b.width, height: 16 } })
+  return capture(page, 'edge strip', { clip: { x: b.x, y: b.y + b.height - 6, width: b.width, height: 16 } })
 }
 /** Rows of an edge strip that lie at least `below` CSS px under the card's bottom edge. */
 const rowsBelow = (r: Redness, below: number): number[] => r.rows.slice(Math.round((6 + below) * r.dpr))
@@ -76,7 +88,7 @@ async function sweepFrames(page: Page, label: string): Promise<{ red: number; pl
   let plain = 0
   let best: { strong: number; png: Buffer } = { strong: 0, png: Buffer.alloc(0) }
   for (let i = 0; i < 36; i++) {
-    const png = await page.screenshot({ clip: { x: ta.x, y: ta.y, width: Math.min(ta.width, width + 40), height: Math.min(ta.height, 44) } })
+    const png = await capture(page, `${label} sweep frame ${i}`, { clip: { x: ta.x, y: ta.y, width: Math.min(ta.width, width + 40), height: Math.min(ta.height, 44) } })
     const { strong } = await redness(page, png)
     if (strong > 4) red++
     else plain++
@@ -269,6 +281,7 @@ try {
   check('POL-01 reduce motion Needs you: answering removes the line', await until('reduced needs input ended', async () => !(await isNeedsInputCard(page))))
   await page.emulateMedia({ reducedMotion: null })
 } catch (err) {
+  console.error(err)
   check('proof ran to the end', false, err instanceof Error ? err.message.split('\n')[0] : String(err))
   await shot(page, 'failure').catch(() => undefined)
 } finally {

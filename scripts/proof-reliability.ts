@@ -9,6 +9,7 @@ import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
 import { apiPost, headStatus } from './lib/ui.ts'
 import { EXECUTABLE, ROOT, LAUNCHD_PATH } from './lib/launch-app.ts'
+import { isolateProofInput } from './lib/proof-window-input.ts'
 
 const stateRoot = mkdtempSync(join(tmpdir(), 'cockpit-reliability-'))
 const store = createThreadStore(stateRoot)
@@ -25,6 +26,7 @@ const app = await electron.launch({
   executablePath: EXECUTABLE,
   env: { ...process.env, COCKPIT_HOME: stateRoot, PATH: LAUNCHD_PATH },
 })
+await isolateProofInput(app)
 try {
   const page = await app.firstWindow()
   page.setDefaultTimeout(10_000)

@@ -71,7 +71,28 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
   const page = await app.firstWindow()
   page.setDefaultTimeout(15_000)
   await page.waitForLoadState('domcontentloaded')
+  await page.addInitScript(() => {
+    const clicks: unknown[] = []
+    ;(window as unknown as { __proofClicks: unknown[] }).__proofClicks = clicks
+    document.addEventListener('mousedown', (event) => {
+      const target = event.target as Element | null
+      clicks.push({ x: event.clientX, y: event.clientY, target: target?.tagName, id: target?.id, class: target?.getAttribute('class'), text: target?.textContent?.slice(0, 120) })
+      if (clicks.length > 20) clicks.shift()
+    })
+  })
   return { app, page }
+}
+async function failure(page: Page, phase: string, error: unknown): Promise<void> {
+  console.error(error)
+  writeFileSync(join(PROOF_DIR, `wave9-error-${phase}.txt`), String(error instanceof Error ? error.stack ?? error.message : error))
+  const state = await page.evaluate(() => ({
+    clicks: (window as unknown as { __proofClicks?: unknown[] }).__proofClicks,
+    tab: document.querySelector('#section-conversations')?.outerHTML,
+    dropdown: document.querySelector('.list-dropdown')?.textContent,
+    headings: [...document.querySelectorAll('h1')].map((el) => el.textContent),
+    viewport: { width: innerWidth, height: innerHeight, scrollX, scrollY },
+  })).catch((err) => ({ error: String(err) }))
+  writeFileSync(join(PROOF_DIR, `wave9-state-${phase}.json`), `${JSON.stringify(state, null, 2)}\n`)
 }
 /** Cockpit's window as Playwright sees it, plus (the host draws it separately) the visible page itself. */
 async function shot(page: Page, name: string): Promise<void> {
@@ -298,6 +319,7 @@ try {
   const whoOne = await inPage<string>(app, (await shown(app))!.id, `document.getElementById('who').textContent`)
   check('W9-04 conversations in the same workspace share its login', whoOne === 'sid=w9', whoOne)
 } catch (err) {
+  await failure(page, 'first-launch', err)
   check('proof ran to the end (first launch)', false, err instanceof Error ? err.message.split('\n')[0] : String(err))
   await shot(page, 'failure').catch(() => undefined)
 }
@@ -322,6 +344,7 @@ try {
   const after = await inPage<string>(app, (await shown(app))!.id, `document.getElementById('who').textContent`)
   check('W9-04 the cleared login is gone', after === 'none', after)
 } catch (err) {
+  await failure(page, 'restart', err)
   check('proof ran to the end (after restart)', false, err instanceof Error ? err.message.split('\n')[0] : String(err))
   await shot(page, 'failure-restart').catch(() => undefined)
 } finally {
