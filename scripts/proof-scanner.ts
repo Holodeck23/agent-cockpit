@@ -1,6 +1,6 @@
 // Packaged proof for D12, the scanner signature (acceptance POL-01): the idle placeholder sweep, the
-// edge scanner while a turn runs and its end, reduce motion, light and dark, a narrow window.
-// Stand-in agent only (scripts/fixtures/wave65-agent: "work" holds a turn for 12 s), no provider usage.
+// edge scanner while a turn runs, amber Needs you, its end, reduce motion, light and dark, and a
+// narrow window. Stand-in agent only (scripts/fixtures/wave65-agent), no provider usage.
 // Usage: npm run package:proof, then COCKPIT_APP=$PWD/release/proof/mac-arm64/Cockpit.app npm run proof:scanner
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -118,6 +118,14 @@ async function startWork(page: Page): Promise<void> {
   await messageBox(page).press('Enter')
   await page.locator('.thread-head h1').waitFor()
 }
+async function startNeedsInput(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  const fresh = page.getByRole('button', { name: 'Start fresh', exact: true })
+  if (await fresh.waitFor({ timeout: 3000 }).then(() => true, () => false)) await fresh.click()
+  await messageBox(page).fill('ask')
+  await messageBox(page).press('Enter')
+  await page.locator('.thread-head h1').waitFor()
+}
 /** Cockpit's own start and list art (the flight path), not the stacked, tilted cards it replaced. */
 const ownArt = (page: Page) => page.evaluate(() => [...document.querySelectorAll('svg.start-art, svg.list-art')].map((svg) => ({
   cls: svg.getAttribute('class'),
@@ -125,6 +133,7 @@ const ownArt = (page: Page) => page.evaluate(() => [...document.querySelectorAll
   route: Boolean(svg.querySelector('path[stroke-dasharray]')),
 })))
 const isWorkingCard = (page: Page) => card(page).evaluate((el) => el.classList.contains('working'))
+const isNeedsInputCard = (page: Page) => card(page).evaluate((el) => el.classList.contains('needs-input'))
 
 const page = await app.firstWindow()
 try {
@@ -185,6 +194,16 @@ try {
   check('POL-01 ended: the placeholder sweep resumes', await until('sweep back', async () => (await textareaAnimations(page)).includes('scanner-placeholder')))
   await shot(page, 'dark-ended')
 
+  await startNeedsInput(page)
+  check('POL-01 Needs you: the composer has its own state', await until('needs input', () => isNeedsInputCard(page)))
+  const needs = await pseudo(page, '::after')
+  check('POL-01 Needs you: an amber double-pulse replaces working motion', needs.content !== 'none' && needs.animation === 'scanner-needs', JSON.stringify(needs))
+  check('POL-01 Needs you: the idle placeholder sweep pauses', !(await textareaAnimations(page)).includes('scanner-placeholder'))
+  check('POL-01 Needs you: the composer does not claim Working', !(await isWorkingCard(page)))
+  await shot(page, 'dark-needs-you')
+  await page.locator('.question-card').getByRole('button', { name: 'Dismiss', exact: true }).click()
+  check('POL-01 Needs you: answering returns the composer to idle', await until('needs input ended', async () => !(await isNeedsInputCard(page))))
+
   // ---------- light ----------
   await setTheme(page, 'Light')
   await page.getByRole('button', { name: 'New conversation' }).click()
@@ -239,6 +258,15 @@ try {
   await until('turn end', async () => !(await isWorkingCard(page)), 30_000)
   check('POL-01 reduce motion ended: the line goes', (await pseudo(page, '::after')).content === 'none')
   await shot(page, 'reduced-ended')
+
+  await startNeedsInput(page)
+  await until('reduced needs input', () => isNeedsInputCard(page))
+  const reducedNeeds = await pseudo(page, '::after')
+  check('POL-01 reduce motion Needs you: a still amber line remains', reducedNeeds.content !== 'none' && reducedNeeds.animation === 'none', JSON.stringify(reducedNeeds))
+  check('POL-01 reduce motion Needs you: no glow', (await pseudo(page, '::before')).content === 'none')
+  await shot(page, 'reduced-needs-you')
+  await page.locator('.question-card').getByRole('button', { name: 'Dismiss', exact: true }).click()
+  check('POL-01 reduce motion Needs you: answering removes the line', await until('reduced needs input ended', async () => !(await isNeedsInputCard(page))))
   await page.emulateMedia({ reducedMotion: null })
 } catch (err) {
   check('proof ran to the end', false, err instanceof Error ? err.message.split('\n')[0] : String(err))

@@ -13,6 +13,7 @@ import type { AccountRef, AgentId } from '../types.ts'
 import { ThreadBusyError } from '../../threads/manager.ts'
 import { accountEnv, NO_BROWSER, resolved } from './env.ts'
 import { observeIdentity, type IdentityProbe } from './identity.ts'
+import { ensureSharedInstructions } from './instructions.ts'
 import { createAccountStore, LABEL_MAX, type AccountStore } from './store.ts'
 import { defaultAccountId, DEFAULT_ONLY_REASON, PROFILE_ISOLATION, supportsProfiles, usageKeyOf, viewOf, type Account, type AccountView, type ResolvedAccount } from './types.ts'
 
@@ -36,6 +37,8 @@ export interface AccountServiceOptions {
   readonly probe?: IdentityProbe
   readonly sessions: AccountSessions
   readonly timeoutMs?: { readonly signin?: number; readonly logout?: number }
+  /** Override for tests; managed profiles otherwise share rules from the current user's home. */
+  readonly homeDir?: string
 }
 
 /** A change refused because conversations on that agent are still working or hold queued input (HTTP 409). */
@@ -98,7 +101,12 @@ export function createAccountService(options: AccountServiceOptions) {
   const leaving = new Map<string, string>()
   const leavingKey = (projectPath: string, agent: AgentId): string => `${agent}\0${projectPath}`
 
-  const dirFor = (account: Account): string | undefined => (account.mode === 'managed' ? store.profileDir(account.id) : undefined)
+  const dirFor = (account: Account): string | undefined => {
+    if (account.mode !== 'managed') return undefined
+    const dir = store.profileDir(account.id)
+    ensureSharedInstructions(account.agent, dir, options.homeDir ?? homedir())
+    return dir
+  }
   const resolve = (account: Account): ResolvedAccount => resolved(account, dirFor(account))
   const envFor = (account: Account): Record<string, string> => ({ ...baseEnv(), ...accountEnv(account, dirFor(account)) })
   const label = (agent: AgentId): string => AGENT_LABEL[agent]

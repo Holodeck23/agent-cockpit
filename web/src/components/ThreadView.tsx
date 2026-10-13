@@ -21,6 +21,7 @@ import { ThreadMenu } from './ThreadMenu.tsx'
 import { TranscriptView } from './TranscriptView.tsx'
 import { statusText, useNow } from './StatusPill.tsx'
 import { latestTurn } from '../../../server/threads/status.ts'
+import { eventsIn } from '../../../server/threads/workspace-events.ts'
 
 interface ThreadViewProps {
   initialDraft?: string
@@ -59,6 +60,14 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
   const focusedRunning = inSeveral && focused !== undefined ? focusedWorking : running
   // A turn that ended with a question or a blocker waits on you, like an open approval (U12).
   const shown = !running && awaitingOf(events) ? 'needs_input' : status
+  // In a multi-workspace conversation, the composer describes the selected workspace—not a more
+  // urgent state in a different one. The workspace selector already signals that elsewhere needs you.
+  const focusedEvents = inSeveral && focused !== undefined ? eventsIn(events, focused) : events
+  const composerShown = (() => {
+    if (!inSeveral || focused === undefined) return shown
+    if (focusedWorking) return openApprovals(focusedEvents).length > 0 ? 'needs_input' : 'working'
+    return awaitingOf(focusedEvents) ? 'needs_input' : 'idle'
+  })()
   const open = useMemo(() => new Set(running ? openApprovals(events) : []), [events, running])
   const helpers = useMemo(() => (running ? runningHelpers(events).length : 0), [events, running])
   const compacting = useMemo(() => running && compactingNow(events), [events, running])
@@ -295,8 +304,10 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         prefill={restore}
         branchRefreshKey={`${meta.id}:${status}`}
         // With two workspaces, the box speaks for the one you are looking at.
-        placeholder={focusedRunning ? 'Add to the current turn…' : 'Add a follow-up…'}
-        working={isWorking(status) && focusedRunning}
+        placeholder={focusedRunning ? 'Queue a steer for the next step…' : 'Add a follow-up…'}
+        working={isWorking(composerShown)}
+        needsInput={composerShown === 'needs_input'}
+        queueing={focusedRunning}
         onStop={focusedRunning ? () => guard(api.interrupt(meta.id, inSeveral ? focused : undefined)) : undefined}
         stopLabel={inSeveral && focused !== undefined ? `Stop current turn in ${workspace!.nameOf(focused)}` : undefined}
         onSubmit={(text, images) => send(text, images).then(() => undefined)}

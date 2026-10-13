@@ -37,6 +37,7 @@ The handoff is a short briefing plus the transcript so far: your messages, the r
 A project can run Claude Code or Codex on an account other than your CLI's default login.
 
 -   In the agent picker (or **Project settings**), the **Account** menu shows the CLI default and any account profiles. **Add an account…** asks for a name, then runs that CLI's own sign-in in a separate folder under `~/.agent-cockpit/`. Your default login is never signed out or changed.
+-   A managed Claude or Codex account still follows your standard global rules file (`~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`). Cockpit links that one entry into the private account profile before a conversation launches; it does not copy credentials, the rest of your configuration, hooks, skills or the CLI's own memory. Cockpit Project/Everywhere memory remains separate and shared through Cockpit. If the managed profile already has its own rules file, Cockpit leaves it alone.
 -   The choice is per project and per agent: every conversation on that agent in the project uses it from its next turn. A running conversation keeps the account it started with until it is idle.
 -   Providers cannot resume a session under another account, so continuing a conversation after a switch starts a fresh session with a handoff (as above), and the transcript says so.
 -   Antigravity and OpenCode use their CLI default only; Cockpit says why in the menu.

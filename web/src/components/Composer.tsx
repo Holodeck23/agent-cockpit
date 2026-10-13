@@ -35,6 +35,10 @@ interface ComposerProps {
   disabled?: boolean
   /** A turn is running: the composer's edge shows the scanner (D12, styles/scanner.css). */
   working?: boolean
+  /** The turn is paused for the person: a distinct amber signal replaces the idle sweep. */
+  needsInput?: boolean
+  /** Sending now queues a steer for the running turn's next step. */
+  queueing?: boolean
   /** Stops the turn this composer targets, independently of the draft or sending restrictions. */
   onStop?: () => void
   stopLabel?: string
@@ -73,7 +77,7 @@ export function draftAfterSend(current: string, sent: string): string {
   return current.trim() === sent ? '' : current
 }
 
-export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, onStop, stopLabel = 'Stop current turn', picker, branchRefreshKey, onSubmit }: ComposerProps) {
+export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, projectPath, workspaceId, workspaceFolder, blocked, note, destination, confirmDestination, threadId, draftKey, placeholder, disabled, working = false, needsInput = false, queueing = false, onStop, stopLabel = 'Stop current turn', picker, branchRefreshKey, onSubmit }: ComposerProps) {
   const [text, setText] = useState(() => loadDraft(draftKey))
   const [confirmedDestination, setConfirmedDestination] = useState<string>()
   const destinationKey = `${draftKey}:${confirmDestination ?? ''}`
@@ -180,7 +184,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
       {attach.note ? <p className="workflow-notice" role="status">{attach.note}</p> : null}
       {blocked ? <p className="workflow-notice" role="alert">{blocked}</p> : note ? <p className="workspace-note" role="status">{note}</p> : null}
       {confirmDestination ? <label className="workspace-confirm"><input type="checkbox" checked={!needsDestination} onChange={(e) => setConfirmedDestination(e.target.checked ? destinationKey : undefined)} />Continue this conversation in {confirmDestination}</label> : null}
-      <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}`} {...attach.dropProps}>
+      <div className={`composer-card${attach.dragging ? ' dropping' : ''}${working ? ' working' : ''}${needsInput ? ' needs-input' : ''}`} {...attach.dropProps}>
         {mentions.menu}
         {attach.images.length ? (
           <ul className="reference-chips image-chips" aria-label="Images to send">
@@ -211,7 +215,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
             onPaste={attach.onPaste}
           />
         </div>
-        {destination ? <div className="composer-destination" title={workspaceFolder ?? projectPath}>Send to: {destination}</div> : null}
+        {destination ? <div className="composer-destination" title={workspaceFolder ?? projectPath}>{queueing ? 'Queue for next step' : 'Send to'}: {destination}</div> : null}
         <div className="composer-foot">
           {projectPath ? (
             <ContextPicker projectPath={projectPath} workspaceId={workspaceId} attached={attached} filesFull={filesFull}
@@ -222,7 +226,7 @@ export function Composer({ onBrowseFiles, initialDraft, onDraftLoaded, prefill, 
           <span className="composer-spacer" />
           <span className="composer-actions">
             {onStop ? <button type="button" className="composer-stop" aria-label={stopLabel} title={stopLabel} onClick={onStop}><StopIcon /></button> : null}
-            <button type="submit" className="send" aria-label="Send" disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
+            <button type="submit" className="send" aria-label={queueing ? 'Queue for next step' : 'Send'} title={queueing ? 'Queue this steer for the agent’s next step' : 'Send'} disabled={disabled || Boolean(blocked) || needsDestination || sending || !text.trim()}>
               <ArrowUpIcon />
             </button>
           </span>

@@ -18,6 +18,8 @@ export type ApprovalOutcome = ApprovalBehavior | 'expired' | 'canceled'
 
 export interface PendingApproval {
   readonly requestId: string
+  /** The provider tool being approved, when this came from a tool request. */
+  readonly toolName?: string
   readonly input: unknown
   readonly suggestions: readonly unknown[]
 }
@@ -69,8 +71,8 @@ export type NormalizedEvent =
   | { kind: 'awaiting_dismissed' }
   /** Another conversation (or Cockpit) switched the project's branch; `byTitle` names that conversation. */
   | { kind: 'branch_changed'; from: string; to: string; byTitle?: string }
-  /** Same agent, new model/effort/permissions; the native session continues from the next message. */
-  | { kind: 'settings_changed'; model?: string; effort?: string; permissionMode: string; chrome?: boolean }
+  /** Same agent, new model/effort/permissions. Usually next-message; `immediate` is a live provider transition. */
+  | { kind: 'settings_changed'; model?: string; effort?: string; permissionMode: string; chrome?: boolean; immediate?: boolean }
   /**
    * Use my Chrome (H4): Claude's first call to the user's Chrome is connecting; it connected, failed
    * (no answer within the limit, or an error), was cancelled (the turn stopped first) or dropped.
