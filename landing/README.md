@@ -2,7 +2,7 @@
 
 `index.html` is the self-contained release landing page, including the interactive demo,
 inline styles/scripts, Cockpit mark and four packaged-app screenshots. It opens from disk
-or any static host. The Mac download points to the v0.1.8 prerelease.
+or any static host. The Mac download points to the v0.1.7 prerelease.
 
 ## The interactive demo
 
@@ -28,8 +28,8 @@ are explicitly fixed simulations. Native Mac actions and scheduling require the 
 
 The landing page uses Cockpit's rounded system typography and light surfaces. Marketing
 body copy is 19–21px; main demo conversation text is 17px. `demo/readability.css` records
-only demo-specific reading-size and responsive adaptations. At narrow widths Preview
-occupies one pane; Close preview returns to the conversation. Expand opens a larger view;
+only demo-specific reading-size and responsive adaptations. At narrow widths Workspace and Preview
+tabs switch between the conversation and sample app; Close preview returns to the conversation. Expand opens a larger view;
 Escape closes it. The agent-team reference informed the guided actions and free exploration.
 
 ## Edit and build
@@ -50,9 +50,7 @@ node landing/build-demo.mjs
 The build preserves release copy and screenshot data in `index.html`. Commit the generated
 HTML with its source. No build command is needed at the static host. Rebuild intentionally
 when production components change, then verify the resulting demo again.
-The feature directory describes the v0.1.5 build; v0.1.6–v0.1.8 additions are in their release notes until the directory is updated. Check additions against
-the tagged user guide and release notes before changing it; features only on development
-branches belong in a later release's directory.
+The feature directory covers the published v0.1.7 scope, including v0.1.6 worktrees/accounts/phone preview and v0.1.7 interaction fixes. `release.json` records the download version independently of `package.json`: source/local builds can be newer than the published download. Check additions against the tagged guide and release notes; unpublished repairs belong in the source docs, not in the shipped-feature list. The demo is rebuilt from current main and labelled accordingly, so visitors know the public download can differ.
 
 ## Preview and verify
 

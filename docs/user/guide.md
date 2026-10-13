@@ -1,6 +1,6 @@
 # User Guide
 
-> **v0.1.8 candidate.** The public prerelease remains v0.1.7. This guide describes the v0.1.8 candidate: worktrees, account profiles, the handoff review before switching agents, phone live preview, Feedback, the Terminal install and the beta terms are all covered below. Independent other-Mac acceptance of this version is still open; see the [tester checklist](tester-checklist.md).
+> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
@@ -22,6 +22,7 @@ This guide covers all user-facing features in Agent Cockpit, organized by task.
 -   **Remembered per agent:** Switching agents in the picker brings back what each agent was last set to on this Mac. Tick **Close after choosing an agent** to close the panel on a choice.
 -   **Presets:** **Save these settings as a preset** names the current agent, model, effort and permissions; one click on the chip applies them later.
 -   **Antigravity** starts in **Bypass permissions**, because it can't pause for approval when run by Cockpit. **Configured permissions** follows Antigravity's own settings; **Plan** is read-only.
+-   **Claude Plan mode:** An approved `ExitPlanMode` transition is stored as Manual and retained on resume; denying it keeps Plan mode. This transition follows the provider’s approval request.
 -   **Permissions:** You can control the level of autonomy the agent has, from full manual approval to more permissive setups.
 
 ### Switching agents
@@ -44,18 +45,19 @@ A project can run Claude Code or Codex on an account other than your CLI's defau
 
 ## Conversations
 
--   **Starting & Managing:** Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.
+-   **Starting & Managing:** The conversation-list **+** opens a fresh composer and focuses it; repeated clicks preserve its draft. Project-open recovery remains a separate path. Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.
 -   **Follow-ups:** Reply to ongoing threads or answer agent questions.
 -   **Replies:** Agent replies show as formatted text: headings, lists, tables, code. Web links open in your browser; hover one to see where it goes, and a link whose text names a different site than it goes to shows the real one beside it (↗ host). Raw HTML in a reply shows as text and images are never loaded (you see their description). Your own messages stay exactly as you typed them.
 -   **File and commit links:** `src/app.ts:42` in a reply opens Files with that line selected (ranges like `:10-20` too). A commit hash opens the commit on GitHub, GitLab or Bitbucket when the project's `origin` is there; otherwise it copies the hash. Agents are asked to name their commits by short hash.
 -   **Find:** ⌘F highlights matches in the open conversation and lists the matching messages under the bar; click one to jump to it.
 -   **Reading while it works:** the conversation stays where you are reading while the agent writes; **Jump to latest** brings you back to the end. **Copy** on a message puts its text on the clipboard. The conversation list can be resized by dragging its edge.
 -   **Mac notifications:** Cockpit notifies you when an agent finishes or needs you, and clicking the notification opens that conversation. Ordinary replies stay quiet in the conversation you are looking at; a pending decision still calls for attention. Decision sounds are on by default and can be switched off in Settings. A completed conversation never counts as needing you.
+-   **Pending decisions:** Host process, memory and workflow approvals stay available across navigation until answered or their calling turn ends. Stop or disconnect cancels them. Provider-native requests still follow that provider’s lifetime.
 -   **Dismiss:** a question from the agent can be dismissed without answering; the agent carries on without the answers.
 -   **Search:** The list's search looks through every message, not just titles, and includes completed conversations while you search.
 -   **Peek:** Hover a file or workflow clip on a sent message to see inside it; **Open in Files** opens the file.
--   **Status States:** A conversation can be Working, Ready, Error, or "Needs you" (waiting for your approval or input).
--   **Stop vs. Complete vs. Delete:** You can Stop an active turn. Note that stopping *requests* an interruption—it does not promise force-detaching the agent or stopping active dev servers immediately. You can mark a conversation complete when done. Deleting removes the thread permanently from your `~/.agent-cockpit/` history.
+-   **Status States:** A conversation can be Starting, Working, Idle, Ready, Error, Stopped or **Needs you** (waiting for a decision or input). The composer uses an amber Needs you cue; reduced motion keeps a still line.
+-   **Stop vs. Complete vs. Delete:** **Stop** sits beside Send while a turn is active. For Codex, current Cockpit interrupts the turn and terminates observed active command terminals, waiting for provider confirmation and reporting cancellation failure or timeout. Completed/background command items and separately managed dev servers are controlled separately. A follow-up waits while cancellation settles; wait for the terminal status before continuing. You can mark a conversation complete when done. Deleting removes the thread permanently from your `~/.agent-cockpit/` history.
 -   **Imports:** The Projects menu can import Claude Code and Codex sessions belonging to the selected folder; the next message resumes the original CLI session. Recent work now appears automatically when opening a project. It reuses an existing Cockpit conversation or imports the selected session, and treats branch/files as current disk state.
 
 ## Working with Files & Markdown

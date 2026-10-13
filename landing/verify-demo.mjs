@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright-core'
 const file = fileURLToPath(new URL('./index.html', import.meta.url))
-const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const { version } = JSON.parse(await readFile(new URL('./release.json', import.meta.url), 'utf8'))
 const featureGroups = JSON.parse(await readFile(new URL('./features.json', import.meta.url), 'utf8'))
 const featureCount = featureGroups.reduce((count, group) => count + group.items.length, 0)
 const evidence = process.argv[2] && resolve(process.argv[2])
@@ -40,6 +40,9 @@ try {
     await button('Allow').waitFor(); await noOverflow(); await shot('approval')
     assert.ok(await app.locator('.bubble.user').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 16))
     await button('Allow').click()
+    await app.locator('.preview-pane').waitFor({ state: 'attached' })
+    const previewTab = app.getByRole('tab', { name: 'Preview', exact: true })
+    if (await previewTab.isVisible()) await previewTab.click()
     const sample = app.frameLocator('.preview-pane iframe')
     await sample.locator('[data-plant="basil"]').getByRole('button', { name: 'Mark watered' }).click()
     assert.equal(await sample.locator('#progress-label').innerText(), '1 of 3 watered')

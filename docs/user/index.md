@@ -1,8 +1,8 @@
 # Installation and Updating Guide
 
-> **v0.1.7 prerelease (2026-10-10).** Cockpit supports Claude Code, Codex, Google Antigravity and OpenCode on Apple-silicon Macs. This release improves approvals, permission clarity, Antigravity image display, stop behavior and interaction reliability. Independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
 
-*(Documented for v0.1.7)*
+
 
 ## System Requirements
 
@@ -16,7 +16,7 @@ The quickest way, and the one macOS does not block, is one line in Terminal:
 curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
 ```
 
-It shows the [beta terms](../../BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
+The installer downloads the latest published prerelease, currently v0.1.7; a local v0.1.8 build is not offered by it. It shows the [beta terms](../../BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
 
 Or install the DMG by hand:
 

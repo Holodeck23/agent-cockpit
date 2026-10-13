@@ -36,9 +36,7 @@ button, a, summary { cursor: pointer; }
   .subnav-tools .icon-button { width:30px; }
   .workspace.has-preview { display:flex; flex-direction:column; overflow:hidden; }
   .workspace.has-preview .workspace-main { flex:1; min-height:0; }
-  .workspace.has-preview:has(.layout) .workspace-main { display:none; }
   .workspace.has-preview .preview-pane { flex:1; min-height:0; border:0; }
-  .workspace.has-preview:not(:has(.layout)) .preview-pane { display:none; }
   .workspace.has-preview .layout { grid-template-columns: minmax(0,1fr); }
   .workspace.has-preview .events, .workspace.has-preview .composer { padding-inline:12px; }
   .first-run-body { padding:24px 16px; }
