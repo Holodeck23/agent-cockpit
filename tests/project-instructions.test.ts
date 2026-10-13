@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { buildClaudeArgs } from '../server/agents/claude/flags.ts'
 import type { AgentSession } from '../server/agents/types.ts'
 import { COCKPIT_GUIDANCE } from '../server/mcp/sessions.ts'
+import { TURN_GUIDANCE } from '../server/threads/turns.ts'
 import { createProjectStore } from '../server/projects/store.ts'
 import { createThreadManager, instructionsFor, projectInstructionsBlock, type LaunchRequest, type Launcher } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
@@ -39,10 +40,12 @@ describe('project instructions in the store', () => {
 describe('instruction block', () => {
   const base: LaunchRequest = { cwd: '/p', settings: threadSettingsSchema.parse({}) }
 
-  it('puts guidance, project instructions and a handoff in that order, each once', () => {
+  it('puts the turn shape, tool guidance, project instructions and a handoff in that order, each once', () => {
     const cockpit = { command: 'node', args: [], env: {}, secretEnv: {} }
-    const text = instructionsFor({ ...base, cockpit, projectInstructions: 'Use pnpm.', seed: 'HANDOFF' }) ?? ''
-    expect(text.indexOf(COCKPIT_GUIDANCE)).toBe(0)
+    const text = instructionsFor({ ...base, cockpit, projectInstructions: 'Use pnpm.', seed: 'HANDOFF' })
+    expect(text.indexOf(TURN_GUIDANCE)).toBe(0)
+    expect(text.split(TURN_GUIDANCE).length).toBe(2)
+    expect(text.indexOf(COCKPIT_GUIDANCE)).toBe(TURN_GUIDANCE.length + 2)
     expect(text.split('Use pnpm.').length).toBe(2)
     expect(text.indexOf('Use pnpm.')).toBeLessThan(text.indexOf('HANDOFF'))
     expect(text).toContain('they do not change your permissions')
@@ -61,8 +64,17 @@ describe('instruction block', () => {
     }
   })
 
-  it('adds nothing when a project has no instructions', () => {
-    expect(instructionsFor(base)).toBeUndefined()
+  it('a bare launch carries the turn shape and nothing else', () => {
+    expect(instructionsFor(base)).toBe(TURN_GUIDANCE)
+  })
+
+  it('every agent gets the turn shape, with and without Cockpit\'s tools', () => {
+    const cockpit = { command: 'node', args: [], env: {}, secretEnv: {} }
+    for (const agent of ['claude', 'codex', 'antigravity', 'opencode'] as const) {
+      for (const tools of [{}, { cockpit }]) {
+        expect(instructionsFor({ ...base, ...tools, settings: threadSettingsSchema.parse({ agent }) })).toContain('Cockpit shows each turn as an acknowledgement')
+      }
+    }
   })
 
   it('fits the largest instructions plus a full handoff into Claude\'s appended prompt', () => {

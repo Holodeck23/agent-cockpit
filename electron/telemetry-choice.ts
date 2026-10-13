@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Envelope } from '@sentry/core'
+import { scrubPrivate } from '../server/projects/privacy.ts'
 
 /**
  * Cockpit's Sentry project (David's, EU region). A DSN only lets a client send reports to the
@@ -70,20 +71,22 @@ export function reportEnvelope<T extends Envelope>(envelope: T): T | undefined {
 
 type Json = string | number | boolean | null | undefined | Json[] | { [key: string]: Json }
 
-function scrubString(text: string, home: string): string {
-  const shortened = home.length > 1 ? text.split(home).join('~') : text
+function scrubString(text: string, home: string, privateRoots: readonly string[]): string {
+  // Mac-only folders first (projects-area Move 9), so a private folder under home never shows past the ~.
+  const hidden = scrubPrivate(text, privateRoots)
+  const shortened = home.length > 1 ? hidden.split(home).join('~') : hidden
   // The page's own address can carry its window key; a report needs the path at most.
   return shortened.replace(/(https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?[^\s?#"']*)[?#][^\s"']*/g, '$1')
 }
 
-function scrubValue(value: Json, home: string): Json {
-  if (typeof value === 'string') return scrubString(value, home)
-  if (Array.isArray(value)) return value.map((item) => scrubValue(item, home))
+function scrubValue(value: Json, home: string, roots: readonly string[]): Json {
+  if (typeof value === 'string') return scrubString(value, home, roots)
+  if (Array.isArray(value)) return value.map((item) => scrubValue(item, home, roots))
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value)
       // Source excerpts and local variables; boot_time, which with the hardware nearly names the Mac.
       .filter(([key]) => !['vars', 'pre_context', 'context_line', 'post_context', 'boot_time'].includes(key))
-      .map(([key, item]) => [scrubString(key, home), scrubValue(item, home)]))
+      .map(([key, item]) => [scrubString(key, home, roots), scrubValue(item, home, roots)]))
   }
   return value
 }
@@ -101,11 +104,11 @@ function withoutPersonalContexts(contexts: unknown): unknown {
 /**
  * What leaves the Mac: the error and its stack, versions and the kind of Mac. The home folder
  * becomes ~, page addresses lose their query, and the machine name, user, request, trail, time
- * zone, language, screen and graphics chip are removed. Returns a new event; the one given is not
- * changed.
+ * zone, language, screen and graphics chip are removed. Every Mac-only folder becomes <private>.
+ * Returns a new event; the one given is not changed.
  */
-export function scrubEvent<T extends object>(event: T, home: string): T {
+export function scrubEvent<T extends object>(event: T, home: string, privateRoots: readonly string[] = []): T {
   const { server_name: _server, user: _user, request: _request, breadcrumbs: _trail, contexts, ...rest } = event as T & Record<string, unknown>
   const kept = contexts === undefined ? rest : { ...rest, contexts: withoutPersonalContexts(contexts) }
-  return scrubValue(kept as Json, home) as T
+  return scrubValue(kept as Json, home, privateRoots) as T
 }

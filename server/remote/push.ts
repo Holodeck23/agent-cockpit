@@ -104,17 +104,19 @@ export interface NotifierOptions {
   readonly active: () => boolean
   readonly paired: (deviceId: string) => boolean
   readonly projectName: (path: string) => string
+  /** Mac only: a conversation in such a project never sends a notification. */
+  readonly hidden?: (projectPath: string) => boolean
   readonly send?: PushSender
   /** For tests and logs: each delivery attempt. */
   readonly onSent?: (result: { deviceId: string; status: number | 'error'; message: PushMessage }) => void
 }
 
 /** One notification per approval request, when a conversation starts needing you. */
-export function startNotifier({ push, manager, threads, active, paired, projectName, send = webPushSender, onSent }: NotifierOptions): () => void {
+export function startNotifier({ push, manager, threads, active, paired, projectName, hidden, send = webPushSender, onSent }: NotifierOptions): () => void {
   return manager.subscribe(({ threadId, event, status }) => {
     if (event.kind !== 'approval_request' || status !== 'needs_input' || !active()) return
     const meta = threads.get(threadId)
-    if (!meta) return
+    if (!meta || hidden?.(meta.projectPath)) return
     const message: PushMessage = { title: 'Needs you', body: `${projectName(meta.projectPath)}: ${meta.title}`, threadId }
     const payload = JSON.stringify(message)
     const keys = push.keys()

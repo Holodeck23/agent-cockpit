@@ -11,6 +11,7 @@ import { parseConclusion, turnRoles } from '../../server/threads/turns.ts'
 import { waitingMessages } from '../../server/threads/status.ts'
 import { attribute, partition } from '../../server/threads/workspace-events.ts'
 import { takenBackPositions } from '../../server/threads/taken-back.ts'
+import { isRefusal } from '../../server/threads/refusals.ts'
 import { failureWords } from './agent-errors.ts'
 import { revealHidden } from '../../server/files/visible-name.ts'
 
@@ -227,15 +228,6 @@ function grantLabel(suggestions: readonly unknown[]): string | undefined {
   return grant?.label.slice(0, 120)
 }
 
-/**
- * A tool result that says you (or the agent's own permission policy) refused the call, in each
- * agent's words: Cockpit's card, Claude Code, Antigravity, ACP, Codex's `declined`. An OS
- * "Permission denied" from a command that did run is not one.
- */
-export function isDenial(content: string): boolean {
-  return /^(denied|declined)$|denied from agent cockpit|denied permission|has been denied|denied by the user|doesn't want to proceed|tool use was rejected/i.test(content.trim())
-}
-
 /** "Running x" → "running x", leaving an acronym ("NPM …") as it is. */
 function lowerFirst(text: string): string {
   return /^[A-Z][^A-Z]/.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text
@@ -349,10 +341,22 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   let turnMode: ThreadSettings['permissionMode'] | undefined = currentMode
   let repliedThisTurn = false
   let refusedThisTurn: string | undefined
+  /** The last ended turn's refused step: Cockpit's follow-up (fromCockpit) reports on it. */
+  let refusedLastTurn: string | undefined
+  /** This turn's latest step, by item index. */
+  let lastStepAt: number | undefined
+  // Turn ends Cockpit followed up after a blocked step: the follow-up says what happened, so the
+  // end itself shows no note. If the follow-up ends silent too, the refused-step note shows there.
+  const followedUp = new Set<number>()
+  events.forEach(({ event }, index) => {
+    if (event.kind !== 'user_text' || !event.fromCockpit) return
+    const end = events.findLastIndex((e, i) => i < index && e.event.kind === 'result')
+    if (end >= 0) followedUp.add(end)
+  })
   const startTurn = (index: number, text: string, images: { file: string; name?: string }[]): void => {
     lastUserText = text; lastUserImages = images; failedThisTurn = false
     turnMode = index > lastChange ? currentMode : loggedMode
-    repliedThisTurn = false; refusedThisTurn = undefined; turnOpen = true
+    repliedThisTurn = false; refusedThisTurn = undefined; turnOpen = true; lastStepAt = undefined
   }
   const endCompaction = (ts: string, state: 'done' | 'failed', sizes: { preTokens?: number; postTokens?: number } = {}): void => {
     const item = compacting === undefined ? undefined : items[compacting]
@@ -380,6 +384,13 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
     switch (event.kind) {
       case 'user_text':
       case 'assistant_text': {
+        if (event.kind === 'user_text' && event.fromCockpit) {
+          // Cockpit's note, not yours: a quiet line, and never what Retry sends again.
+          turnMode = index > lastChange ? currentMode : loggedMode
+          repliedThisTurn = false; refusedThisTurn = refusedLastTurn; turnOpen = true; failedThisTurn = false
+          items.push({ type: 'note', key, text: `Cockpit asked ${agentName(agent)} to report after a blocked step.`, tone: 'plain' })
+          return
+        }
         if (event.kind === 'user_text') {
           if (event.queuedId) { queuedSends.set(event.queuedId, { text: event.text, images: [] }); queuedSending = event.queuedId }
           else startTurn(index, event.text, [])
@@ -425,6 +436,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         return
       }
       case 'tool_use':
+        lastStepAt = items.length
         steps.set(event.id, items.length)
         items.push({ type: 'step', key, label: describeTool(event.name, event.input), startedAt: ts })
         return
@@ -434,7 +446,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (at !== undefined && step?.type === 'step') {
           const byCard = event.isError && deniedCards > 0
           if (byCard) deniedCards -= 1
-          const denied = byCard || (event.isError && isDenial(event.content))
+          const denied = byCard || (event.isError && isRefusal(event.content))
           if (denied) refusedThisTurn ??= lowerFirst(step.label)
           replace(at, {
             ...step,
@@ -572,11 +584,23 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         deniedCards = 0
         if (compacting !== undefined) endCompaction(ts, event.ok ? 'done' : 'failed')
         const failed = !event.ok && !event.stopped && !event.interrupted
+        // agy 1.3.3 ends a refused step as done with no output; the result's `denied` (this turn's)
+        // says a step was refused. agy stops at the refusal, so it is the turn's last step.
+        if (!refusedThisTurn && event.denied?.length) {
+          const step = lastStepAt === undefined ? undefined : items[lastStepAt]
+          if (lastStepAt !== undefined && step?.type === 'step' && !step.error) {
+            refusedThisTurn = lowerFirst(step.label)
+            replace(lastStepAt, { ...step, label: `Not allowed: ${lowerFirst(step.label)}`, denied: true as const })
+          } else refusedThisTurn = event.denied[0]!.label ?? event.denied[0]!.action
+        }
+        lastStepAt = undefined
         if (event.interrupted) {
           items.push({ type: 'note', key, text: 'Interrupted: Cockpit stopped before this turn finished. Nothing was sent again.', tone: 'plain' })
         } else if (failed && !failedThisTurn) {
           const words = failureWords(event.text)
           items.push({ type: 'failure', key, ...words, raw: event.text ?? '', ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })
+        } else if (followedUp.has(index) && event.ok && !event.stopped && !repliedThisTurn) {
+          // Cockpit's follow-up comes next and reports on it.
         } else if (event.ok && !event.stopped && !repliedThisTurn && refusedThisTurn) {
           items.push({ type: 'note', key, text: refusedTurnNote(agent, agentName(agent), turnMode, refusedThisTurn), tone: 'error', ...(event.runId ? { runId: event.runId } : {}) })
         } else if (!failed) {
@@ -585,6 +609,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (event.runId) items.push({ type: 'result', key: `${key}-evidence`, runId: event.runId,
           outcome: event.interrupted ? 'interrupted' : event.ok ? 'ok' : event.stopped ? 'stopped' : 'error' })
         failedThisTurn = false
+        refusedLastTurn = refusedThisTurn
         refusedThisTurn = undefined
         turnOpen = false
         return

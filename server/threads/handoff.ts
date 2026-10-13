@@ -82,7 +82,7 @@ function transcriptOf(events: readonly StoredEvent[], imagesDir?: string): { tra
     switch (event.kind) {
       case 'user_text':
         // References, not contents: the files on disk are current, a copy from then is not.
-        return [`${event.fromConversation ? `FROM CONVERSATION ${event.fromConversation.title.replace(/[\r\n]/g, ' ')} (${event.fromConversation.id})` : 'USER'}: ${withAttachmentNote(event.text)}`]
+        return [`${event.fromConversation ? `FROM CONVERSATION ${event.fromConversation.title.replace(/[\r\n]/g, ' ')} (${event.fromConversation.id})` : event.fromCockpit ? 'COCKPIT' : 'USER'}: ${withAttachmentNote(event.text)}`]
       case 'assistant_text':
         return [`PREVIOUS AGENT: ${event.text}`]
       case 'tool_use': {

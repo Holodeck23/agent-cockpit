@@ -36,6 +36,9 @@ import { createThreadStore, defaultRoot, type ThreadStore } from './threads/stor
 import { createRemoteAccess, type RemoteAccess } from './remote/service.ts'
 import { createRemoteStore } from './remote/store.ts'
 import { createPushStore, startNotifier, type PushSender } from './remote/push.ts'
+import { createMapService } from './http/navigation-routes.ts'
+import { createNavigationStore } from './projects/navigation.ts'
+import { createPrivacy, type Privacy } from './projects/privacy.ts'
 import { systemTailscale, type Tailscale } from './remote/tailscale.ts'
 import { createPhonePreviews, previewOrigins, type PhonePreviews } from './remote/preview/control.ts'
 import type { ListenerGroups } from './remote/preview/upstream.ts'
@@ -117,6 +120,8 @@ export interface RunningServer {
   readonly checks: CheckRunner
   /** Agents' browser grants; the desktop shell revokes a page's grants when the page goes away. */
   readonly browserLeases: BrowserLeases
+  /** Mac only: which folders never reach the phone; crash reports scrub its roots. */
+  readonly privacy: Privacy
   /** Whether an agent is using a browser page now (a call, or a grant of a live run). */
   browserInUse(pageKey: string): boolean
   /** Stops agent sessions and project processes, then the HTTP server (including open SSE streams). */
@@ -285,6 +290,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     console.warn('[cockpit] workspace identities not registered:', error instanceof Error ? error.message : error)
   }
   const memory = createMemoryStore(root)
+  // The Projects area's Map and Mac only (projects-area Moves 3 and 9), shared by every place that answers the phone.
+  const mapService = createMapService({ navigation: createNavigationStore(root), projects, summaries: () => manager.summaries() })
+  const privacy = createPrivacy(() => mapService.privateRoots())
   const presets = createPresetStore(root)
   const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId) }
   const remoteStore = createRemoteStore(root)
@@ -298,13 +306,13 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     }, port: options.remote?.port,
     push, ...(options.remote?.sendPush ? { sendPush: options.remote.sendPush } : {}) })
   const previewListenPort = options.remote?.previewListenPort
-  const phonePreviews = createPhonePreviews({ root, remoteStore, tailscale, processes, policy: () => remote.previewPolicy(),
+  const phonePreviews = createPhonePreviews({ root, remoteStore, tailscale, processes, policy: () => remote.previewPolicy(), hidden: privacy.macOnly,
     ...(previewListenPort !== undefined ? { listenPort: () => previewListenPort } : {}),
     ...(options.remote?.listenerGroups ? { listenerGroups: options.remote.listenerGroups } : {}),
     ...(options.remote?.previewFirstByteMs ? { firstByteMs: options.remote.previewFirstByteMs } : {}),
     log: (line) => console.log(`[cockpit] ${line}`) })
   remote.attachPreviews(phonePreviews)
-  const stopNotifier = startNotifier({ push, manager, threads: store,
+  const stopNotifier = startNotifier({ push, manager, threads: store, hidden: privacy.macOnly,
     active: () => remote.status().running,
     paired: (deviceId) => remoteStore.devices().some((d) => d.id === deviceId),
     projectName: (path) => projects.list({ includeHidden: true }).find((p) => p.path === path)?.name ?? path.split('/').pop() ?? path,
@@ -364,8 +372,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // proof:wave-12 part 2 (W12-11) only: the app dies after Git started a merge, before Cockpit recorded its end.
   const crashAfterGit = process.env.COCKPIT_PROOF_MERGE_CRASH === '1' ? { afterGit: () => { process.kill(process.pid, 'SIGKILL') } } : {}
   const merges = createMergeService(root, { workspaces, activeIn }, crashAfterGit)
-  const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
-    mcp: { sessions, processes, openUrl,
+  const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME, mapService, privacy,
+    mcp: { sessions, processes, openUrl, macOnly: privacy.macOnly,
       processOwner: (threadId, workspaceId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
         const runId = manager.currentRunId(threadId, workspaceId)
@@ -406,5 +414,5 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     return closing
   }
 
-  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, workspaces, runObserver, results, checks, browserLeases, browserInUse: (key) => browser?.inUse(key) ?? false, close }
+  return { url: `http://${host}:${port}`, port, store, manager, processes, remote, phonePreviews, projects, workspaces, runObserver, results, checks, browserLeases, privacy, browserInUse: (key) => browser?.inUse(key) ?? false, close }
 }

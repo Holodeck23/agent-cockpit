@@ -13,7 +13,7 @@ import { ProjectAvatar } from './ProjectAvatar.tsx'
 // Name, tab tint, picture, instructions and the folder, for one project.
 // The instructions limit matches the server's (MAX_INSTRUCTIONS_CHARS in server/projects/store.ts).
 const MAX_CHARS = 8000
-const TINTS: ReadonlyArray<{ id: Project['color']; label: string }> = [
+export const TINTS: ReadonlyArray<{ id: Project['color']; label: string }> = [
   { id: 'blue', label: 'Blue' }, { id: 'pink', label: 'Pink' }, { id: 'orange', label: 'Orange' },
   { id: 'green', label: 'Green' }, { id: 'purple', label: 'Purple' }, { id: 'gray', label: 'Gray' },
 ]

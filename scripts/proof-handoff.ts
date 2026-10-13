@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from 'playwright-core'
 import { COCKPIT_GUIDANCE } from '../server/mcp/sessions.ts'
+import { TURN_GUIDANCE } from '../server/threads/turns.ts'
 import { checker, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { apiPost, messageBox, openProject, setTheme, startConversation } from './lib/ui.ts'
 
@@ -111,9 +112,11 @@ try {
   await messageBox(page).press('Enter')
   check('4 Codex answers after the switch', await until('codex reply', async () => (await replies(page, /^Received \d+ characters of handoff\.$/).count()) === 1))
   const got = existsSync(received) ? readFileSync(received, 'utf8') : ''
-  // Cockpit's own guidance goes first when its tools are attached (manager.instructionsFor); nothing else.
-  const exact = got === shown || got === `${COCKPIT_GUIDANCE}\n\n${shown}`
-  check('4 the receiving agent got exactly the text that was shown', exact && shown.length > 0, `shown ${shown.length}, received ${got.length}, guidance ${got.startsWith(COCKPIT_GUIDANCE) ? 'yes' : 'no'}`)
+  // Every launch starts with the turn shape, then Cockpit's tool guidance when its tools are attached
+  // (manager.instructionsFor); after that, exactly the handoff shown.
+  const exact = got === `${TURN_GUIDANCE}\n\n${shown}` || got === `${TURN_GUIDANCE}\n\n${COCKPIT_GUIDANCE}\n\n${shown}`
+  check('4 the receiving agent got exactly the text that was shown', exact && shown.length > 0,
+    `shown ${shown.length}, received ${got.length}, tools guidance ${got.includes(COCKPIT_GUIDANCE) ? 'yes' : 'no'}`)
   check('4 including the late message it was shown', got.includes('USER: D13-LATE a message the preview has not shown'))
   await shot(page, 'switched')
 

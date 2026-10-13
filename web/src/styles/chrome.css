@@ -51,6 +51,24 @@
 .tab-pin .icon { width: 15px; height: 15px; }
 .tab-pin.pinned { color: var(--tab-tint, var(--strong)); }
 .tab-pin:hover { color: var(--strong); }
+/* × closes the tab (unpins; the project stays in Cockpit). Quiet until the tab is hovered or active. */
+.tab-close {
+  display: grid; place-items: center; width: 22px; height: 22px; padding: 0; flex: none;
+  background: none; border: 0; border-radius: 6px; color: var(--muted); opacity: 0.45; cursor: default;
+}
+.tab-close .icon { width: 13px; height: 13px; }
+.tab:hover .tab-close, .tab.active .tab-close, .tab-close:focus-visible { opacity: 1; }
+.tab-close:hover { background: var(--field); color: var(--strong); }
+/* Dragging a tab: the tab dims; a line marks where it lands. */
+.tab.dragging { opacity: 0.5; }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--blue); }
+.tab.drop-after { box-shadow: inset -2px 0 0 var(--blue); }
+.tabbar-overlays { -webkit-app-region: no-drag; }
+.tab-menu { z-index: 40; }
+.tab-menu-swatches { display: flex; gap: 8px; padding: 4px 10px 8px; }
+.tab-menu .tint-swatch { width: 22px; height: 22px; }
+.menu-separator { height: 1px; margin: 5px 4px; background: var(--border); }
+.menu-item-danger { color: var(--danger); }
 
 .avatar {
   display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 7px;
