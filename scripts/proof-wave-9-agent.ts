@@ -150,6 +150,12 @@ addEventListener('mouseup', () => { drag = null })
     writeFileSync(join(PROOF_DIR, `wave9-agent-${name}-page.png`), Buffer.from(png, 'base64'))
   }
 
+  const threadSnapshot = (page: Page): Promise<unknown> => page.evaluate(async () => {
+    const all = (await (await fetch('/api/threads')).json()).data
+    return Promise.all(all.map(async (t: { meta: { id: string; title: string } }) => ({ title: t.meta.title,
+      detail: (await (await fetch(`/api/threads/${t.meta.id}`)).json()).data })))
+  })
+
   /** One agent run: the stand-in waits for numbered call files and answers each in turn. */
   function runIn(page: Page) {
     const dir = join(root, `s${++sessions}`)
@@ -162,7 +168,14 @@ addEventListener('mouseup', () => { drag = null })
         writeFileSync(join(dir, `${step}-${op}.json`), JSON.stringify(body))
         if (answer) {
           const approval = openApproval(page)
-          await approval.waitFor({ timeout: 15_000 })
+          try { await approval.waitFor({ timeout: 15_000 }) }
+          catch (error) {
+            const response = join(dir, `${step}.out`)
+            const diagnostic = { step, op, body, response: existsSync(response) ? readFileSync(response, 'utf8') : null,
+              events: await threadSnapshot(page).catch(() => null), error: error instanceof Error ? error.message : String(error) }
+            writeFileSync(join(PROOF_DIR, 'wave9-approval-timeout.json'), JSON.stringify(diagnostic, null, 2))
+            throw error
+          }
           await answer(approval)
         }
         await until(`call ${step} ${op}`, async () => existsSync(join(dir, `${step}.code`)), 30_000)
@@ -293,6 +306,21 @@ addEventListener('mouseup', () => { drag = null })
     const run2 = runIn(page)
     await run2.start()
     r = await run2.call('navigate', { url: `${LOCAL}/a` })
+    // Navigation can finish before the newly selected pane places its native view. Reading
+    // controls during that resize yields a revision that is correctly refused before approval.
+    let lastBounds = ''
+    const placed = await until('stable page A viewport', async () => {
+      const view = await viewAt(app, `${LOCAL}/a`)
+      const box = await page.locator('.browser-viewport').boundingBox()
+      if (!view?.visible || !box) return false
+      const bounds = JSON.stringify(view.bounds)
+      const stable = bounds === lastBounds
+      lastBounds = bounds
+      return stable && Math.abs(view.bounds.x - box.x) <= 1 && Math.abs(view.bounds.y - box.y) <= 1
+        && Math.abs(view.bounds.width - box.width) <= 1 && Math.abs(view.bounds.height - box.height) <= 1
+    })
+    check('W9-08 the selected page has a stable placed viewport before its controls are read', placed)
+    if (!placed) throw new Error('Page A viewport did not settle')
     r = await run2.call('read')
     const revA = r.body.data?.page?.revision ?? -1
     const readA = r

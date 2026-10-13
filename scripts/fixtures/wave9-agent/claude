@@ -64,6 +64,9 @@ stop_background() {
     printf '{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":5}\n'
   fi
 }
+# EOF and termination must reap the fixture's own browser-call worker too.
+trap 'stop_background' 0
+trap 'exit 0' HUP INT TERM
 while IFS= read -r line; do
   case "$line" in
     *'"subtype":"interrupt"'*) stop_background; continue ;;
@@ -88,6 +91,7 @@ while IFS= read -r line; do
       set -- ${text#links }
       say "Local: [the app]($1). Remote: [docs]($2). Unsafe: [launch](cockpit-proof-app://run). File: README.md:1" ;;
     session\ *)
+      bg=""
       browse_session "${text#session }" &
       bg=$! ;;
     chrome\ ok) chrome_call "c$turn"; sleep 1; chrome_answer "c$turn" "Tab 1: Example"; say "Chrome answered." ;;
