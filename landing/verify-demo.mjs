@@ -32,6 +32,7 @@ try {
     const noOverflow = async () => {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'page overflow')
       assert.equal(await app.locator('html').evaluate(el => el.scrollWidth > innerWidth), false, 'demo overflow')
+      assert.equal(await app.locator('.app > .subnav, .app > .workspace').evaluateAll(elements => elements.some(el => el.getBoundingClientRect().width > innerWidth + 1)), false, 'demo panes fit without clipping')
     }
     assert.equal(await page.locator('h1').count(), 1)
     assert.ok((await page.locator('.release-chip').innerText()).includes(`v${version}`))
