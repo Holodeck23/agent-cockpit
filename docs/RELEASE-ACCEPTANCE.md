@@ -1,5 +1,20 @@
 # Release acceptance
 
+## Current local build — v0.1.8, 13 October 2026
+
+Public prerelease remains **v0.1.7**. The repaired local build was integrated through PRs #67/#69/#70/#71 into main `39e702e` and installed locally; no v0.1.8 tag, public DMG or release was published.
+
+- Tested source `7c2fb30`; main contains it and differs only in `.gitignore` and developer Markdown. Runtime/build inputs match.
+- Source verification: **304 files / 1,768 tests PASS**. Main CI PASS.
+- Deterministic packaged gate: **36 suites ×3 =108 results, 3/3 clean runs**, unchanged proof package, no surviving owned processes. Physical input was isolated from synthetic windows; human focus/cues remain separate.
+- Production asar SHA-256 `4fe2d757c3be0a9e6020d9ec0b258e84471b5b642d2a42c0a6c288a808cdd3a8`; complete package `7277e506a31f9f2f8db0fb76c9f0ee9f66bc9af74895fbfc2865136031812cbd`. Installed copy matched; signature and production/installed lockdown 10/10 PASS.
+- Bounded native checks: pending approval across navigation for 60.8 seconds; separate one-request Allows for isolated backend/web; preview Files listing/read; same-conversation follow-up; managed Stop; active Codex command cancellation before stopped result; quit/reopen, search and retained messages/decisions. Final installed startup retained all 52 prior stored thread files and the saved draft.
+- The original shared-profile Files error was not attributed to a confirmed cause; no speculative Files fix was made. Earlier failed gates and their fixes remain in the maintainer’s durable evidence archive.
+- Open: human comprehension and sound/Dock/scanner/notification cues, two hours of real use, another Mac, the remaining live Chrome/account/phone/OpenRouter checks, scope freeze and the exact shipping-installer/publication record. Assistant checks do not close these gates.
+
+The historical release records below describe their own published packages.
+
+
 ## v0.1.7 published prerelease — 2026-10-10
 
 Everything merged since v0.1.6 (approval outcomes and countdown, visible permission level and send destination, Antigravity images, the Codex Stop/steer race fix, word-boundary titles), plus crash reports limited to what the beta terms name, Idle for a conversation with nothing running, and two lost-click fixes (Processes → Open site; the first click after typing in a document).

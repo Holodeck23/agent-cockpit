@@ -1,6 +1,6 @@
 # Agent Compatibility and Limitations
 
-> **v0.1.7 prerelease.** See the [user guide](guide.md) for what this version does.
+> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
 
 Agent Cockpit provides a unified interface across different AI coding agents. However, each agent has specific requirements, capabilities, and limitations based on its CLI implementation and API provider.
 

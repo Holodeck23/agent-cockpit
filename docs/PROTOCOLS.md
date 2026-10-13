@@ -74,3 +74,7 @@ agy --input-format stream-json --output-format stream-json --disable-slash-comma
 - **A Finder or Dock launch gets launchd's bare PATH**, so `claude`, `codex`, `npm` and `node` aren't found. The app asks the login shell for its PATH once at startup (`$SHELL -ilc`) and merges it in, with Homebrew and npm fallbacks (`electron/shell-path.ts`).
 - **The app binary doubles as Node.** With `ELECTRON_RUN_AS_NODE=1`, `Cockpit.app/Contents/MacOS/Cockpit script.cjs` runs a script as plain Node 24, including one inside `app.asar`. That is how the cockpit MCP server runs without Node installed.
 - npm 11 can block install scripts, and Electron 44 fetches its binary lazily: run `node node_modules/electron/install.js` once after `npm install`.
+
+## Codex foreground-command cancellation (CLI 0.162.1)
+
+`turn/interrupt` can stop a model turn while its unified-exec command remains alive. Current Cockpit negotiates the experimental API, tracks provider-reported active command terminals by thread/turn, then uses `thread/backgroundTerminals/terminate` alongside interruption. It waits for confirmation, reports refusal/timeout, handles late command-start notifications and defers deliberate follow-ups while cancellation settles. Completed/background items and separately managed Cockpit processes retain their own controls. `command/exec/terminate` and similarly named process methods are not interchangeable with this terminal-store scope. The adapter and real-process regressions cover canceled command death, independent-session survival and same-session follow-up.

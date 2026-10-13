@@ -1,6 +1,10 @@
 # Build notes
 
-How Cockpit was built, phase by phase: what each phase added, how, why, and the gate it had to pass. Every phase ended with `npm run verify` green and a proof run against real agents. From Phase A on, proofs ran against the packaged app, not a dev build. Screenshots from each gate are in [proof/](proof/).
+How Cockpit was built, phase by phase: what each phase added, how, why, and the gate it had to pass. Each checkpoint records its source checks and distinguishes deterministic fixtures from live-provider observations. From Phase A on, proofs ran against the packaged app, not a dev build. Screenshots from each gate are in [proof/](proof/).
+
+## Current repair checkpoint — 13 October 2026
+
+Main `39e702e` integrates the daily-use, approval/helper, New conversation and walkthrough repairs (#67/#69/#70/#71). The local v0.1.8 build passes 1,768 source tests and 108 deterministic packaged suite runs; signatures, lockdown, bounded native Stop/reopen and installed-state retention passed. Public download remains v0.1.7. [Release acceptance](RELEASE-ACCEPTANCE.md) records the hashes and limits.
 
 ## Where it started
 

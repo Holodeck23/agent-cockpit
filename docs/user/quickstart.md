@@ -1,6 +1,6 @@
 # First-Run Quick Start
 
-> **v0.1.7 prerelease (2026-10-10).** Cockpit supports Claude Code, Codex, Google Antigravity and OpenCode. Claude Code and Codex provide the fullest guided setup and recent-session recovery; see [Agent Compatibility and Limitations](compatibility.md) for the Antigravity and OpenCode boundaries. Independent human and other-Mac installation remain open. See the [tester checklist](tester-checklist.md).
+> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
 
 Welcome to Agent Cockpit! This guide will take you from launching the app to seeing your first result.
 

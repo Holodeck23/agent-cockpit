@@ -46,7 +46,7 @@ export function requestStartup(id = 'garden') {
   emit(id, { kind: 'approval_request', requestId: crypto.randomUUID(), toolName: 'mcp__cockpit__start_process', input: { command: 'npm run dev' }, suggestions: [] }, 'needs_input')
 }
 export function processUpdate(status: ProcessInfo['status'], threadId = state.processes[0]?.owner.kind === 'conversation' ? state.processes[0].owner.threadId : 'garden') {
-  const process: ProcessInfo = { id: 'sample-server', name: 'Garden Notes', command: 'npm run dev', projectPath, status, startedAt: now(), exitCode: status === 'exited' ? 0 : null, signal: null, url: SAMPLE_URL, owner: { kind: 'conversation', threadId, title: state.threads.get(threadId)?.meta.title ?? 'Garden Notes' } }
+  const process: ProcessInfo = { id: 'sample-server', name: 'Garden Notes', command: 'npm run dev', projectPath, cwd: projectPath, status, startedAt: now(), exitCode: status === 'exited' ? 0 : null, signal: null, url: SAMPLE_URL, owner: { kind: 'conversation', threadId, title: state.threads.get(threadId)?.meta.title ?? 'Garden Notes' } }
   state.processes = [process]
   listeners.forEach(l => l.onProcess?.(process))
   return process

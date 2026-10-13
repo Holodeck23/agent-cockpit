@@ -1,6 +1,6 @@
 # Troubleshooting
 
-> **v0.1.8 candidate.** The public prerelease remains v0.1.7. See the [user guide](guide.md) for this candidate’s behavior.
+> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
 
 When issues occur, Cockpit is designed to fail safely and preserve your work.
 
@@ -22,7 +22,7 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 
 **Symptom:** Cockpit opens, but expected new features are missing, or the UI looks wrong.
 *   **Likely Cause:** You might be launching a stale build (e.g., an older `.dmg` in your Downloads folder) instead of the updated version in `/Applications`.
-*   **Recovery:** Right-click the app icon in the Dock or Finder, select **Options > Show in Finder**, and verify it is the `/Applications/Cockpit.app` copy. Compare the release date and source revision; a version number alone cannot identify which features are present. Keep older copies clearly labelled if you need them.
+*   **Recovery:** Right-click the app icon in the Dock or Finder, select **Options > Show in Finder**, and verify it is the `/Applications/Cockpit.app` copy. Compare the release date and source revision; a version number alone cannot identify which features are present. Keep non-installed copies under a `.noindex` folder, so Spotlight does not offer an old build as Cockpit.
 
 **Symptom:** Codex says the configured model requires a newer CLI.
 * **Cause:** The CLI executable Cockpit found is older than the model configured in your Codex settings. Detection alone does not prove model compatibility.
@@ -56,8 +56,8 @@ When issues occur, Cockpit is designed to fail safely and preserve your work.
 *   **Likely Cause:** The name contains characters that hide or reverse text. Cockpit shows them so the name cannot pretend to be something else (`Invoice-⟨U+202E⟩fdp.command` is a script, not a PDF). It asks before opening any file macOS would run or install.
 *   **Recovery:** Open it only if you know where it came from. Rename it in Files (**⋯ → Rename…**) if the characters were not intended.
 
-**Symptom:** An agent's request to start a process, remember something or save a workflow failed with "approval expired" or "denied".
-*   **Likely Cause:** Cockpit asks before an agent starts or stops a process, saves a memory or saves a workflow, and the card waits until you answer or the calling turn ends. Stop, disconnecting the tool, or ending the turn cancels the request.
+**Symptom:** An agent’s request to start a process, remember something or save a workflow failed with "approval expired", "canceled" or "denied".
+*   **Likely Cause:** In the current local build, Cockpit asks before an agent starts or stops a process, saves a memory or saves a workflow, and the card waits until you answer or the calling turn ends. The published v0.1.7 build can expire an unanswered card. Stop, disconnecting the tool, or ending the turn cancels the request.
 *   **Recovery:** Ask the agent to try again and answer the card. For processes, **Allow for this session** covers the rest of that agent session.
 
 **Symptom:** Cockpit warns about a file conflict when saving an edit.
@@ -96,3 +96,7 @@ Cockpit itself runs entirely on your Mac and never needs a Cockpit server. Three
 
 **Symptom:** Phone access never connects.
 *   **Recovery:** See [Phone Access](#phone-access). Tailscale needs its own network access on both devices; a VPN running beside it can take its routes.
+
+## Development previews
+
+Use `npm run dev:server` for Cockpit’s own preview: it keeps development state separate from the installed app. `COCKPIT_DEV_HOME` selects an explicit isolated profile. An empty preview profile has its own project list, so register the project there before using Files. If Files says **Folder unavailable**, check the API response, project/workspace registration and backend log; do not disable origin or window-key checks. The earlier shared-profile Files error was not assigned a confirmed cause.
