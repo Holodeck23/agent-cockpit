@@ -145,9 +145,11 @@ try {
   await page.getByRole('button', { name: 'Projects', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Garden settings…' }).click()
   const tools = page.locator('.project-settings').getByRole('checkbox', { name: /Give Antigravity Cockpit/ })
-  await tools.check()
+  // The controlled checkbox follows the asynchronous server answer; check() expects an immediate DOM toggle.
+  await tools.click()
   const plugin = join(project, '.agents/plugins/cockpit')
   check('7 turning it on writes the project plugin', await until('plugin', async () => existsSync(join(plugin, 'mcp_config.json'))))
+  check('7 the toggle reflects the successful server answer', await until('checked after server answer', async () => (await tools.isChecked()) && (await tools.isEnabled())))
   check('7 without the session key, and nothing global', !readFileSync(join(plugin, 'mcp_config.json'), 'utf8').includes('COCKPIT_MCP_TOKEN=') && !existsSync(join(home, '.gemini/config/mcp_config.json')))
   await shot(page, 'agy-tools-on')
   // Applies through the server; the box follows its answer, so click and watch the folder.
