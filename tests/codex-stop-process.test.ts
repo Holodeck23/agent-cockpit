@@ -32,9 +32,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
    note('turn/completed', { threadId: 'thread', turn: { id: 'turn-' + turn, status: 'completed' } })
    return
   }
-  command = spawn('/bin/sh', ['-c', 'sleep 2; echo SHOULD_NOT_RUN > marker'], { detached: true, stdio: 'ignore' })
+  command = spawn('/bin/sh', ['-c', 'while [ ! -f release ]; do sleep 0.05; done; sleep 1; echo SHOULD_NOT_RUN > marker'], { detached: true, stdio: 'ignore' })
   fs.writeFileSync(root + '/command.pid', String(command.pid))
-  note('item/started', { threadId: 'thread', turnId: 'turn-1', item: { type: 'commandExecution', id: 'cmd', processId: 'terminal', command: 'sleep 2; echo SHOULD_NOT_RUN > marker' } })
+  note('item/started', { threadId: 'thread', turnId: 'turn-1', item: { type: 'commandExecution', id: 'cmd', processId: 'terminal', command: 'while [ ! -f release ]; do sleep 0.05; done; sleep 1; echo SHOULD_NOT_RUN > marker' } })
  }
  if (m.method === 'turn/interrupt') {
   send({ id: m.id, result: {} })
@@ -63,20 +63,22 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     try {
       session.send('run command')
       unrelated.send('run independent command')
-      await expect.poll(() => existsSync(join(first, 'command.pid')) && existsSync(join(other, 'command.pid'))).toBe(true)
+      await expect.poll(() => existsSync(join(first, 'command.pid')) && existsSync(join(other, 'command.pid')), { timeout: 5000 }).toBe(true)
       const pid = Number(readFileSync(join(first, 'command.pid'), 'utf8'))
       const otherPid = Number(readFileSync(join(other, 'command.pid'), 'utf8'))
       session.interrupt()
-      await expect.poll(() => events.some((e) => e.kind === 'result' && e.stopped)).toBe(true)
+      await expect.poll(() => events.some((e) => e.kind === 'result' && e.stopped), { timeout: 5000 }).toBe(true)
       expect(() => process.kill(pid, 0)).toThrow()
       expect(() => process.kill(otherPid, 0)).not.toThrow()
       expect(session.alive()).toBe(true)
       session.send('next deliberate message')
-      await expect.poll(() => events.some((e) => e.kind === 'assistant_text' && e.text === 'follow-up accepted')).toBe(true)
+      await expect.poll(() => events.some((e) => e.kind === 'assistant_text' && e.text === 'follow-up accepted'), { timeout: 5000 }).toBe(true)
       // The side effect after sleep must never run in the canceled command, even later.
-      await new Promise((resolve) => setTimeout(resolve, 2200))
-      expect(existsSync(join(first, 'marker'))).toBe(false)
+      writeFileSync(join(first, 'release'), '')
+      writeFileSync(join(other, 'release'), '')
+      await expect.poll(() => existsSync(join(other, 'marker')), { timeout: 5000 }).toBe(true)
       expect(readFileSync(join(other, 'marker'), 'utf8')).toContain('SHOULD_NOT_RUN')
+      expect(existsSync(join(first, 'marker'))).toBe(false)
     } finally {
       await Promise.all([session.close(), unrelated.close()])
     }
