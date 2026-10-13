@@ -67,6 +67,8 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const listWidth = useListWidth()
   const [listDraft, setListDraft] = useState<number>()
+  // An explicit New action bypasses recovery only in the project/workspace it targets.
+  const [freshStart, setFreshStart] = useState<{ projectPath?: string; scope?: string; nonce: number }>()
   const { notify, setNotify } = useNotifySettings()
   const [section, setSectionState] = useState<Section>('conversations')
   // A project removed from Cockpit keeps its stored conversations, but they are in no tab or list:
@@ -252,6 +254,11 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
   }, [phone, selectProject, selectThread, setSection])
 
   const activePath = projects.active?.path
+  const selectConversation = (id: string | undefined): void => {
+    if (id === undefined) setFreshStart((current) => ({ projectPath: activePath, scope: selection.scope, nonce: (current?.nonce ?? 0) + 1 }))
+    else setFreshStart(undefined)
+    cockpit.select(id)
+  }
   const projectThreads = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
   // Once the project has a worktree the list follows the selected workspace; a conversation that ran in several shows under each.
   const primaryId = projects.active?.workspaceId
@@ -398,7 +405,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
         <div className={`layout${selectedId ? ' has-selection' : ''}${hideList ? ' list-hidden' : ''}`} style={{ '--list-width': `${listDraft ?? listWidth.width}px` } as CSSProperties}>
           {phone || hideList ? null : <ListResize width={listWidth.width} onDraft={setListDraft} onResize={listWidth.setWidth} />}
           {hideList ? null : (
-            <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={cockpit.select} rowShows={appearance.rows}
+            <ConversationList key={`list:${phone ? 'phone' : activePath ?? ''}`} threads={visible} selectedId={selectedId} onSelect={selectConversation} rowShows={appearance.rows}
               workspaceSlot={workspaceSlot} {...(phone ? { projectName, canCreate: false } : {})} />
           )}
           {hideList && listOpen ? (
@@ -408,7 +415,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
                 <button type="button" className="button-soft" onClick={() => setHidden(false)}>Keep list open</button>
               </div>
               <ConversationList key={`list-drop:${activePath ?? ''}`} threads={visible} selectedId={selectedId} rowShows={appearance.rows} workspaceSlot={workspaceSlot}
-                onSelect={(id) => { cockpit.select(id); setListOpen(false) }} />
+                onSelect={(id) => { selectConversation(id); setListOpen(false) }} />
             </div>
           ) : null}
           {selectedId ? cockpit.detail?.meta.id === selectedId ? (
@@ -438,6 +445,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
               key={`new:${activePath ?? ''}${selection.scope ? `@${selection.scope}` : ''}`}
               project={projects.active}
               workspace={workspaceFor()}
+              freshRequest={freshStart?.projectPath === activePath && freshStart?.scope === selection.scope ? freshStart?.nonce : undefined}
               initialDraft={fileDraft && !fileDraft.threadId && fileDraft.projectPath === activePath ? fileDraft.text : undefined}
               onDraftLoaded={clearFileDraft}
               onBrowseFiles={() => setSection('files')}

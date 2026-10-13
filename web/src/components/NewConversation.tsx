@@ -1,5 +1,5 @@
 import { RecoveryCard } from './RecoveryCard.tsx'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type Project, type ThreadMeta, type MessageImage, type Workflow, type WorkflowInput } from '../api.ts'
 import { displayTitle } from '../workflow-list.ts'
 import { native } from '../native.ts'
@@ -13,6 +13,8 @@ import { MAIN_CHECKOUT, type ThreadWorkspace } from '../workspaces.ts'
 interface NewConversationProps {
   onBrowseFiles?: () => void
   initialDraft?: string
+  /** An explicit New action: bypass recovery and focus the existing draft without sending. */
+  freshRequest?: number
   onDraftLoaded?: () => void
   project: Project | undefined
   onOpenProject: (path: string) => Promise<void>
@@ -81,7 +83,7 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
   )
 }
 
-export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false, workspace }: NewConversationProps) {
+export function NewConversation({ onBrowseFiles, initialDraft, freshRequest, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false, workspace }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
   // Starters fill the composer rather than sending: a stray click (e.g. passing
@@ -90,11 +92,17 @@ export function NewConversation({ onBrowseFiles, initialDraft, onDraftLoaded, pr
   // Unknown until loaded; a failed check just leaves the cards and the pointer out.
   const [workflows, setWorkflows] = useState<Workflow[]>()
   const noWorkflows = workflows?.length === 0
-  const [fresh, setFresh] = useState(Boolean(initialDraft))
+  const [fresh, setFresh] = useState(Boolean(initialDraft) || Boolean(freshRequest))
   // F16: the workflow editor opens here, over the start screen; the composer and its draft stay put.
   const [newWorkflow, setNewWorkflow] = useState(false)
   const [savingWorkflow, setSavingWorkflow] = useState(false)
   const screen = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    if (!freshRequest) return
+    setFresh(true)
+    setNewWorkflow(false)
+    screen.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus()
+  }, [freshRequest])
   const projectPath = project?.path
   const loadWorkflows = useCallback(() => {
     if (!projectPath) return () => undefined
