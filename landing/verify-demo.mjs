@@ -11,7 +11,9 @@ const featureCount = featureGroups.reduce((count, group) => count + group.items.
 const evidence = process.argv[2] && resolve(process.argv[2])
 if (evidence) await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
-const targets = [{ name: 'file', url: pathToFileURL(file).href, offline: true }]
+// Local proof can run separately before deployment; avoid repeating it in hosted-only checks.
+if (process.env.LANDING_ONLY_HTTP && !process.env.LANDING_URL) throw new Error('LANDING_ONLY_HTTP requires LANDING_URL')
+const targets = process.env.LANDING_ONLY_HTTP ? [] : [{ name: 'file', url: pathToFileURL(file).href, offline: true }]
 if (process.env.LANDING_URL) targets.push({ name: 'http', url: process.env.LANDING_URL, offline: false })
 try {
   for (const target of targets) for (const width of [360, 390, 768, 1280, 1440]) {
@@ -24,7 +26,7 @@ try {
       requests.push(r.url())
       if (r.frame().parentFrame()) demoRequests.push(r.url())
     })
-    await page.goto(target.url)
+    await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 30000 })
     const app = page.frameLocator('#demo-frame')
     const button = name => app.getByRole('button', { name, exact: true })
     const section = name => app.getByRole('tab', { name, exact: true }).click()
