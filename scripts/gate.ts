@@ -4,7 +4,9 @@
 // folder and output file; the summary names the commit, the package, every result and the first
 // failure. A failed pass ends the gate (a fix makes a new candidate, which starts again at run 1).
 //
-//   npx tsx scripts/gate.ts --app release/proof/mac-arm64/Cockpit.app --out <dir> [--runs 3] [--only a,b]
+//   npx tsx scripts/gate.ts --app release/proof/mac-arm64/Cockpit.app --out <dir> [--runs 3] [--only a,b] [--background]
+// --background isolates physical input with transparent, non-focusable native proof windows.
+// Native view/layout visibility and renderer captures stay intact; human focus/cues are separate.
 //
 // --only runs a subset for diagnosis; its summary can never pass as the release gate.
 import { spawn, spawnSync } from 'node:child_process'
@@ -38,6 +40,7 @@ function fail(message: string): never {
 const app = resolve(flag('app') ?? join(ROOT, 'release/proof/mac-arm64/Cockpit.app'))
 const out = resolve(flag('out') ?? fail('--out <dir> is required'))
 const runs = Number(flag('runs') ?? 3)
+const background = process.argv.includes('--background')
 if (!Number.isInteger(runs) || runs < 1) fail('--runs must be a whole number of passes')
 const only = flag('only')?.split(',').filter(Boolean)
 const suites = only ? GATE_SUITES.filter((suite) => only.includes(suite.name)) : GATE_SUITES
@@ -109,7 +112,7 @@ function runSuite(suite: (typeof GATE_SUITES)[number], run: number): Promise<{ r
   const log = createWriteStream(join(dir, 'output.txt'))
   const started = Date.now()
   const args = ['run', suite.script, ...(suite.args ? ['--', ...suite.args] : [])]
-  const child = spawn('npm', args, { cwd: ROOT, env: { ...process.env, COCKPIT_APP: app, COCKPIT_PROOF_DIR: dir } })
+  const child = spawn('npm', args, { cwd: ROOT, env: { ...process.env, COCKPIT_APP: app, COCKPIT_PROOF_DIR: dir, COCKPIT_PROOF_BACKGROUND: background ? '1' : '0' } })
   const observed = new Map<string, GateProcess>()
   if (child.pid) observeDescendants(child.pid, observed)
   const observer = setInterval(() => { if (child.pid) observeDescendants(child.pid, observed) }, 200)
@@ -133,6 +136,7 @@ const record = {
   scope: 'Stand-in agents and local fixtures only. Does not cover live providers, the physical phone, '
     + 'the production build (REL-04/05), another Mac (REL-06) or real use (REL-10).',
   subset: only ?? null,
+  physicalInputIsolation: background,
   commit: git('rev-parse', 'HEAD'),
   dirty: git('status', '--porcelain') !== '',
   app,
