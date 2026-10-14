@@ -37,6 +37,8 @@ export interface LaunchRequest {
   readonly cockpit?: CockpitMcpLaunch
   /** The project's own instructions, as set in Cockpit. */
   readonly projectInstructions?: string
+  /** Explicit project choice for Codex workspace-write network access, read at launch. */
+  readonly codexNetwork?: boolean
   /** Where this conversation's images are kept, for agents that read them as files. */
   readonly imagesDir?: string
   /** Selects the account (W12.1): CLAUDE_CONFIG_DIR or CODEX_HOME for a profile, nothing for the CLI default. */
@@ -83,6 +85,12 @@ export const instructionsFor = (req: LaunchRequest): string | undefined =>
  */
 export const claudeLaunchEnv = (env: Readonly<Record<string, string>> | undefined): Record<string, string> => ({ ...env, DISABLE_AUTOUPDATER: '1' })
 
+/** Launch overrides only; a revoked choice must override a permissive CLI config too. */
+export const codexConfigArgs = (req: Pick<LaunchRequest, 'cockpit' | 'codexNetwork'>): string[] => [
+  ...(req.cockpit ? codexMcpConfigArgs(req.cockpit) : []),
+  ...(req.codexNetwork !== undefined ? ['-c', `sandbox_workspace_write.network_access=${req.codexNetwork}`] : []),
+]
+
 export const defaultLaunchers: Record<AgentId, Launcher> = {
   claude: (req, onEvent) => {
     const mcp = req.cockpit ? claudeMcpOptions(req.cockpit) : undefined
@@ -115,7 +123,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       },
       onEvent,
       {
-        ...(req.cockpit ? { configArgs: codexMcpConfigArgs(req.cockpit) } : {}),
+        configArgs: codexConfigArgs(req),
         ...(req.cockpit || req.accountEnv ? { env: { ...req.cockpit?.secretEnv, ...req.accountEnv } } : {}),
       },
     ),
@@ -166,11 +174,14 @@ export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaun
 
 /** Current instructions for a project folder, read when an agent session starts. */
 export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
+export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean } | undefined
 
 export interface ManagerOptions {
   readonly launchers?: Partial<Record<AgentId, Launcher>>
   readonly mcp?: McpProvider
   readonly instructions?: InstructionsProvider
+  /** Mac-user project trust, applied only when a native session starts. */
+  readonly projectTrust?: ProjectTrustProvider
   /** Where conversation images are kept; defaults to the store's own state folder. */
   readonly images?: ImageStore
   /** The opaque primary workspace for a project folder (G-IDENTITY); undefined when it cannot be resolved. */
@@ -622,6 +633,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
+    const trust = meta.settings.agent === 'codex' ? options.projectTrust?.(meta.projectPath) : undefined
     let launching = true
     const deliver: EventSink = (event) => {
       // Even a synchronous launcher callback must follow the initial user_text and live entry.
@@ -680,6 +692,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const session = launcher(
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
+        ...(trust ? { codexNetwork: trust.codexNetwork } : {}),
         cwd: cwd ?? meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),

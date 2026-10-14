@@ -34,13 +34,15 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [color, setColor] = useState(project.color)
   const [text, setText] = useState(project.instructions ?? '')
   const [agentWorkflows, setAgentWorkflows] = useState(project.agentWorkflows === true)
+  const [codexNetwork, setCodexNetwork] = useState(project.codexNetwork === true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [saved, setSaved] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const nameBox = useRef<HTMLInputElement>(null)
   const filePicker = useRef<HTMLInputElement>(null)
-  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '') || agentWorkflows !== (project.agentWorkflows === true)
+  const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '')
+    || agentWorkflows !== (project.agentWorkflows === true) || codexNetwork !== (project.codexNetwork === true)
 
   useEffect(() => nameBox.current?.focus(), [])
   useEffect(() => {
@@ -56,7 +58,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     setError(undefined)
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
-  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows }), () => setSaved(true))
+  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork }), () => setSaved(true))
   const pick = (file: File | undefined): void => {
     if (file) run(async () => onImage(await avatarDataUrl(file)))
     if (filePicker.current) filePicker.current.value = ''
@@ -108,6 +110,13 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             Added to every agent session in this folder, alongside the repository&apos;s own instruction files, which Cockpit
             never edits. They apply when an agent next starts, and never change permissions.
           </p>
+          <label className="field-check">
+            <input type="checkbox" checked={codexNetwork} onChange={(e) => { setCodexNetwork(e.target.checked); setSaved(false) }} />
+            <span>
+              <strong>Trust Codex with network access in this project</strong>
+              Applies when a Codex session next starts in this project. Turn it off to block network access in workspace-write sessions. Running sessions keep their current choice until restarted; unrestricted permission mode still allows network access.
+            </span>
+          </label>
           <label className="field-check">
             <input type="checkbox" checked={agentWorkflows} onChange={(e) => { setAgentWorkflows(e.target.checked); setSaved(false) }} />
             <span>
