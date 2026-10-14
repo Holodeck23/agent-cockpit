@@ -128,6 +128,9 @@ const methods = {
   presets: () => state.presets,
   savePresets: (rows: any[]) => { state.presets = rows; return rows },
   listImportable: () => [],
+  // Account profiles need the installed app. Reporting no profile support keeps the compact
+  // account choice out of the demo composer instead of showing an error that blocks Send.
+  accounts: () => ({ accounts: [], support: Object.fromEntries(['claude', 'codex', 'antigravity', 'opencode'].map(agent => [agent, { profiles: false, reason: 'Account choice needs the installed Mac app; the demo uses sample replies.' }])) }),
 }
 // Unknown actions fail visibly; no API or native request can escape the simulation.
 export const api = new Proxy(methods, {
