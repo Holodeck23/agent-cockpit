@@ -2,7 +2,7 @@
 
 `index.html` is the self-contained release landing page, including the interactive demo,
 inline styles/scripts, Cockpit mark and four packaged-app screenshots. It opens from disk
-or any static host. The Mac download points to the v0.1.7 prerelease.
+or any static host. The Mac download points to the v0.1.8 prerelease.
 
 ## The interactive demo
 
@@ -50,7 +50,7 @@ node landing/build-demo.mjs
 The build preserves release copy and screenshot data in `index.html`. Commit the generated
 HTML with its source. No build command is needed at the static host. Rebuild intentionally
 when production components change, then verify the resulting demo again.
-The feature directory covers the published v0.1.7 scope, including v0.1.6 worktrees/accounts/phone preview and v0.1.7 interaction fixes. `release.json` records the download version independently of `package.json`: source/local builds can be newer than the published download. Check additions against the tagged guide and release notes; unpublished repairs belong in the source docs, not in the shipped-feature list. The demo is rebuilt from current main and labelled accordingly, so visitors know the public download can differ.
+The feature directory covers the published v0.1.8 scope, including v0.1.6 worktrees/accounts/phone preview, v0.1.7 interaction fixes and v0.1.8 approval, account and network-trust changes. `release.json` records the download version independently of `package.json`: source/local builds can be newer than the published download. Check additions against the tagged guide and release notes; unpublished repairs belong in the source docs, not in the shipped-feature list. The demo is rebuilt from current main and labelled accordingly, so visitors know the public download can differ.
 
 ## Preview and verify
 
