@@ -5,6 +5,7 @@ import { displayTitle } from '../workflow-list.ts'
 import { native } from '../native.ts'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
 import { Composer } from './Composer.tsx'
+import { AccountChoice } from './AccountChoice.tsx'
 import { WorkflowEditor } from './Workflows.tsx'
 import { FolderIcon, PlusIcon, SidebarIcon, WorkflowIcon } from './icons.tsx'
 import { StartArt } from './illustrations.tsx'
@@ -86,6 +87,8 @@ function OpenProject({ onOpenProject }: { onOpenProject: (path: string) => Promi
 export function NewConversation({ onBrowseFiles, initialDraft, freshRequest, onDraftLoaded, project, onOpenProject, onCreated, onError, onOpenGallery, onOpenWorkflows, onToggleList, listHidden = false, workspace }: NewConversationProps) {
   const [choice, setChoice] = useState<AgentChoice>(() => loadChoice(project?.path))
   const [starting, setStarting] = useState(false)
+  const [accountPending, setAccountPending] = useState(true)
+  const hasAccountChoice = Boolean(project) && (choice.agent === 'claude' || choice.agent === 'codex')
   // Starters fill the composer rather than sending: a stray click (e.g. passing
   // through from the native folder picker) must never start an agent run.
   const [prefill, setPrefill] = useState<{ text: string; reference?: boolean }>()
@@ -242,6 +245,8 @@ export function NewConversation({ onBrowseFiles, initialDraft, freshRequest, onD
         draftKey={`new:${project?.path ?? ''}${workspace?.scope ? `@${workspace.scope}` : ''}`}
         placeholder="Describe what you want…"
         disabled={!project || starting}
+        accountPending={hasAccountChoice && accountPending}
+        account={hasAccountChoice ? (sending) => <AccountChoice key={`${project!.path}:${choice.agent}`} agent={choice.agent} projectPath={project!.path} compact recheck={false} disabled={starting || sending} onPendingChange={setAccountPending} /> : undefined}
         onSubmit={start}
         picker={<AgentPicker value={choice} onChange={changeChoice} {...(project ? { projectPath: project.path } : {})} />}
       />
