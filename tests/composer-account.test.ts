@@ -84,6 +84,18 @@ it('keeps a mounted full picker and compact picker in sync, ignoring other proje
   expect(api.projectAccounts).toHaveBeenCalledTimes(before)
 })
 
+it('refreshes the final server choice when focus reloads during a pending switch', async () => {
+  const switching = deferred<Awaited<ReturnType<typeof api.projectAccounts>>>()
+  vi.mocked(api.selectAccount).mockReturnValueOnce(switching.promise)
+  await render(compact())
+  await change('work-codex')
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(select().value).toBe('default-codex')
+  expect(select().disabled).toBe(true)
+  await act(async () => { chosen = 'work-codex'; switching.resolve({ selection: selection(chosen) }) })
+  expect(select().value).toBe('work-codex')
+})
+
 it('blocks both Send and Enter during an account change, then disables switching during Send', async () => {
   const switching = deferred<Awaited<ReturnType<typeof api.projectAccounts>>>()
   const sending = deferred<void>()

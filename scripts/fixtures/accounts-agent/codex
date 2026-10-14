@@ -40,6 +40,8 @@ if ($cmd eq 'logout') {
 }
 exit 2 unless $cmd eq 'app-server';
 my $json = JSON::PP->new->canonical;
+my $network = 'unset';
+for my $arg (@ARGV) { $network = $1 if $arg =~ /^sandbox_workspace_write\.network_access=(true|false)$/ }
 my $turn = 0; my $thread = 'acct-codex-' . $$;
 sub reply { print $json->encode($_[0]), "\n" }
 while (my $line = <STDIN>) {
@@ -55,6 +57,10 @@ while (my $line = <STDIN>) {
     $thread = $resume if $resume ne '-';
     my $handoff = ($message->{params}{developerInstructions} // '') =~ /USER:/ ? 'yes' : 'no';
     logline("codex ctx=$ctx account=" . ($email || 'none') . " session=$thread resume=$resume handoff=$handoff");
+    if (my $out = $ENV{COCKPIT_PROOF_NETWORK_LOG}) {
+      open(my $fh, '>>', $out) or die "Cannot record network launch: $!";
+      print $fh $json->encode({ cwd => $message->{params}{cwd}, network => $network }), "\n"; close $fh;
+    }
     unless ($email) { print STDERR "not logged in\n"; reply({ id => $id, error => { code => -32000, message => 'Not logged in. Run codex login.' } }); next }
     reply({ id => $id, result => { thread => { id => $thread } } });
     reply({ method => 'thread/started', params => { thread => { id => $thread } } });

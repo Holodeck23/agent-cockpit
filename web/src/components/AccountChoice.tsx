@@ -49,6 +49,9 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true, 
   const [removing, setRemoving] = useState(false)
   const [revision, setRevision] = useState(0)
   const epoch = useRef(0)
+  const scope = `${agent}\u0000${projectPath}`
+  const currentScope = useRef(scope)
+  currentScope.current = scope
   const pendingChanged = useRef(onPendingChange)
   pendingChanged.current = onPendingChange
   const reported = useRef(onSelected)
@@ -66,7 +69,7 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true, 
     return () => { window.removeEventListener(ACCOUNT_CHANGED, changed); window.removeEventListener('focus', refresh) }
   }, [projectPath, agent])
 
-  useEffect(() => { setAdding(false); setRemoving(false); setNote('') }, [agent, projectPath])
+  useEffect(() => { setAdding(false); setRemoving(false); setNote(''); setBusy(false) }, [agent, projectPath])
 
   useEffect(() => {
     epoch.current += 1
@@ -74,7 +77,6 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true, 
     setView(undefined)
     setProjectId(undefined)
     setSelected(undefined)
-    setBusy(false)
     setError('')
     Promise.all([api.accounts(recheck), projectIdFor(projectPath)]).then(async ([accounts, id]) => {
       if (!live) return
@@ -104,17 +106,20 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true, 
     if (disabled || busy || loading) return
     if (!projectId) { setError('Open this project in Cockpit first.'); return }
     const started = epoch.current
+    const startedScope = scope
     setBusy(true)
     setError('')
     setNote('')
     api.selectAccount(projectId, agent, accountId)
       .then(({ selection }) => {
+        // The server changed even if this view refreshed or navigated while waiting. Refresh
+        // every matching mounted control; a different project/agent ignores this event.
+        window.dispatchEvent(new CustomEvent(ACCOUNT_CHANGED, { detail: { projectPath, agent } }))
         if (started !== epoch.current) return
         setSelected(selection[agent])
         setNote(`${agentName(agent)} conversations in this project use this account from their next message.`)
-        window.dispatchEvent(new CustomEvent(ACCOUNT_CHANGED, { detail: { projectPath, agent } }))
-      }, (e: unknown) => { if (started === epoch.current) setError(message(e)) })
-      .finally(() => { if (started === epoch.current) setBusy(false) })
+      }, (e: unknown) => { if (startedScope === currentScope.current) setError(message(e)) })
+      .finally(() => { if (startedScope === currentScope.current) setBusy(false) })
   }
   const reload = (): Promise<void> => api.accounts().then(setView, (e: unknown) => setError(message(e)))
 
