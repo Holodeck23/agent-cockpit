@@ -1,6 +1,6 @@
 /* App chrome: project tab bar + section sub-nav. */
 
-.app { display: grid; grid-template-rows: 46px 52px minmax(0, 1fr); height: 100dvh; background: var(--canvas-app); }
+.app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 46px 52px minmax(0, 1fr); height: 100dvh; background: var(--canvas-app); }
 
 .icon { width: 18px; height: 18px; flex: none; }
 .mark { width: 22px; height: 22px; flex: none; display: block; }

@@ -126,7 +126,7 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true, 
   if (compact) {
     return (
       <span className="composer-account">
-        <select aria-label="Account for next message" title="Applies to every conversation on this agent in this project. Changing accounts starts a new session with the conversation so far."
+        <select aria-label="Account for next message" title={`${current ? `${accountName(current)}. ` : ''}Applies to every conversation on this agent in this project. Changing accounts starts a new session with the conversation so far.`}
           value={loading ? '' : selected ?? ''} disabled={disabled || !current || loading || busy} aria-busy={loading || busy}
           onChange={(e) => choose(e.target.value)}>
           {loading ? <option value="">Checking account…</option> : null}
