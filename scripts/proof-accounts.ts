@@ -14,6 +14,7 @@ const { check, finish } = checker()
 const root = mkdtempSync(join(tmpdir(), 'cockpit-accounts-proof-'))
 const home = join(root, 'home'), state = join(root, 'state'), alpha = join(root, 'alpha'), beta = join(root, 'beta')
 const log = join(root, 'launches.log')
+const networkLog = join(root, 'network-launches.jsonl')
 for (const dir of [join(home, '.claude'), join(home, '.codex'), alpha, beta]) mkdirSync(dir, { recursive: true })
 writeFileSync(join(home, '.claude', '.fixture-identity'), 'alice@example.com 10\n')
 writeFileSync(join(home, '.codex', '.fixture-identity'), 'alice@example.com 20\n')
@@ -63,6 +64,7 @@ try {
   app = await launchPackagedApp({
     HOME: home, SHELL: join(ROOT, 'scripts/fixtures/wave10-cli/login-shell'), COCKPIT_HOME: state,
     COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/accounts-agent'), COCKPIT_PROOF_ACCOUNT_LOG: log,
+    COCKPIT_PROOF_NETWORK_LOG: networkLog,
   })
   const page = await app.firstWindow()
   page.setDefaultTimeout(15_000)
@@ -150,6 +152,32 @@ try {
   check('03 a fresh session, not a resume of Work B’s, with the conversation as a handoff', /^claude ctx=default account=alice@example\.com session=\S+ resume=- handoff=yes( cwd=\S+)?$/.test(last), last)
   await shot(page, '03-continued')
 
+  // D24: use the compact choice itself, then send through the composer to both accounts.
+  const compactAccount = page.getByRole('combobox', { name: 'Account for next message', exact: true })
+  check('D24 compact choice shows the same default beside Send', await until('compact ready', async () => await compactAccount.isEnabled() && await compactAccount.inputValue() === 'default-claude'))
+  await compactAccount.selectOption(workB!)
+  check('D24 compact switch is reflected in the conversation before Send', await until('compact Work B', async () => await compactAccount.isEnabled() && await compactAccount.inputValue() === workB))
+  await messageBox(page).fill('compact account sends to Work B')
+  await messageBox(page).press('Enter')
+  check('D24 compact-selected account actually answers', await until('compact reply', async () => (await threadText(page, alphaId)).filter((t) => t === 'Done as bob@example.com').length === 2))
+  await compactAccount.selectOption('default-claude')
+  await until('compact default restored', async () => await compactAccount.isEnabled() && await compactAccount.inputValue() === 'default-claude')
+  for (const theme of ['Light', 'Dark'] as const) {
+    await setTheme(page, theme)
+    for (const width of [360, 980, 1280]) {
+      await page.setViewportSize({ width, height: 720 })
+      const fits = await compactAccount.evaluate((el) => {
+        const box = el.getBoundingClientRect()
+        const send = document.querySelector('.send')!.getBoundingClientRect()
+        return box.left >= 0 && box.right <= innerWidth && send.left >= box.right && send.right <= innerWidth
+      })
+      check(`D24 compact account and Send fit ${theme} ${width}px`, fits)
+      await shot(page, `compact-${theme.toLowerCase()}-${width}`)
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await setTheme(page, 'Light')
+
   // Usage labels: each account's own report only.
   await openPicker(page)
   check('02 the picker shows the default’s usage on the default', await until('default meter', async () => (await meter(page).getAttribute('aria-valuenow')) === '10'), String(await meter(page).getAttribute('aria-valuenow').catch(() => null)))
@@ -171,6 +199,7 @@ try {
   // Removing a profile in use is refused; once idle it is signed out and deleted, projects moved to the default.
   await closePicker(page)
   await apiPost(page, `/api/threads/${alphaId}/messages`, { text: 'HOLD alpha on work b again' })
+  check('D24 compact account cannot change while the conversation runs', await until('compact disabled', async () => await compactAccount.isDisabled()))
   await openPicker(page)
   await picker(page).getByRole('button', { name: 'Remove “Work B”…' }).click()
   await picker(page).getByRole('button', { name: 'Remove', exact: true }).click()
@@ -209,9 +238,35 @@ try {
   const codexGroup = page.getByRole('group', { name: 'Codex account' })
   check('settings: project settings show the same account per agent', await until('settings codex', async () =>
     (await codexGroup.getByRole('combobox', { name: 'Account' }).evaluate((s: HTMLSelectElement) => s.selectedOptions[0]?.textContent ?? '')) === 'Second C · c…@example.com · plus'))
+  const trust = page.getByRole('checkbox', { name: /Trust Codex with network access/ })
+  check('D24 project network trust defaults off', !await trust.isChecked())
+  await trust.check()
+  await page.locator('.project-settings').getByRole('button', { name: 'Save', exact: true }).click()
   await page.locator('.project-accounts').scrollIntoViewIfNeeded()
   await shot(page, 'settings-accounts')
   await page.keyboard.press('Escape')
+
+  const projectRecord = async () => page.evaluate(async (p) => ((await (await fetch('/api/projects')).json()) as { data: Array<{ path: string; codexNetwork?: boolean }> }).data.find((x) => x.path === p), alpha)
+  check('D24 network trust is saved in Cockpit state', (await projectRecord())?.codexNetwork === true)
+  const launchNetwork = async (projectPath: string, expected: string) => {
+    const before = existsSync(networkLog) ? readFileSync(networkLog, 'utf8').trim().split('\n').length : 0
+    await apiPost(page, '/api/threads', { projectPath, text: `network policy ${expected}`, settings: { agent: 'codex' } })
+    check(`D24 Codex launch passes network=${expected}`, await until('network launch recorded', () => {
+      const lines = existsSync(networkLog) ? readFileSync(networkLog, 'utf8').trim().split('\n') : []
+      const last = lines.length > before ? JSON.parse(lines.at(-1)!) as { cwd: string; network: string } : undefined
+      return last?.cwd === projectPath && last.network === expected
+    }))
+  }
+  await launchNetwork(alpha, 'true')
+  await launchNetwork(beta, 'false')
+  await page.getByRole('button', { name: 'Projects', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Alpha settings…' }).click()
+  check('D24 saved trust survives reopening settings', await trust.isChecked())
+  await trust.uncheck()
+  await page.locator('.project-settings').getByRole('button', { name: 'Save', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await launchNetwork(alpha, 'false')
+  check('D24 revocation persists and project files are untouched', (await projectRecord())?.codexNetwork === false && JSON.stringify(readdirSync(alpha)) === JSON.stringify(['README.md']))
 
   // Dark and narrow.
   await setTheme(page, 'Dark')
@@ -230,5 +285,6 @@ try {
   if (app) await (await app.firstWindow()).screenshot({ path: join(PROOF_DIR, 'accounts-failure.png') }).catch(() => {})
 } finally {
   await app?.close().catch(() => {})
+  if (existsSync(networkLog)) writeFileSync(join(PROOF_DIR, 'network-launches.jsonl'), readFileSync(networkLog))
 }
 finish('PROOF ACCOUNTS (order 16)')

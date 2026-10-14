@@ -11,6 +11,7 @@ import { markUnread } from '../useSeen.ts'
 import { useStickToBottom } from '../useStickToBottom.ts'
 import { ActivityPane, useActivityPrefs } from './ActivityPane.tsx'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from './AgentPicker.tsx'
+import { AccountChoice } from './AccountChoice.tsx'
 import { ChangesView } from './ChangesView.tsx'
 import { Composer } from './Composer.tsx'
 import { FindBar } from './FindBar.tsx'
@@ -51,6 +52,8 @@ interface ThreadViewProps {
 export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail, streaming, processes, onError, instructionsRevision, phone = false, onBack, onToggleList, listHidden = false, onOpenFile, workspace, streams }: ThreadViewProps) {
   const { meta, status, events, transcriptPath } = detail
   const running = isBusy(status)
+  const hasAccountChoice = !phone && (meta.settings.agent === 'claude' || meta.settings.agent === 'codex')
+  const [accountPending, setAccountPending] = useState(true)
   // Which of the conversation's workspaces have an agent at work right now (W12-15).
   const inSeveral = !phone && Object.keys(meta.bindings ?? {}).length > 0
   const workingIn = inSeveral ? workingWorkspaces(events, running) : []
@@ -310,6 +313,8 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
         queueing={focusedRunning}
         onStop={focusedRunning ? () => guard(api.interrupt(meta.id, inSeveral ? focused : undefined)) : undefined}
         stopLabel={inSeveral && focused !== undefined ? `Stop current turn in ${workspace!.nameOf(focused)}` : undefined}
+        accountPending={hasAccountChoice && accountPending && !running}
+        account={hasAccountChoice ? (sending) => <AccountChoice key={`${meta.projectPath}:${meta.settings.agent}`} agent={meta.settings.agent} projectPath={meta.projectPath} compact recheck={false} disabled={running || sending} onPendingChange={setAccountPending} /> : undefined}
         onSubmit={(text, images) => send(text, images).then(() => undefined)}
         picker={phone ? (
           <span className="agent-static">{agentName(meta.settings.agent)}{meta.settings.model ? ` · ${meta.settings.model}` : ''}</span>

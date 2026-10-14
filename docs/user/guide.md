@@ -43,6 +43,10 @@ A project can run Claude Code or Codex on an account other than your CLI's defau
 -   Providers cannot resume a session under another account, so continuing a conversation after a switch starts a fresh session with a handoff (as above), and the transcript says so.
 -   Antigravity and OpenCode use their CLI default only; Cockpit says why in the menu.
 
+Current source also shows **Account for next message** beside Send for Claude Code and Codex. It shares the same project-wide choice; use the full picker to add or remove accounts. Send waits while an account choice loads or changes, and a running turn keeps its existing account.
+
+In **Project settings**, **Trust Codex with network access in this project** controls network access for workspace-write sessions. It defaults off and overrides the CLI's network setting when a session starts, without editing your files. Running sessions keep their launch choice until restarted. Unrestricted permission mode continues to allow network access.
+
 ## Conversations
 
 -   **Starting & Managing:** The conversation-list **+** opens a fresh composer and focuses it; repeated clicks preserve its draft. Project-open recovery remains a separate path. Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.

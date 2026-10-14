@@ -10,6 +10,7 @@ import { agentName } from '../transcript.ts'
 // separate context. Antigravity and OpenCode say why they stay on their CLI default.
 
 const ADD = '__add'
+const ACCOUNT_CHANGED = 'cockpit:account-changed'
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 export const accountName = (account: AccountView): string => {
@@ -30,9 +31,14 @@ interface AccountChoiceProps {
   readonly onSelected?: (account: AccountView | undefined) => void
   /** Re-read who the CLI defaults are signed in to (default on); one is enough when several show at once. */
   readonly recheck?: boolean
+  /** One project-wide account switch beside Send; account management stays in the full picker/settings view. */
+  readonly compact?: boolean
+  readonly disabled?: boolean
+  /** Prevent Send while the displayed destination is loading or changing. */
+  readonly onPendingChange?: (pending: boolean) => void
 }
 
-export function AccountChoice({ agent, projectPath, onSelected, recheck = true }: AccountChoiceProps) {
+export function AccountChoice({ agent, projectPath, onSelected, recheck = true, compact = false, disabled = false, onPendingChange }: AccountChoiceProps) {
   const [view, setView] = useState<AccountsView>()
   const [projectId, setProjectId] = useState<string>()
   const [selected, setSelected] = useState<string>()
@@ -41,17 +47,37 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const epoch = useRef(0)
+  const scope = `${agent}\u0000${projectPath}`
+  const currentScope = useRef(scope)
+  currentScope.current = scope
+  const pendingChanged = useRef(onPendingChange)
+  pendingChanged.current = onPendingChange
   const reported = useRef(onSelected)
   reported.current = onSelected
 
   // Read each time the agent or project changes; a late answer for another one is dropped.
   useEffect(() => {
+    const refresh = (): void => setRevision((value) => value + 1)
+    const changed = (event: Event): void => {
+      const detail = (event as CustomEvent<{ projectPath: string; agent: AgentId }>).detail
+      if (detail?.projectPath === projectPath && detail.agent === agent) refresh()
+    }
+    window.addEventListener(ACCOUNT_CHANGED, changed)
+    window.addEventListener('focus', refresh)
+    return () => { window.removeEventListener(ACCOUNT_CHANGED, changed); window.removeEventListener('focus', refresh) }
+  }, [projectPath, agent])
+
+  useEffect(() => { setAdding(false); setRemoving(false); setNote(''); setBusy(false) }, [agent, projectPath])
+
+  useEffect(() => {
+    epoch.current += 1
     let live = true
+    setView(undefined)
+    setProjectId(undefined)
     setSelected(undefined)
     setError('')
-    setNote('')
-    setAdding(false)
-    setRemoving(false)
     Promise.all([api.accounts(recheck), projectIdFor(projectPath)]).then(async ([accounts, id]) => {
       if (!live) return
       setView(accounts)
@@ -60,8 +86,8 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
       const { selection } = await api.projectAccounts(id)
       if (live) setSelected(selection[agent])
     }).catch((e: unknown) => { if (live) setError(message(e)) })
-    return () => { live = false }
-  }, [agent, projectPath, recheck])
+    return () => { live = false; epoch.current += 1 }
+  }, [agent, projectPath, recheck, revision])
 
   const mine = (view?.accounts ?? []).filter((a) => a.agent === agent)
   const current = mine.find((a) => a.id === selected)
@@ -69,29 +95,57 @@ export function AccountChoice({ agent, projectPath, onSelected, recheck = true }
   useEffect(() => { reported.current?.(current) }, [current?.id, current?.generation])
 
   const support = view?.support[agent]
+  const pending = support?.profiles === false ? false : busy || !current || loading
+  useEffect(() => { pendingChanged.current?.(pending) }, [pending])
   if (view && support && !support.profiles) {
+    if (compact) return null
     return <p className="picker-note account-default-only" role="note">Account: CLI default. {support.reason}</p>
   }
 
   const choose = (accountId: string): void => {
+    if (disabled || busy || loading) return
     if (!projectId) { setError('Open this project in Cockpit first.'); return }
+    const started = epoch.current
+    const startedScope = scope
     setBusy(true)
     setError('')
     setNote('')
     api.selectAccount(projectId, agent, accountId)
       .then(({ selection }) => {
+        // The server changed even if this view refreshed or navigated while waiting. Refresh
+        // every matching mounted control; a different project/agent ignores this event.
+        window.dispatchEvent(new CustomEvent(ACCOUNT_CHANGED, { detail: { projectPath, agent } }))
+        if (started !== epoch.current) return
         setSelected(selection[agent])
         setNote(`${agentName(agent)} conversations in this project use this account from their next message.`)
-      }, (e: unknown) => setError(message(e)))
-      .finally(() => setBusy(false))
+      }, (e: unknown) => { if (startedScope === currentScope.current) setError(message(e)) })
+      .finally(() => { if (startedScope === currentScope.current) setBusy(false) })
   }
   const reload = (): Promise<void> => api.accounts().then(setView, (e: unknown) => setError(message(e)))
+
+  if (compact) {
+    return (
+      <span className="composer-account">
+        <select aria-label="Account for next message" title={`${current ? `${accountName(current)}. ` : ''}Applies to every conversation on this agent in this project. Changing accounts starts a new session with the conversation so far.`}
+          value={loading ? '' : selected ?? ''} disabled={disabled || !current || loading || busy} aria-busy={loading || busy}
+          onChange={(e) => choose(e.target.value)}>
+          {loading ? <option value="">Checking account…</option> : null}
+          {mine.map((account) => (
+            <option key={account.id} value={account.id}>{account.mode === 'default' ? `Default${account.identity?.state === 'known' ? ` · ${account.identity.hint}` : ' · account unknown'}` : accountName(account)}</option>
+          ))}
+        </select>
+        {error ? <span className="composer-account-error" role="alert">{error}</span> : null}
+        {error && !current ? <button type="button" className="button-soft" onClick={() => setRevision((value) => value + 1)}>Retry accounts</button> : null}
+        {note ? <span className="visually-hidden" role="status">{note}</span> : null}
+      </span>
+    )
+  }
 
   return (
     <div className="account-choice" role="group" aria-label="Account">
       <label className="field">
         Account
-        <select aria-label="Account" value={adding ? ADD : loading ? '' : selected ?? ''} disabled={loading || busy} aria-busy={loading}
+        <select aria-label="Account" value={adding ? ADD : loading ? '' : selected ?? ''} disabled={disabled || loading || busy} aria-busy={loading || busy}
           onChange={(e) => { if (e.target.value === ADD) { setAdding(true); setRemoving(false) } else { setAdding(false); choose(e.target.value) } }}>
           {/* Until both answers arrive nothing matches, and a select would show its first option
               ("Add an account…") as if it were the account (proof:accounts, first launch 2026-10-08). */}

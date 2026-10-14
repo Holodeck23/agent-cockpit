@@ -201,6 +201,13 @@
 .composer-foot > .icon-button:disabled { opacity: 0.5; }
 .composer-spacer { flex: 1; }
 .composer-actions { display: flex; align-items: center; gap: 5px; flex: none; }
+.composer-account { display: flex; align-items: center; gap: 5px; max-width: min(230px, 52vw); }
+.composer-account select {
+  min-width: 0; width: clamp(110px, 22vw, 180px); height: 30px; padding: 0 24px 0 8px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--field); color: var(--strong); font: inherit; font-size: 12px;
+}
+.composer-account select:disabled { color: var(--muted); opacity: 0.72; }
+.composer-account-error { color: var(--red); font-size: 11px; max-width: 120px; overflow-wrap: anywhere; }
 .send, .composer-stop {
   display: grid; place-items: center; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 7px;
   background: var(--project-fill, var(--blue)); color: #fff; box-shadow: none;

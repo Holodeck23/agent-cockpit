@@ -227,6 +227,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return project?.instructions ? { text: project.instructions, revision: project.instructionsRevision ?? 0 } : undefined
     },
+    projectTrust: (projectPath) => {
+      const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
+      return { codexNetwork: project?.codexNetwork === true }
+    },
     capabilities,
     antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
     launchGate: (agent) => lifecycle?.launchBlock(agent),
