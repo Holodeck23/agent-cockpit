@@ -2,7 +2,7 @@
 
 Cockpit is a macOS desktop app that runs installed coding-agent CLIs using your existing subscriptions or provider setup. Supported agents include Claude Code, Codex, Google Antigravity, and OpenCode (OpenRouter is accessed through OpenCode).
 
-> **Current status — 13 October 2026:** The public download is **v0.1.7**. Main includes the repaired **v0.1.8 local build**, verified and installed locally after PRs #67, #69, #70 and #71 merged. Its full source verification passed 1,768 tests and its deterministic packaged gate passed all 108 suite runs across three clean passes. The local build keeps pending decisions available, makes New open a focused composer, isolates development-preview state and cancels active Codex command terminals on Stop. See [release acceptance](docs/RELEASE-ACCEPTANCE.md) for the evidence and remaining human/live checks. Apple-silicon Macs only; ad hoc signed and not notarized.
+> **Current status — 14 October 2026:** The public download is **v0.1.8**. It keeps Cockpit approvals open until you answer, adds an account choice beside Send and a per-project Codex network setting, opens New to a focused composer, and makes Stop cancel Codex's running terminal commands. Its full source verification passed 1,777 tests and its deterministic packaged gate passed all 36 suites three times in a row. See [release acceptance](docs/RELEASE-ACCEPTANCE.md) for the evidence and remaining human/live checks. Apple-silicon Macs only; ad hoc signed and not notarized.
 
 ## Pick up where you left off
 
@@ -33,7 +33,7 @@ Paste this into Terminal on an Apple Silicon Mac:
 curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
 ```
 
-It installs the latest **published** prerelease, currently v0.1.7; it does not install the unpublished local v0.1.8 build. It shows the [beta terms](BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS`, and puts Cockpit in Applications. Installed this way, Cockpit opens on the first try, with no Gatekeeper block ([what it does](install.sh)). Run the same line again to update, after quitting Cockpit.
+It installs the latest **published** prerelease, currently v0.1.8. It shows the [beta terms](BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS`, and puts Cockpit in Applications. Installed this way, Cockpit opens on the first try, with no Gatekeeper block ([what it does](install.sh)). Run the same line again to update, after quitting Cockpit.
 
 ## Crash reports
 
@@ -41,7 +41,7 @@ Cockpit is in beta, and the beta is conditional on its [terms](BETA-TERMS.md): C
 
 ## Download
 
-Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.7-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.7/Cockpit-0.1.7-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
+Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can find the latest [`Cockpit-0.1.8-arm64.dmg`](https://github.com/Holodeck23/agent-cockpit/releases/download/v0.1.8/Cockpit-0.1.8-arm64.dmg) in the [Releases page](https://github.com/Holodeck23/agent-cockpit/releases).
 
 > **Note**: Cockpit is currently distributed without Apple notarization. On the first launch, macOS Gatekeeper will block the app and display "**Cockpit** Not Opened".
 > Do not choose "Move to Trash". Instead, click **Done**, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
@@ -50,7 +50,7 @@ Releases are also provided as `.dmg` packages for Apple Silicon Macs. You can fi
 
 **Updating:** v0.1.3 and later include **Cockpit → Check for Updates…**. It shows the newest release and its notes. **Copy Install Command** copies the install line above for Terminal; **Download Update** opens the official DMG in your browser where that option is shown. To install, finish or stop running agents, quit Cockpit and drag the new app to Applications; your conversations and settings are kept. Nothing is installed or restarted automatically. v0.1.2 and earlier need one manual download of the first build that has this menu item.
 
-See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.7) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
+See the [release notes](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.8) and [first-tester checklist](docs/user/tester-checklist.md). CLI detection does not verify sign-in or quota. Keep your agent CLI current: an older Codex CLI may reject a newer default model before the task starts.
 
 ## How it works
 
