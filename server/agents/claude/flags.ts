@@ -45,6 +45,9 @@ export const claudeLaunchSchema = z
     mcpConfig: mcpConfigSchema.default({ mcpServers: {} }),
     /** Private launch snapshot; required whenever the configuration contains credentials. */
     mcpConfigFile: z.string().min(1).max(4096).optional(),
+    /** Only reviewed hook settings are passed; provider settings discovery is disabled. */
+    hookSettings: z.record(z.string(), z.unknown()).default({}),
+    settingsFile: z.string().min(1).max(4096).optional(),
     /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
     allowedTools: z
       .array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/))
@@ -62,7 +65,7 @@ export function buildClaudeArgs(
   capabilities: { readonly permissionPrompts: boolean; readonly replayUserMessages?: boolean; readonly promptSuggestions?: boolean } = { permissionPrompts: true },
 ): string[] {
   const o = claudeLaunchSchema.parse(input)
-  const settings = o.useHooks ? {} : { disableAllHooks: true }
+  const settings = o.useHooks ? o.hookSettings : { disableAllHooks: true }
   return [
     '--print',
     '--verbose',
@@ -76,9 +79,10 @@ export function buildClaudeArgs(
     '--permission-prompt-tool', 'stdio',
     '--strict-mcp-config',
     '--mcp-config', o.mcpConfigFile ?? JSON.stringify(o.mcpConfig),
+    '--setting-sources', '',
     // The Chrome tools are added by this switch even under --strict-mcp-config (probed on 2.1.289).
     ...(o.chrome ? ['--chrome'] : []),
-    '--settings', JSON.stringify(settings),
+    '--settings', o.settingsFile ?? JSON.stringify(settings),
     // Cockpit owns scheduling and notifications; the agent must not self-schedule.
     '--disallowed-tools', 'ScheduleWakeup,CronCreate,PushNotification,RemoteTrigger',
     ...(o.model ? ['--model', o.model] : []),

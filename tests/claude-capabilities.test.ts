@@ -72,10 +72,14 @@ describe('Claude compatibility', () => {
       const args = readFileSync(join(f.cwd, 'launched'), 'utf8').split('\n')
       file = args[args.indexOf('--mcp-config') + 1]!
       expect(args).toContain('--strict-mcp-config')
+      expect(args[args.indexOf('--setting-sources') + 1]).toBe('')
+      const settingsFile = args[args.indexOf('--settings') + 1]!
+      expect(JSON.parse(readFileSync(settingsFile, 'utf8'))).toEqual({ disableAllHooks: true })
       expect(args.join(' ')).not.toContain(marker)
       expect(readFileSync(join(f.cwd, 'ambient-token'), 'utf8')).toBe('')
       expect(JSON.parse(readFileSync(file, 'utf8')).mcpServers.cockpit.env.COCKPIT_MCP_TOKEN).toBe(marker)
       expect(statSync(file).mode & 0o777).toBe(0o600)
+      expect(statSync(settingsFile).mode & 0o777).toBe(0o600)
       expect(statSync(dirname(file)).mode & 0o777).toBe(0o700)
     } finally { await session.close() }
     await expect.poll(() => existsSync(file)).toBe(false)

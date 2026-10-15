@@ -16,6 +16,7 @@ describe('buildClaudeArgs', () => {
     expect(off[off.indexOf('--settings') + 1]).toBe('{"disableAllHooks":true}')
     const on = buildClaudeArgs({ ...base, useHooks: true })
     expect(on[on.indexOf('--settings') + 1]).toBe('{}')
+    expect(on[on.indexOf('--setting-sources') + 1]).toBe('')
   })
 
   it('passes resume and model through', () => {

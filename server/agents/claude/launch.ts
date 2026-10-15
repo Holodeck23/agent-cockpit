@@ -11,7 +11,7 @@ import type { AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, Outgoi
 import { claudeUserMessage } from '../image-input.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
 import { claudeLaunchSchema } from './flags.ts'
-import { writePrivateMcpConfig } from './private-config.ts'
+import { writePrivateClaudeConfig } from './private-config.ts'
 import { parseClaudeLine } from './parse.ts'
 import { probeClaude, validateClaudeArgs } from './capabilities.ts'
 import { watchChrome } from './chrome-watch.ts'
@@ -53,16 +53,17 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     .then((capabilities) => {
       if (ended || !capabilities) return
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
-      const mcp = writePrivateMcpConfig(claudeLaunchSchema.parse(input).mcpConfig)
+      const selected = claudeLaunchSchema.parse(input)
+      const privateConfig = writePrivateClaudeConfig(selected.mcpConfig, selected.useHooks ? selected.hookSettings : { disableAllHooks: true })
       try {
-        const args = buildClaudeArgs({ ...input, mcpConfigFile: mcp.file,
+        const args = buildClaudeArgs({ ...input, mcpConfigFile: privateConfig.mcpFile, settingsFile: privateConfig.settingsFile,
           ...(prompt ? { appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : {}) }, capabilities)
         validateClaudeArgs(args, capabilities)
         replays = capabilities.replayUserMessages
-        session = spawnClaude(input, onEvent, deps, args, () => { prompt?.remove(); mcp.remove() })
+        session = spawnClaude(input, onEvent, deps, args, () => { prompt?.remove(); privateConfig.remove() })
       } catch (error) {
         prompt?.remove()
-        mcp.remove()
+        privateConfig.remove()
         throw error
       }
       const waiting = pending
