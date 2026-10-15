@@ -25,11 +25,16 @@ const css = result.outputFiles.find(f => f.path.endsWith('.css')).text
 const js = result.outputFiles.find(f => f.path.endsWith('.js')).text
 // Offline and network-blocked even if a future production component adds a fetch.
 const html = '<!doctype html><html lang="en" data-theme="light"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' blob:; style-src \'unsafe-inline\'; img-src data: blob:; font-src data:; frame-src about: blob:; connect-src \'none\'; form-action \'none\'"><style>' + css + '</style><body><div id="root"></div><script>' + js.replace(/<\/script/gi, '<\\/script') + '</script></body></html>'
-const file = resolve(here, 'index.html')
-const page = await readFile(file, 'utf8')
+// The demo lives on its own page; the landing page only shares the stylesheet.
+const demoFile = resolve(here, 'demo.html')
+const indexFile = resolve(here, 'index.html')
+const demoPage = await readFile(demoFile, 'utf8')
+const page = await readFile(indexFile, 'utf8')
 const payload = '<script type="application/json" id="cockpit-demo">' + JSON.stringify(html).replace(/</g, '\\u003c') + '</script>'
-if (!page.includes('id="cockpit-demo"')) throw new Error('Missing cockpit-demo embed marker')
+if (!demoPage.includes('id="cockpit-demo"')) throw new Error('Missing cockpit-demo embed marker')
 const pageCss = await readFile(resolve(here, 'page.css'), 'utf8')
+const styleMarker = /<style id="landing-style">[\s\S]*?<\/style>/
+const styleBlock = () => '<style id="landing-style">' + pageCss + '</style>'
 const tour = await readFile(resolve(here, 'demo-tour.js'), 'utf8')
 const featureGroups = JSON.parse(await readFile(resolve(here, 'features.json'), 'utf8'))
 const escapeHtml = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
@@ -38,8 +43,9 @@ const escapeHtml = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '
 const featureDirectory = `<details class="feature-directory"><summary>Browse all features <span aria-hidden="true">→</span></summary><div class="feature-groups">${featureGroups.map(group => `<div class="feature-group"><h3>${escapeHtml(group.title)}</h3><ul>${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`).join('')}</div></details>`
 const directoryMarker = /<!-- FEATURE_DIRECTORY_START -->[\s\S]*?<!-- FEATURE_DIRECTORY_END -->/
 if (!directoryMarker.test(page)) throw new Error('Missing feature directory marker')
-await writeFile(file, page.replace(/<script type="application\/json" id="cockpit-demo">[\s\S]*?<\/script>/, () => payload)
-  .replace(/<style id="landing-style">[\s\S]*?<\/style>/, () => '<style id="landing-style">' + pageCss + '</style>')
-  .replace(/<script id="demo-tour-script">[\s\S]*?<\/script>/, () => '<script id="demo-tour-script">' + tour + '</script>')
+await writeFile(demoFile, demoPage.replace(/<script type="application\/json" id="cockpit-demo">[\s\S]*?<\/script>/, () => payload)
+  .replace(styleMarker, styleBlock)
+  .replace(/<script id="demo-tour-script">[\s\S]*?<\/script>/, () => '<script id="demo-tour-script">' + tour + '</script>'))
+await writeFile(indexFile, page.replace(styleMarker, styleBlock)
   .replace(directoryMarker, () => `<!-- FEATURE_DIRECTORY_START -->${featureDirectory}<!-- FEATURE_DIRECTORY_END -->`))
 console.log(`Embedded production UI: ${Math.round(js.length / 1024)} KB JS + ${Math.round(css.length / 1024)} KB CSS`)
