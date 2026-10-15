@@ -542,6 +542,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
         const selected = accounts?.resolve(body.path, 'claude')
         const snapshot = snapshotMcpSources({ home: homedir(), cwd: body.path, pathEnv: process.env.PATH ?? '',
+          accountId: selected?.accountId ?? 'default-claude', accountGeneration: selected?.generation ?? 1,
           ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) })
         if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review } }); return true }
         if (method === 'POST') {

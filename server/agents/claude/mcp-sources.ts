@@ -35,10 +35,12 @@ function executablePath(command: string, cwd: string, pathEnv: string): string {
  * discovering any other MCP source. The revision binds file bytes, executable bytes,
  * referenced script bytes and the selected working folder; approve it before spawn.
  */
-export function snapshotMcpSources(input: { readonly home: string; readonly cwd: string; readonly pathEnv: string; readonly profileDir?: string }): McpSourceSnapshot {
+export function snapshotMcpSources(input: { readonly home: string; readonly cwd: string; readonly pathEnv: string; readonly profileDir?: string;
+  readonly accountId?: string; readonly accountGeneration?: number }): McpSourceSnapshot {
   const files = [input.profileDir ? join(input.profileDir, '.claude.json') : join(input.home, '.claude.json'), join(input.cwd, '.mcp.json')]
   const digest = createHash('sha256')
-  digest.update(resolve(input.cwd)).update(input.profileDir ? resolve(input.profileDir) : resolve(input.home))
+  digest.update(realpathSync(input.cwd)).update(input.profileDir ? realpathSync(input.profileDir) : realpathSync(input.home))
+  digest.update(input.accountId ?? 'default-claude').update(String(input.accountGeneration ?? 1))
   const servers: Record<string, Server> = {}
   const review: { name: string; source: string; executable?: string; executableHash?: string; url?: string }[] = []
   for (const file of files) {

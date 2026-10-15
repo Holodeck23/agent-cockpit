@@ -681,6 +681,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (setup?.connectors) {
       try {
         const sourceInput = { home: homedir(), cwd: cwd ?? meta.projectPath, pathEnv: process.env.PATH ?? '',
+          accountId: account?.accountId ?? 'default-claude', accountGeneration: account?.generation ?? 1,
           ...(account?.env.CLAUDE_CONFIG_DIR ? { profileDir: account.env.CLAUDE_CONFIG_DIR } : {}) }
         const snapshot = snapshotMcpSources(sourceInput)
         if (snapshot.review.length > 0 && trust?.claudeMcpApproval !== snapshot.revision) {
