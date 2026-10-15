@@ -106,6 +106,11 @@ export async function handleMcpRoute(
   const method = req.method ?? 'GET'
   const { projectPath } = grant
 
+  if (parts[2] === 'identity' && parts.length === 3 && method === 'GET') {
+    return sendJson(res, 200, { data: { server: 'cockpit', protocol: 1, threadId: grant.threadId,
+      projectPath, cwd: grant.cwd, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) } })
+  }
+
   if (parts[2] === 'conversations') {
     if (!conversations) throw new HttpError(503, 'Conversation controls unavailable')
     const number = (key: string) => url.searchParams.has(key) ? Number(url.searchParams.get(key)) : undefined

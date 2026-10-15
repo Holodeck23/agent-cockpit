@@ -4,6 +4,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { MCP_TOKEN_ENV, MCP_URL_ENV } from './sessions.ts'
 import { createCockpitApi, createCockpitMcpServer } from './tools.ts'
+import { verifyCockpitHost } from './host-identity.ts'
 
 const baseUrl = process.env[MCP_URL_ENV]
 const token = process.env[MCP_TOKEN_ENV]
@@ -14,8 +15,8 @@ if (!baseUrl || !token) {
 }
 
 // Bundled as CommonJS, so no top-level await.
-createCockpitMcpServer(createCockpitApi(baseUrl, token))
-  .connect(new StdioServerTransport())
+verifyCockpitHost(baseUrl, token)
+  .then(() => createCockpitMcpServer(createCockpitApi(baseUrl, token)).connect(new StdioServerTransport()))
   .catch((error: unknown) => {
     console.error('[cockpit-mcp] failed to start', error)
     process.exit(1)

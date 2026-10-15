@@ -12,6 +12,7 @@ import { claudeMcpOptions, codexMcpConfigArgs } from '../server/mcp/wiring.ts'
 import { assertLocalUrl, handleMcpRoute } from '../server/http/mcp-routes.ts'
 import { HttpError, sendJson } from '../server/http/json.ts'
 import { createMcpSessions, type McpSessions } from '../server/mcp/sessions.ts'
+import { verifyCockpitHost } from '../server/mcp/host-identity.ts'
 import { createCockpitApi, createCockpitMcpServer } from '../server/mcp/tools.ts'
 import { createProcessRunner, type ProcessRunner } from '../server/processes/runner.ts'
 import type { PreviewOpen } from '../server/preview/types.ts'
@@ -95,6 +96,14 @@ function devProject(): string {
 }
 
 describe('cockpit MCP tools', () => {
+  it('authenticates the intended host before the bridge advertises tools', async () => {
+    const h = await harness()
+    const projectPath = devProject()
+    const token = h.sessions.issue({ threadId: 'identity-thread', projectPath, cwd: projectPath })
+    await expect(verifyCockpitHost(h.url, token)).resolves.toBeUndefined()
+    h.sessions.revoke(token)
+    await expect(verifyCockpitHost(h.url, token)).rejects.toThrow(/authentication failed \(401\)/)
+  })
   it('lists the cockpit tools', async () => {
     const h = await harness()
     const client = await h.connect(h.sessions.issue({ threadId: 't1', projectPath: devProject(), cwd: devProject() }))
