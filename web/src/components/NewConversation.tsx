@@ -48,7 +48,7 @@ const SUGGESTIONS = [
 const firstLine = (prompt: string): string => prompt.split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) ?? ''
 
 function loadChoice(projectPath: string | undefined): AgentChoice {
-  const fallback: AgentChoice = { agent: 'claude', model: '', effort: '', permissionMode: 'manual' }
+  const fallback: AgentChoice = { agent: 'claude', model: '', effort: '', permissionMode: 'manual', hooksSetup: 'inherit', mcpSetup: 'inherit' }
   try {
     const raw = localStorage.getItem(choiceKey(projectPath)) ?? localStorage.getItem(CHOICE_KEY)
     return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<AgentChoice>) } : fallback

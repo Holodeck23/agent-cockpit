@@ -18,6 +18,10 @@ export async function handleWorkflowRoute(req: IncomingMessage, res: ServerRespo
     try { return sendJson(res, id ? 200 : 201, { data: deps.store.save(input, id) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
   }
   if (!id || !deps.store.get(id)) throw new HttpError(404, 'Unknown workflow')
+  if (req.method === 'GET' && parts[3] === 'schedule-scope') {
+    try { return sendJson(res, 200, { data: deps.runner.review(id) }) }
+    catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
+  }
   if (req.method === 'POST' && parts[3] === 'run') {
     // A missing project folder is the person's to fix (the run has paused the schedule and kept the reason), like it is on save.
     try { return sendJson(res, 201, { data: deps.runner.run(id) }) } catch (error) {
@@ -25,9 +29,9 @@ export async function handleWorkflowRoute(req: IncomingMessage, res: ServerRespo
     }
   }
   if (req.method === 'POST' && parts[3] === 'enabled') {
-    const { enabled } = parseBody(z.object({ enabled: z.boolean() }), await readJson(req))
+    const { enabled, revision } = parseBody(z.object({ enabled: z.boolean(), revision: z.string().regex(/^[a-f0-9]{64}$/).optional() }), await readJson(req))
     // Refused without a schedule to enable.
-    try { return sendJson(res, 200, { data: deps.runner.setEnabled(id, enabled) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
+    try { return sendJson(res, 200, { data: deps.runner.setEnabled(id, enabled, 'user', revision) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
   }
   if (req.method === 'POST' && parts[3] === 'archive') {
     return sendJson(res, 200, { data: deps.store.update(id, { archived: true, enabled: false, nextRunAt: null, scheduleAuthorization: undefined }) })

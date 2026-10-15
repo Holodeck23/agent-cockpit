@@ -65,7 +65,8 @@ describe('recent-work recovery', () => {
   })
   it('retains native context while resetting an existing permissive live session to safe defaults', async () => {
     const s = setup()
-    const meta = s.add(s.project, threadSettingsSchema.parse({ agent: 'claude', permissionMode: 'auto', useHooks: true, model: 'other-model' }))
+    // A legacy hook-enabled launch now requires source approval and cannot stand in for a live session here.
+    const meta = s.add(s.project, threadSettingsSchema.parse({ agent: 'claude', permissionMode: 'auto', useHooks: false, model: 'other-model' }))
     s.manager.send(meta.id, 'old turn')
     const view = await s.recovery.discover(s.project)
     await s.recovery.resume({ projectPath: s.project, offerId: view.offerId, key: `thread:${meta.id}`, agent: 'claude' })

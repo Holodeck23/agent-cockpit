@@ -58,6 +58,7 @@ export function buildAntigravityArgs(input: AntigravityLaunchInput): string[] {
 export interface AntigravityLaunchDeps {
   readonly executable?: string
   readonly env?: Readonly<Record<string, string>>
+  readonly preSpawn?: () => void
   /**
    * The capability record for the agy a launch would run, checked just before it starts (W10-01):
    * its resolved executable is the one spawned (W10-02), whatever the picker had cached.
@@ -85,7 +86,7 @@ export function antigravityLaunchTarget(caps: AgentCapabilities, model: string |
 export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventSink, deps: AntigravityLaunchDeps = {}): AgentSession {
   const value = inputSchema.parse(input)
   const { check } = deps
-  if (!check) return spawnAntigravity(value, onEvent, deps.executable ?? 'agy', deps.env)
+  if (!check) { deps.preSpawn?.(); return spawnAntigravity(value, onEvent, deps.executable ?? 'agy', deps.env) }
   let session: AgentSession | undefined
   let ended = false
   let pending: { readonly text: string; readonly queuedId?: string; readonly images?: readonly OutgoingImage[] }[] = []
@@ -104,7 +105,7 @@ export function launchAntigravity(input: AntigravityLaunchInput, onEvent: EventS
     const resolved = target.effortInModel ? { ...value, model: target.model, effort: undefined } : value
     // A start that throws (the images folder cannot be made, a spawn that fails at once) ends the turn here:
     // thrown inside this callback it would only reject `ready`, which nothing handles.
-    try { session = spawnAntigravity(resolved, onEvent, target.executable, deps.env) } catch (error) {
+    try { deps.preSpawn?.(); session = spawnAntigravity(resolved, onEvent, target.executable, deps.env) } catch (error) {
       finish(`Could not start Antigravity: ${error instanceof Error ? error.message : String(error)}`)
       return
     }

@@ -37,13 +37,16 @@ describe('workflows', () => {
     const h = setup(); const workflow = h.save()
     let revision = 'a'.repeat(64)
     const runner = createWorkflowRunner(h.store, h.manager, h.threads, Date.now, undefined,
-      (_workflow, actor) => { if (actor === 'agent') throw new Error('A person must review this scope'); return revision })
+      (_workflow, actor) => { if (actor === 'agent') throw new Error('A person must review this scope');
+        return { revision, agent: 'claude', permissionMode: 'manual', account: 'CLI default', hooks: false, connectors: false } })
     setups.push(async () => runner.close())
     h.store.update(workflow.id, { enabled: true, nextRunAt: new Date(Date.now() + 60_000).toISOString() })
     expect(() => runner.run(workflow.id, 'scheduled')).toThrow(/authorization changed/)
     expect(h.store.get(workflow.id)?.enabled).toBe(false)
     expect(() => runner.setEnabled(workflow.id, true, 'agent')).toThrow(/person must review/)
-    expect(runner.setEnabled(workflow.id, true).scheduleAuthorization).toBe(revision)
+    expect(() => runner.setEnabled(workflow.id, true)).toThrow(/not reviewed/)
+    expect(() => runner.setEnabled(workflow.id, true, 'user', 'c'.repeat(64))).toThrow(/scope changed/)
+    expect(runner.setEnabled(workflow.id, true, 'user', revision).scheduleAuthorization).toBe(revision)
     revision = 'b'.repeat(64)
     expect(() => runner.run(workflow.id, 'scheduled')).toThrow(/authorization changed/)
     expect(h.store.get(workflow.id)?.lastError).toMatch(/authorization changed/)
@@ -53,6 +56,8 @@ describe('workflows', () => {
     const h = setup(); const w = h.save()
     expect(createWorkflowStore(h.root).get(w.id)).toEqual(w)
     expect(w.enabled).toBe(false)
+    h.store.update(w.id, { lastError: 'changed' })
+    expect(() => h.store.update(w.id, { enabled: true }, w)).toThrow(/changed while its schedule was being reviewed/)
     expect(() => h.save()).toThrow(/already exists/)
     h.runner.setEnabled(w.id, true)
     const edited = h.store.save({ ...w, prompt: 'Different instructions' }, w.id)
@@ -184,7 +189,8 @@ describe('workflow HTTP integration', () => {
       return (await response.json()).data
     }
     const w = await post('workflows', { projectPath: h.root, name: 'inspect', prompt: 'Inspect this project', intervalMinutes: 5 })
-    expect((await post(`workflows/${w.id}/enabled`, { enabled: true })).enabled).toBe(true)
+    const scope = (await (await fetch(`${server.url}/api/workflows/${w.id}/schedule-scope`)).json()).data
+    expect((await post(`workflows/${w.id}/enabled`, { enabled: true, revision: scope.revision })).enabled).toBe(true)
     const run = await post(`workflows/${w.id}/run`)
     expect(run.workflowId).toBe(w.id)
     expect(h.sessions[0]?.text[0]).toBe('Inspect this project')

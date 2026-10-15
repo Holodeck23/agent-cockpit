@@ -9,6 +9,14 @@ import { isBusy as busyStatus } from '../threads/status.ts'
 
 /** A run refused for a reason the person can fix (its project folder is gone): not an unexpected failure. */
 export class WorkflowRunRefusedError extends Error {}
+export interface ScheduleReview {
+  readonly revision: string
+  readonly agent: string
+  readonly permissionMode: string
+  readonly account: string
+  readonly hooks: boolean
+  readonly connectors: boolean
+}
 
 /** When a schedule fires next after `after`; undefined when the workflow has no schedule. */
 export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calendar'>, after: number): number | undefined {
@@ -22,7 +30,7 @@ export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calen
  */
 export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManager, threads: ThreadStore, now = Date.now,
   primaryWorkspace?: (projectPath: string) => string | undefined,
-  scheduleRevision?: (workflow: Workflow, actor: 'user' | 'agent' | 'launch') => string) {
+  scheduleReview?: (workflow: Workflow, actor: 'user' | 'agent' | 'launch') => ScheduleReview) {
   let timer: NodeJS.Timeout | undefined
   let stopped = false
   const requireWorkflow = (id: string) => {
@@ -36,8 +44,8 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     const workflow = requireWorkflow(id)
     if (isBusy(id)) throw new Error('This workflow already has a running conversation')
     try {
-      if (trigger === 'scheduled' && scheduleRevision &&
-        (!workflow.scheduleAuthorization || workflow.scheduleAuthorization !== scheduleRevision(workflow, 'launch'))) {
+      if (trigger === 'scheduled' && scheduleReview &&
+        (!workflow.scheduleAuthorization || workflow.scheduleAuthorization !== scheduleReview(workflow, 'launch').revision)) {
         throw new WorkflowRunRefusedError('Scheduled capability or account authorization changed; review and enable this schedule again')
       }
       if (!statSync(workflow.projectPath, { throwIfNoEntry: false })?.isDirectory()) throw new WorkflowRunRefusedError('Project folder is unavailable')
@@ -56,14 +64,17 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
       throw error
     }
   }
-  const setEnabled = (id: string, enabled: boolean, actor: 'user' | 'agent' = 'user') => {
+  const setEnabled = (id: string, enabled: boolean, actor: 'user' | 'agent' = 'user', expectedRevision?: string) => {
     const workflow = requireWorkflow(id)
     const next = nextRunAfter(workflow, now())
     if (enabled && next === undefined) throw new Error('Choose when it repeats first')
     if (enabled) expandWorkflows(workflow.prompt, workflow.projectPath, store)
-    const authorization = enabled ? scheduleRevision?.(workflow, actor) : undefined
+    const authorization = enabled ? scheduleReview?.(workflow, actor).revision : undefined
+    if (enabled && scheduleReview && actor === 'user' && expectedRevision !== authorization) {
+      throw new Error('Schedule scope changed or was not reviewed; review it before enabling')
+    }
     return store.update(id, { enabled, nextRunAt: enabled ? new Date(next!).toISOString() : null,
-      scheduleAuthorization: authorization, lastError: undefined })
+      scheduleAuthorization: authorization, lastError: undefined }, workflow)
   }
   // One bad workflow, or a workflows.json that cannot be read, must not stop every schedule for the
   // rest of the session: the tick skips what fails and tries again in 5 seconds. Each problem is logged once.
@@ -105,6 +116,7 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
   })
   return {
     run, setEnabled, tick,
+    review: (id: string): ScheduleReview | undefined => scheduleReview?.(requireWorkflow(id), 'user'),
     start() {
       if (timer || stopped) return
       timer = setInterval(() => {

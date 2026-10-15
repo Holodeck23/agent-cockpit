@@ -55,7 +55,8 @@ describe('lens-contract-2: workflow refusals are 4xx, not unexpected failures', 
     const saved = await post('/api/workflows', { projectPath: project, name: 'daily', prompt: 'Review', intervalMinutes: 60 })
     expect(saved.status).toBe(201)
     const id = ((await saved.json()) as { data: { id: string } }).data.id
-    const enabled = await post(`/api/workflows/${id}/enabled`, { enabled: true })
+    const scope = (await (await fetch(`${server.url}/api/workflows/${id}/schedule-scope`)).json()) as { data: { revision: string } }
+    const enabled = await post(`/api/workflows/${id}/enabled`, { enabled: true, revision: scope.data.revision })
     expect(enabled.status).toBe(200)
     expect(((await enabled.json()) as { data: { enabled: boolean } }).data.enabled).toBe(true)
   })

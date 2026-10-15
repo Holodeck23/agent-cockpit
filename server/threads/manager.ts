@@ -122,8 +122,10 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       { env: claudeLaunchEnv(req.accountEnv), ...(req.validateSources ? { validateSources: req.validateSources } : {}) },
     )
   },
-  codex: (req, onEvent) =>
-    launchCodex(
+  codex: (req, onEvent) => {
+    try { req.validateSources?.() }
+    catch (error) { return refusedSession('codex', error instanceof Error ? error.message : 'Scheduled authorization changed', onEvent) }
+    return launchCodex(
       {
         cwd: req.cwd,
         model: req.settings.model,
@@ -137,10 +139,13 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         configArgs: codexConfigArgs(req),
         ...(req.cockpit || req.accountEnv ? { env: { ...req.cockpit?.secretEnv, ...req.accountEnv } } : {}),
       },
-    ),
+    )
+  },
   antigravity: antigravityLauncher(),
-  opencode: (req, onEvent) =>
-    launchOpencode(
+  opencode: (req, onEvent) => {
+    try { req.validateSources?.() }
+    catch (error) { return refusedSession('opencode', error instanceof Error ? error.message : 'Scheduled authorization changed', onEvent) }
+    return launchOpencode(
       {
         cwd: req.cwd,
         model: req.settings.model,
@@ -152,7 +157,8 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
           env: { ...req.cockpit.env, ...req.cockpit.secretEnv } }, env: req.cockpit.secretEnv } } : {}),
       },
       onEvent,
-    ),
+    )
+  },
 }
 
 /** Whether Antigravity may get Cockpit's tools in a folder (P3), checked as a session starts. */
@@ -165,6 +171,10 @@ export type AntigravityMcpPrepare = (projectPath: string) => { readonly ready: b
  */
 export function antigravityLauncher(check?: () => Promise<AgentCapabilities>, prepareMcp?: AntigravityMcpPrepare): Launcher {
   return (req, onEvent) => {
+    if (!check && req.validateSources) {
+      try { req.validateSources() }
+      catch (error) { return refusedSession('antigravity', error instanceof Error ? error.message : 'Scheduled authorization changed', onEvent) }
+    }
     const mcp = req.cockpit && prepareMcp ? prepareMcp(req.cwd) : undefined
     if (mcp?.reason) console.warn('[cockpit] Antigravity starts without Cockpit tools:', mcp.reason)
     const cockpit = mcp?.ready ? req.cockpit : undefined
@@ -176,7 +186,8 @@ export function antigravityLauncher(check?: () => Promise<AgentCapabilities>, pr
       resume: req.resume,
       instructions: instructionsFor({ ...req, cockpit }),
       ...(req.imagesDir ? { imagesDir: req.imagesDir } : {}),
-    }, onEvent, { ...(check ? { check } : {}), ...(cockpit ? { env: cockpit.secretEnv } : {}) })
+    }, onEvent, { ...(check ? { check } : {}), ...(cockpit ? { env: cockpit.secretEnv } : {}),
+      ...(check && req.validateSources ? { preSpawn: req.validateSources } : {}) })
   }
 }
 
@@ -193,6 +204,8 @@ export interface ManagerOptions {
   readonly instructions?: InstructionsProvider
   /** Mac-user project trust, applied only when a native session starts. */
   readonly projectTrust?: ProjectTrustProvider
+  /** Current schedule authorization, rechecked at actual provider spawn. */
+  readonly scheduledLaunchRevision?: (workflowId: string) => string | undefined
   /** Where conversation images are kept; defaults to the store's own state folder. */
   readonly images?: ImageStore
   /** The opaque primary workspace for a project folder (G-IDENTITY); undefined when it cannot be resolved. */
@@ -674,6 +687,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         }
       } catch (error) { sourceProblem ??= error instanceof Error ? error.message : 'Could not verify Claude connector sources' }
     }
+    if (meta.workflowTrigger === 'scheduled' && !meta.workflowId) sourceProblem ??= 'Scheduled run has no workflow authorization.'
+    if (meta.workflowTrigger === 'scheduled' && meta.workflowId && options.scheduledLaunchRevision) {
+      const expected = options.scheduledLaunchRevision(meta.workflowId)
+      if (!expected) sourceProblem ??= 'Scheduled authorization changed; review and enable the workflow again.'
+      else {
+        const validateEarlier = validateSources
+        validateSources = () => {
+          validateEarlier?.()
+          if (options.scheduledLaunchRevision?.(meta.workflowId!) !== expected) {
+            throw new Error('Scheduled authorization changed before provider startup; review and enable the workflow again.')
+          }
+        }
+      }
+    }
     const mcp = sourceProblem ? undefined : options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     let launching = true
     const deliver: EventSink = (event) => {
@@ -730,7 +757,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     }
     const blocked = cwd === undefined ? 'This workspace no longer exists. Continue the conversation in another workspace.' : sourceProblem ?? options.launchGate?.(meta.settings.agent)
     const launcher: Launcher = blocked ? (_req, onEvent) => refusedSession(meta.settings.agent, blocked, onEvent) : launchers[meta.settings.agent]
-    const session = launcher(
+    let session: AgentSession
+    try { session = launcher(
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
         ...(meta.settings.agent === 'codex' && trust ? { codexNetwork: trust.codexNetwork } : {}),
@@ -746,7 +774,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(account && Object.keys(account.env).length > 0 ? { accountEnv: account.env } : {}),
       },
       deliver,
-    )
+    ) } catch (error) { releaseGrant(); throw error }
     launching = false
     const entry: Live = { threadId: meta.id, workspaceId: workspaceId ?? '', pending, questions, helpers: new Set(), waiting: new Set(), followUp: false, afterResult: false, session, turnRunning: false, stopRequested: false, partial: '', generation: launchNumber, queuedRuns: new Map(), releaseGrant }
     live.set(key, entry)

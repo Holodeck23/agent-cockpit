@@ -59,6 +59,29 @@ function setup() {
 }
 
 describe('thread manager', () => {
+  it('rechecks a scheduled authorization at the provider spawn boundary', () => {
+    const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-schedule-launch-')))
+    const { launcher, agent } = fakeLauncher()
+    let revision: string | undefined = 'a'.repeat(64)
+    const manager = createThreadManager(store, { launchers: { claude: launcher }, scheduledLaunchRevision: () => revision })
+    manager.create({ projectPath: '/tmp', settings: threadSettingsSchema.parse({ agent: 'claude' }), text: 'scheduled',
+      workflowId: 'workflow-1', workflowTrigger: 'scheduled' })
+    expect(agent.requests).toHaveLength(1)
+    agent.requests[0]!.validateSources?.()
+    revision = undefined
+    expect(() => agent.requests[0]!.validateSources?.()).toThrow(/authorization changed before provider startup/)
+  })
+  it('revokes the MCP grant when a synchronous launcher refuses before spawn', () => {
+    const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-schedule-refusal-')))
+    let released = 0
+    const manager = createThreadManager(store, {
+      launchers: { codex: () => { throw new Error('startup refused') } },
+      mcp: () => ({ launch: { command: 'node', args: [], secretEnv: {} }, release: () => { released++ } }),
+    })
+    expect(() => manager.create({ projectPath: '/tmp', settings: threadSettingsSchema.parse({ agent: 'codex' }), text: 'hello' }))
+      .toThrow(/startup refused/)
+    expect(released).toBe(1)
+  })
   it('starts a new session with --session-id, then resumes after the process exits', () => {
     const { manager, agent, settings } = setup()
     const meta = manager.create({ projectPath: '/tmp', settings, text: 'hello' })

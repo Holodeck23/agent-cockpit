@@ -24,6 +24,9 @@ export interface AgentChoice {
   readonly permissionMode: ThreadSettings['permissionMode']
   /** Use my Chrome (Claude only). */
   readonly chrome?: boolean
+  /** Per-conversation Claude setup overrides; project defaults apply when inherited. */
+  readonly hooksSetup?: ThreadSettings['hooksSetup']
+  readonly mcpSetup?: ThreadSettings['mcpSetup']
 }
 
 const MODEL_SUGGESTIONS: Record<AgentId, readonly string[]> = {
@@ -66,6 +69,10 @@ export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): 
   return {
     ...rest,
     ...(choice.agent === 'claude' && choice.chrome ? { useChrome: true } : {}),
+    ...(choice.agent === 'claude' ? {
+      hooksSetup: choice.hooksSetup ?? base?.hooksSetup ?? (base ? (base.useHooks ? 'on' : 'off') : 'inherit'),
+      mcpSetup: choice.mcpSetup ?? base?.mcpSetup ?? (base ? 'off' : 'inherit'),
+    } : {}),
     agent: choice.agent,
     permissionMode: choice.permissionMode,
     ...(choice.model ? { model: choice.model } : {}),
@@ -139,7 +146,7 @@ interface AgentPickerProps {
   onSwitch?: (choice: AgentChoice, handoff: string) => Promise<unknown>
   /** The handoff a switch would send now. */
   previewHandoff?: () => Promise<HandoffPreview>
-  /** Existing conversation, same agent: applies on "Apply"; the agent's session continues. */
+  /** Existing conversation, same agent: applies on "Apply"; the next message starts with these settings. */
   onApply?: (choice: AgentChoice) => void
   /** Why changing is unavailable right now, e.g. while a turn runs. */
   lockedReason?: string
@@ -344,7 +351,7 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
   }
 
   // Effort beside the picker applies at once: in a new conversation directly, in an existing one
-  // as a same-agent settings change (the agent's session continues).
+  // as a same-agent settings change for the next message.
   const pickEffort = (effort: string): void => {
     const next = { ...value, effort }
     set(next)
@@ -419,7 +426,20 @@ export function AgentPicker({ value, onChange, onSwitch, onApply, previewHandoff
               ))}
             </div>
             {current.agent === 'claude' ? (
-              <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
+              <>
+                <UseMyChrome checked={current.chrome === true} readiness={statuses?.find((s) => s.id === 'claude')?.chrome} onChange={(chrome) => patch({ chrome })} />
+                <label className="field">Claude hooks for this conversation
+                  <select value={current.hooksSetup ?? 'inherit'} onChange={(e) => patch({ hooksSetup: e.target.value as ThreadSettings['hooksSetup'] })}>
+                    <option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option>
+                  </select>
+                </label>
+                <label className="field">Claude MCP connectors for this conversation
+                  <select value={current.mcpSetup ?? 'inherit'} onChange={(e) => patch({ mcpSetup: e.target.value as ThreadSettings['mcpSetup'] })}>
+                    <option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option>
+                  </select>
+                </label>
+                <p className="picker-note">Hooks and connectors need approved executable sources. Unreviewed sources block launch when enabled.</p>
+              </>
             ) : null}
             {projectPath && !phone ? <AccountChoice agent={current.agent} projectPath={projectPath} onSelected={setAccount} /> : null}
             <AgentState status={statuses?.find((s) => s.id === current.agent)} loading={loading} account={account?.agent === current.agent ? account : undefined} />

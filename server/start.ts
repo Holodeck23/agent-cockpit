@@ -213,6 +213,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   let lifecycle: Lifecycle | undefined
   // Likewise: the manager resolves each launch's account through it (W12.1).
   let accounts: AccountService | undefined
+  let scheduledLaunchRevision: ((workflowId: string) => string | undefined) | undefined
   const primaryWorkspaceId = (projectPath: string): string | undefined => {
     try {
       workspaces.ensure([projectPath])
@@ -238,6 +239,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
     launchGate: (agent) => lifecycle?.launchBlock(agent),
     accounts: { resolve: (projectPath, agent) => accounts!.resolve(projectPath, agent), describe: (id) => accounts!.describe(id) },
+    scheduledLaunchRevision: (workflowId) => scheduledLaunchRevision?.(workflowId),
     ...(options.launchers ? { launchers: options.launchers } : {}),
     ...(mcpCommand
       ? {
@@ -293,7 +295,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   }
   const memory = createMemoryStore(root)
   const presets = createPresetStore(root)
-  const scheduleRevision = (workflow: Workflow, actor: 'user' | 'agent' | 'launch'): string => {
+  const scheduleReview = (workflow: Workflow, actor: 'user' | 'agent' | 'launch') => {
     const project = projects.list().find((entry) => entry.path === workflow.projectPath)
     const account = accounts!.resolve(workflow.projectPath, workflow.settings.agent)
     const setup = workflow.settings.agent === 'claude'
@@ -302,12 +304,23 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     if (actor === 'agent' && (project?.agentWorkflows !== true || !['manual', 'plan'].includes(workflow.settings.permissionMode))) {
       throw new Error('A person must review and enable this schedule in Workflows')
     }
-    return createHash('sha256').update(JSON.stringify({ workflowId: workflow.id, settings: workflow.settings,
+    const revision = createHash('sha256').update(JSON.stringify({ workflowId: workflow.id, projectPath: workflow.projectPath,
+      prompt: workflow.prompt, intervalMinutes: workflow.intervalMinutes, calendar: workflow.calendar, settings: workflow.settings,
       accountId: account.accountId, accountGeneration: account.generation, setup,
       projectHooks: project?.claudeHooks, projectMcp: project?.claudeMcp, connectorRevision: project?.claudeMcpApproval,
       agentWorkflows: project?.agentWorkflows })).digest('hex')
+    return { revision, agent: workflow.settings.agent, permissionMode: workflow.settings.permissionMode,
+      account: `${account.label} (generation ${account.generation})`, hooks: setup?.hooks ?? false, connectors: setup?.connectors ?? false }
   }
-  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId, scheduleRevision) }
+  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId, scheduleReview) }
+  scheduledLaunchRevision = (workflowId) => {
+    try {
+      const workflow = workflowStore.get(workflowId)
+      if (!workflow?.enabled || !workflow.scheduleAuthorization) return undefined
+      return scheduleReview(workflow, 'launch').revision === workflow.scheduleAuthorization ? workflow.scheduleAuthorization : undefined
+    }
+    catch { return undefined }
+  }
   const remoteStore = createRemoteStore(root)
   const push = createPushStore(root)
   const tailscale = options.remote?.tailscale ?? systemTailscale

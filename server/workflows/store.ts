@@ -36,7 +36,8 @@ export interface WorkflowStore {
   list(projectPath?: string): Workflow[]
   get(id: string): Workflow | undefined
   save(input: WorkflowInput, id?: string): Workflow
-  update(id: string, patch: Partial<Pick<Workflow, 'enabled' | 'nextRunAt' | 'scheduleAuthorization' | 'lastThreadId' | 'lastRunAt' | 'lastError' | 'archived'>>): Workflow
+  update(id: string, patch: Partial<Pick<Workflow, 'enabled' | 'nextRunAt' | 'scheduleAuthorization' | 'lastThreadId' | 'lastRunAt' | 'lastError' | 'archived'>>,
+    expected?: Workflow): Workflow
 }
 
 export function createWorkflowStore(root: string): WorkflowStore {
@@ -69,10 +70,11 @@ export function createWorkflowStore(root: string): WorkflowStore {
       write(old ? rows.map((w) => w.id === id ? next : w) : [...rows, next])
       return next
     },
-    update(id, patch) {
+    update(id, patch, expected) {
       const rows = read()
       const old = rows.find((w) => w.id === id && !w.archived)
       if (!old) throw new Error('Unknown workflow')
+      if (expected && JSON.stringify(old) !== JSON.stringify(expected)) throw new Error('Workflow changed while its schedule was being reviewed')
       const next = workflowSchema.parse({ ...old, ...patch, updatedAt: new Date().toISOString() })
       write(rows.map((w) => w.id === id ? next : w))
       return next

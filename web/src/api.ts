@@ -35,6 +35,7 @@ import { inSpace, spaceOf } from './file-text.ts'
 import type { FileSaved } from '../../server/files/editor.ts'
 import type { FileSearch, ReferenceCheck } from '../../server/files/search.ts'
 import type { Workflow, WorkflowInput } from '../../server/workflows/store.ts'
+import type { ScheduleReview } from '../../server/workflows/runner.ts'
 import type { AgentId, ApprovalBehavior } from '../../server/agents/types.ts'
 import type { ProcessInfo, ProcessRead } from '../../server/processes/runner.ts'
 import type { Project as StoredProject, ProjectPatch } from '../../server/projects/store.ts'
@@ -186,7 +187,8 @@ export const api = {
   listWorkflows: (projectPath: string) => request<Workflow[]>(`/api/workflows?projectPath=${encodeURIComponent(projectPath)}`),
   saveWorkflow: (body: WorkflowInput, id?: string) => request<Workflow>(id ? `/api/workflows/${id}/save` : '/api/workflows', { method: 'POST', body }),
   runWorkflow: (id: string) => request<ThreadMeta>(`/api/workflows/${id}/run`, { method: 'POST', body: {} }),
-  enableWorkflow: (id: string, enabled: boolean) => request<Workflow>(`/api/workflows/${id}/enabled`, { method: 'POST', body: { enabled } }),
+  scheduleScope: (id: string) => request<ScheduleReview>(`/api/workflows/${id}/schedule-scope`),
+  enableWorkflow: (id: string, enabled: boolean, revision?: string) => request<Workflow>(`/api/workflows/${id}/enabled`, { method: 'POST', body: { enabled, revision } }),
   archiveWorkflow: (id: string) => request<Workflow>(`/api/workflows/${id}/archive`, { method: 'POST', body: {} }),
   agents: () => request<AgentStatus[]>('/api/agents'),
   agentCapabilities: (agent: AgentId) => request<AgentCapabilities>(`/api/agents/${agent}/capabilities`),

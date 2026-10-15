@@ -63,6 +63,16 @@ function run(input: Parameters<typeof launchAntigravity>[0], check: () => Promis
 const LISTED: AgentCapabilities['models'] = { state: 'supported', source: 'agy models', value: [{ id: 'gemini-3.8-flash-low' }] }
 
 describe('Antigravity launch validation (W10-01, W10-02)', () => {
+  it('rechecks scheduled authorization after capability discovery and before spawn', async () => {
+    const agy = fakeAgy(), events: NormalizedEvent[] = []
+    launchAntigravity({ cwd: agy.dir }, (event) => events.push(event), {
+      check: async () => record(agy.exe, LISTED),
+      preSpawn: () => { throw new Error('scheduled authorization changed') },
+    })
+    await expect.poll(() => events.some((event) => event.kind === 'exit')).toBe(true)
+    expect(events.find((event) => event.kind === 'error')).toMatchObject({ message: expect.stringMatching(/scheduled authorization changed/) })
+    expect(agy.launched()).toBeUndefined()
+  })
   it('refuses a model the installed agy does not list, before starting it', async () => {
     const agy = fakeAgy()
     const { events } = run({ cwd: agy.dir, model: 'gemini-9-ultra' }, async () => record(agy.exe, LISTED))

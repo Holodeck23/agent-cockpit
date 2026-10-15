@@ -11,6 +11,7 @@ import { describeCalendar } from '../../../server/workflows/calendar.ts'
 import { displayTitle } from '../workflow-list.ts'
 import type { GalleryWorkflow } from '../gallery/catalog.ts'
 import { copyInput } from '../gallery/gallery.ts'
+import type { ScheduleReview } from '../../../server/workflows/runner.ts'
 
 interface Props {
   project: Project | undefined
@@ -30,7 +31,9 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
   const [listHidden, setListHidden] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [pendingScope, setPendingScope] = useState<ScheduleReview & { id: string }>()
   const projectPath = project?.path
+  useEffect(() => setPendingScope(undefined), [projectPath])
   const refresh = useCallback(async () => {
     if (!projectPath) return
     const all = await api.listWorkflows(projectPath)
@@ -52,7 +55,8 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
     const saved = await api.saveWorkflow(input, current?.id)
     setSelected(saved.id); setCreating(false)
     await refresh()
-    if (intent === 'schedule') { await api.enableWorkflow(saved.id, true); await refresh() }
+    if (intent === 'schedule') setPendingScope({ ...await api.scheduleScope(saved.id), id: saved.id })
+    else setPendingScope(undefined)
     if (intent === 'run') { const thread = await api.runWorkflow(saved.id); onOpenThread(thread.id) }
   })
   const taken = new Set(rows.map((w) => w.name))
@@ -68,15 +72,21 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
   return <div className={`workflows-layout${listHidden ? ' list-hidden' : ''}`}>
     <WorkflowList project={project} rows={rows} loaded={loaded} selected={selected} busy={busy} hidden={listHidden}
       galleryOpen={gallery}
-      onSelect={(id) => { setSelected(id); setCreating(false); setGallery(false) }}
-      onCreate={() => { setSelected(undefined); setCreating(true); setGallery(false) }}
+      onSelect={(id) => { setSelected(id); setCreating(false); setGallery(false); setPendingScope(undefined) }}
+      onCreate={() => { setSelected(undefined); setCreating(true); setGallery(false); setPendingScope(undefined) }}
       onOpenGallery={() => setGallery(true)} />
     {gallery ? <WorkflowGallery projectName={project.name} taken={taken} busy={busy} onAdd={(entry) => void addFromGallery(entry)}
       onClose={() => setGallery(false)} listToggle={listToggle} />
     : creating || current ? <WorkflowEditor key={current?.id ?? 'new'} workflow={current} projectPath={project.path} busy={busy} onSave={save}
       onPause={() => perform(async () => { if (current) await api.enableWorkflow(current.id, false); await refresh() })}
       onArchive={() => perform(async () => { if (current) await api.archiveWorkflow(current.id); setSelected(undefined); await refresh() })}
-      onOpenThread={onOpenThread} listToggle={listToggle} /> : <main className="workflow-empty"><button type="button" className="workflow-list-toggle" aria-label={listHidden ? 'Show workflows' : 'Hide workflows'}
+      onOpenThread={onOpenThread} listToggle={listToggle}
+      pendingScope={pendingScope?.id === current?.id ? pendingScope : undefined}
+      onConfirmScope={() => perform(async () => {
+        if (!pendingScope) return
+        await api.enableWorkflow(pendingScope.id, true, pendingScope.revision); setPendingScope(undefined); await refresh()
+      })}
+      onKeepPaused={() => setPendingScope(undefined)} /> : <main className="workflow-empty"><button type="button" className="workflow-list-toggle" aria-label={listHidden ? 'Show workflows' : 'Hide workflows'}
         aria-pressed={!listHidden} onClick={listToggle.toggle}><SidebarIcon /></button><WorkflowIcon /><h2>Make the repeatable work easy.</h2>
         <p>Choose a workflow to edit its instructions, run it, or set a schedule. Each run opens a conversation with your agent.</p>
         <div className="workflow-actions"><button type="button" className="button-primary" onClick={() => setCreating(true)}>Create a workflow</button>
@@ -84,7 +94,8 @@ export function Workflows({ project, onError, onOpenThread, initialGallery = fal
   </div>
 }
 
-export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread, onCancel, saveOnly = false, listToggle }: {
+export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, onArchive, onOpenThread, onCancel, saveOnly = false, listToggle,
+  pendingScope, onConfirmScope, onKeepPaused }: {
   workflow?: Workflow; projectPath: string; busy: boolean
   onSave: (input: WorkflowInput, intent: Intent) => Promise<void>
   onPause?: () => Promise<void>; onArchive?: () => Promise<void>; onOpenThread?: (id: string) => void
@@ -93,6 +104,9 @@ export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, o
   /** Only Save: opened from another screen, saving must not also start or schedule a run (F16). */
   saveOnly?: boolean
   listToggle?: { readonly hidden: boolean; readonly toggle: () => void }
+  pendingScope?: ScheduleReview
+  onConfirmScope?: () => Promise<void>
+  onKeepPaused?: () => void
 }) {
   const [name, setName] = useState(workflow?.name ?? '')
   const [title, setTitle] = useState(workflow?.title ?? '')
@@ -100,7 +114,9 @@ export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, o
   const [prompt, setPrompt] = useState(workflow?.prompt ?? '')
   const [repeat, setRepeat] = useState(() => repeatFrom(workflow))
   const [choice, setChoice] = useState<AgentChoice>({ agent: workflow?.settings.agent ?? 'claude', model: workflow?.settings.model ?? '',
-    effort: workflow?.settings.effort ?? '', permissionMode: workflow?.settings.permissionMode ?? 'manual' })
+    effort: workflow?.settings.effort ?? '', permissionMode: workflow?.settings.permissionMode ?? 'manual',
+    hooksSetup: workflow?.settings.hooksSetup ?? (workflow ? (workflow.settings.useHooks ? 'on' : 'off') : 'inherit'),
+    mcpSetup: workflow?.settings.mcpSetup ?? (workflow ? 'off' : 'inherit') })
   const form = useRef<HTMLFormElement>(null)
   // ⌘S in the document hands over its text; the form submits in the same tick, before the state
   // update lands, so the submit reads it from here instead of from `prompt`.
@@ -144,11 +160,18 @@ export function WorkflowEditor({ workflow, projectPath, busy, onSave, onPause, o
         <button type="submit" className="button-primary" value="save">{busy ? 'Working…' : 'Save workflow'}</button>
         {saveOnly ? null : <>
           <button type="submit" value="run">Save and run</button>
-          <button type="submit" value="schedule" disabled={!canSchedule(repeat)}>Save and enable schedule</button>
+          <button type="submit" value="schedule" disabled={!canSchedule(repeat)}>Save and review schedule</button>
         </>}
         {onCancel ? <button type="button" onClick={onCancel}>Cancel</button> : null}
       </div>
     </fieldset></form>
+    {pendingScope ? <section className="workflow-notice" role="group" aria-label="Review scheduled run scope">
+      <strong>Review this schedule before enabling it</strong>
+      <p>{pendingScope.agent} · {pendingScope.account} · {pendingScope.permissionMode} permissions · Hooks {pendingScope.hooks ? 'on' : 'off'} · Connectors {pendingScope.connectors ? 'on' : 'off'}.</p>
+      <p>These are the saved workflow settings. A change to this scope or account pauses future runs until reviewed again.</p>
+      <div className="workflow-actions"><button type="button" disabled={busy} onClick={() => void onConfirmScope?.()}>Enable this schedule</button>
+        <button type="button" disabled={busy} onClick={onKeepPaused}>Keep paused</button></div>
+    </section> : null}
     {workflow ? <footer className="workflow-run"><div><strong>Latest run</strong><span>{when(workflow.lastRunAt)}</span>
       {workflow.lastThreadId && onOpenThread ? <button type="button" onClick={() => onOpenThread(workflow.lastThreadId!)}>Open conversation →</button> : <span>No runs yet</span>}</div>
       <div className="workflow-actions">{workflow.enabled && onPause ? <button type="button" disabled={busy} onClick={() => void onPause()}>Pause schedule</button> : null}
