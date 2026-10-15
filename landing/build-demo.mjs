@@ -32,9 +32,10 @@ if (!page.includes('id="cockpit-demo"')) throw new Error('Missing cockpit-demo e
 const pageCss = await readFile(resolve(here, 'page.css'), 'utf8')
 const tour = await readFile(resolve(here, 'demo-tour.js'), 'utf8')
 const featureGroups = JSON.parse(await readFile(resolve(here, 'features.json'), 'utf8'))
-const featureCount = featureGroups.reduce((count, group) => count + group.items.length, 0)
 const escapeHtml = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
-const featureDirectory = `<details class="feature-directory"><summary>Browse all ${featureCount} features <span aria-hidden="true">↘</span></summary><div class="feature-groups">${featureGroups.map(group => `<div class="feature-group"><h3>${escapeHtml(group.title)}</h3><ul>${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`).join('')}</div></details>`
+// Progressive disclosure under the curated Top features grid. The label carries no
+// count: the shipped total is a directory detail, not a reason to install.
+const featureDirectory = `<details class="feature-directory"><summary>Browse all features <span aria-hidden="true">→</span></summary><div class="feature-groups">${featureGroups.map(group => `<div class="feature-group"><h3>${escapeHtml(group.title)}</h3><ul>${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`).join('')}</div></details>`
 const directoryMarker = /<!-- FEATURE_DIRECTORY_START -->[\s\S]*?<!-- FEATURE_DIRECTORY_END -->/
 if (!directoryMarker.test(page)) throw new Error('Missing feature directory marker')
 await writeFile(file, page.replace(/<script type="application\/json" id="cockpit-demo">[\s\S]*?<\/script>/, () => payload)

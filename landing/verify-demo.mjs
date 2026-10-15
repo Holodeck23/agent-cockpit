@@ -8,6 +8,8 @@ const file = fileURLToPath(new URL('./index.html', import.meta.url))
 const { version } = JSON.parse(await readFile(new URL('./release.json', import.meta.url), 'utf8'))
 const featureGroups = JSON.parse(await readFile(new URL('./features.json', import.meta.url), 'utf8'))
 const featureCount = featureGroups.reduce((count, group) => count + group.items.length, 0)
+const installCommand = 'curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh'
+const dmg = version => `https://github.com/Holodeck23/agent-cockpit/releases/download/v${version}/Cockpit-${version}-arm64.dmg`
 const evidence = process.argv[2] && resolve(process.argv[2])
 if (evidence) await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
@@ -37,8 +39,20 @@ try {
       assert.equal(await app.locator('.app > .subnav, .app > .workspace').evaluateAll(elements => elements.some(el => el.getBoundingClientRect().width > innerWidth + 1)), false, 'demo panes fit without clipping')
     }
     assert.equal(await page.locator('h1').count(), 1)
-    assert.ok((await page.locator('.release-chip').innerText()).includes(`v${version}`))
-    assert.ok(await page.locator('.hero-copy > p').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 19))
+    assert.ok((await page.locator('.hero-meta').innerText()).includes(`v${version}`))
+    assert.ok(await page.locator('.hero-sub').evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 19))
+    // The download and the install command sit together above the fold.
+    const started = page.locator('.get-started')
+    await started.scrollIntoViewIfNeeded()
+    assert.equal(await started.locator('#download svg.apple-mark').count(), 1, 'Apple mark beside the download')
+    assert.ok((await started.locator('.platform-note').innerText()).includes('coming soon'))
+    assert.equal((await started.locator('#cli-command').innerText()).trim(), installCommand)
+    assert.equal(await started.locator('.cli-code').evaluate(el => el.scrollWidth > el.clientWidth + 1 ? getComputedStyle(el).overflowX : 'auto'), 'auto', 'long command scrolls inside its own pill')
+    await started.getByRole('button', { name: 'Copy', exact: true }).click()
+    await page.waitForFunction(() => document.getElementById('copy-cli').dataset.copied === 'true')
+    assert.equal(await started.getByRole('link', { name: 'Read the docs' }).count(), 1)
+    // No section eyebrows survive inside the page body.
+    assert.equal(await page.locator('main .eyebrow').count(), 0, 'section mini-titles removed')
     await page.getByRole('link', { name: 'Try the flow' }).click()
     await button('Allow').waitFor(); await noOverflow(); await shot('approval')
     assert.ok(await app.locator('.bubble.user').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 16))
@@ -98,12 +112,23 @@ try {
     assert.equal(await page.locator('#expand-demo').getAttribute('aria-expanded'), 'true')
     await app.getByLabel('Message', { exact: true }).press('Escape')
     await page.waitForFunction(() => document.getElementById('expand-demo').getAttribute('aria-expanded') === 'false')
-    for (const name of ['Saved workflows', 'Files & documents', 'Recent work', 'Inspected preview']) {
-      await page.getByRole('group', { name: 'Product screenshots' }).getByRole('button', { name, exact: true }).click(); await page.locator('#product-shot').scrollIntoViewIfNeeded()
-      await page.waitForFunction(() => { const img = document.getElementById('product-shot'); return img.complete && img.naturalWidth > 0 })
-    }
+    await page.locator('#product-shot').scrollIntoViewIfNeeded()
+    await page.waitForFunction(() => { const img = document.getElementById('product-shot'); return img.complete && img.naturalWidth > 0 })
+    // Each showcase holds a looping muted clip over a real capture, and holds still
+    // under reduced motion (this context asks for reduce).
+    const showcases = page.locator('.showcase-video')
+    assert.equal(await showcases.count(), 3)
+    assert.deepEqual(await showcases.evaluateAll(videos => videos.map(video => ({
+      loop: video.loop, muted: video.muted,
+      inline: video.hasAttribute('playsinline'),
+      poster: video.poster.startsWith('data:image/png;base64,') && video.poster.length > 1000,
+      still: !video.hasAttribute('autoplay') && video.paused,
+    }))), Array(3).fill({ loop: true, muted: true, inline: true, poster: true, still: true }))
     await page.getByRole('button', { name: 'Enlarge product screenshot' }).click(); assert.equal(await page.getByRole('dialog').isVisible(), true)
     await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').isVisible(), false)
+    // Curated six, with the shipped directory behind a disclosure rather than on load.
+    assert.equal(await page.locator('.top-feature').count(), 6)
+    assert.equal(await page.locator('.feature-group').first().isVisible(), false, 'full directory stays closed on load')
     await page.locator('#features').scrollIntoViewIfNeeded()
     const directory = page.locator('#features details')
     await directory.locator('summary').click()
@@ -112,12 +137,12 @@ try {
     await noOverflow()
     await directory.locator('summary').click()
     await page.getByText('What should I expect from the prerelease?', { exact: true }).click(); assert.equal(await page.locator('details[open]').count(), 1)
-    assert.equal(await page.locator('#download').getAttribute('href'), `https://github.com/Holodeck23/agent-cockpit/releases/download/v${version}/Cockpit-${version}-arm64.dmg`)
+    assert.deepEqual(await page.locator('a[href$=".dmg"]').evaluateAll(links => links.map(link => link.href)), [dmg(version), dmg(version)])
     await noOverflow(); assert.deepEqual(errors, [])
     assert.deepEqual(demoRequests, [], 'no network calls from demo')
     if (target.offline) assert.deepEqual(requests, [], 'offline page makes no network calls')
     if (evidence) await page.screenshot({ path: join(evidence, `${target.name}-${width}-page.png`), fullPage: true })
-    console.log(`PASS ${target.name} ${width}px: approval/denial/retry, garden preview, draft/save/workflow, handoff, reset, recovery, expand/Escape, gallery/FAQ, readable type, zero API calls`)
+    console.log(`PASS ${target.name} ${width}px: approval/denial/retry, garden preview, draft/save/workflow, handoff, reset, recovery, expand/Escape, hero action area, showcases, top features/FAQ, readable type, zero API calls`)
     await context.close()
   }
   const fallback = await browser.newContext({ javaScriptEnabled: false, offline: true, viewport: { width: 390, height: 900 } })
