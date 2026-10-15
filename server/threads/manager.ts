@@ -10,6 +10,7 @@ import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { snapshotMcpSources } from '../agents/claude/mcp-sources.ts'
 import { resolveClaudeSetup } from '../agents/claude/setup.ts'
+import type { Project } from '../projects/store.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { effortForClaude } from '../agents/claude/flags.ts'
@@ -324,6 +325,9 @@ export interface ThreadManager {
   remove(threadId: string): Promise<void>
   /** Same agent, new model/effort/permissions: the native session resumes with them from the next message. */
   changeSettings(threadId: string, settings: ThreadSettings): ThreadMeta
+  /** Retire sessions whose effective Claude setup was reduced by a project change. */
+  revokeProjectClaudeSetup(projectPath: string, before: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeMcpApproval'> | undefined,
+    after: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeMcpApproval'>): Promise<void>
   /** The handoff a switch would send now, for the user to read first (D13). */
   handoffPreview(threadId: string): HandoffPreview
   /**
@@ -380,6 +384,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
   const entriesOf = (threadId: string): Live[] => [...live.values()].filter((e) => e.threadId === threadId)
   const entryIn = (threadId: string, workspaceId: string | undefined): Live | undefined => live.get(keyOf(threadId, workspaceId))
   const closing = new Set<Promise<void>>()
+  const retiring = new Map<string, Promise<void>>()
   // Deleted conversations: a closing session's last events must not recreate their files.
   const deleted = new Set<string>()
   const hostActions = createHostActions((id, event, workspaceId) => record(id, event, workspaceId))
@@ -535,15 +540,24 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
    * recovery): pending Cockpit actions are refused and what was allowed for that session is
    * forgotten now, not when an exit that is dropped as stale would have done it.
    */
-  const retire = (threadId: string, workspaceId?: string): Promise<void> => {
+  const retire = (threadId: string, workspaceId?: string, guardUntilClosed = false): Promise<void> => {
     hostActions.cancel(threadId, workspaceId)
     hostActions.forget(threadId, workspaceId)
     const entries = workspaceId === undefined ? entriesOf(threadId) : [entryIn(threadId, workspaceId)].filter((e): e is Live => e !== undefined)
     for (const entry of entries) {
       live.delete(keyOf(threadId, entry.workspaceId))
       generations.delete(keyOf(threadId, entry.workspaceId))
+      // The provider may take time to exit. Its Cockpit grant stops working now.
+      entry.releaseGrant()
     }
-    return Promise.all(entries.map(closeEntry)).then(() => undefined)
+    const earlier = guardUntilClosed ? retiring.get(threadId) : undefined
+    const done = Promise.all([...(earlier ? [earlier] : []), ...entries.map(closeEntry)]).then(() => undefined)
+    if (guardUntilClosed) {
+      retiring.set(threadId, done)
+      void done.then(() => { if (retiring.get(threadId) === done) retiring.delete(threadId) },
+        () => { if (retiring.get(threadId) === done) retiring.delete(threadId) })
+    }
+    return done
   }
 
   /** The account a conversation's native session belongs to: before accounts, the CLI default. */
@@ -680,7 +694,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
             if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath)?.claudeMcpApproval !== snapshot.revision) {
               throw new Error('Claude connector approval changed before launch. Review the current sources again.')
             }
-            if (options.projectTrust?.(meta.projectPath)?.claudeMcp === false) {
+            if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath), meta).connectors) {
               throw new Error('Claude connectors were turned off before launch.')
             }
           }
@@ -790,6 +804,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
 
   const send = (threadId: string, text: string, agentText = text, workflows?: readonly WorkflowSnapshot[], fromConversation?: { id: string; title: string }, attached: readonly IncomingImage[] = [], operationId?: string, workspaceId?: string): { runId: string; replayed: boolean } => {
     if (deleted.has(threadId)) throw new Error('This conversation was deleted')
+    if (retiring.has(threadId)) throw new Error('The previous agent setup is retiring. Send after it finishes closing.')
     const meta = requireMeta(threadId)
     const operation = operationId ? { id: operationId, inputHash: inputHash(text, attached) } : undefined
     if (operation) {
@@ -1004,11 +1019,34 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       if (settings.agent !== meta.settings.agent) throw new Error('Switch agents to change the agent')
       if (anyBusy(threadId)) throw new Error('Stop the current turn before changing settings')
       // Close the idle session; the next message relaunches it with the new flags and resumes it.
-      void retire(threadId)
+      const trust = options.projectTrust?.(meta.projectPath)
+      const prior = meta.settings.agent === 'claude' ? resolveClaudeSetup(meta.settings, trust, meta) : undefined
+      const nextSetup = settings.agent === 'claude' ? resolveClaudeSetup(settings, trust, meta) : undefined
+      const reduced = Boolean(prior && nextSetup && ((prior.hooks && !nextSetup.hooks) || (prior.connectors && !nextSetup.connectors)))
+      void retire(threadId, undefined, reduced && entriesOf(threadId).length > 0)
       const next = store.update(threadId, { settings })
       record(threadId, { kind: 'settings_changed', ...(settings.model ? { model: settings.model } : {}), ...(settings.effort ? { effort: settings.effort } : {}), permissionMode: settings.permissionMode,
         ...(Boolean(settings.useChrome) !== Boolean(meta.settings.useChrome) ? { chrome: settings.useChrome === true } : {}) })
       return next
+    },
+    async revokeProjectClaudeSetup(projectPath, before, after) {
+      const affected = store.list().filter((meta) => {
+        if (meta.projectPath !== projectPath || meta.settings.agent !== 'claude' || deleted.has(meta.id)) return false
+        const prior = resolveClaudeSetup(meta.settings, before, meta)
+        const next = resolveClaudeSetup(meta.settings, after, meta)
+        return (prior.hooks && !next.hooks) || (prior.connectors && (!next.connectors || before?.claudeMcpApproval !== after.claudeMcpApproval))
+      })
+      await Promise.all(affected.map(async (meta) => {
+        const entries = entriesOf(meta.id)
+        if (entries.length === 0) return
+        const waiting = entries.flatMap((entry) => [...entry.waiting].map((id) => ({ id, workspaceId: entry.workspaceId })))
+        const closing = retire(meta.id, undefined, true)
+        // A queued send may already have crossed the provider boundary. Never replay it automatically.
+        for (const { id, workspaceId } of waiting) record(meta.id, { kind: 'user_delivery_uncertain', id }, workspaceId)
+        for (const entry of entries) if (entry.turnRunning) record(meta.id, { kind: 'result', ok: false, stopped: true }, entry.workspaceId)
+        record(meta.id, { kind: 'setup_revoked', detail: 'Claude setup or source approval changed for this project. Its session is retiring; hook descendants may still have side effects.' })
+        await closing
+      }))
     },
     resumeRecovered(threadId, agent, text, agentText) {
       const meta = requireMeta(threadId)

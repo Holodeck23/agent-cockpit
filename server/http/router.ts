@@ -546,7 +546,10 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Connector sources changed; review them again')
-          sendJson(res, 200, { data: projects.approveClaudeMcp(body.path, snapshot.revision) })
+          const before = projects.list({ includeHidden: true }).find((project) => project.path === body.path)
+          const updated = projects.approveClaudeMcp(body.path, snapshot.revision)
+          await manager.revokeProjectClaudeSetup(body.path, before, updated)
+          sendJson(res, 200, { data: updated })
           return true
         }
         throw new HttpError(405, 'Method not allowed')
@@ -583,7 +586,12 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         if (method === 'POST') {
           const { path, ...patch } = parseBody(projectBody, await readJson(req))
           assertDirectory(path)
-          sendJson(res, 200, { data: projects.open(path, patch) })
+          const before = projects.list({ includeHidden: true }).find((project) => project.path === path)
+          const updated = projects.open(path, patch)
+          // An Off change retires affected sessions before the request succeeds. Grants and pending
+          // approvals are invalidated synchronously inside the manager, before provider close waits.
+          await manager.revokeProjectClaudeSetup(path, before, updated)
+          sendJson(res, 200, { data: updated })
           return true
         }
       }

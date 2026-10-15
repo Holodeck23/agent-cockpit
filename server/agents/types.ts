@@ -97,6 +97,9 @@ export type NormalizedEvent =
   | { kind: 'user_unqueued'; id: string }
   /** A queued message never reached the agent: its session ended (a failed start, a crash) before it took it. */
   | { kind: 'user_undelivered'; id: string }
+  /** A revoked session may have handed this queued input to the provider; explicit recovery is required. */
+  | { kind: 'user_delivery_uncertain'; id: string }
+  | { kind: 'setup_revoked'; detail: string }
   | { kind: 'text_delta'; text: string }
   | { kind: 'assistant_text'; messageId: string; text: string }
   | { kind: 'tool_use'; id: string; name: string; input: unknown }

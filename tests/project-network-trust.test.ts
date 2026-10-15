@@ -39,6 +39,10 @@ it('stores independent Claude hook and connector preferences with absent meaning
   expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBe('a'.repeat(64))
   projects.open('/work/a', { claudeMcp: false })
   expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBeUndefined()
+  // An explicit conversation override can be reviewed while the project default remains off.
+  projects.approveClaudeMcp('/work/a', 'b'.repeat(64))
+  projects.open('/work/a', { name: 'Renamed', claudeMcp: false })
+  expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBe('b'.repeat(64))
 })
 
 it('explicitly overrides both permissive and restrictive CLI defaults without losing MCP wiring', () => {

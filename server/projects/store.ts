@@ -162,7 +162,7 @@ export function createProjectStore(root: string): ProjectStore {
       const existing = current.find((p) => p.path === path) ?? fresh(path, now)
       const { instructions: rawInstructions, ...rest } = patch
       // Opening a removed project on purpose brings it back.
-      const next: Project = { ...existing, ...rest, ...(rest.claudeMcp === false ? { claudeMcpApproval: undefined } : {}),
+      const next: Project = { ...existing, ...rest, ...(rest.claudeMcp === false && existing.claudeMcp !== false ? { claudeMcpApproval: undefined } : {}),
         hidden: undefined, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions), ...pinChange(current, existing, rest.pinned) }
       write([...current.filter((p) => p.path !== path), next])
       return next

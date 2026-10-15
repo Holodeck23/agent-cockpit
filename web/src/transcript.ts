@@ -31,6 +31,8 @@ export type TranscriptItem =
       queuedId?: string
       /** Sent while the agent was busy or starting, and the session ended before it took it. */
       undelivered?: true
+      /** The provider might have taken this queued input before revocation. */
+      deliveryUncertain?: true
       /** The workspace it was sent in or came from, once the conversation has more than one (W12-15). */
       workspace?: string
     }
@@ -321,6 +323,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
   const undelivered = new Set(events.flatMap((e) => (e.event.kind === 'user_undelivered' ? [e.event.id] : [])))
+  const deliveryUncertain = new Set(events.flatMap((e) => (e.event.kind === 'user_delivery_uncertain' ? [e.event.id] : [])))
   // A message you took back went to your draft; it, and the images sent with it, are no longer
   // part of the conversation (the switch handoff uses the same rule).
   const takenBack = takenBackPositions(events)
@@ -399,7 +402,8 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
           const { attachments } = described
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(workspace ? { workspace } : {}), ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
             ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}),
-            ...(event.queuedId && undelivered.has(event.queuedId) ? { undelivered: true as const } : {}) })
+            ...(event.queuedId && undelivered.has(event.queuedId) ? { undelivered: true as const } : {}),
+            ...(event.queuedId && deliveryUncertain.has(event.queuedId) ? { deliveryUncertain: true as const } : {}) })
         } else {
           const role = roles.get(index)
           const parsed = role === 'conclusion' ? parseConclusion(event.text) : undefined
@@ -594,6 +598,9 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
         if (queued && !turnOpen) startTurn(index, queued.text, queued.images)
         return
       }
+      case 'setup_revoked':
+        items.push({ type: 'note', key, text: event.detail, tone: 'error' })
+        return
       case 'error':
         failedThisTurn = true
         items.push({ type: 'failure', key, ...failureWords(event.message), raw: event.message, ...(lastUserText ? { retryText: lastUserText, retryImages: lastUserImages } : {}) })

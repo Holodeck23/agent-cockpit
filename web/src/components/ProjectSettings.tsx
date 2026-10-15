@@ -127,9 +127,9 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             <input type="checkbox" checked={claudeMcp} onChange={(e) => { setClaudeMcp(e.target.checked); setSaved(false) }} />
             <span><strong>Use my Claude MCP connectors</strong> On by default for new conversations. Connector commands require source review before they run.</span>
           </label>
-          {claudeMcp && mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
+          {mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
             <strong>Connector source review</strong>
-            <small>These are explicit user and project MCP entries. Plugin connectors require separate verification. Review the source files before approving this exact revision.</small>
+            <small>These are explicit user and project MCP entries. Plugin connectors require separate verification. Review the source files before approving this exact revision, including when only a conversation enables connectors.</small>
             {mcpReview.review.length ? <ul>{mcpReview.review.map((source) => <li key={`${source.source}:${source.name}`}>
               <strong>{source.name}</strong> · {source.executable ?? source.url} · {source.source}
             </li>)}</ul> : <small>No explicit connector entries found.</small>}

@@ -161,6 +161,9 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                 {item.undelivered ? (
                   <div className="waiting-row" role="status"><span>Not delivered: the agent stopped before it took this message</span></div>
                 ) : null}
+                {item.deliveryUncertain ? (
+                  <div className="waiting-row" role="status"><span>Needs recovery: the agent may have taken this message before its setup was revoked. Check the result before sending it again.</span></div>
+                ) : null}
                 {/* A waiting message's own buttons sit where Copy would; Remove gives the text back anyway. */}
                 {item.text.trim() && !(item.queuedId && running) ? <CopyButton text={item.text} /> : null}
               </section>
