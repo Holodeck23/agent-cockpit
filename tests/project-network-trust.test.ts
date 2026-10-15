@@ -33,6 +33,12 @@ it('stores independent Claude hook and connector preferences with absent meaning
   projects.open('/work/a', { claudeHooks: true, claudeMcp: false })
   expect(createProjectStore(root).list()[0]).toMatchObject({ claudeHooks: true, claudeMcp: false })
   expect(projectPatchSchema.safeParse({ claudeHooks: 'true' }).success).toBe(false)
+  expect(projectPatchSchema.safeParse({ claudeMcpApproval: 'a'.repeat(64) }).data).toEqual({})
+  projects.open('/work/a', { claudeMcp: true })
+  projects.approveClaudeMcp('/work/a', 'a'.repeat(64))
+  expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBe('a'.repeat(64))
+  projects.open('/work/a', { claudeMcp: false })
+  expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBeUndefined()
 })
 
 it('explicitly overrides both permissive and restrictive CLI defaults without losing MCP wiring', () => {

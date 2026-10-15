@@ -45,6 +45,7 @@ import type { PhonePreviews } from '../remote/preview/control.ts'
 import type { AgentStatus } from '../agents/status.ts'
 import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { AGENT_IDS } from '../agents/capabilities/types.ts'
+import { snapshotMcpSources } from '../agents/claude/mcp-sources.ts'
 import type { AgyMcp } from '../projects/agy-mcp.ts'
 import type { Lifecycle } from '../agents/lifecycle/service.ts'
 import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
@@ -530,6 +531,21 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         try { sendJson(res, 200, { data: projects.setPinnedFiles(body.path, body.files) }) }
         catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)) }
         return true
+      }
+      if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'claude-mcp') {
+        if (viaPhone) throw new HttpError(403, 'Connector source review is only available on the Mac')
+        const body = method === 'POST'
+          ? parseBody(z.object({ path: z.string().min(1).max(1000), revision: z.string().regex(/^[a-f0-9]{64}$/) }), await readJson(req))
+          : { path: url.searchParams.get('path') ?? '', revision: undefined }
+        if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
+        const snapshot = snapshotMcpSources({ home: homedir(), cwd: body.path, pathEnv: process.env.PATH ?? '' })
+        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review } }); return true }
+        if (method === 'POST') {
+          if (body.revision !== snapshot.revision) throw new HttpError(409, 'Connector sources changed; review them again')
+          sendJson(res, 200, { data: projects.approveClaudeMcp(body.path, snapshot.revision) })
+          return true
+        }
+        throw new HttpError(405, 'Method not allowed')
       }
       // Remove from Cockpit: the folder and its conversations stay; schedules there are paused.
       // P3: writes a plugin into the project folder, so the Mac only (W10-04).
