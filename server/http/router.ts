@@ -538,7 +538,9 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
           ? parseBody(z.object({ path: z.string().min(1).max(1000), revision: z.string().regex(/^[a-f0-9]{64}$/) }), await readJson(req))
           : { path: url.searchParams.get('path') ?? '', revision: undefined }
         if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
-        const snapshot = snapshotMcpSources({ home: homedir(), cwd: body.path, pathEnv: process.env.PATH ?? '' })
+        const selected = accounts?.resolve(body.path, 'claude')
+        const snapshot = snapshotMcpSources({ home: homedir(), cwd: body.path, pathEnv: process.env.PATH ?? '',
+          ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) })
         if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Connector sources changed; review them again')

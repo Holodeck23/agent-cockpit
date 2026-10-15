@@ -1,12 +1,15 @@
 import { createHostActions, type HostActionOptions } from './host-actions.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { launchAntigravity } from '../agents/antigravity/launch.ts'
 import type { AgentCapabilities } from '../agents/capabilities/types.ts'
 import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
+import { snapshotMcpSources } from '../agents/claude/mcp-sources.ts'
+import { resolveClaudeSetup } from '../agents/claude/setup.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
 import { claudeMcpOptions, codexMcpConfigArgs } from '../mcp/wiring.ts'
 import { effortForClaude } from '../agents/claude/flags.ts'
@@ -43,6 +46,10 @@ export interface LaunchRequest {
   readonly imagesDir?: string
   /** Selects the account (W12.1): CLAUDE_CONFIG_DIR or CODEX_HOME for a profile, nothing for the CLI default. */
   readonly accountEnv?: Readonly<Record<string, string>>
+  /** User MCP definitions from the exact source revision reviewed for this project. */
+  readonly userMcpServers?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+  readonly validateSources?: () => void
+  readonly effectiveHooks?: boolean
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
 
@@ -96,22 +103,23 @@ export const codexConfigArgs = (req: Pick<LaunchRequest, 'cockpit' | 'codexNetwo
 
 export const defaultLaunchers: Record<AgentId, Launcher> = {
   claude: (req, onEvent) => {
-    const mcp = req.cockpit ? claudeMcpOptions(req.cockpit) : undefined
+    const mcp = req.cockpit ? claudeMcpOptions(req.cockpit, req.userMcpServers) : undefined
     return launchClaude(
       {
         cwd: req.cwd,
         model: req.settings.model,
         effort: effortForClaude(req.settings.effort),
         permissionMode: req.settings.permissionMode,
-        useHooks: req.settings.useHooks,
+        useHooks: req.effectiveHooks ?? req.settings.useHooks,
         chrome: req.settings.useChrome === true,
         sessionId: req.sessionId,
         resume: req.resume,
         appendSystemPrompt: instructionsFor(req),
-        ...(mcp ? { mcpConfig: mcp.mcpConfig, allowedTools: mcp.allowedTools } : {}),
+        ...(mcp ? { mcpConfig: mcp.mcpConfig, allowedTools: mcp.allowedTools }
+          : req.userMcpServers ? { mcpConfig: { mcpServers: req.userMcpServers } } : {}),
       },
       onEvent,
-      { env: claudeLaunchEnv(req.accountEnv) },
+      { env: claudeLaunchEnv(req.accountEnv), ...(req.validateSources ? { validateSources: req.validateSources } : {}) },
     )
   },
   codex: (req, onEvent) =>
@@ -177,7 +185,7 @@ export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaun
 
 /** Current instructions for a project folder, read when an agent session starts. */
 export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
-export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean } | undefined
+export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean; readonly claudeHooks?: boolean; readonly claudeMcp?: boolean; readonly claudeMcpApproval?: string } | undefined
 
 export interface ManagerOptions {
   readonly launchers?: Partial<Record<AgentId, Launcher>>
@@ -633,10 +641,40 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       ...(account ? { accountId: account.accountId, accountGeneration: account.generation } : {}) })
     record(meta.id, { kind: 'session_boundary', generation: launchNumber, bindingId: bindingIdOf(meta), ...(account ? { account: { id: account.accountId, generation: account.generation } } : {}),
       ...(workspaceId ? { workspaceId } : {}) }, workspaceId ?? '')
-    const mcp = options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
-    const trust = meta.settings.agent === 'codex' ? options.projectTrust?.(meta.projectPath) : undefined
+    const trust = options.projectTrust?.(meta.projectPath)
+    const setup = meta.settings.agent === 'claude' ? resolveClaudeSetup(meta.settings, trust, meta) : undefined
+    let sourceProblem: string | undefined
+    // An on preference must not silently become an empty hook snapshot. The
+    // source-review path is required before executable hooks can be enabled.
+    if (setup?.hooks) sourceProblem = 'Claude hook sources have not been reviewed for this project and account yet.'
+    let userMcpServers: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined
+    let validateSources: (() => void) | undefined
+    if (setup?.connectors) {
+      try {
+        const sourceInput = { home: homedir(), cwd: cwd ?? meta.projectPath, pathEnv: process.env.PATH ?? '',
+          ...(account?.env.CLAUDE_CONFIG_DIR ? { profileDir: account.env.CLAUDE_CONFIG_DIR } : {}) }
+        const snapshot = snapshotMcpSources(sourceInput)
+        if (snapshot.review.length > 0 && trust?.claudeMcpApproval !== snapshot.revision) {
+          sourceProblem ??= 'Claude connector sources need review in Project Settings before this conversation can start.'
+        } else {
+          userMcpServers = snapshot.servers
+          validateSources = () => {
+            if (snapshotMcpSources(sourceInput).revision !== snapshot.revision) {
+              throw new Error('Claude connector sources changed after review. Review them again before starting this conversation.')
+            }
+            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath)?.claudeMcpApproval !== snapshot.revision) {
+              throw new Error('Claude connector approval changed before launch. Review the current sources again.')
+            }
+            if (options.projectTrust?.(meta.projectPath)?.claudeMcp === false) {
+              throw new Error('Claude connectors were turned off before launch.')
+            }
+          }
+        }
+      } catch (error) { sourceProblem ??= error instanceof Error ? error.message : 'Could not verify Claude connector sources' }
+    }
+    const mcp = sourceProblem ? undefined : options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     let launching = true
     const deliver: EventSink = (event) => {
       // Even a synchronous launcher callback must follow the initial user_text and live entry.
@@ -690,17 +728,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         record(meta.id, event, workspaceId ?? '')
       }
     }
-    const blocked = cwd === undefined ? 'This workspace no longer exists. Continue the conversation in another workspace.' : options.launchGate?.(meta.settings.agent)
+    const blocked = cwd === undefined ? 'This workspace no longer exists. Continue the conversation in another workspace.' : sourceProblem ?? options.launchGate?.(meta.settings.agent)
     const launcher: Launcher = blocked ? (_req, onEvent) => refusedSession(meta.settings.agent, blocked, onEvent) : launchers[meta.settings.agent]
     const session = launcher(
       {
         ...(instructions ? { projectInstructions: instructions.text } : {}),
-        ...(trust ? { codexNetwork: trust.codexNetwork } : {}),
+        ...(meta.settings.agent === 'codex' && trust ? { codexNetwork: trust.codexNetwork } : {}),
         cwd: cwd ?? meta.projectPath,
         settings: meta.settings,
         ...(meta.sessionStarted ? { resume: meta.sessionId } : { sessionId: meta.sessionId }),
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
         ...(mcp ? { cockpit: mcp.launch } : {}),
+        ...(userMcpServers ? { userMcpServers } : {}),
+        ...(validateSources ? { validateSources } : {}),
+        ...(setup ? { effectiveHooks: setup.hooks } : {}),
         imagesDir: images.dir(meta.id),
         ...(account && Object.keys(account.env).length > 0 ? { accountEnv: account.env } : {}),
       },

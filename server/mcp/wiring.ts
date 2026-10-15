@@ -6,10 +6,12 @@ import { ALL_TOOLS, MCP_SERVER_NAME, type CockpitMcpLaunch } from './sessions.ts
 // Conversation mutations bypass the provider gate only to reach Cockpit's
 // mandatory per-action approval. This never grants permission to execute them.
 
-export function claudeMcpOptions(launch: CockpitMcpLaunch) {
+export function claudeMcpOptions(launch: CockpitMcpLaunch, approvedUserServers: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {}) {
+  if (Object.keys(approvedUserServers).some((name) => name.toLowerCase() === MCP_SERVER_NAME)) throw new Error('The Cockpit MCP server name is reserved')
   return {
     mcpConfig: {
       mcpServers: {
+        ...approvedUserServers,
         [MCP_SERVER_NAME]: { type: 'stdio', command: launch.command, args: [...launch.args], env: { ...launch.env, ...launch.secretEnv } },
       },
     },

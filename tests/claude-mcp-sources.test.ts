@@ -17,7 +17,12 @@ it('binds approved MCP source, executable and script revisions without exposing 
   const input = { home, cwd, pathEnv: '/usr/bin:/bin' }
   const first = snapshotMcpSources(input)
   expect(first.review).toMatchObject([{ name: 'external', source: file, executable: realpathSync(executable) }])
+  expect(first.servers.external?.command).toBe(realpathSync(executable))
   expect(JSON.stringify(first.review)).not.toContain('synthetic-secret')
+  writeFileSync(join(home, '.claude.json'), JSON.stringify({ numStartups: 1 }))
+  expect(snapshotMcpSources(input).revision).toBe(first.revision)
+  writeFileSync(join(home, '.claude.json'), JSON.stringify({ numStartups: 2 }))
+  expect(snapshotMcpSources(input).revision).toBe(first.revision)
   writeFileSync(script, 'process.stdout.write("changed")')
   expect(snapshotMcpSources(input).revision).not.toBe(first.revision)
   writeFileSync(file, JSON.stringify({ mcpServers: { cockpit: { type: 'stdio', command: executable, args: [] } } }))

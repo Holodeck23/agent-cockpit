@@ -22,6 +22,8 @@ export interface ClaudeLaunchDeps {
   executable?: string
   /** Added to the agent's environment (and so inherited by its MCP servers). */
   env?: Readonly<Record<string, string>>
+  /** Recheck approved source revisions after the CLI probe, immediately before spawn. */
+  validateSources?: () => void
 }
 
 /**
@@ -52,6 +54,7 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     probeClaude(deps.executable ?? 'claude', input.cwd, cleanClaudeEnv(deps.env), controller.signal))
     .then((capabilities) => {
       if (ended || !capabilities) return
+      deps.validateSources?.()
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
       const selected = claudeLaunchSchema.parse(input)
       const privateConfig = writePrivateClaudeConfig(selected.mcpConfig, selected.useHooks ? selected.hookSettings : { disableAllHooks: true })

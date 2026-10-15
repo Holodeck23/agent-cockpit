@@ -59,6 +59,17 @@ describe('Use my Chrome (W9-12)', () => {
 })
 
 describe('Claude compatibility', () => {
+  it('refuses a changed approved source before spawn', async () => {
+    const f = fixture(help), events: NormalizedEvent[] = []
+    const session = launchClaude({ cwd: f.cwd }, (e) => events.push(e), {
+      executable: f.executable,
+      validateSources: () => { throw new Error('approved source changed') },
+    })
+    session.send('queued message')
+    await expect.poll(() => events.some((e) => e.kind === 'error' && e.message.includes('approved source changed')), FIRST_RUN).toBe(true)
+    expect(existsSync(join(f.cwd, 'launched'))).toBe(false)
+    expect(events).toContainEqual({ kind: 'exit', code: null })
+  })
   it('passes credentials only through a private MCP file and removes it on exit', async () => {
     const f = fixture(help), events: NormalizedEvent[] = []
     const marker = 'synthetic-token-for-test'

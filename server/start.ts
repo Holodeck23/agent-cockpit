@@ -229,7 +229,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     },
     projectTrust: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
-      return { codexNetwork: project?.codexNetwork === true }
+      return { codexNetwork: project?.codexNetwork === true, claudeHooks: project?.claudeHooks, claudeMcp: project?.claudeMcp,
+        claudeMcpApproval: project?.claudeMcpApproval }
     },
     capabilities,
     antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),

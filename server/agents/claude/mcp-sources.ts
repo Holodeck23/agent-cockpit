@@ -38,7 +38,7 @@ function executablePath(command: string, cwd: string, pathEnv: string): string {
 export function snapshotMcpSources(input: { readonly home: string; readonly cwd: string; readonly pathEnv: string; readonly profileDir?: string }): McpSourceSnapshot {
   const files = [input.profileDir ? join(input.profileDir, '.claude.json') : join(input.home, '.claude.json'), join(input.cwd, '.mcp.json')]
   const digest = createHash('sha256')
-  digest.update(resolve(input.cwd))
+  digest.update(resolve(input.cwd)).update(input.profileDir ? resolve(input.profileDir) : resolve(input.home))
   const servers: Record<string, Server> = {}
   const review: { name: string; source: string; executable?: string; executableHash?: string; url?: string }[] = []
   for (const file of files) {
@@ -49,7 +49,9 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
     const definitions = (parsed as { mcpServers?: unknown }).mcpServers
     if (definitions === undefined) continue
     if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) throw new Error(`Invalid MCP servers: ${file}`)
-    digest.update(file).update(bytes)
+    // .claude.json contains changing CLI metadata unrelated to MCP definitions.
+    // Bind the selected definitions, rather than invalidating approval on every CLI write.
+    digest.update(file).update(JSON.stringify(definitions))
     for (const [name, raw] of Object.entries(definitions)) {
       if (name.toLowerCase() === 'cockpit' || Object.hasOwn(servers, name)) throw new Error(`Reserved or duplicate MCP server name: ${name}`)
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`Invalid MCP server: ${name}`)
@@ -68,12 +70,13 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
           if (existsSync(candidate)) digest.update(realpathSync(candidate)).update(sha(fileBytes(candidate)))
         }
         review.push({ name, source: file, executable: command, executableHash })
+        servers[name] = { ...server, command }
       } else if (typeof server.url === 'string') {
         const url = new URL(server.url)
         if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) throw new Error(`Unsupported MCP endpoint for ${name}`)
-        review.push({ name, source: file, url: url.origin })
+        review.push({ name, source: file, url: `${url.origin}${url.pathname}` })
+        servers[name] = server
       } else throw new Error(`Unsupported MCP server: ${name}`)
-      servers[name] = server
     }
   }
   return { revision: digest.digest('hex'), servers, review }
