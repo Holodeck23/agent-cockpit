@@ -9,13 +9,14 @@ import { openApprovals } from '../server/threads/status.ts'
 import { buildTranscript } from '../web/src/transcript.ts'
 import type { EventSink } from '../server/agents/types.ts'
 
-it('revokes a project connector grant before close, cancels approvals, and marks queued delivery uncertain', async () => {
+it('revokes the grant before close and distinguishes cancelled from uncertain queued input', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-revoke-'))
   const project = mkdtempSync(join(tmpdir(), 'cockpit-revoke-project-'))
   const profile = mkdtempSync(join(tmpdir(), 'cockpit-revoke-profile-'))
   const store = createThreadStore(root)
   let projectMcp = true
   let released = 0
+  let cancelled = 0
   let finishClose: (() => void) | undefined
   let sink: EventSink = () => undefined
   const manager = createThreadManager(store, {
@@ -25,6 +26,7 @@ it('revokes a project connector grant before close, cancels approvals, and marks
     launchers: { claude: (_req, onEvent) => {
       sink = onEvent
       return { agent: 'claude', alive: () => true, queues: () => true, send: () => undefined,
+        cancelQueued: async () => ++cancelled === 1,
         interrupt: () => undefined, respondApproval: () => undefined,
         close: () => new Promise<void>((resolve) => { finishClose = () => { onEvent({ kind: 'exit', code: 0 }); resolve() } }),
       }
@@ -33,7 +35,8 @@ it('revokes a project connector grant before close, cancels approvals, and marks
   const settings = threadSettingsSchema.parse({ agent: 'claude', hooksSetup: 'off', mcpSetup: 'inherit' })
   const thread = manager.create({ projectPath: project, settings, text: 'first' })
   sink({ kind: 'approval_request', requestId: 'provider-approval', toolName: 'Write', input: {}, suggestions: [] })
-  manager.send(thread.id, 'queued')
+  manager.send(thread.id, 'cancelled before delivery')
+  manager.send(thread.id, 'delivery uncertain')
   expect(openApprovals(store.events(thread.id))).toHaveLength(1)
   projectMcp = false
   const revoking = manager.revokeProjectClaudeSetup(project, { claudeHooks: false, claudeMcp: true }, { claudeHooks: false, claudeMcp: false })
@@ -41,9 +44,14 @@ it('revokes a project connector grant before close, cancels approvals, and marks
   expect(() => manager.send(thread.id, 'too soon')).toThrow(/retiring/)
   expect(() => manager.approve(thread.id, openApprovals(store.events(thread.id))[0]!, 'allow')).toThrow()
   expect(buildTranscript(store.events(thread.id), 'claude').filter((item) => item.type === 'message').at(-1))
-    .toMatchObject({ text: 'queued', deliveryUncertain: true })
+    .toMatchObject({ text: 'delivery uncertain', deliveryUncertain: true })
   finishClose?.()
   await revoking
+  const messages = buildTranscript(store.events(thread.id), 'claude').filter((item) => item.type === 'message')
+  expect(messages.find((item) => item.text === 'cancelled before delivery')).toMatchObject({ undelivered: true })
+  expect(messages.find((item) => item.text === 'cancelled before delivery')).not.toHaveProperty('deliveryUncertain', true)
+  expect(messages.find((item) => item.text === 'delivery uncertain')).toMatchObject({ deliveryUncertain: true })
+  expect(messages.find((item) => item.text === 'delivery uncertain')).not.toHaveProperty('undelivered', true)
   expect(store.events(thread.id).some((entry) => entry.event.kind === 'setup_revoked')).toBe(true)
   await manager.shutdown()
 })

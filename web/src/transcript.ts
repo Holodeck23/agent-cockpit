@@ -324,8 +324,12 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
   const workspaceOf = partition(events).size > 1 ? attribute(events) : undefined
   const roles = turnRoles(events)
   const waiting = new Set(waitingMessages(events))
-  const undelivered = new Set(events.flatMap((e) => (e.event.kind === 'user_undelivered' ? [e.event.id] : [])))
-  const deliveryUncertain = new Set(events.flatMap((e) => (e.event.kind === 'user_delivery_uncertain' ? [e.event.id] : [])))
+  const undelivered = new Set<string>()
+  const deliveryUncertain = new Set<string>()
+  for (const { event } of events) {
+    if (event.kind === 'user_undelivered') { undelivered.add(event.id); deliveryUncertain.delete(event.id) }
+    if (event.kind === 'user_delivery_uncertain') { deliveryUncertain.add(event.id); undelivered.delete(event.id) }
+  }
   // A message you took back went to your draft; it, and the images sent with it, are no longer
   // part of the conversation (the switch handoff uses the same rule).
   const takenBack = takenBackPositions(events)

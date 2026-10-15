@@ -1074,13 +1074,20 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       await Promise.all(affected.map(async (meta) => {
         const entries = entriesOf(meta.id)
         if (entries.length === 0) return
-        const waiting = entries.flatMap((entry) => [...entry.waiting].map((id) => ({ id, workspaceId: entry.workspaceId })))
+        const waiting = entries.flatMap((entry) => [...entry.waiting].map((id) => {
+          let cancelled: Promise<boolean>
+          try { cancelled = entry.session.cancelQueued?.(id).catch(() => false) ?? Promise.resolve(false) }
+          catch { cancelled = Promise.resolve(false) }
+          return { id, workspaceId: entry.workspaceId, cancelled }
+        }))
         const closing = retire(meta.id, undefined, true)
         // A queued send may already have crossed the provider boundary. Never replay it automatically.
         for (const { id, workspaceId } of waiting) record(meta.id, { kind: 'user_delivery_uncertain', id }, workspaceId)
         for (const entry of entries) if (entry.turnRunning) record(meta.id, { kind: 'result', ok: false, stopped: true }, entry.workspaceId)
         record(meta.id, { kind: 'setup_revoked', detail: 'Claude setup or source approval changed for this project. Its session is retiring; hook descendants may still have side effects.' })
-        await closing
+        await Promise.all([closing, Promise.all(waiting.map(async ({ id, workspaceId, cancelled }) => {
+          if (await cancelled) record(meta.id, { kind: 'user_undelivered', id }, workspaceId)
+        }))])
       }))
     },
     resumeRecovered(threadId, agent, text, agentText) {
