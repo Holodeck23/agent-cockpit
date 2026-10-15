@@ -1,5 +1,6 @@
 import { createBrowserAgent, type BrowserHost } from './browser/agent.ts'
 import { createHash } from 'node:crypto'
+import { homedir } from 'node:os'
 import { createBrowserLeases, type BrowserLeases } from './browser/agent-policy.ts'
 import { createConversationControl } from './mcp/control.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -13,6 +14,8 @@ import { createApiHandler } from './http/router.ts'
 import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
 import { resolveClaudeSetup } from './agents/claude/setup.ts'
+import { snapshotHookSources } from './agents/claude/hook-sources.ts'
+import { snapshotMcpSources } from './agents/claude/mcp-sources.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createAccountService, type AccountService } from './agents/accounts/service.ts'
@@ -302,13 +305,32 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     const account = accounts!.resolve(workflow.projectPath, workflow.settings.agent)
     const setup = workflow.settings.agent === 'claude'
       ? resolveClaudeSetup(workflow.settings, project, { workflowTrigger: 'scheduled' }) : undefined
-    if (setup?.hooks) throw new Error('Scheduled Claude hooks need reviewed executable sources before this schedule can run')
+    const sourceInput = { home: homedir(), cwd: workflow.projectPath, pathEnv: process.env.PATH ?? '',
+      accountId: account.accountId, accountGeneration: account.generation,
+      ...(account.env.CLAUDE_CONFIG_DIR ? { profileDir: account.env.CLAUDE_CONFIG_DIR } : {}) }
+    let hookSourceRevision: string | undefined
+    let connectorSourceRevision: string | undefined
+    if (setup?.hooks) {
+      const snapshot = snapshotHookSources(sourceInput)
+      if (snapshot.review.length > 0 && project?.claudeHooksApproval !== snapshot.revision) {
+        throw new Error('Review Claude hook sources in Project Settings before enabling this schedule')
+      }
+      hookSourceRevision = snapshot.revision
+    }
+    if (setup?.connectors) {
+      const snapshot = snapshotMcpSources(sourceInput)
+      if (snapshot.review.length > 0 && project?.claudeMcpApproval !== snapshot.revision) {
+        throw new Error('Review Claude connector sources in Project Settings before enabling this schedule')
+      }
+      connectorSourceRevision = snapshot.revision
+    }
     if (actor === 'agent' && (project?.agentWorkflows !== true || !['manual', 'plan'].includes(workflow.settings.permissionMode))) {
       throw new Error('A person must review and enable this schedule in Workflows')
     }
     const revision = createHash('sha256').update(JSON.stringify({ workflowId: workflow.id, projectPath: workflow.projectPath,
       prompt: workflow.prompt, intervalMinutes: workflow.intervalMinutes, calendar: workflow.calendar, settings: workflow.settings,
       accountId: account.accountId, accountGeneration: account.generation, setup,
+      hookSourceRevision, connectorSourceRevision,
       projectHooks: project?.claudeHooks, projectMcp: project?.claudeMcp, hookRevision: project?.claudeHooksApproval,
       connectorRevision: project?.claudeMcpApproval,
       agentWorkflows: project?.agentWorkflows })).digest('hex')

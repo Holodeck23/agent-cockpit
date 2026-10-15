@@ -1,5 +1,5 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkflowStore, expandWorkflows, resolveWorkflows } from '../server/workflows/store.ts'
@@ -8,6 +8,10 @@ import { createThreadStore } from '../server/threads/store.ts'
 import { createThreadManager, type Launcher } from '../server/threads/manager.ts'
 import type { EventSink } from '../server/agents/types.ts'
 import { startServer, type RunningServer } from '../server/start.ts'
+import { createAccountStore } from '../server/agents/accounts/store.ts'
+import { createProjectStore } from '../server/projects/store.ts'
+import { snapshotHookSources } from '../server/agents/claude/hook-sources.ts'
+import { threadSettingsSchema } from '../server/threads/types.ts'
 
 const setups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const close of setups.splice(0)) await close() })
@@ -179,6 +183,37 @@ describe('workflows', () => {
 })
 
 describe('workflow HTTP integration', () => {
+  it('binds reviewed scheduled hooks to their executable revision before enabling', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cockpit-scheduled-hooks-'))
+    const project = join(root, 'project'); mkdirSync(project)
+    const script = join(root, 'gate.sh')
+    writeFileSync(script, '#!/bin/sh\nexit 0\n'); chmodSync(script, 0o755)
+    const accounts = createAccountStore(root)
+    const account = accounts.createManaged('claude', 'Fixture', { state: 'known', key: 'fixture', observedAt: new Date().toISOString(), source: 'claude auth status' })
+    const profile = accounts.prepareProfileDir(account.id)
+    accounts.select(project, 'claude', account.id)
+    writeFileSync(join(profile, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: script }] }] } }))
+    const projects = createProjectStore(root)
+    projects.open(project, { claudeHooks: true, claudeMcp: false })
+    const source = snapshotHookSources({ home: homedir(), cwd: project, profileDir: profile, pathEnv: process.env.PATH ?? '',
+      accountId: account.id, accountGeneration: account.generation })
+    projects.approveClaudeHooks(project, source.revision)
+    const workflow = createWorkflowStore(root).save({ projectPath: project, name: 'gate', prompt: 'Check', intervalMinutes: 5,
+      settings: threadSettingsSchema.parse({ agent: 'claude', useHooks: true, hooksSetup: 'on', mcpSetup: 'off' }) })
+    const server = await startServer({ port: 0, webDist: root, stateRoot: root })
+    setups.push(() => server.close())
+    const review = await fetch(`${server.url}/api/workflows/${workflow.id}/schedule-scope`)
+    expect(review.status).toBe(200)
+    const revision = (await review.json()).data.revision as string
+    const enabled = await fetch(`${server.url}/api/workflows/${workflow.id}/enabled`, { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true, revision }) })
+    expect(enabled.status).toBe(200)
+    writeFileSync(script, '#!/bin/sh\nexit 1\n')
+    const changed = await fetch(`${server.url}/api/workflows/${workflow.id}/schedule-scope`)
+    expect(changed.status).toBe(409)
+    expect((await changed.text())).toMatch(/Review Claude hook sources/)
+  })
+
   it('creates, edits, schedules, runs and archives; expands references in normal messages', async () => {
     const h = setup()
     const server: RunningServer = await startServer({ port: 0, webDist: h.root, stateRoot: h.root, launchers: h.launchers })
