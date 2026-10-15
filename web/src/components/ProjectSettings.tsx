@@ -37,6 +37,8 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [codexNetwork, setCodexNetwork] = useState(project.codexNetwork === true)
   const [claudeHooks, setClaudeHooks] = useState(project.claudeHooks !== false)
   const [claudeMcp, setClaudeMcp] = useState(project.claudeMcp !== false)
+  const [hookReview, setHookReview] = useState<Awaited<ReturnType<typeof api.claudeHookSources>>>()
+  const [approvedHookRevision, setApprovedHookRevision] = useState(project.claudeHooksApproval)
   const [mcpReview, setMcpReview] = useState<Awaited<ReturnType<typeof api.claudeMcpSources>>>()
   const [approvedMcpRevision, setApprovedMcpRevision] = useState(project.claudeMcpApproval)
   const [busy, setBusy] = useState(false)
@@ -51,6 +53,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
 
   useEffect(() => nameBox.current?.focus(), [])
   useEffect(() => { void api.claudeMcpSources(project.path).then(setMcpReview, (reason: unknown) => setError(message(reason))) }, [project.path])
+  useEffect(() => { void api.claudeHookSources(project.path).then(setHookReview, (reason: unknown) => setError(message(reason))) }, [project.path])
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -65,7 +68,8 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
   const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork, claudeHooks, claudeMcp }), () => {
-    if (!claudeMcp) setApprovedMcpRevision(undefined)
+    if (!claudeHooks && project.claudeHooks !== false) setApprovedHookRevision(undefined)
+    if (!claudeMcp && project.claudeMcp !== false) setApprovedMcpRevision(undefined)
     setSaved(true)
   })
   const pick = (file: File | undefined): void => {
@@ -127,6 +131,18 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             <input type="checkbox" checked={claudeMcp} onChange={(e) => { setClaudeMcp(e.target.checked); setSaved(false) }} />
             <span><strong>Use my Claude MCP connectors</strong> On by default for new conversations. Connector commands require source review before they run.</span>
           </label>
+          {hookReview ? <div className="field" role="group" aria-label="Claude hook sources">
+            <strong>Hook source review</strong>
+            <small>Review the executable and source file for each event. A source change needs another review; unsupported or unresolved plugin hooks stay blocked. A conversation can opt in when this project default is off.</small>
+            {hookReview.review.length ? <ul>{hookReview.review.map((source, index) => <li key={`${source.source}:${source.event}:${index}`}>
+              <strong>{source.event}</strong> · {source.executable} · {source.source}
+              <small>Executable SHA-256: {source.executableHash}</small>
+              {source.referencedFiles.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
+            </li>)}</ul> : <small>No executable hooks found in the reviewed sources.</small>}
+            {hookReview.review.length && approvedHookRevision !== hookReview.revision
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision), () => setApprovedHookRevision(hookReview.revision))}>Approve these hook source revisions</button>
+              : approvedHookRevision === hookReview.revision ? <small>Reviewed for this project and selected account. Changes require another review.</small> : null}
+          </div> : null}
           {mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
             <strong>Connector source review</strong>
             <small>These are explicit user and project MCP entries. Plugin connectors require separate verification. Review the source files before approving this exact revision, including when only a conversation enables connectors.</small>

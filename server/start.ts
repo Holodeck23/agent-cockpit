@@ -233,7 +233,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     projectTrust: (projectPath) => {
       const project = projects.list({ includeHidden: true }).find((p) => p.path === projectPath)
       return { codexNetwork: project?.codexNetwork === true, claudeHooks: project?.claudeHooks, claudeMcp: project?.claudeMcp,
-        claudeMcpApproval: project?.claudeMcpApproval }
+        claudeHooksApproval: project?.claudeHooksApproval, claudeMcpApproval: project?.claudeMcpApproval }
     },
     capabilities,
     antigravityMcp: (projectPath) => agyMcp.prepare(projectPath),
@@ -307,7 +307,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     const revision = createHash('sha256').update(JSON.stringify({ workflowId: workflow.id, projectPath: workflow.projectPath,
       prompt: workflow.prompt, intervalMinutes: workflow.intervalMinutes, calendar: workflow.calendar, settings: workflow.settings,
       accountId: account.accountId, accountGeneration: account.generation, setup,
-      projectHooks: project?.claudeHooks, projectMcp: project?.claudeMcp, connectorRevision: project?.claudeMcpApproval,
+      projectHooks: project?.claudeHooks, projectMcp: project?.claudeMcp, hookRevision: project?.claudeHooksApproval,
+      connectorRevision: project?.claudeMcpApproval,
       agentWorkflows: project?.agentWorkflows })).digest('hex')
     return { revision, agent: workflow.settings.agent, permissionMode: workflow.settings.permissionMode,
       account: `${account.label} (generation ${account.generation})`, hooks: setup?.hooks ?? false, connectors: setup?.connectors ?? false }

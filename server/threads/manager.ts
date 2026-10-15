@@ -9,6 +9,7 @@ import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { snapshotMcpSources } from '../agents/claude/mcp-sources.ts'
+import { snapshotHookSources } from '../agents/claude/hook-sources.ts'
 import { resolveClaudeSetup } from '../agents/claude/setup.ts'
 import type { Project } from '../projects/store.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
@@ -51,6 +52,7 @@ export interface LaunchRequest {
   readonly userMcpServers?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   readonly validateSources?: () => void
   readonly effectiveHooks?: boolean
+  readonly hookSettings?: Readonly<Record<string, unknown>>
 }
 export type Launcher = (request: LaunchRequest, onEvent: EventSink) => AgentSession
 
@@ -112,6 +114,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         effort: effortForClaude(req.settings.effort),
         permissionMode: req.settings.permissionMode,
         useHooks: req.effectiveHooks ?? req.settings.useHooks,
+        ...(req.hookSettings ? { hookSettings: req.hookSettings } : {}),
         chrome: req.settings.useChrome === true,
         sessionId: req.sessionId,
         resume: req.resume,
@@ -197,7 +200,8 @@ export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaun
 
 /** Current instructions for a project folder, read when an agent session starts. */
 export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
-export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean; readonly claudeHooks?: boolean; readonly claudeMcp?: boolean; readonly claudeMcpApproval?: string } | undefined
+export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean; readonly claudeHooks?: boolean; readonly claudeMcp?: boolean;
+  readonly claudeHooksApproval?: string; readonly claudeMcpApproval?: string } | undefined
 
 export interface ManagerOptions {
   readonly launchers?: Partial<Record<AgentId, Launcher>>
@@ -326,8 +330,8 @@ export interface ThreadManager {
   /** Same agent, new model/effort/permissions: the native session resumes with them from the next message. */
   changeSettings(threadId: string, settings: ThreadSettings): ThreadMeta
   /** Retire sessions whose effective Claude setup was reduced by a project change. */
-  revokeProjectClaudeSetup(projectPath: string, before: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeMcpApproval'> | undefined,
-    after: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeMcpApproval'>): Promise<void>
+  revokeProjectClaudeSetup(projectPath: string, before: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeHooksApproval' | 'claudeMcpApproval'> | undefined,
+    after: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeHooksApproval' | 'claudeMcpApproval'>): Promise<void>
   /** The handoff a switch would send now, for the user to read first (D13). */
   handoffPreview(threadId: string): HandoffPreview
   /**
@@ -673,22 +677,43 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const trust = options.projectTrust?.(meta.projectPath)
     const setup = meta.settings.agent === 'claude' ? resolveClaudeSetup(meta.settings, trust, meta) : undefined
     let sourceProblem: string | undefined
-    // An on preference must not silently become an empty hook snapshot. The
-    // source-review path is required before executable hooks can be enabled.
-    if (setup?.hooks) sourceProblem = 'Claude hook sources have not been reviewed for this project and account yet.'
+    const sourceInput = { home: homedir(), cwd: cwd ?? meta.projectPath, pathEnv: process.env.PATH ?? '',
+      accountId: account?.accountId ?? 'default-claude', accountGeneration: account?.generation ?? 1,
+      ...(account?.env.CLAUDE_CONFIG_DIR ? { profileDir: account.env.CLAUDE_CONFIG_DIR } : {}) }
+    let hookSettings: Readonly<Record<string, unknown>> | undefined
     let userMcpServers: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined
     let validateSources: (() => void) | undefined
+    if (setup?.hooks) {
+      try {
+        const snapshot = snapshotHookSources(sourceInput)
+        if (snapshot.review.length > 0 && trust?.claudeHooksApproval !== snapshot.revision) {
+          sourceProblem = 'Claude hook sources need review in Project Settings before this conversation can start.'
+        } else {
+          hookSettings = snapshot.settings
+          validateSources = () => {
+            if (snapshotHookSources(sourceInput).revision !== snapshot.revision) {
+              throw new Error('Claude hook sources changed after review. Review them again before starting this conversation.')
+            }
+            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath)?.claudeHooksApproval !== snapshot.revision) {
+              throw new Error('Claude hook approval changed before launch. Review the current sources again.')
+            }
+            if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath), meta).hooks) {
+              throw new Error('Claude hooks were turned off before launch.')
+            }
+          }
+        }
+      } catch (error) { sourceProblem = error instanceof Error ? error.message : 'Could not verify Claude hook sources' }
+    }
     if (setup?.connectors) {
       try {
-        const sourceInput = { home: homedir(), cwd: cwd ?? meta.projectPath, pathEnv: process.env.PATH ?? '',
-          accountId: account?.accountId ?? 'default-claude', accountGeneration: account?.generation ?? 1,
-          ...(account?.env.CLAUDE_CONFIG_DIR ? { profileDir: account.env.CLAUDE_CONFIG_DIR } : {}) }
         const snapshot = snapshotMcpSources(sourceInput)
         if (snapshot.review.length > 0 && trust?.claudeMcpApproval !== snapshot.revision) {
           sourceProblem ??= 'Claude connector sources need review in Project Settings before this conversation can start.'
         } else {
           userMcpServers = snapshot.servers
+          const validateEarlier = validateSources
           validateSources = () => {
+            validateEarlier?.()
             if (snapshotMcpSources(sourceInput).revision !== snapshot.revision) {
               throw new Error('Claude connector sources changed after review. Review them again before starting this conversation.')
             }
@@ -783,6 +808,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(meta.handoff && !meta.sessionStarted ? { seed: meta.handoff } : {}),
         ...(mcp ? { cockpit: mcp.launch } : {}),
         ...(userMcpServers ? { userMcpServers } : {}),
+        ...(hookSettings ? { hookSettings } : {}),
         ...(validateSources ? { validateSources } : {}),
         ...(setup ? { effectiveHooks: setup.hooks } : {}),
         imagesDir: images.dir(meta.id),
@@ -1035,7 +1061,8 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         if (meta.projectPath !== projectPath || meta.settings.agent !== 'claude' || deleted.has(meta.id)) return false
         const prior = resolveClaudeSetup(meta.settings, before, meta)
         const next = resolveClaudeSetup(meta.settings, after, meta)
-        return (prior.hooks && !next.hooks) || (prior.connectors && (!next.connectors || before?.claudeMcpApproval !== after.claudeMcpApproval))
+        return (prior.hooks && (!next.hooks || before?.claudeHooksApproval !== after.claudeHooksApproval)) ||
+          (prior.connectors && (!next.connectors || before?.claudeMcpApproval !== after.claudeMcpApproval))
       })
       await Promise.all(affected.map(async (meta) => {
         const entries = entriesOf(meta.id)
