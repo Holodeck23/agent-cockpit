@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { CLAUDE_SESSION, writeImportHome } from './lib/import-fixtures.ts'
 import { SAMPLE_SERVER } from '../server/onboarding/sample.ts'
 import { claudeProjectDir } from '../server/import/sessions.ts'
-import { launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
+import { APP_BUNDLE, launchPackagedApp, PROOF_DIR, ROOT } from './lib/launch-app.ts'
 import { headStatus } from './lib/ui.ts'
 
 const root = mkdtempSync(join(tmpdir(), 'cockpit-recovery-proof-'))
@@ -20,7 +20,8 @@ writeImportHome(importHome, project)
 const source = join(claudeProjectDir(importHome, project), `${CLAUDE_SESSION}.jsonl`), before = readFileSync(source)
 const env = { COCKPIT_HOME: home, COCKPIT_IMPORT_HOME: importHome, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/recovery-agent'),
   COCKPIT_FIXTURE_LEGACY: process.argv.includes('--legacy') ? '1' : '0',
-  COCKPIT_FIXTURE_NODE: process.execPath, COCKPIT_RECOVERY_FIXTURE: join(ROOT, 'scripts/fixtures/recovery-agent/agent.mjs'), COCKPIT_FIXTURE_MCP: join(ROOT, 'dist-electron/mcp.cjs') }
+  COCKPIT_FIXTURE_NODE: process.execPath, COCKPIT_RECOVERY_FIXTURE: join(ROOT, 'scripts/fixtures/recovery-agent/agent.mjs'),
+  ...(process.env.COCKPIT_W13_PROOF_PACKAGE ? { COCKPIT_W13_PROOF_PACKAGE: APP_BUNDLE } : {}) }
 let app = await launchPackagedApp(env)
 let checks = 0
 const pass = (label: string) => { checks++; console.log(`PASS ${label}`) }

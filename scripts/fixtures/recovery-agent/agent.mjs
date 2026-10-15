@@ -1,6 +1,8 @@
 // Synthetic provider, real Cockpit MCP stdio tools and approval card. No network provider usage.
 import { createInterface } from 'node:readline'
-import { readFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const args = process.argv.slice(2)
@@ -15,9 +17,29 @@ async function run() {
   const client = new Client({ name: 'recovery-proof', version: '1' })
   const configPath = args[args.indexOf('--mcp-config') + 1]
   const config = JSON.parse(configPath.startsWith('{') ? configPath : readFileSync(configPath, 'utf8')).mcpServers.cockpit
+  if (process.env.COCKPIT_W13_PROOF_PACKAGE) {
+    const bundle = process.env.COCKPIT_W13_PROOF_PACKAGE
+    assert.ok(args.includes('--strict-mcp-config'))
+    assert.equal(configPath.startsWith('{'), false)
+    assert.equal(statSync(configPath).mode & 0o777, 0o600)
+    assert.equal(config.command, join(bundle, 'Contents/MacOS/Cockpit'))
+    assert.deepEqual(config.args, [join(bundle, 'Contents/Resources/app.asar/dist-electron/mcp.cjs')])
+    assert.equal(config.env.ELECTRON_RUN_AS_NODE, '1')
+    assert.equal(process.env.COCKPIT_MCP_TOKEN, undefined)
+    assert.equal(process.env.COCKPIT_MCP_URL, undefined)
+    assert.ok(!args.some((arg) => arg.includes(config.env.COCKPIT_MCP_TOKEN)))
+  }
   const transport = new StdioClientTransport({ command: config.command, args: config.args, env: { ...process.env, ...config.env } })
   try {
     await client.connect(transport)
+    if (process.env.COCKPIT_W13_PROOF_PACKAGE) {
+      const identity = await fetch(`${config.env.COCKPIT_MCP_URL}/api/mcp/identity`, {
+        headers: { authorization: `Bearer ${config.env.COCKPIT_MCP_TOKEN}` },
+      }).then((response) => response.json())
+      assert.equal(identity.data.server, 'cockpit')
+      assert.equal(identity.data.protocol, 1)
+      assert.equal(realpathSync(identity.data.projectPath), realpathSync(process.cwd()))
+    }
     const call = async (name, args = {}) => {
       const result = await client.callTool({ name, arguments: args })
       if (result.isError) throw new Error(JSON.stringify(result.content))
@@ -51,6 +73,12 @@ async function run() {
 }
 createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line)
-  if (message.type === 'user') void run()
+  if (message.type === 'control_request' && message.request?.subtype === 'initialize') {
+    emit({ type: 'control_response', response: { request_id: message.request_id, subtype: 'success', response: {} } })
+  }
+  if (message.type === 'user') {
+    emit({ ...message, isReplay: true })
+    void run()
+  }
   if (message.type === 'control_response') resolveApproval?.(message.response?.response?.behavior === 'allow')
 })
