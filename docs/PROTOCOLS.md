@@ -19,12 +19,12 @@ Each user message is one JSON line on stdin; events come back one JSON line each
 - **A request** arrives as `control_request{request:{subtype:"can_use_tool", tool_name, input, permission_suggestions}}`. **The answer** is `control_response{response:{subtype:"success", request_id, response:{behavior, updatedInput | message}}}`.
 - **Approving must echo the original input** as `updatedInput`. An empty object replaces the tool's input with nothing.
 - **Allow for this session** is `updatedPermissions: permission_suggestions` alongside the allow.
-- **Hook settings merge across sources.** `--settings '{"hooks":{"SessionStart":[]}}'` does not silence hooks defined elsewhere. Only `disableAllHooks: true` turns them off, which is why cockpit threads default to it (a thread can opt back in).
+- **Hook settings merge across sources.** `--settings '{"hooks":{"SessionStart":[]}}'` does not silence hooks defined elsewhere. Cockpit uses an explicit private settings snapshot with provider settings discovery disabled. Hooks run only when their executable sources and revisions were reviewed for the project, account and checkout. `disableAllHooks: true` is used when the effective conversation choice is Off.
 - **Interrupt** is a `control_request{subtype:"interrupt"}`. The turn then ends with a failed `result`, which Cockpit records as stopped rather than as an error.
-- **Stopping the process**: close stdin and it saves its session and exits. Mid-turn it may not, so Cockpit follows with SIGTERM after 1.5 s and SIGKILL after 3 s (`server/agents/stop.ts`).
+- **Stopping the process**: close stdin and it saves its session and exits. Mid-turn it may not, so Cockpit follows with SIGTERM after 1.5 s and SIGKILL after 3 s (`server/agents/stop.ts`). Cockpit also signals the observed process group. A hook that escapes that group can continue side effects; Stop does not guarantee termination of every descendant.
 - **Resume across processes** works with `--session-id` on the first run and `--resume` on later ones.
 - `rate_limit_event` carries the five-hour limit status and `resetsAt`, shown in the conversation menu.
-- **stdio MCP servers inherit the agent's environment.** Cockpit relies on this to hand each session's MCP token to the MCP process without putting it in argv or in the config JSON.
+- **Strict MCP mode stays on.** Cockpit passes one mode-0600 private config file path in Claude's argv. Approved user connectors are merged into that file, followed by the reserved Cockpit bridge entry. The Cockpit token and loopback URL appear only in the bridge entry's environment, not in the provider's inherited environment or argv. Another process under the same OS user can read the file while it exists; file permissions are not an isolation boundary against that user.
 
 ## Codex (`codex app-server`)
 

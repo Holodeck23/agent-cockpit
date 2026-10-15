@@ -47,6 +47,8 @@ Current source also shows **Account for next message** beside Send for Claude Co
 
 In **Project settings**, **Trust Codex with network access in this project** controls network access for workspace-write sessions. It defaults off and overrides the CLI's network setting when a session starts, without editing your files. Running sessions keep their launch choice until restarted. Unrestricted permission mode continues to allow network access.
 
+**Use my Claude hooks** and **Use my Claude MCP connectors** are separate project switches, both On by default for new conversations. The Claude picker can override either one for a conversation with **Project default**, **On**, or **Off**. Older conversations retain their previous effective choices. In Project settings, select the main checkout or a worktree and review the executable sources and their hashes before an enabled setup can start. A changed or unresolved source blocks the launch until reviewed again; a conversation can use Off without changing your global Claude settings. Managed accounts review their own profile sources. In `dontAsk` and `bypassPermissions`, user connectors are off even when their switch is On. Cockpit always uses strict MCP mode and adds its own scoped bridge separately. The bridge's temporary private config keeps its token out of the provider's environment and arguments, but another process running as your OS user can read that file while it exists.
+
 ## Conversations
 
 -   **Starting & Managing:** The conversation-list **+** opens a fresh composer and focuses it; repeated clicks preserve its draft. Project-open recovery remains a separate path. Type a prompt in the composer to begin a new thread. Use the conversation menu to mark complete, reopen, mark unread, reveal the transcript, or delete with confirmation. There is no duplicate/archive command.
@@ -97,15 +99,15 @@ A worktree is a separate checkout of the project on its own branch, so an agent 
 
 -   **Processes:** Agents can run commands (like `npm run dev`) scoped to the project.
 -   **Previews:** Agents can open local web pages (localhost only) in the embedded preview pane and inspect screenshots of them.
--   **Controls:** You can manually restart, inspect logs, or stop processes from the UI. Closing Cockpit shuts down its managed processes. Stopping or deleting a conversation leaves its dev servers running; stop those through the process controls.
+-   **Controls:** You can manually restart, inspect logs, or stop processes from the UI. Closing Cockpit shuts down its managed processes. Stopping or deleting a conversation leaves its dev servers running; stop those through the process controls. Stopping a Claude session signals its process group, but a hook that escaped the group may continue side effects; Cockpit reports that uncertainty rather than treating every descendant as stopped.
 
 ## Workflows & Schedules
 
 -   **Gallery & Editing:** Open **Workflows** to access saved instructions and prompts. You can edit existing workflows or pause them. Archiving a workflow hides it from normal views.
 -   **Writing instructions:** instructions are a document with the Markdown toolbar, or plain Source. Type **@** in either to add a file or another workflow. ⌘F finds and replaces, ⌘S saves.
 -   **Starting from a workflow:** a new conversation shows the project's workflows as cards. A card adds `@workflow:name` to your message and runs nothing until you send it. The gallery's featured **Design workshop** proposes three directions for a screen, shows them in the preview, and applies the one you pick.
--   **Agents and workflows:** by default an agent's `save_workflow` only adds a new workflow with its schedule off, after you approve. **Project settings → Let agents manage workflows** lets agents save, update and schedule them without asking. One exception: when an agent updates a workflow that runs with more than manual or plan permissions, or with your hooks, its schedule is paused until you turn it back on in Workflows.
--   **Schedules:** You can schedule workflows (e.g., run daily tests) with an interval (5 minutes to 30 days), or at a daily, weekday, or selected-weekday time in the saved local timezone and clicking **Save and enable schedule**.
+-   **Agents and workflows:** by default an agent's `save_workflow` only adds a new workflow with its schedule off, after you approve. **Project settings → Let agents manage workflows** lets agents save, update and schedule them without asking. An agent update that increases unattended permission or Claude setup scope pauses the schedule until you review it again.
+-   **Schedules:** You can schedule workflows (e.g., run daily tests) with an interval (5 minutes to 30 days), or at a daily, weekday, or selected-weekday time in the saved local timezone. **Save and review schedule** shows the account, permission mode and effective setup scope before enabling it. A scheduled launch rechecks that scope and source revision. An old enabled schedule without this review stays paused until reviewed.
 -   **Missed Runs & Failures:** If Cockpit is closed, at most one missed run is started when you reopen it. Workflows that fail will not block subsequent scheduled runs but will report errors in their thread.
 
 ## Memory & Scopes
