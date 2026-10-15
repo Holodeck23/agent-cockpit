@@ -22,7 +22,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { ChooseWorkspaceError, HandoffChangedError, OperationConflictError, ThreadBusyError, WorkspaceUnavailableError, type ThreadManager } from '../threads/manager.ts'
 import type { ThreadStore } from '../threads/store.ts'
-import { threadSettingsSchema } from '../threads/types.ts'
+import { mergeThreadSettings, threadSettingsSchema } from '../threads/types.ts'
 import { MAX_QUERY, searchThreads } from '../threads/search.ts'
 import { createImageStore, IMAGE_FILE, ImageAttachError, MAX_ATTACHED_IMAGE_BYTES } from '../threads/images.ts'
 import type { IncomingImage } from '../threads/manager.ts'
@@ -112,7 +112,9 @@ const writeFileBody = z.object({
 })
 const renameBody = z.object({ projectPath: z.string().min(1).max(1000).optional(), workspaceId: z.uuid().optional(), path: z.string().min(1).max(1000), name: z.string().min(1).max(255), space: spaceSchema })
 const markBody = z.object({ projectPath: z.string().min(1).max(1000), path: z.string().min(1).max(255), pinned: z.boolean().optional(), archived: z.boolean().optional() })
-const switchBody = z.object({ settings: threadSettingsSchema })
+// Older UI clients do not know the tri-state setup fields. Treat settings changes as patches so
+// their saves cannot silently reset a conversation's already reviewed setup choice.
+const switchBody = z.object({ settings: threadSettingsSchema.partial() })
 /** A switch names the handoff the user reviewed (D13): sha256 of the previewed text. */
 const agentSwitchBody = switchBody.extend({ handoff: z.string().regex(/^[0-9a-f]{64}$/) })
 const projectBody = projectPatchSchema.extend({ path: z.string().min(1).max(1000) })
@@ -688,12 +690,14 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         sendJson(res, 200, { data: {} })
       } else if (method === 'POST' && action === 'settings') {
         const { settings } = parseBody(switchBody, await readJson(req))
-        try { sendJson(res, 200, { data: manager.changeSettings(threadId, settings) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
+        try { sendJson(res, 200, { data: manager.changeSettings(threadId, mergeThreadSettings(store.get(threadId)!.settings, settings)) }) }
+        catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
       } else if (method === 'GET' && action === 'handoff') {
         sendJson(res, 200, { data: manager.handoffPreview(threadId) })
       } else if (method === 'POST' && action === 'agent') {
         const { settings, handoff } = parseBody(agentSwitchBody, await readJson(req))
-        try { sendJson(res, 200, { data: manager.switchAgent(threadId, settings, handoff) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
+        try { sendJson(res, 200, { data: manager.switchAgent(threadId, mergeThreadSettings(store.get(threadId)!.settings, settings), handoff) }) }
+        catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
       } else {
         throw new HttpError(404, 'Not found')
       }

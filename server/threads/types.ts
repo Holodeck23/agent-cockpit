@@ -21,6 +21,11 @@ export const threadSettingsSchema = z.object({
 })
 export type ThreadSettings = z.output<typeof threadSettingsSchema>
 
+/** Preserve W13 choices when an older client saves only the settings fields it knows. */
+export function mergeThreadSettings(current: ThreadSettings, patch: Partial<ThreadSettings>): ThreadSettings {
+  return threadSettingsSchema.parse({ ...current, ...patch })
+}
+
 /** A workspace's own native session within a conversation, kept while the conversation works elsewhere. */
 export interface WorkspaceBinding {
   readonly agent: AgentId
