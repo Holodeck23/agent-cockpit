@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 # Its --help also declares --chrome (Use my Chrome, W9-12), as Claude 2.1.289's does.
 [ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; printf '  --chrome                              Enable Claude in Chrome integration\n'; exit 0; }
 # Stand-in `claude` for proof:wave-9 (in-app browser). By message:

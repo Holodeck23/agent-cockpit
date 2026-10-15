@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 [ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
 # Stand-in `claude` for the process part of proof:wave-7 (K1/K2). Each turn asks the cockpit MCP
 # API to start "dev server" with this session's token: `node server.js`, or `node other.js` when

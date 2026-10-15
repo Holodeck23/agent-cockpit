@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 [ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
 # Stand-in `claude` for proof:wave-5 (no provider usage), speaking the shapes recorded from
 # Claude 2.1.289 (tests/fixtures/claude-turn-question-subagent-compact.jsonl). By message:

@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 [ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
 # Stand-in `claude` for `npm run proof:wave-12` (worktrees). Each reply says where it ran and what
 # reached it: the folder (pwd -P), the session it was given, whether that was a --resume, which
