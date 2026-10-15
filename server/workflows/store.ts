@@ -25,6 +25,8 @@ export const workflowInputSchema = z.object({
 export type WorkflowInput = z.input<typeof workflowInputSchema>
 const workflowSchema = workflowInputSchema.extend({
   id: z.uuid(), enabled: z.boolean(), nextRunAt: z.string().nullable(),
+  /** Reviewed capability/account snapshot for unattended launch; absent on pre-W13 schedules. */
+  scheduleAuthorization: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   createdAt: z.string(), updatedAt: z.string(),
   lastThreadId: z.string().optional(), lastRunAt: z.string().optional(), lastError: z.string().optional(),
   archived: z.boolean().default(false),
@@ -34,7 +36,7 @@ export interface WorkflowStore {
   list(projectPath?: string): Workflow[]
   get(id: string): Workflow | undefined
   save(input: WorkflowInput, id?: string): Workflow
-  update(id: string, patch: Partial<Pick<Workflow, 'enabled' | 'nextRunAt' | 'lastThreadId' | 'lastRunAt' | 'lastError' | 'archived'>>): Workflow
+  update(id: string, patch: Partial<Pick<Workflow, 'enabled' | 'nextRunAt' | 'scheduleAuthorization' | 'lastThreadId' | 'lastRunAt' | 'lastError' | 'archived'>>): Workflow
 }
 
 export function createWorkflowStore(root: string): WorkflowStore {
@@ -62,7 +64,7 @@ export function createWorkflowStore(root: string): WorkflowStore {
       // Editing instructions or permissions always pauses the schedule for review.
       // Blank title/collection clear them rather than keeping the old value.
       const cleared = { title: parsed.title || undefined, collection: parsed.collection || undefined }
-      const next: Workflow = { ...old, ...parsed, ...cleared, id: old?.id ?? randomUUID(), enabled: false, nextRunAt: null,
+      const next: Workflow = { ...old, ...parsed, ...cleared, id: old?.id ?? randomUUID(), enabled: false, nextRunAt: null, scheduleAuthorization: undefined,
         archived: false, createdAt: old?.createdAt ?? now, updatedAt: now, lastError: undefined }
       write(old ? rows.map((w) => w.id === id ? next : w) : [...rows, next])
       return next

@@ -33,6 +33,22 @@ function setup() {
 }
 
 describe('workflows', () => {
+  it('requires a human-reviewed schedule snapshot at enablement and each launch', () => {
+    const h = setup(); const workflow = h.save()
+    let revision = 'a'.repeat(64)
+    const runner = createWorkflowRunner(h.store, h.manager, h.threads, Date.now, undefined,
+      (_workflow, actor) => { if (actor === 'agent') throw new Error('A person must review this scope'); return revision })
+    setups.push(async () => runner.close())
+    h.store.update(workflow.id, { enabled: true, nextRunAt: new Date(Date.now() + 60_000).toISOString() })
+    expect(() => runner.run(workflow.id, 'scheduled')).toThrow(/authorization changed/)
+    expect(h.store.get(workflow.id)?.enabled).toBe(false)
+    expect(() => runner.setEnabled(workflow.id, true, 'agent')).toThrow(/person must review/)
+    expect(runner.setEnabled(workflow.id, true).scheduleAuthorization).toBe(revision)
+    revision = 'b'.repeat(64)
+    expect(() => runner.run(workflow.id, 'scheduled')).toThrow(/authorization changed/)
+    expect(h.store.get(workflow.id)?.lastError).toMatch(/authorization changed/)
+    expect(h.sessions).toHaveLength(0)
+  })
   it('persists workflows, prevents name collisions, and pauses edited schedules', () => {
     const h = setup(); const w = h.save()
     expect(createWorkflowStore(h.root).get(w.id)).toEqual(w)

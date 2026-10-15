@@ -1,4 +1,5 @@
 import { createBrowserAgent, type BrowserHost } from './browser/agent.ts'
+import { createHash } from 'node:crypto'
 import { createBrowserLeases, type BrowserLeases } from './browser/agent-policy.ts'
 import { createConversationControl } from './mcp/control.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -6,11 +7,12 @@ import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, join, normalize } from 'node:path'
 import { spawn } from 'node:child_process'
-import { createWorkflowStore } from './workflows/store.ts'
+import { createWorkflowStore, type Workflow } from './workflows/store.ts'
 import { createWorkflowRunner } from './workflows/runner.ts'
 import { createApiHandler } from './http/router.ts'
 import { createAgentStatus, fixedCapabilities, type VersionProbe } from './agents/status.ts'
 import { createCapabilityService, type CapabilityService } from './agents/capabilities/service.ts'
+import { resolveClaudeSetup } from './agents/claude/setup.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createAccountService, type AccountService } from './agents/accounts/service.ts'
@@ -291,7 +293,21 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   }
   const memory = createMemoryStore(root)
   const presets = createPresetStore(root)
-  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId) }
+  const scheduleRevision = (workflow: Workflow, actor: 'user' | 'agent' | 'launch'): string => {
+    const project = projects.list().find((entry) => entry.path === workflow.projectPath)
+    const account = accounts!.resolve(workflow.projectPath, workflow.settings.agent)
+    const setup = workflow.settings.agent === 'claude'
+      ? resolveClaudeSetup(workflow.settings, project, { workflowTrigger: 'scheduled' }) : undefined
+    if (setup?.hooks) throw new Error('Scheduled Claude hooks need reviewed executable sources before this schedule can run')
+    if (actor === 'agent' && (project?.agentWorkflows !== true || !['manual', 'plan'].includes(workflow.settings.permissionMode))) {
+      throw new Error('A person must review and enable this schedule in Workflows')
+    }
+    return createHash('sha256').update(JSON.stringify({ workflowId: workflow.id, settings: workflow.settings,
+      accountId: account.accountId, accountGeneration: account.generation, setup,
+      projectHooks: project?.claudeHooks, projectMcp: project?.claudeMcp, connectorRevision: project?.claudeMcpApproval,
+      agentWorkflows: project?.agentWorkflows })).digest('hex')
+  }
+  const workflows = { store: workflowStore, runner: createWorkflowRunner(workflowStore, manager, store, undefined, primaryWorkspaceId, scheduleRevision) }
   const remoteStore = createRemoteStore(root)
   const push = createPushStore(root)
   const tailscale = options.remote?.tailscale ?? systemTailscale
@@ -376,7 +392,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         const runId = manager.currentRunId(threadId, workspaceId)
         return { kind: 'conversation', threadId, title: meta?.title ?? 'Deleted conversation', ...(runId ? { runId } : {}) }
       }, conversations: { manager, store }, control: createConversationControl({ manager, store }, agents), ...(options.capturePreview ? { capturePreview: options.capturePreview } : {}), ...(options.inspectPreview ? { inspectPreview: options.inspectPreview } : {}), workflows: workflows.store, memory,
-      agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true),
+      agentWorkflows: agentWorkflowsAllowed, enableWorkflow: (id) => workflows.runner.setEnabled(id, true, 'agent'),
       approve: (grant, toolName, input, approval, signal) => manager.requestHostAction(grant.threadId, toolName, input, signal, { ...approval, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) }),
       cockpitPorts: () => [port, ...(remote.port() ? [remote.port()!] : [])], ...(browser ? { browser } : {}) } },
   [port, ...(options.trustedPorts ?? [])], options.windowKey)

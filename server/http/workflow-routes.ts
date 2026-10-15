@@ -30,7 +30,7 @@ export async function handleWorkflowRoute(req: IncomingMessage, res: ServerRespo
     try { return sendJson(res, 200, { data: deps.runner.setEnabled(id, enabled) }) } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)) }
   }
   if (req.method === 'POST' && parts[3] === 'archive') {
-    return sendJson(res, 200, { data: deps.store.update(id, { archived: true, enabled: false, nextRunAt: null }) })
+    return sendJson(res, 200, { data: deps.store.update(id, { archived: true, enabled: false, nextRunAt: null, scheduleAuthorization: undefined }) })
   }
   throw new HttpError(404, 'Not found')
 }

@@ -20,7 +20,9 @@ export function nextRunAfter(workflow: Pick<Workflow, 'intervalMinutes' | 'calen
  * Schedules and manual runs belong to the project's primary workspace (W12.2): the folder is the
  * project's own and `primaryWorkspace` names it explicitly, so a worktree beside it never changes where one runs.
  */
-export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManager, threads: ThreadStore, now = Date.now, primaryWorkspace?: (projectPath: string) => string | undefined) {
+export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManager, threads: ThreadStore, now = Date.now,
+  primaryWorkspace?: (projectPath: string) => string | undefined,
+  scheduleRevision?: (workflow: Workflow, actor: 'user' | 'agent' | 'launch') => string) {
   let timer: NodeJS.Timeout | undefined
   let stopped = false
   const requireWorkflow = (id: string) => {
@@ -34,6 +36,10 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     const workflow = requireWorkflow(id)
     if (isBusy(id)) throw new Error('This workflow already has a running conversation')
     try {
+      if (trigger === 'scheduled' && scheduleRevision &&
+        (!workflow.scheduleAuthorization || workflow.scheduleAuthorization !== scheduleRevision(workflow, 'launch'))) {
+        throw new WorkflowRunRefusedError('Scheduled capability or account authorization changed; review and enable this schedule again')
+      }
       if (!statSync(workflow.projectPath, { throwIfNoEntry: false })?.isDirectory()) throw new WorkflowRunRefusedError('Project folder is unavailable')
       const resolved = resolveWorkflows(workflow.prompt, workflow.projectPath, store)
       const agentText = expandFiles(resolved.text, workflow.projectPath)
@@ -45,16 +51,19 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
       store.update(id, { lastThreadId: thread.id, lastRunAt: new Date(now()).toISOString(), lastError: undefined })
       return thread
     } catch (error) {
-      store.update(id, { enabled: false, nextRunAt: null, lastError: error instanceof Error ? error.message : String(error) })
+      store.update(id, { enabled: false, nextRunAt: null, scheduleAuthorization: undefined,
+        lastError: error instanceof Error ? error.message : String(error) })
       throw error
     }
   }
-  const setEnabled = (id: string, enabled: boolean) => {
+  const setEnabled = (id: string, enabled: boolean, actor: 'user' | 'agent' = 'user') => {
     const workflow = requireWorkflow(id)
     const next = nextRunAfter(workflow, now())
     if (enabled && next === undefined) throw new Error('Choose when it repeats first')
     if (enabled) expandWorkflows(workflow.prompt, workflow.projectPath, store)
-    return store.update(id, { enabled, nextRunAt: enabled ? new Date(next!).toISOString() : null, lastError: undefined })
+    const authorization = enabled ? scheduleRevision?.(workflow, actor) : undefined
+    return store.update(id, { enabled, nextRunAt: enabled ? new Date(next!).toISOString() : null,
+      scheduleAuthorization: authorization, lastError: undefined })
   }
   // One bad workflow, or a workflows.json that cannot be read, must not stop every schedule for the
   // rest of the session: the tick skips what fails and tries again in 5 seconds. Each problem is logged once.
@@ -90,7 +99,7 @@ export function createWorkflowRunner(store: WorkflowStore, manager: ThreadManage
     try {
       const thread = threads.get(threadId)
       if (!thread?.workflowId || thread.workflowTrigger !== 'scheduled' || !store.get(thread.workflowId)) return
-      store.update(thread.workflowId, { enabled: false, nextRunAt: null,
+      store.update(thread.workflowId, { enabled: false, nextRunAt: null, scheduleAuthorization: undefined,
         lastError: event.kind === 'error' ? event.message : event.stopped ? 'Scheduled run was stopped' : 'Scheduled run failed; open its conversation' })
     } catch (error) { report('could not pause a failed scheduled run', error) }
   })
