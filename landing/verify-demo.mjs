@@ -66,7 +66,7 @@ try {
     assert.deepEqual(await showcases.evaluateAll(videos => videos.map(video => ({
       loop: video.loop, muted: video.muted,
       inline: video.hasAttribute('playsinline'),
-      poster: video.poster.startsWith('data:image/png;base64,') && video.poster.length > 1000,
+      poster: /^data:image\/(webp|png);base64,/.test(video.poster) && video.poster.length > 1000,
       still: !video.hasAttribute('autoplay') && video.paused,
     }))), Array(3).fill({ loop: true, muted: true, inline: true, poster: true, still: true }))
     await page.getByRole('button', { name: 'Enlarge product screenshot' }).click(); assert.equal(await page.getByRole('dialog').isVisible(), true)
