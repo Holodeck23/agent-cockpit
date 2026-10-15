@@ -144,7 +144,7 @@ describe('latest version and skip (W10-08)', () => {
 describe('Claude Code launched by Cockpit', () => {
   it('does not update itself mid-session: Cockpit owns when it updates', () => {
     expect(claudeLaunchEnv(undefined)).toEqual({ DISABLE_AUTOUPDATER: '1' })
-    expect(claudeLaunchEnv({ COCKPIT_MCP_TOKEN: 't' })).toEqual({ COCKPIT_MCP_TOKEN: 't', DISABLE_AUTOUPDATER: '1' })
+    expect(claudeLaunchEnv({ COCKPIT_MCP_TOKEN: 't' })).toEqual({ DISABLE_AUTOUPDATER: '1' })
   })
 })
 

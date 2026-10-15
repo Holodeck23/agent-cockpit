@@ -83,7 +83,10 @@ export const instructionsFor = (req: LaunchRequest): string | undefined =>
  * Claude Code's own background updater stays off in sessions Cockpit starts (launch-scoped, no
  * settings write), so Cockpit's idle-only update decides when the executable changes (W10-07).
  */
-export const claudeLaunchEnv = (env: Readonly<Record<string, string>> | undefined): Record<string, string> => ({ ...env, DISABLE_AUTOUPDATER: '1' })
+export const claudeLaunchEnv = (env: Readonly<Record<string, string>> | undefined): Record<string, string> => {
+  const { COCKPIT_MCP_URL: _url, COCKPIT_MCP_TOKEN: _token, ...clean } = env ?? {}
+  return { ...clean, DISABLE_AUTOUPDATER: '1' }
+}
 
 /** Launch overrides only; a revoked choice must override a permissive CLI config too. */
 export const codexConfigArgs = (req: Pick<LaunchRequest, 'cockpit' | 'codexNetwork'>): string[] => [
@@ -108,7 +111,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         ...(mcp ? { mcpConfig: mcp.mcpConfig, allowedTools: mcp.allowedTools } : {}),
       },
       onEvent,
-      { env: claudeLaunchEnv({ ...mcp?.env, ...req.accountEnv }) },
+      { env: claudeLaunchEnv(req.accountEnv) },
     )
   },
   codex: (req, onEvent) =>

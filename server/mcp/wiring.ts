@@ -10,11 +10,10 @@ export function claudeMcpOptions(launch: CockpitMcpLaunch) {
   return {
     mcpConfig: {
       mcpServers: {
-        [MCP_SERVER_NAME]: { type: 'stdio', command: launch.command, args: [...launch.args], env: { ...launch.env } },
+        [MCP_SERVER_NAME]: { type: 'stdio', command: launch.command, args: [...launch.args], env: { ...launch.env, ...launch.secretEnv } },
       },
     },
     allowedTools: ALL_TOOLS.map((tool) => `mcp__${MCP_SERVER_NAME}__${tool}`),
-    env: launch.secretEnv,
   }
 }
 

@@ -45,8 +45,8 @@ export interface McpCommand {
 
 /**
  * What an agent launcher needs to wire the cockpit MCP into one session.
- * `secretEnv` goes into the agent's own environment, never argv, and each CLI
- * forwards it to the MCP process (Claude inherits it; Codex via env_vars).
+ * Codex forwards `secretEnv` by variable name. Claude places it only in its
+ * intended MCP server entry in a private config file, never its own environment.
  */
 export interface CockpitMcpLaunch extends McpCommand {
   readonly secretEnv: Readonly<Record<string, string>>

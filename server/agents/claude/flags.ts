@@ -43,6 +43,8 @@ export const claudeLaunchSchema = z
     /** The same prompt, written to a private file by the launcher: kept out of argv, which any local user can read. */
     appendSystemPromptFile: z.string().min(1).max(4096).optional(),
     mcpConfig: mcpConfigSchema.default({ mcpServers: {} }),
+    /** Private launch snapshot; required whenever the configuration contains credentials. */
+    mcpConfigFile: z.string().min(1).max(4096).optional(),
     /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
     allowedTools: z
       .array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/))
@@ -73,7 +75,7 @@ export function buildClaudeArgs(
     ...(capabilities.permissionPrompts ? ['--permission-prompts', 'host'] : []),
     '--permission-prompt-tool', 'stdio',
     '--strict-mcp-config',
-    '--mcp-config', JSON.stringify(o.mcpConfig),
+    '--mcp-config', o.mcpConfigFile ?? JSON.stringify(o.mcpConfig),
     // The Chrome tools are added by this switch even under --strict-mcp-config (probed on 2.1.289).
     ...(o.chrome ? ['--chrome'] : []),
     '--settings', JSON.stringify(settings),

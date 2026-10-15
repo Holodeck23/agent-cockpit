@@ -10,6 +10,8 @@ import { guardStdin } from '../stdin.ts'
 import type { AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval } from '../types.ts'
 import { claudeUserMessage } from '../image-input.ts'
 import { buildClaudeArgs, type ClaudeLaunchInput } from './flags.ts'
+import { claudeLaunchSchema } from './flags.ts'
+import { writePrivateMcpConfig } from './private-config.ts'
 import { parseClaudeLine } from './parse.ts'
 import { probeClaude, validateClaudeArgs } from './capabilities.ts'
 import { watchChrome } from './chrome-watch.ts'
@@ -27,7 +29,7 @@ export interface ClaudeLaunchDeps {
  * stays alive across turns; each `send` is a new user message on stdin.
  */
 export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: ClaudeLaunchDeps = {}): AgentSession {
-  buildClaudeArgs(input) // Validate caller input synchronously, before probing any executable.
+  claudeLaunchSchema.parse(input) // Validate before probing any executable.
   const controller = new AbortController()
   let session: AgentSession | undefined
   // Use my Chrome: the first Chrome call gets a bounded wait (chrome-watch.ts).
@@ -47,17 +49,20 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   // Defer spawning until callers can register the session (or immediately close
   // it). In particular, never abort an execFile whose spawn has already failed.
   const ready = Promise.resolve().then(() => ended ? undefined :
-    probeClaude(deps.executable ?? 'claude', input.cwd, { ...inheritedEnv(), ...deps.env }, controller.signal))
+    probeClaude(deps.executable ?? 'claude', input.cwd, cleanClaudeEnv(deps.env), controller.signal))
     .then((capabilities) => {
       if (ended || !capabilities) return
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
+      const mcp = writePrivateMcpConfig(claudeLaunchSchema.parse(input).mcpConfig)
       try {
-        const args = buildClaudeArgs(prompt ? { ...input, appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : input, capabilities)
+        const args = buildClaudeArgs({ ...input, mcpConfigFile: mcp.file,
+          ...(prompt ? { appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : {}) }, capabilities)
         validateClaudeArgs(args, capabilities)
         replays = capabilities.replayUserMessages
-        session = spawnClaude(input, onEvent, deps, args, () => prompt?.remove())
+        session = spawnClaude(input, onEvent, deps, args, () => { prompt?.remove(); mcp.remove() })
       } catch (error) {
         prompt?.remove()
+        mcp.remove()
         throw error
       }
       const waiting = pending
@@ -103,6 +108,12 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   }
 }
 
+/** Neither an inherited parent grant nor account overrides may enter Claude's ambient environment. */
+function cleanClaudeEnv(extra: Readonly<Record<string, string>> | undefined): NodeJS.ProcessEnv {
+  const { COCKPIT_MCP_URL: _url, COCKPIT_MCP_TOKEN: _token, ...clean } = { ...inheritedEnv(), ...extra }
+  return clean
+}
+
 /**
  * The appended prompt (guidance, project instructions, a switch handoff) goes in a file only
  * this user can read: argv is visible to every account on the Mac, and a whole handoff (J5)
@@ -119,7 +130,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...inheritedEnv(), ...deps.env },
+    env: cleanClaudeEnv(deps.env),
   })
   let exited = false
   const stderrTail: string[] = []

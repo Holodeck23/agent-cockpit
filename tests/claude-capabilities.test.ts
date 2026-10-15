@@ -1,6 +1,6 @@
 import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseClaudeHelp, validateClaudeArgs } from '../server/agents/claude/capabilities.ts'
 import { buildClaudeArgs } from '../server/agents/claude/flags.ts'
@@ -28,6 +28,7 @@ if [ "$1" = "--help" ]; then
   exit 0
 fi
 printf '%s\\n' "$@" > launched
+printf '%s' "\${COCKPIT_MCP_TOKEN:-}" > ambient-token
 printf '{"type":"system","subtype":"init","session_id":"proof-session"}\\n'
 while IFS= read -r line; do
   printf '{"type":"result","subtype":"success","is_error":false}\\n'
@@ -58,6 +59,27 @@ describe('Use my Chrome (W9-12)', () => {
 })
 
 describe('Claude compatibility', () => {
+  it('passes credentials only through a private MCP file and removes it on exit', async () => {
+    const f = fixture(help), events: NormalizedEvent[] = []
+    const marker = 'synthetic-token-for-test'
+    const session = launchClaude({ cwd: f.cwd, mcpConfig: { mcpServers: {
+      cockpit: { type: 'stdio', command: '/bin/echo', args: [], env: { COCKPIT_MCP_TOKEN: marker } },
+    } } }, (e) => events.push(e), { executable: f.executable, env: { COCKPIT_MCP_TOKEN: 'stale-parent-token' } })
+    let file = ''
+    try {
+      session.send('hello')
+      await expect.poll(() => events.some((e) => e.kind === 'result' && e.ok), FIRST_RUN).toBe(true)
+      const args = readFileSync(join(f.cwd, 'launched'), 'utf8').split('\n')
+      file = args[args.indexOf('--mcp-config') + 1]!
+      expect(args).toContain('--strict-mcp-config')
+      expect(args.join(' ')).not.toContain(marker)
+      expect(readFileSync(join(f.cwd, 'ambient-token'), 'utf8')).toBe('')
+      expect(JSON.parse(readFileSync(file, 'utf8')).mcpServers.cockpit.env.COCKPIT_MCP_TOKEN).toBe(marker)
+      expect(statSync(file).mode & 0o777).toBe(0o600)
+      expect(statSync(dirname(file)).mode & 0o777).toBe(0o700)
+    } finally { await session.close() }
+    await expect.poll(() => existsSync(file)).toBe(false)
+  }, 15_000)
   it('accepts the effort levels declared by real Claude 2.1.291 help', () => {
     const capabilities = parseClaudeHelp(installedHelp)
     for (const effort of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {

@@ -235,14 +235,13 @@ describe('MCP wiring per CLI', () => {
     secretEnv: { COCKPIT_MCP_URL: 'http://127.0.0.1:1234', COCKPIT_MCP_TOKEN: 'secret' },
   }
 
-  it('gives Claude read and host-approved tools while keeping the token out of the config', () => {
+  it('scopes Claude credentials to the intended private-config server entry', () => {
     const options = claudeMcpOptions(launch)
-    expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: launch.env })
+    expect(options.mcpConfig.mcpServers.cockpit).toEqual({ type: 'stdio', command: launch.command, args: launch.args, env: { ...launch.env, ...launch.secretEnv } })
     expect(options.allowedTools).toEqual(['mcp__cockpit__list_processes', 'mcp__cockpit__read_process_output', 'mcp__cockpit__open_preview', 'mcp__cockpit__inspect_preview', 'mcp__cockpit__recall', 'mcp__cockpit__list_conversations', 'mcp__cockpit__read_conversation',
       'mcp__cockpit__start_conversation', 'mcp__cockpit__send_to_conversation', 'mcp__cockpit__stop_conversation', 'mcp__cockpit__start_process', 'mcp__cockpit__stop_process', 'mcp__cockpit__remember', 'mcp__cockpit__save_workflow',
       ...['read', 'screenshot', 'navigate', 'click', 'type', 'key', 'hover', 'scroll', 'drag'].map((op) => `mcp__cockpit__browser_${op}`)])
-    expect(JSON.stringify(options.mcpConfig)).not.toContain('secret')
-    expect(options.env).toEqual(launch.secretEnv)
+    expect(options).not.toHaveProperty('env')
   })
 
   it('gives Codex -c overrides that forward the token by name only', () => {

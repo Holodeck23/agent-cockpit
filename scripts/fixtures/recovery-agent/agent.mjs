@@ -1,5 +1,6 @@
 // Synthetic provider, real Cockpit MCP stdio tools and approval card. No network provider usage.
 import { createInterface } from 'node:readline'
+import { readFileSync } from 'node:fs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const args = process.argv.slice(2)
@@ -12,7 +13,8 @@ let resolveApproval
 const quote = (text) => "'" + text.replaceAll("'", "'\\''") + "'"
 async function run() {
   const client = new Client({ name: 'recovery-proof', version: '1' })
-  const config = JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.cockpit
+  const configPath = args[args.indexOf('--mcp-config') + 1]
+  const config = JSON.parse(configPath.startsWith('{') ? configPath : readFileSync(configPath, 'utf8')).mcpServers.cockpit
   const transport = new StdioClientTransport({ command: config.command, args: config.args, env: { ...process.env, ...config.env } })
   try {
     await client.connect(transport)
@@ -35,7 +37,7 @@ async function run() {
     const info = JSON.parse(JSON.stringify(list.content))
     const url = JSON.stringify(info).match(/http:\/\/127\.0\.0\.1:\d+/)?.[0]
     if (!url) throw new Error('No emitted URL')
-    const response = await fetch(`${process.env.COCKPIT_MCP_URL}/api/mcp/processes`, { headers: { authorization: `Bearer ${process.env.COCKPIT_MCP_TOKEN}` } })
+    const response = await fetch(`${config.env.COCKPIT_MCP_URL}/api/mcp/processes`, { headers: { authorization: `Bearer ${config.env.COCKPIT_MCP_TOKEN}` } })
     const { data } = await response.json()
     await call('read_process_output', { id: data[0].id })
     await call('open_preview', { url })
