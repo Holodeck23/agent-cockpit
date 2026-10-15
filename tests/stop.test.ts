@@ -1,4 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { AGENT_SPAWN, stopChild } from '../server/agents/stop.ts'
 
@@ -60,6 +63,33 @@ describe('stopChild', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(running(grandchild)).toBe(false)
   })
+
+  it('waits for and stops a hook and its detached child after the provider exits', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cockpit-stop-hook-'))
+    const hookMarker = join(dir, 'hook-late')
+    const childMarker = join(dir, 'child-late')
+    const descendant = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(childMarker)}, 'late'), 1200)`
+    const hook = `const { spawn } = require('node:child_process'); const c = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], { detached: true, stdio: 'ignore' }); process.stdout.write(String(c.pid) + '\\n'); setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(hookMarker)}, 'late'), 1400)`
+    const provider = `const { spawn } = require('node:child_process'); spawn(process.execPath, ['-e', ${JSON.stringify(hook)}], { stdio: ['ignore', 'inherit', 'ignore'] }); process.stdin.resume(); setInterval(() => {}, 1000)`
+    const child = spawn(process.execPath, ['-e', provider], { stdio: ['pipe', 'pipe', 'ignore'], ...AGENT_SPAWN })
+    let exited = false
+    child.once('exit', () => { exited = true })
+    try {
+      const detachedPid = await new Promise<number>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Hook child did not start')), 3000)
+        child.stdout!.once('data', (data: Buffer) => { clearTimeout(timeout); resolve(Number(String(data).trim())) })
+      })
+      await stopChild(child, () => !exited, 100)
+      expect(exited).toBe(true)
+      expect(running(detachedPid)).toBe(false)
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      expect(existsSync(hookMarker)).toBe(false)
+      expect(existsSync(childMarker)).toBe(false)
+    } finally {
+      if (!exited) child.kill('SIGKILL')
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 8000)
 })
 
 /** Exists and is not a zombie (a container without an init that reaps leaves those behind). */
