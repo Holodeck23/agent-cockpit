@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,12 +38,20 @@ it('stores independent Claude hook and connector preferences with absent meaning
   projects.open('/work/a', { claudeMcp: true })
   projects.approveClaudeHooks('/work/a', 'c'.repeat(64))
   expect(createProjectStore(root).list()[0]?.claudeHooksApproval).toBe('c'.repeat(64))
+  const worktreeId = randomUUID()
+  projects.approveClaudeHooks('/work/a', 'd'.repeat(64), worktreeId)
+  expect(createProjectStore(root).list()[0]?.claudeHooksApprovals?.[worktreeId]).toBe('d'.repeat(64))
+  expect(createProjectStore(root).list()[0]?.claudeHooksApproval).toBe('c'.repeat(64))
   projects.approveClaudeMcp('/work/a', 'a'.repeat(64))
   expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBe('a'.repeat(64))
+  projects.approveClaudeMcp('/work/a', 'e'.repeat(64), worktreeId)
+  expect(createProjectStore(root).list()[0]?.claudeMcpApprovals?.[worktreeId]).toBe('e'.repeat(64))
   projects.open('/work/a', { claudeMcp: false })
   expect(createProjectStore(root).list()[0]?.claudeMcpApproval).toBeUndefined()
+  expect(createProjectStore(root).list()[0]?.claudeMcpApprovals).toBeUndefined()
   projects.open('/work/a', { claudeHooks: false })
   expect(createProjectStore(root).list()[0]?.claudeHooksApproval).toBeUndefined()
+  expect(createProjectStore(root).list()[0]?.claudeHooksApprovals).toBeUndefined()
   // An explicit conversation override can be reviewed while the project default remains off.
   projects.approveClaudeMcp('/work/a', 'b'.repeat(64))
   projects.open('/work/a', { name: 'Renamed', claudeMcp: false })

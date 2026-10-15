@@ -200,7 +200,7 @@ export type McpProvider = (grant: McpGrant) => { readonly launch: CockpitMcpLaun
 
 /** Current instructions for a project folder, read when an agent session starts. */
 export type InstructionsProvider = (projectPath: string) => { readonly text: string; readonly revision: number } | undefined
-export type ProjectTrustProvider = (projectPath: string) => { readonly codexNetwork: boolean; readonly claudeHooks?: boolean; readonly claudeMcp?: boolean;
+export type ProjectTrustProvider = (projectPath: string, workspaceId?: string) => { readonly codexNetwork: boolean; readonly claudeHooks?: boolean; readonly claudeMcp?: boolean;
   readonly claudeHooksApproval?: string; readonly claudeMcpApproval?: string } | undefined
 
 export interface ManagerOptions {
@@ -330,8 +330,8 @@ export interface ThreadManager {
   /** Same agent, new model/effort/permissions: the native session resumes with them from the next message. */
   changeSettings(threadId: string, settings: ThreadSettings): ThreadMeta
   /** Retire sessions whose effective Claude setup was reduced by a project change. */
-  revokeProjectClaudeSetup(projectPath: string, before: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeHooksApproval' | 'claudeMcpApproval'> | undefined,
-    after: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeHooksApproval' | 'claudeMcpApproval'>): Promise<void>
+  revokeProjectClaudeSetup(projectPath: string, before: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeHooksApproval' | 'claudeMcpApproval' | 'claudeHooksApprovals' | 'claudeMcpApprovals'> | undefined,
+    after: Pick<Project, 'claudeHooks' | 'claudeMcp' | 'claudeHooksApproval' | 'claudeMcpApproval' | 'claudeHooksApprovals' | 'claudeMcpApprovals'>): Promise<void>
   /** The handoff a switch would send now, for the user to read first (D13). */
   handoffPreview(threadId: string): HandoffPreview
   /**
@@ -674,7 +674,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       ...(workspaceId ? { workspaceId } : {}) }, workspaceId ?? '')
     // Read at launch: edits reach the next session, never one already running.
     const instructions = options.instructions?.(meta.projectPath)
-    const trust = options.projectTrust?.(meta.projectPath)
+    const trust = options.projectTrust?.(meta.projectPath, workspaceId)
     const setup = meta.settings.agent === 'claude' ? resolveClaudeSetup(meta.settings, trust, meta) : undefined
     let sourceProblem: string | undefined
     const sourceInput = { home: homedir(), cwd: cwd ?? meta.projectPath, pathEnv: process.env.PATH ?? '',
@@ -694,10 +694,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
             if (snapshotHookSources(sourceInput).revision !== snapshot.revision) {
               throw new Error('Claude hook sources changed after review. Review them again before starting this conversation.')
             }
-            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath)?.claudeHooksApproval !== snapshot.revision) {
+            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeHooksApproval !== snapshot.revision) {
               throw new Error('Claude hook approval changed before launch. Review the current sources again.')
             }
-            if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath), meta).hooks) {
+            if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath, workspaceId), meta).hooks) {
               throw new Error('Claude hooks were turned off before launch.')
             }
           }
@@ -717,10 +717,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
             if (snapshotMcpSources(sourceInput).revision !== snapshot.revision) {
               throw new Error('Claude connector sources changed after review. Review them again before starting this conversation.')
             }
-            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath)?.claudeMcpApproval !== snapshot.revision) {
+            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeMcpApproval !== snapshot.revision) {
               throw new Error('Claude connector approval changed before launch. Review the current sources again.')
             }
-            if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath), meta).connectors) {
+            if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath, workspaceId), meta).connectors) {
               throw new Error('Claude connectors were turned off before launch.')
             }
           }
@@ -1061,8 +1061,15 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         if (meta.projectPath !== projectPath || meta.settings.agent !== 'claude' || deleted.has(meta.id)) return false
         const prior = resolveClaudeSetup(meta.settings, before, meta)
         const next = resolveClaudeSetup(meta.settings, after, meta)
-        return (prior.hooks && (!next.hooks || before?.claudeHooksApproval !== after.claudeHooksApproval)) ||
-          (prior.connectors && (!next.connectors || before?.claudeMcpApproval !== after.claudeMcpApproval))
+        return entriesOf(meta.id).some((entry) => {
+          const isPrimary = !entry.workspaceId || entry.workspaceId === options.workspaceFor?.(projectPath)
+          const oldHooks = isPrimary ? before?.claudeHooksApproval : before?.claudeHooksApprovals?.[entry.workspaceId]
+          const newHooks = isPrimary ? after.claudeHooksApproval : after.claudeHooksApprovals?.[entry.workspaceId]
+          const oldMcp = isPrimary ? before?.claudeMcpApproval : before?.claudeMcpApprovals?.[entry.workspaceId]
+          const newMcp = isPrimary ? after.claudeMcpApproval : after.claudeMcpApprovals?.[entry.workspaceId]
+          return (prior.hooks && (!next.hooks || oldHooks !== newHooks)) ||
+            (prior.connectors && (!next.connectors || oldMcp !== newMcp))
+        })
       })
       await Promise.all(affected.map(async (meta) => {
         const entries = entriesOf(meta.id)

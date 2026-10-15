@@ -1,8 +1,12 @@
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { snapshotMcpSources } from '../server/agents/claude/mcp-sources.ts'
+import { createWorkspaceStore } from '../server/projects/workspaces.ts'
+import { createThreadManager, type LaunchRequest } from '../server/threads/manager.ts'
+import { createThreadStore } from '../server/threads/store.ts'
+import { threadSettingsSchema } from '../server/threads/types.ts'
 
 it('binds approved MCP source, executable and script revisions without exposing environment values', () => {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-mcp-sources-'))
@@ -74,4 +78,37 @@ it('pins plugin-relative executable scripts and blocks a plugin MCP file escapin
   symlinkSync(external, join(plugin, 'linked.json'))
   writeFileSync(join(plugin, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'fixture', mcpServers: 'linked.json' }))
   expect(() => snapshotMcpSources(input)).toThrow(/leaves its installed folder/)
+})
+
+it('does not apply a main-checkout approval to a worktree launch', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-worktree-approval-'))
+  const project = join(root, 'project'), worktree = join(root, 'worktree'), profile = join(root, 'profile')
+  mkdirSync(project); mkdirSync(worktree); mkdirSync(profile)
+  writeFileSync(join(worktree, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { type: 'http', url: 'https://example.test/mcp' } } }))
+  const workspaceStore = createWorkspaceStore(join(root, 'state'))
+  mkdirSync(join(root, 'state'))
+  workspaceStore.ensure([project])
+  const primary = workspaceStore.primaryFor(project)!
+  const secondary = workspaceStore.addWorktree({ projectId: primary.project.id, cwd: worktree, name: 'fixture', branch: 'fixture',
+    baseRef: 'main', baseCommit: 'a'.repeat(40), createdFrom: primary.workspace.id })
+  const revision = snapshotMcpSources({ home: homedir(), profileDir: profile, cwd: worktree, pathEnv: process.env.PATH ?? '',
+    accountId: 'account-one', accountGeneration: 1 }).revision
+  let worktreeApproval: string | undefined
+  const launches: LaunchRequest[] = []
+  const manager = createThreadManager(createThreadStore(join(root, 'threads')), {
+    workspace: (id) => workspaceStore.get(id), workspaceFor: () => primary.workspace.id,
+    accounts: { resolve: () => ({ accountId: 'account-one', generation: 1, label: 'Fixture', env: { CLAUDE_CONFIG_DIR: profile } }), describe: () => undefined },
+    projectTrust: (_path, id) => ({ codexNetwork: false, claudeHooks: false, claudeMcp: true,
+      claudeMcpApproval: id === secondary.id ? worktreeApproval : revision }),
+    launchers: { claude: (request) => { launches.push(request); return { agent: 'claude', alive: () => true, send: () => undefined,
+      interrupt: () => undefined, respondApproval: () => undefined, close: async () => undefined } } },
+  })
+  const settings = threadSettingsSchema.parse({ agent: 'claude', hooksSetup: 'off', mcpSetup: 'on' })
+  manager.create({ projectPath: project, workspaceId: secondary.id, settings, text: 'blocked' })
+  expect(launches).toHaveLength(0)
+  worktreeApproval = revision
+  manager.create({ projectPath: project, workspaceId: secondary.id, settings, text: 'approved' })
+  expect(launches).toHaveLength(1)
+  expect(launches[0]?.cwd).toBe(worktree)
+  await manager.shutdown()
 })

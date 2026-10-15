@@ -39,8 +39,11 @@ const projectSchema = z.object({
   claudeMcp: z.boolean().optional(),
   /** Exact hook source revision the human reviewed in this project. */
   claudeHooksApproval: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  /** Worktree approvals are independent of the main checkout and each other. */
+  claudeHooksApprovals: z.record(z.uuid(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
   /** Exact explicit MCP source revision the human reviewed in this project. Never set through the generic patch. */
   claudeMcpApproval: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  claudeMcpApprovals: z.record(z.uuid(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
   /** Project files pinned to the navigation, as paths relative to the folder, in pin order. */
   pinnedFiles: z.array(z.string().min(1).max(1000)).max(MAX_PINNED_FILES).optional(),
   /** P3: Antigravity gets Cockpit's tools here, through the plugin Cockpit wrote (agents/antigravity/mcp-plugin.ts). */
@@ -80,8 +83,8 @@ export interface ProjectStore {
   /** Records or clears the Antigravity tools plugin Cockpit owns in this project; doesn't count as opening it. */
   setAntigravityMcp(path: string, owned: AgyMcpOwnership | undefined): Project
   /** Persists only a revision that the dedicated source-review route rechecked. */
-  approveClaudeHooks(path: string, revision: string): Project
-  approveClaudeMcp(path: string, revision: string): Project
+  approveClaudeHooks(path: string, revision: string, workspaceId?: string): Project
+  approveClaudeMcp(path: string, revision: string, workspaceId?: string): Project
 }
 
 /** A pinned file must be a plain path inside the project: no absolute paths, no "..". */
@@ -166,8 +169,8 @@ export function createProjectStore(root: string): ProjectStore {
       const { instructions: rawInstructions, ...rest } = patch
       // Opening a removed project on purpose brings it back.
       const next: Project = { ...existing, ...rest,
-        ...(rest.claudeHooks === false && existing.claudeHooks !== false ? { claudeHooksApproval: undefined } : {}),
-        ...(rest.claudeMcp === false && existing.claudeMcp !== false ? { claudeMcpApproval: undefined } : {}),
+        ...(rest.claudeHooks === false && existing.claudeHooks !== false ? { claudeHooksApproval: undefined, claudeHooksApprovals: undefined } : {}),
+        ...(rest.claudeMcp === false && existing.claudeMcp !== false ? { claudeMcpApproval: undefined, claudeMcpApprovals: undefined } : {}),
         hidden: undefined, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions), ...pinChange(current, existing, rest.pinned) }
       write([...current.filter((p) => p.path !== path), next])
       return next
@@ -197,19 +200,23 @@ export function createProjectStore(root: string): ProjectStore {
       write(current.map((p) => (p.path === path ? next : p)))
       return next
     },
-    approveClaudeHooks(path, revision) {
+    approveClaudeHooks(path, revision, workspaceId) {
       const current = read()
       const existing = current.find((p) => p.path === path && !p.hidden)
       if (!existing) throw new Error('Unknown project')
-      const next = projectSchema.parse({ ...existing, claudeHooksApproval: revision })
+      const next = projectSchema.parse({ ...existing, ...(workspaceId
+        ? { claudeHooksApprovals: { ...existing.claudeHooksApprovals, [workspaceId]: revision } }
+        : { claudeHooksApproval: revision }) })
       write(current.map((p) => p.path === path ? next : p))
       return next
     },
-    approveClaudeMcp(path, revision) {
+    approveClaudeMcp(path, revision, workspaceId) {
       const current = read()
       const existing = current.find((p) => p.path === path && !p.hidden)
       if (!existing) throw new Error('Unknown project')
-      const next = projectSchema.parse({ ...existing, claudeMcpApproval: revision })
+      const next = projectSchema.parse({ ...existing, ...(workspaceId
+        ? { claudeMcpApprovals: { ...existing.claudeMcpApprovals, [workspaceId]: revision } }
+        : { claudeMcpApproval: revision }) })
       write(current.map((p) => p.path === path ? next : p))
       return next
     },

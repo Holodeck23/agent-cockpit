@@ -1,7 +1,7 @@
 import { api } from '../api.ts'
 import type { SettingsPatch } from '../useProjects.ts'
 import { useEffect, useRef, useState } from 'react'
-import type { Project } from '../api.ts'
+import type { Project, Workspace } from '../api.ts'
 import { native } from '../native.ts'
 import { isActiveWorktree } from '../workspaces.ts'
 import { avatarDataUrl } from '../project-image.ts'
@@ -28,6 +28,8 @@ interface ProjectSettingsProps {
 }
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+const approvals = (primary: string | undefined, worktrees: Readonly<Record<string, string>> | undefined): Record<string, string> =>
+  ({ ...worktrees, ...(primary ? { '': primary } : {}) })
 
 export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }: ProjectSettingsProps) {
   const [name, setName] = useState(project.name)
@@ -37,10 +39,14 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [codexNetwork, setCodexNetwork] = useState(project.codexNetwork === true)
   const [claudeHooks, setClaudeHooks] = useState(project.claudeHooks !== false)
   const [claudeMcp, setClaudeMcp] = useState(project.claudeMcp !== false)
+  const [worktrees, setWorktrees] = useState<readonly Workspace[]>([])
+  const [reviewWorkspaceId, setReviewWorkspaceId] = useState<string>()
   const [hookReview, setHookReview] = useState<Awaited<ReturnType<typeof api.claudeHookSources>>>()
-  const [approvedHookRevision, setApprovedHookRevision] = useState(project.claudeHooksApproval)
+  const [hookApprovals, setHookApprovals] = useState(() => approvals(project.claudeHooksApproval, project.claudeHooksApprovals))
   const [mcpReview, setMcpReview] = useState<Awaited<ReturnType<typeof api.claudeMcpSources>>>()
-  const [approvedMcpRevision, setApprovedMcpRevision] = useState(project.claudeMcpApproval)
+  const [mcpApprovals, setMcpApprovals] = useState(() => approvals(project.claudeMcpApproval, project.claudeMcpApprovals))
+  const approvedHookRevision = hookApprovals[reviewWorkspaceId ?? '']
+  const approvedMcpRevision = mcpApprovals[reviewWorkspaceId ?? '']
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [saved, setSaved] = useState(false)
@@ -52,8 +58,17 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     || claudeHooks !== (project.claudeHooks !== false) || claudeMcp !== (project.claudeMcp !== false)
 
   useEffect(() => nameBox.current?.focus(), [])
-  useEffect(() => { void api.claudeMcpSources(project.path).then(setMcpReview, (reason: unknown) => setError(message(reason))) }, [project.path])
-  useEffect(() => { void api.claudeHookSources(project.path).then(setHookReview, (reason: unknown) => setError(message(reason))) }, [project.path])
+  useEffect(() => {
+    if (!project.projectId) return
+    void api.workspaces(project.projectId).then((answer) => setWorktrees(answer.workspaces.filter(isActiveWorktree)), (reason: unknown) => setError(message(reason)))
+  }, [project.projectId])
+  useEffect(() => {
+    let live = true
+    setMcpReview(undefined); setHookReview(undefined)
+    void api.claudeMcpSources(project.path, reviewWorkspaceId).then((review) => { if (live) setMcpReview(review) }, (reason: unknown) => { if (live) setError(message(reason)) })
+    void api.claudeHookSources(project.path, reviewWorkspaceId).then((review) => { if (live) setHookReview(review) }, (reason: unknown) => { if (live) setError(message(reason)) })
+    return () => { live = false }
+  }, [project.path, reviewWorkspaceId])
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -67,11 +82,11 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     setError(undefined)
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
-  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork, claudeHooks, claudeMcp }), () => {
-    if (!claudeHooks && project.claudeHooks !== false) setApprovedHookRevision(undefined)
-    if (!claudeMcp && project.claudeMcp !== false) setApprovedMcpRevision(undefined)
-    setSaved(true)
-  })
+  const save = (): void => run(async () => {
+    const updated = await onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork, claudeHooks, claudeMcp })
+    setHookApprovals(approvals(updated.claudeHooksApproval, updated.claudeHooksApprovals))
+    setMcpApprovals(approvals(updated.claudeMcpApproval, updated.claudeMcpApprovals))
+  }, () => setSaved(true))
   const pick = (file: File | undefined): void => {
     if (file) run(async () => onImage(await avatarDataUrl(file)))
     if (filePicker.current) filePicker.current.value = ''
@@ -131,8 +146,15 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             <input type="checkbox" checked={claudeMcp} onChange={(e) => { setClaudeMcp(e.target.checked); setSaved(false) }} />
             <span><strong>Use my Claude MCP connectors</strong> On by default for new conversations. Connector commands require source review before they run.</span>
           </label>
+          {worktrees.length ? <label className="field"><span>Review Claude setup in</span>
+            <select value={reviewWorkspaceId ?? ''} onChange={(event) => setReviewWorkspaceId(event.target.value || undefined)}>
+              <option value="">Main checkout</option>
+              {worktrees.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name ?? workspace.branch ?? workspace.cwd}</option>)}
+            </select>
+          </label> : null}
           {hookReview ? <div className="field" role="group" aria-label="Claude hook sources">
             <strong>Hook source review</strong>
+            <small>Checkout: {hookReview.cwd}</small>
             <small>Review the executable and source file for each event. A source change needs another review; unsupported or unresolved plugin hooks stay blocked. A conversation can opt in when this project default is off.</small>
             {hookReview.review.length ? <ul>{hookReview.review.map((source, index) => <li key={`${source.source}:${source.event}:${index}`}>
               <strong>{source.event}</strong> · {source.executable} · {source.source}
@@ -140,11 +162,12 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
               {source.referencedFiles.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
             </li>)}</ul> : <small>No executable hooks found in the reviewed sources.</small>}
             {hookReview.review.length && approvedHookRevision !== hookReview.revision
-              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision), () => setApprovedHookRevision(hookReview.revision))}>Approve these hook source revisions</button>
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision, reviewWorkspaceId), () => setHookApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: hookReview.revision })))}>Approve these hook source revisions</button>
               : approvedHookRevision === hookReview.revision ? <small>Reviewed for this project and selected account. Changes require another review.</small> : null}
           </div> : null}
           {mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
             <strong>Connector source review</strong>
+            <small>Checkout: {mcpReview.cwd}</small>
             <small>Review user, project and installed plugin connector sources before approving this exact revision, including when only a conversation enables connectors. Unresolved plugins remain blocked.</small>
             {mcpReview.review.length ? <ul>{mcpReview.review.map((source) => <li key={`${source.source}:${source.name}`}>
               <strong>{source.name}</strong> · {source.executable ?? source.url} · {source.source}
@@ -152,7 +175,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
               {source.referencedFiles?.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
             </li>)}</ul> : <small>No connector entries found in reviewed sources.</small>}
             {mcpReview.review.length && approvedMcpRevision !== mcpReview.revision
-              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision), () => setApprovedMcpRevision(mcpReview.revision))}>Approve these source revisions</button>
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision, reviewWorkspaceId), () => setMcpApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: mcpReview.revision })))}>Approve these source revisions</button>
               : approvedMcpRevision === mcpReview.revision ? <small>Reviewed for this project. Changes require another review.</small> : null}
           </div> : null}
           <label className="field-check">

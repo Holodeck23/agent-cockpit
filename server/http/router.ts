@@ -538,18 +538,22 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'claude-mcp') {
         if (viaPhone) throw new HttpError(403, 'Connector source review is only available on the Mac')
         const body = method === 'POST'
-          ? parseBody(z.object({ path: z.string().min(1).max(1000), revision: z.string().regex(/^[a-f0-9]{64}$/) }), await readJson(req))
-          : { path: url.searchParams.get('path') ?? '', revision: undefined }
+          ? parseBody(z.object({ path: z.string().min(1).max(1000), workspaceId: z.uuid().optional(), revision: z.string().regex(/^[a-f0-9]{64}$/) }), await readJson(req))
+          : { path: url.searchParams.get('path') ?? '', workspaceId: url.searchParams.get('workspaceId') ?? undefined, revision: undefined }
         if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
+        const at = scope.resolve(body.path, body.workspaceId)
+        const approvalWorkspace = at.cwd === body.path ? undefined : at.workspaceId
         const selected = accounts?.resolve(body.path, 'claude')
-        const snapshot = snapshotMcpSources({ home: homedir(), cwd: body.path, pathEnv: process.env.PATH ?? '',
+        let snapshot: ReturnType<typeof snapshotMcpSources>
+        try { snapshot = snapshotMcpSources({ home: homedir(), cwd: at.cwd, pathEnv: process.env.PATH ?? '',
           accountId: selected?.accountId ?? 'default-claude', accountGeneration: selected?.generation ?? 1,
-          ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) })
-        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review } }); return true }
+          ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }) }
+        catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not verify connector sources') }
+        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, cwd: at.cwd } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Connector sources changed; review them again')
           const before = projects.list({ includeHidden: true }).find((project) => project.path === body.path)
-          const updated = projects.approveClaudeMcp(body.path, snapshot.revision)
+          const updated = projects.approveClaudeMcp(body.path, snapshot.revision, approvalWorkspace)
           await manager.revokeProjectClaudeSetup(body.path, before, updated)
           sendJson(res, 200, { data: updated })
           return true
@@ -559,20 +563,22 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
       if (parts[1] === 'projects' && parts.length === 3 && parts[2] === 'claude-hooks') {
         if (viaPhone) throw new HttpError(403, 'Hook source review is only available on the Mac')
         const body = method === 'POST'
-          ? parseBody(z.object({ path: z.string().min(1).max(1000), revision: z.string().regex(/^[a-f0-9]{64}$/) }), await readJson(req))
-          : { path: url.searchParams.get('path') ?? '', revision: undefined }
+          ? parseBody(z.object({ path: z.string().min(1).max(1000), workspaceId: z.uuid().optional(), revision: z.string().regex(/^[a-f0-9]{64}$/) }), await readJson(req))
+          : { path: url.searchParams.get('path') ?? '', workspaceId: url.searchParams.get('workspaceId') ?? undefined, revision: undefined }
         if (!projects.list().some((p) => p.path === body.path)) throw new HttpError(404, 'Open this project first')
+        const at = scope.resolve(body.path, body.workspaceId)
+        const approvalWorkspace = at.cwd === body.path ? undefined : at.workspaceId
         const selected = accounts?.resolve(body.path, 'claude')
         let snapshot: ReturnType<typeof snapshotHookSources>
-        try { snapshot = snapshotHookSources({ home: homedir(), cwd: body.path, pathEnv: process.env.PATH ?? '',
+        try { snapshot = snapshotHookSources({ home: homedir(), cwd: at.cwd, pathEnv: process.env.PATH ?? '',
           accountId: selected?.accountId ?? 'default-claude', accountGeneration: selected?.generation ?? 1,
           ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }) }
         catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not verify hook sources') }
-        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review } }); return true }
+        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, cwd: at.cwd } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Hook sources changed; review them again')
           const before = projects.list({ includeHidden: true }).find((project) => project.path === body.path)
-          const updated = projects.approveClaudeHooks(body.path, snapshot.revision)
+          const updated = projects.approveClaudeHooks(body.path, snapshot.revision, approvalWorkspace)
           await manager.revokeProjectClaudeSetup(body.path, before, updated)
           sendJson(res, 200, { data: updated })
           return true
