@@ -4,6 +4,24 @@
 inline styles/scripts, Cockpit mark and four packaged-app screenshots. It opens from disk
 or any static host. The Mac download points to the v0.1.8 prerelease.
 
+## Page order
+
+Hero (headline, one get-started card, framed product visual) → compatibility strip →
+interactive demo → three workflow showcases → Top features with the full directory behind
+a disclosure → release and setup → FAQ → feedback and footer.
+
+The get-started card is the only place to start: the Apple-silicon download, the
+coming-soon note for other platforms, the Terminal install command with a Copy button, and
+the docs link sit together above the fold. There is no second install block further down,
+and no section carries an eyebrow mini-title.
+
+Each showcase holds a `<video autoplay loop muted playsinline>` over a real packaged-app
+capture as its `poster`, so the section is complete before any recording exists. Drop a
+clip into `media/` with the filename that showcase already points at and it starts looping;
+see [media/README.md](media/README.md). `.vercelignore` publishes `index.html` and `media/`,
+nothing else. Under `prefers-reduced-motion` the clips hold on the poster and only gain
+controls once real media loads.
+
 ## The interactive demo
 
 The demo bundles **the actual React App, components and CSS from `web/src`**. It uses the
@@ -34,9 +52,13 @@ Escape closes it. The agent-team reference informed the guided actions and free 
 
 ## Edit and build
 
-- Marketing markup, release copy and screenshot gallery: `index.html`.
+- Marketing markup, release copy, hero visual and showcase posters: `index.html`.
 - Landing styles: `page.css`.
-- Shipped-feature directory: `features.json`, generated into the page by `build-demo.mjs`.
+- Curated Top features: hand-written in `index.html`. The six cards are an editorial
+  choice, not a generated slice of `features.json`; change them there.
+- Shipped-feature directory behind `Browse all features →`: `features.json`, generated
+  into the page by `build-demo.mjs`.
+- Showcase recordings: `media/` (see its README). Posters live in `index.html`.
 - Guided walkthrough: `demo-tour.js`.
 - Browser-only Garden Notes app shown inside Preview: `demo/sample-app.html`.
 - Sample backend, native bridge and ephemeral storage: `demo/`.
@@ -64,7 +86,10 @@ LANDING_URL=http://127.0.0.1:4388/ node landing/verify.mjs /absolute/evidence/di
 The interaction suite exercises the same full journey offline and at LANDING_URL, at
 360, 390, 768, 1280 and 1440px, plus a JavaScript-disabled fallback. It verifies visible
 results, saved versus unsaved notes, literal rendering of user text, agent handoff,
-approval denial/retry, recovery, reset, expanded-view Escape, screenshots/FAQ, readable
+approval denial/retry, recovery, reset, expanded-view Escape, the get-started card
+(Apple mark, platform note, install command, Copy, docs link), the absence of section
+eyebrows, three looping-but-still showcase clips over real posters, six Top features with
+the directory closed on load, both download links, the FAQ, readable
 font sizes, overflow, exceptions and absence of API calls. Production verification still
 requires running the suite against the published URL; local checks and a push are not a
 deployment. Screenshot comparisons remain necessary even when browser tests pass.

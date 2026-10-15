@@ -1,3 +1,6 @@
 *
 !index.html
+!media
+!media/*
+media/README.md
 !.vercelignore
