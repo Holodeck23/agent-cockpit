@@ -37,6 +37,8 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [codexNetwork, setCodexNetwork] = useState(project.codexNetwork === true)
   const [claudeHooks, setClaudeHooks] = useState(project.claudeHooks !== false)
   const [claudeMcp, setClaudeMcp] = useState(project.claudeMcp !== false)
+  const [mcpReview, setMcpReview] = useState<Awaited<ReturnType<typeof api.claudeMcpSources>>>()
+  const [approvedMcpRevision, setApprovedMcpRevision] = useState(project.claudeMcpApproval)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [saved, setSaved] = useState(false)
@@ -48,6 +50,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     || claudeHooks !== (project.claudeHooks !== false) || claudeMcp !== (project.claudeMcp !== false)
 
   useEffect(() => nameBox.current?.focus(), [])
+  useEffect(() => { void api.claudeMcpSources(project.path).then(setMcpReview, (reason: unknown) => setError(message(reason))) }, [project.path])
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -61,7 +64,10 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     setError(undefined)
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
-  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork, claudeHooks, claudeMcp }), () => setSaved(true))
+  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork, claudeHooks, claudeMcp }), () => {
+    if (!claudeMcp) setApprovedMcpRevision(undefined)
+    setSaved(true)
+  })
   const pick = (file: File | undefined): void => {
     if (file) run(async () => onImage(await avatarDataUrl(file)))
     if (filePicker.current) filePicker.current.value = ''
@@ -121,6 +127,16 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             <input type="checkbox" checked={claudeMcp} onChange={(e) => { setClaudeMcp(e.target.checked); setSaved(false) }} />
             <span><strong>Use my Claude MCP connectors</strong> On by default for new conversations. Connector commands require source review before they run.</span>
           </label>
+          {claudeMcp && mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
+            <strong>Connector source review</strong>
+            <small>These are explicit user and project MCP entries. Plugin connectors require separate verification. Review the source files before approving this exact revision.</small>
+            {mcpReview.review.length ? <ul>{mcpReview.review.map((source) => <li key={`${source.source}:${source.name}`}>
+              <strong>{source.name}</strong> · {source.executable ?? source.url} · {source.source}
+            </li>)}</ul> : <small>No explicit connector entries found.</small>}
+            {mcpReview.review.length && approvedMcpRevision !== mcpReview.revision
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision), () => setApprovedMcpRevision(mcpReview.revision))}>Approve these source revisions</button>
+              : approvedMcpRevision === mcpReview.revision ? <small>Reviewed for this project. Changes require another review.</small> : null}
+          </div> : null}
           <label className="field-check">
             <input type="checkbox" checked={codexNetwork} onChange={(e) => { setCodexNetwork(e.target.checked); setSaved(false) }} />
             <span>

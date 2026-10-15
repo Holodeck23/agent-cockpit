@@ -215,6 +215,8 @@ export const api = {
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
   setPinnedFiles: (path: string, files: readonly string[]) => request<Project>('/api/projects/pins', { method: 'POST', body: { path, files } }),
+  claudeMcpSources: (path: string) => request<{ revision: string; review: { name: string; source: string; executable?: string; executableHash?: string; url?: string }[] }>(`/api/projects/claude-mcp?${new URLSearchParams({ path })}`),
+  approveClaudeMcp: (path: string, revision: string) => request<Project>('/api/projects/claude-mcp', { method: 'POST', body: { path, revision } }),
   setAntigravityTools: (path: string, connected: boolean) =>
     request<{ project: Project; message?: string; backup?: string }>('/api/projects/agy-mcp', { method: 'POST', body: { path, connected } }),
   removeProject: (path: string) => request<{ project: Project; pausedSchedules: number }>('/api/projects/remove', { method: 'POST', body: { path } }),
