@@ -57,7 +57,7 @@ try {
   writeFileSync(helpFile, help.replace('  --strict-mcp-config\n', ''))
   const quote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'"
   const argvFile = join(home, 'claude-argv')
-  writeFileSync(join(bin, 'claude'), `#!/bin/sh\nif [ "$1" = "--help" ]; then cat ${quote(helpFile)}; exit 0; fi\nprintf '%s\\n' "$@" > ${quote(argvFile)}\nexec ${quote(join(ROOT, 'scripts/fixtures/echo-agent/claude'))} "$@"\n`)
+  writeFileSync(join(bin, 'claude'), `#!/bin/sh\nif [ "$1" = "--help" ]; then cat ${quote(helpFile)}; exit 0; fi\nprintf '%s\\n' "$@" > ${quote(argvFile)}\nCOCKPIT_FIXTURE_NODE=${quote(process.execPath)} exec ${quote(join(ROOT, 'scripts/fixtures/echo-agent/claude'))} "$@"\n`)
   chmodSync(join(bin, 'claude'), 0o755)
   const created = await apiPost(page, '/api/threads', { projectPath: home, title: 'Unsupported Claude', text: 'hello', settings: { agent: 'claude' } }) as { data: { id: string } }
   await page.locator('.card').filter({ hasText: 'Unsupported Claude' }).click()
