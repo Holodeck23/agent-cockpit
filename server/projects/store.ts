@@ -34,6 +34,9 @@ const projectSchema = z.object({
   agentWorkflows: z.boolean().optional(),
   /** User trust choice: Codex sessions in this project may use network from workspace-write sandboxes. */
   codexNetwork: z.boolean().optional(),
+  /** Desired Claude capabilities. Absent means on for newly created conversations; execution still requires source review. */
+  claudeHooks: z.boolean().optional(),
+  claudeMcp: z.boolean().optional(),
   /** Project files pinned to the navigation, as paths relative to the folder, in pin order. */
   pinnedFiles: z.array(z.string().min(1).max(1000)).max(MAX_PINNED_FILES).optional(),
   /** P3: Antigravity gets Cockpit's tools here, through the plugin Cockpit wrote (agents/antigravity/mcp-plugin.ts). */
@@ -52,6 +55,8 @@ export const projectPatchSchema = z.object({
   instructions: z.string().max(MAX_INSTRUCTIONS_CHARS).optional(),
   agentWorkflows: z.boolean().optional(),
   codexNetwork: z.boolean().optional(),
+  claudeHooks: z.boolean().optional(),
+  claudeMcp: z.boolean().optional(),
 })
 export type ProjectPatch = z.output<typeof projectPatchSchema>
 

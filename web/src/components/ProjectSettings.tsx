@@ -35,6 +35,8 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const [text, setText] = useState(project.instructions ?? '')
   const [agentWorkflows, setAgentWorkflows] = useState(project.agentWorkflows === true)
   const [codexNetwork, setCodexNetwork] = useState(project.codexNetwork === true)
+  const [claudeHooks, setClaudeHooks] = useState(project.claudeHooks !== false)
+  const [claudeMcp, setClaudeMcp] = useState(project.claudeMcp !== false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [saved, setSaved] = useState(false)
@@ -43,6 +45,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
   const filePicker = useRef<HTMLInputElement>(null)
   const changed = name.trim() !== project.name || color !== project.color || text.trim() !== (project.instructions ?? '')
     || agentWorkflows !== (project.agentWorkflows === true) || codexNetwork !== (project.codexNetwork === true)
+    || claudeHooks !== (project.claudeHooks !== false) || claudeMcp !== (project.claudeMcp !== false)
 
   useEffect(() => nameBox.current?.focus(), [])
   useEffect(() => {
@@ -58,7 +61,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
     setError(undefined)
     action().then(() => after?.(), (e: unknown) => setError(message(e))).finally(() => setBusy(false))
   }
-  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork }), () => setSaved(true))
+  const save = (): void => run(() => onSave({ name: name.trim(), color, instructions: text, agentWorkflows, codexNetwork, claudeHooks, claudeMcp }), () => setSaved(true))
   const pick = (file: File | undefined): void => {
     if (file) run(async () => onImage(await avatarDataUrl(file)))
     if (filePicker.current) filePicker.current.value = ''
@@ -110,6 +113,14 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
             Added to every agent session in this folder, alongside the repository&apos;s own instruction files, which Cockpit
             never edits. They apply when an agent next starts, and never change permissions.
           </p>
+          <label className="field-check">
+            <input type="checkbox" checked={claudeHooks} onChange={(e) => { setClaudeHooks(e.target.checked); setSaved(false) }} />
+            <span><strong>Use my Claude hooks</strong> On by default for new conversations. Executable hooks require source review before they run.</span>
+          </label>
+          <label className="field-check">
+            <input type="checkbox" checked={claudeMcp} onChange={(e) => { setClaudeMcp(e.target.checked); setSaved(false) }} />
+            <span><strong>Use my Claude MCP connectors</strong> On by default for new conversations. Connector commands require source review before they run.</span>
+          </label>
           <label className="field-check">
             <input type="checkbox" checked={codexNetwork} onChange={(e) => { setCodexNetwork(e.target.checked); setSaved(false) }} />
             <span>

@@ -6,7 +6,7 @@ import { tabOrder } from './project-tabs.ts'
 const ACTIVE_KEY = 'cockpit:active-project'
 
 /** What Project settings saves together. */
-export interface SettingsPatch { name: string; color: Project['color']; instructions: string; agentWorkflows: boolean; codexNetwork: boolean }
+export interface SettingsPatch { name: string; color: Project['color']; instructions: string; agentWorkflows: boolean; codexNetwork: boolean; claudeHooks: boolean; claudeMcp: boolean }
 
 export interface ProjectCounts {
   readonly working: number

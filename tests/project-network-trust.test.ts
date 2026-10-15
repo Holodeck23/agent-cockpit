@@ -22,6 +22,19 @@ it('persists explicit trust and revocation in Cockpit state without changing oth
   expect(readFileSync(join(root, 'projects.json'), 'utf8')).toContain('"codexNetwork": false')
 })
 
+it('stores independent Claude hook and connector preferences with absent meaning on', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-claude-setup-'))
+  const projects = createProjectStore(root)
+  projects.open('/work/a')
+  expect(projects.list()[0]?.claudeHooks).toBeUndefined()
+  expect(projects.list()[0]?.claudeMcp).toBeUndefined()
+  projects.open('/work/a', { claudeHooks: false, claudeMcp: true })
+  expect(createProjectStore(root).list()[0]).toMatchObject({ claudeHooks: false, claudeMcp: true })
+  projects.open('/work/a', { claudeHooks: true, claudeMcp: false })
+  expect(createProjectStore(root).list()[0]).toMatchObject({ claudeHooks: true, claudeMcp: false })
+  expect(projectPatchSchema.safeParse({ claudeHooks: 'true' }).success).toBe(false)
+})
+
 it('explicitly overrides both permissive and restrictive CLI defaults without losing MCP wiring', () => {
   const cockpit = { command: 'node', args: ['mcp.cjs'], env: {}, secretEnv: {} }
   for (const codexNetwork of [true, false]) {
