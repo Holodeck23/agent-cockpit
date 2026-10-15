@@ -29,11 +29,24 @@ if [ "$1" = "--help" ]; then sleep 0.3; cat "${join(dir, 'help')}"; exit 0; fi
 printf '{"type":"system","subtype":"init","session_id":"review-claude"}\\n'
 n=0
 while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      request_id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p')
+      printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{}}}\\n' "$request_id"
+      continue
+      ;;
+  esac
   n=$((n+1))
   printf '%s\\n' "$line" >> "${received}"
-  if [ $n -eq 1 ]; then printf '%s\\n' '${RESULT('one')}'; continue; fi
-  while [ ! -f "${join(dir, 'go')}" ]; do sleep 0.05; done
   uuid=$(printf '%s' "$line" | sed -n 's/.*"uuid":"\\([^"]*\\)".*/\\1/p')
+  if [ $n -eq 1 ]; then
+    if [ "${replays ? 'yes' : 'no'}" = "yes" ] && [ -n "$uuid" ]; then
+      printf '{"type":"user","isReplay":true,"uuid":"%s","message":{"role":"user","content":"one"}}\\n' "$uuid"
+    fi
+    printf '%s\\n' '${RESULT('one')}'
+    continue
+  fi
+  while [ ! -f "${join(dir, 'go')}" ]; do sleep 0.05; done
   if [ "${replays ? 'yes' : 'no'}" = "yes" ] && [ -n "$uuid" ]; then
     printf '{"type":"user","isReplay":true,"uuid":"%s","message":{"role":"user","content":"two"}}\\n' "$uuid"
   fi

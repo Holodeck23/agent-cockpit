@@ -25,6 +25,9 @@ describe('an agent that stops taking input', () => {
     writeFileSync(executable, `#!/bin/sh
 if [ "$1" = "--help" ]; then cat help; exit 0; fi
 printf '{"type":"system","subtype":"init","session_id":"stdin-lost"}\\n'
+IFS= read -r line
+request_id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p')
+printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{}}}\\n' "$request_id"
 exec 0<&-
 sleep 2
 `)

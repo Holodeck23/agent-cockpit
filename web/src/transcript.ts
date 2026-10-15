@@ -31,6 +31,8 @@ export type TranscriptItem =
       queuedId?: string
       /** Sent while the agent was busy or starting, and the session ended before it took it. */
       undelivered?: true
+      /** Exact input before workflow clips and attachment display formatting, for draft recovery. */
+      restoreText?: string
       /** The provider might have taken this queued input before revocation. */
       deliveryUncertain?: true
       /** The workspace it was sent in or came from, once the conversation has more than one (W12-15). */
@@ -401,6 +403,7 @@ export function buildTranscript(events: readonly StoredEvent[], currentAgent: Ag
             .replace(/[ \t]+\n/g, '\n').trim()
           const { attachments } = described
           items.push({ type: 'message', key, author, text, ts, showAuthor, ...(workspace ? { workspace } : {}), ...(event.fromConversation ? { fromConversation: event.fromConversation } : {}), ...(attachments.length ? { attachments } : {}),
+            ...(event.queuedId ? { restoreText: event.text } : {}),
             ...(event.workflows?.length ? { workflows: event.workflows } : {}), ...(event.queuedId && waiting.has(event.queuedId) ? { queuedId: event.queuedId } : {}),
             ...(event.queuedId && undelivered.has(event.queuedId) ? { undelivered: true as const } : {}),
             ...(event.queuedId && deliveryUncertain.has(event.queuedId) ? { deliveryUncertain: true as const } : {}) })

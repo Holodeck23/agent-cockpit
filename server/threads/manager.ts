@@ -859,7 +859,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const toAgent = deliverCatchUp ? `${launched.catchUp}\n\n${agentText}` : agentText
     if (launched.catchUp && (deliverCatchUp || !launched.sessionStarted)) store.update(threadId, { catchUp: undefined })
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
-    const queuedId = entry.turnRunning && entry.session.queues?.() ? randomUUID() : undefined
+    const queuedId = ((entry.turnRunning && entry.session.queues?.()) || entry.session.preparing?.()) ? randomUUID() : undefined
     const runId = randomUUID()
     const bound = requireMeta(threadId)
     const binding = queuedId ? { bindingId: bindingIdOf(bound), ...(bound.workspaceId ? { workspaceId: bound.workspaceId } : {}), agent: bound.settings.agent, generation: entry.generation } : undefined

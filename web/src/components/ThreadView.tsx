@@ -254,6 +254,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
           onApprove={(requestId, behavior) => guard(api.approve(meta.id, requestId, behavior))}
           onAnswer={(requestId, answers) => { const done = api.answerQuestion(meta.id, requestId, answers); guard(done); return done }}
           onUnqueue={(queuedId) => guard(api.unqueue(meta.id, queuedId).then(({ text, images }) => setRestore({ text, restore: true, images })))}
+          onRestoreUndelivered={(text, images) => setRestore({ text, restore: true, images })}
           onSendNow={() => guard(api.interrupt(meta.id, twoRunning ? focused : undefined))}
           workspaceName={inSeveral ? workspace?.nameOf : undefined}
           streams={streams}

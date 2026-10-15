@@ -30,6 +30,8 @@ interface TranscriptViewProps {
   onAnswer: (requestId: string, answers: Record<string, string> | undefined) => void | Promise<unknown>
   /** Takes a waiting message back to the draft (J1). */
   onUnqueue?: (queuedId: string) => void
+  /** A startup failure never dispatched this input; return it to the editable draft. */
+  onRestoreUndelivered?: (text: string, images: readonly { file: string; name?: string }[]) => void
   /** Stops the current turn so waiting messages run now (J1). */
   onSendNow?: () => void
   /** Sends a failed turn's message again (J10). */
@@ -76,7 +78,7 @@ function Author({ author, ts, where }: { author: 'you' | AgentId; ts?: string; w
 
 const lineCount = (text: string): number => text.split('\n').length
 
-export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onSendNow, onRetry, onDismiss, onOpenChanges, workspaceName, streams }: TranscriptViewProps) {
+export function TranscriptView({ threadId, items, openApprovals, running, streaming, streamingAuthor, onApprove, onAnswer, onUnqueue, onRestoreUndelivered, onSendNow, onRetry, onDismiss, onOpenChanges, workspaceName, streams }: TranscriptViewProps) {
   const shown = groupDecisions(items, openApprovals)
   const replies = useContext(ReplyContext)
   const waitingIndex = onDismiss ? shown.findLastIndex((i) => i.type === 'message' && Boolean(i.conclusion)) : -1
@@ -159,7 +161,9 @@ export function TranscriptView({ threadId, items, openApprovals, running, stream
                   </div>
                 ) : null}
                 {item.undelivered ? (
-                  <div className="waiting-row" role="status"><span>Not delivered: the agent stopped before it took this message</span></div>
+                  <div className="waiting-row" role="status"><span>Not delivered: the agent stopped before it took this message</span>
+                    {onRestoreUndelivered ? <button type="button" className="button-soft" onClick={() => onRestoreUndelivered(item.restoreText ?? item.text, item.images ?? [])}>Restore to draft</button> : null}
+                  </div>
                 ) : null}
                 {item.deliveryUncertain ? (
                   <div className="waiting-row" role="status"><span>Needs recovery: the agent may have taken this message before its setup was revoked. Check the result before sending it again.</span></div>

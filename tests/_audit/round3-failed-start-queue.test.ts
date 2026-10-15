@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -40,6 +40,27 @@ function harness() {
 }
 
 describe('round 3: a failed Claude start with a message queued during startup', () => {
+  it('keeps the first message recoverable when provider initialize never answers', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cockpit-readiness-stall-'))
+    const project = mkdtempSync(join(tmpdir(), 'cockpit-readiness-project-'))
+    const executable = join(dir, 'claude')
+    writeFileSync(join(dir, 'help'), readFileSync('tests/fixtures/claude-2.1.291-help.txt'))
+    writeFileSync(executable, '#!/bin/sh\nif [ "$1" = "--help" ]; then cat "$(dirname "$0")/help"; exit 0; fi\nwhile IFS= read -r line; do printf "%s\\n" "$line" >> requests; done\n')
+    chmodSync(executable, 0o755)
+    const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-readiness-state-')))
+    const manager = createThreadManager(store, {
+      launchers: { claude: (request, onEvent) => launchClaude({ cwd: request.cwd }, onEvent, { executable, initializeTimeoutMs: 100 }) },
+    })
+    managers.push(manager)
+    const thread = manager.create({ projectPath: project, settings: threadSettingsSchema.parse({ agent: 'claude' }), text: 'must remain recoverable' })
+    const first = store.events(thread.id).find((entry) => entry.event.kind === 'user_text')?.event
+    expect(first).toMatchObject({ queuedId: expect.any(String) })
+    await expect.poll(() => store.events(thread.id).some((entry) => entry.event.kind === 'exit'), { timeout: 5000 }).toBe(true)
+    expect(buildTranscript(store.events(thread.id), 'claude').find((item) => item.type === 'message'))
+      .toMatchObject({ undelivered: true, restoreText: 'must remain recoverable' })
+    expect(readFileSync(join(project, 'requests'), 'utf8')).not.toContain('must remain recoverable')
+  })
+
   it('records one failure and shows the queued message as not delivered', async () => {
     const { manager, store, thread } = harness()
     manager.send(thread.id, 'two')
@@ -57,12 +78,12 @@ describe('round 3: a failed Claude start with a message queued during startup', 
     const summary = manager.summaries().find((s) => s.meta.id === thread.id)!
     expect(isBusy(summary.status)).toBe(false)
 
-    // The transcript: one failure card, and the second message says it was not delivered.
+    // The transcript: one failure card, and neither input crossed the provider boundary.
     const items = buildTranscript(events, 'claude')
     expect(items.filter((item) => item.type === 'failure')).toHaveLength(1)
     const messages = items.filter((item) => item.type === 'message')
     expect(messages.map((item) => item.text)).toEqual(['one', 'two'])
-    expect(messages[0]).not.toHaveProperty('undelivered')
+    expect(messages[0]).toMatchObject({ undelivered: true, restoreText: 'one' })
     expect(messages[1]).toMatchObject({ undelivered: true })
     expect(messages[1]).not.toHaveProperty('queuedId')
   }, 20000)

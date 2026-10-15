@@ -14,7 +14,15 @@ describe('claude-1: messages sent while Claude Code is still starting', () => {
     writeFileSync(executable, `#!/bin/sh
 if [ "$1" = "--help" ]; then sleep 0.3; cat help; exit 0; fi
 printf '{"type":"system","subtype":"init","session_id":"audit-claude-1"}\\n'
-while IFS= read -r line; do printf '%s\\n' "$line" >> "${received}"; done
+while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      request_id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p')
+      printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{}}}\\n' "$request_id"
+      ;;
+    *) printf '%s\\n' "$line" >> "${received}" ;;
+  esac
+done
 `)
     chmodSync(executable, 0o755)
     const events: NormalizedEvent[] = []

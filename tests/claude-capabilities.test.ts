@@ -18,7 +18,7 @@ const fileHelp = `${help}  --bare                                Minimal mode. E
                                         via: --system-prompt[-file],
                                         --append-system-prompt[-file], --add-dir
 `
-function fixture(helpText = help, probe = '') {
+function fixture(helpText = help, probe = '', initReply = true) {
   const cwd = mkdtempSync(join(tmpdir(), 'cockpit-cli-capabilities-'))
   const executable = join(cwd, 'claude')
   writeFileSync(join(cwd, 'help'), helpText)
@@ -31,7 +31,15 @@ printf '%s\\n' "$@" > launched
 printf '%s' "\${COCKPIT_MCP_TOKEN:-}" > ambient-token
 printf '{"type":"system","subtype":"init","session_id":"proof-session"}\\n'
 while IFS= read -r line; do
-  printf '{"type":"result","subtype":"success","is_error":false}\\n'
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      if [ "${initReply ? 'yes' : 'no'}" = yes ]; then
+        request_id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p')
+        printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{}}}\\n' "$request_id"
+      fi
+      ;;
+    *) printf '%s\\n' "$line" >> provider-input; printf '{"type":"result","subtype":"success","is_error":false}\\n' ;;
+  esac
 done
 `)
   chmodSync(executable, 0o755)
@@ -59,6 +67,16 @@ describe('Use my Chrome (W9-12)', () => {
 })
 
 describe('Claude compatibility', () => {
+  it('holds first input until initialization and refuses a startup timeout without dispatch', async () => {
+    const f = fixture(help, '', false), events: NormalizedEvent[] = []
+    const session = launchClaude({ cwd: f.cwd }, (event) => events.push(event), { executable: f.executable, initializeTimeoutMs: 100 })
+    expect(session.preparing?.()).toBe(true)
+    session.send('must remain in the draft', 'queued-first')
+    await expect.poll(() => session.alive(), FIRST_RUN).toBe(false)
+    expect(existsSync(join(f.cwd, 'provider-input'))).toBe(false)
+    expect(events.some((event) => event.kind === 'error' && event.message.includes('ready to take input'))).toBe(true)
+    await session.close()
+  })
   it('refuses a changed approved source before spawn', async () => {
     const f = fixture(help), events: NormalizedEvent[] = []
     const session = launchClaude({ cwd: f.cwd }, (e) => events.push(e), {

@@ -24,6 +24,8 @@ export interface ClaudeLaunchDeps {
   env?: Readonly<Record<string, string>>
   /** Recheck approved source revisions after the CLI probe, immediately before spawn. */
   validateSources?: () => void
+  /** Shortened only by bounded startup tests; production waits for the pinned CLI's init response. */
+  initializeTimeoutMs?: number
 }
 
 /**
@@ -37,6 +39,9 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
   // Use my Chrome: the first Chrome call gets a bounded wait (chrome-watch.ts).
   const onEvent: EventSink = input.chrome ? watchChrome(events, () => session?.interrupt()) : events
   let ended = false
+  let initialized = false
+  let startupError: string | undefined
+  const startupEvents: NormalizedEvent[] = []
   // Every message sent before the --help probe resolves waits here, in order, and is written once Claude is up.
   let pending: readonly { readonly text: string; readonly queuedId?: string; readonly images?: readonly OutgoingImage[] }[] = []
   let replays = false
@@ -48,11 +53,24 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     onEvent({ kind: 'result', ok: false, ...(stopped ? { stopped: true } : {}) })
     onEvent({ kind: 'exit', code: null })
   }
+  const closeFailedStart = (): void => {
+    if (session) void session.close().catch((error: unknown) => onEvent({ kind: 'error', message: `Could not close Claude Code after startup failed: ${error instanceof Error ? error.message : String(error)}` }))
+  }
+  const fromProvider: EventSink = (event) => {
+    if (ended) return
+    if (!initialized) {
+      if (event.kind === 'error') startupError = event.message
+      else if (event.kind === 'exit') finish(new Error(startupError ?? 'Claude Code exited before it was ready to take input'))
+      else startupEvents.push(event)
+      return
+    }
+    onEvent(event)
+  }
   // Defer spawning until callers can register the session (or immediately close
   // it). In particular, never abort an execFile whose spawn has already failed.
   const ready = Promise.resolve().then(() => ended ? undefined :
     probeClaude(deps.executable ?? 'claude', input.cwd, cleanClaudeEnv(deps.env), controller.signal))
-    .then((capabilities) => {
+    .then(async (capabilities) => {
       if (ended || !capabilities) return
       deps.validateSources?.()
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
@@ -63,12 +81,20 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
           ...(prompt ? { appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : {}) }, capabilities)
         validateClaudeArgs(args, capabilities)
         replays = capabilities.replayUserMessages
-        session = spawnClaude(input, onEvent, deps, args, () => { prompt?.remove(); privateConfig.remove() })
+        const started = spawnClaude(input, fromProvider, deps, args, () => { prompt?.remove(); privateConfig.remove() })
+        session = started.session
+        await started.initialized
+        if (startupError) throw new Error(startupError)
+        deps.validateSources?.()
       } catch (error) {
         prompt?.remove()
         privateConfig.remove()
         throw error
       }
+      if (ended) return
+      initialized = true
+      for (const event of startupEvents) onEvent(event)
+      startupEvents.length = 0
       const waiting = pending
       pending = []
       for (const message of waiting) {
@@ -77,11 +103,11 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
         // waiting on counts as taken once it is written, as a message sent after startup would have.
         if (message.queuedId && !replays) onEvent({ kind: 'user_taken', text: message.text, id: message.queuedId })
       }
-    }).catch((error: unknown) => finish(error))
+    }).catch((error: unknown) => { finish(error); closeFailedStart() })
   return {
     agent: 'claude',
     send(text, queuedId, images) {
-      if (session) session.send(text, queuedId, images)
+      if (session && initialized) session.send(text, queuedId, images)
       else if (!ended) pending = [...pending, { text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) }]
       else onEvent({ kind: 'error', message: 'Agent process is not running' })
     },
@@ -89,9 +115,10 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     respondQuestion: (question, answers) => session?.respondQuestion?.(question, answers),
     // A message sent mid-turn while Claude is still starting waits in `pending` and counts as queued, so the manager
     // tracks it like any other; whether Claude replays it is known once Claude is up.
-    queues: () => session ? replays : !ended,
+    queues: () => initialized ? replays : !ended,
+    preparing: () => !initialized && !ended,
     cancelQueued(queuedId) {
-      if (session) return session.cancelQueued?.(queuedId) ?? Promise.resolve(false)
+      if (session && initialized) return session.cancelQueued?.(queuedId) ?? Promise.resolve(false)
       // Not written yet: taking it back is dropping it from the wait.
       const kept = pending.filter((message) => message.queuedId !== queuedId)
       const dropped = kept.length < pending.length
@@ -99,16 +126,17 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
       return Promise.resolve(dropped)
     },
     interrupt() {
-      if (session) session.interrupt()
+      if (session && initialized) session.interrupt()
+      else if (session) { finish(undefined, true); closeFailedStart() }
       else { finish(undefined, true); controller.abort() }
     },
     async close() {
-      if (session) { await session.close(); return }
+      if (session) { if (!initialized) finish(undefined, true); await session.close(); await ready; return }
       finish(undefined, true)
       controller.abort()
       await ready
     },
-    alive: () => session ? session.alive() : !ended,
+    alive: () => !ended && (session ? session.alive() : true),
   }
 }
 
@@ -130,7 +158,9 @@ function writePromptFile(text: string): { readonly file: string; remove(): void 
   return { file, remove: () => rmSync(dir, { recursive: true, force: true }) }
 }
 
-function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[], cleanup: () => void): AgentSession {
+function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeLaunchDeps, args: string[], cleanup: () => void): {
+  readonly session: AgentSession; readonly initialized: Promise<void>
+} {
   const child = spawn(deps.executable ?? 'claude', args, {
     cwd: input.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
@@ -149,21 +179,30 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
   }
 
   // Our own control requests that wait for Claude's answer (cancel_async_message).
-  const replies = new Map<string, (response: unknown) => void>()
-  const ask = (request: Record<string, unknown>): Promise<unknown> => new Promise((resolve) => {
+  type ControlResponse = { readonly subtype?: string; readonly response?: unknown }
+  const replies = new Map<string, (response: ControlResponse | undefined) => void>()
+  const askRaw = (request: Record<string, unknown>, timeoutMs = 5000): Promise<ControlResponse | undefined> => new Promise((resolve) => {
     if (exited || !child.stdin.writable) { resolve(undefined); return }
     const id = randomUUID()
-    replies.set(id, resolve)
+    const timeout = setTimeout(() => { if (replies.delete(id)) resolve(undefined) }, timeoutMs)
+    replies.set(id, (response) => { clearTimeout(timeout); resolve(response) })
     write({ type: 'control_request', request_id: id, request })
-    setTimeout(() => { if (replies.delete(id)) resolve(undefined) }, 5000)
+  })
+  const ask = async (request: Record<string, unknown>): Promise<unknown> => (await askRaw(request))?.response
+
+  // The CLI responds to initialize without a user prompt. Do not dispatch the first
+  // message until this protocol boundary has answered; a timeout keeps it recoverable.
+  const initTimeoutMs = deps.initializeTimeoutMs ?? 15_000
+  const initialized = askRaw({ subtype: 'initialize', hooks: null }, initTimeoutMs).then((response) => {
+    if (response?.subtype !== 'success') throw new Error(`Claude Code did not become ready to take input within ${initTimeoutMs} ms`)
   })
 
   createInterface({ input: child.stdout }).on('line', (line) => {
     if (replies.size > 0 && line.includes('"control_response"')) {
       try {
-        const message = JSON.parse(line) as { response?: { request_id?: string; response?: unknown } }
+        const message = JSON.parse(line) as { response?: { request_id?: string; subtype?: string; response?: unknown } }
         const id = message.response?.request_id
-        if (id && replies.has(id)) { replies.get(id)!(message.response?.response); replies.delete(id); return }
+        if (id && replies.has(id)) { replies.get(id)!(message.response); replies.delete(id); return }
       } catch { /* parsed below as usual */ }
     }
     // A parser that throws on an odd line must not escape the readline callback (H1).
@@ -184,6 +223,8 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     if (!child.pid && !exited) {
       exited = true
       cleanup()
+      for (const resolve of replies.values()) resolve(undefined)
+      replies.clear()
       onEvent({ kind: 'result', ok: false })
       onEvent({ kind: 'exit', code: null })
     }
@@ -200,7 +241,7 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     onEvent({ kind: 'exit', code })
   })
 
-  return {
+  const session: AgentSession = {
     agent: 'claude',
     send(text: string, queuedId?: string, images?: readonly OutgoingImage[]) {
       write(claudeUserMessage(text, images, queuedId))
@@ -236,4 +277,5 @@ function spawnClaude(input: ClaudeLaunchInput, onEvent: EventSink, deps: ClaudeL
     close: () => stopChild(child, () => !exited),
     alive: () => !exited,
   }
+  return { session, initialized }
 }

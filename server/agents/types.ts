@@ -161,6 +161,8 @@ export interface AgentSession {
   send(text: string, queuedId?: string, images?: readonly OutgoingImage[]): void
   /** True when a message sent mid-turn waits in the agent's own queue and can be taken back (J1). */
   queues?(): boolean
+  /** First input is still held before provider initialization; it can be returned to the draft on failure. */
+  preparing?(): boolean
   /** Takes back a queued message; false once the agent has taken it. */
   cancelQueued?(queuedId: string): Promise<boolean>
   respondApproval(approval: PendingApproval, behavior: ApprovalBehavior): void
