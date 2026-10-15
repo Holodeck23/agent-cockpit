@@ -1,7 +1,7 @@
 // Synthetic provider, real Cockpit MCP stdio tools and approval card. No network provider usage.
 import { createInterface } from 'node:readline'
 import assert from 'node:assert/strict'
-import { readFileSync, realpathSync, statSync } from 'node:fs'
+import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
@@ -13,10 +13,12 @@ const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`)
 emit({ type: 'system', subtype: 'init', session_id: resume || session })
 let resolveApproval
 const quote = (text) => "'" + text.replaceAll("'", "'\\''") + "'"
-async function run() {
-  const client = new Client({ name: 'recovery-proof', version: '1' })
+const client = new Client({ name: 'recovery-proof', version: '1' })
+let config
+async function initialize() {
+  if (process.env.COCKPIT_RECOVERY_SKIP_BRIDGE === '1') return
   const configPath = args[args.indexOf('--mcp-config') + 1]
-  const config = JSON.parse(configPath.startsWith('{') ? configPath : readFileSync(configPath, 'utf8')).mcpServers.cockpit
+  config = JSON.parse(configPath.startsWith('{') ? configPath : readFileSync(configPath, 'utf8')).mcpServers.cockpit
   if (process.env.COCKPIT_W13_PROOF_PACKAGE) {
     const bundle = process.env.COCKPIT_W13_PROOF_PACKAGE
     assert.ok(args.includes('--strict-mcp-config'))
@@ -30,16 +32,18 @@ async function run() {
     assert.ok(!args.some((arg) => arg.includes(config.env.COCKPIT_MCP_TOKEN)))
   }
   const transport = new StdioClientTransport({ command: config.command, args: config.args, env: { ...process.env, ...config.env } })
+  await client.connect(transport)
+  if (process.env.COCKPIT_W13_PROOF_PACKAGE) {
+    const identity = await fetch(`${config.env.COCKPIT_MCP_URL}/api/mcp/identity`, {
+      headers: { authorization: `Bearer ${config.env.COCKPIT_MCP_TOKEN}` },
+    }).then((response) => response.json())
+    assert.equal(identity.data.server, 'cockpit')
+    assert.equal(identity.data.protocol, 1)
+    assert.equal(realpathSync(identity.data.projectPath), realpathSync(process.cwd()))
+  }
+}
+async function run() {
   try {
-    await client.connect(transport)
-    if (process.env.COCKPIT_W13_PROOF_PACKAGE) {
-      const identity = await fetch(`${config.env.COCKPIT_MCP_URL}/api/mcp/identity`, {
-        headers: { authorization: `Bearer ${config.env.COCKPIT_MCP_TOKEN}` },
-      }).then((response) => response.json())
-      assert.equal(identity.data.server, 'cockpit')
-      assert.equal(identity.data.protocol, 1)
-      assert.equal(realpathSync(identity.data.projectPath), realpathSync(process.cwd()))
-    }
     const call = async (name, args = {}) => {
       const result = await client.callTool({ name, arguments: args })
       if (result.isError) throw new Error(JSON.stringify(result.content))
@@ -74,9 +78,13 @@ async function run() {
 createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line)
   if (message.type === 'control_request' && message.request?.subtype === 'initialize') {
-    emit({ type: 'control_response', response: { request_id: message.request_id, subtype: 'success', response: {} } })
+    void initialize().then(
+      () => emit({ type: 'control_response', response: { request_id: message.request_id, subtype: 'success', response: {} } }),
+      (error) => emit({ type: 'control_response', response: { request_id: message.request_id, subtype: 'error', response: { message: String(error) } } }),
+    )
   }
   if (message.type === 'user') {
+    if (process.env.COCKPIT_RECOVERY_USER_MARKER) writeFileSync(process.env.COCKPIT_RECOVERY_USER_MARKER, 'received')
     emit({ ...message, isReplay: true })
     void run()
   }

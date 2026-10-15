@@ -20,18 +20,43 @@ export interface McpSessions {
   issue(grant: McpGrant): string
   revoke(token: string): void
   resolve(token: string): McpGrant | undefined
+  /** The host observed an authenticated identity request; the CLI initialize gate is checked separately. */
+  markAuthenticated(token: string): void
+  waitAuthenticated(token: string, timeoutMs?: number): Promise<void>
 }
 
 export function createMcpSessions(): McpSessions {
-  const grants = new Map<string, McpGrant>()
+  const grants = new Map<string, { grant: McpGrant; authenticated: boolean; waiters: Set<{ resolve: () => void; reject: (error: Error) => void }> }>()
   return {
     issue(grant) {
       const token = randomBytes(32).toString('base64url')
-      grants.set(token, grant)
+      grants.set(token, { grant, authenticated: false, waiters: new Set() })
       return token
     },
-    revoke: (token) => void grants.delete(token),
-    resolve: (token) => grants.get(token),
+    revoke(token) {
+      const state = grants.get(token)
+      grants.delete(token)
+      for (const waiter of state?.waiters ?? []) waiter.reject(new Error('Cockpit MCP grant was revoked before bridge authentication'))
+    },
+    resolve: (token) => grants.get(token)?.grant,
+    markAuthenticated(token) {
+      const state = grants.get(token)
+      if (!state) return
+      state.authenticated = true
+      for (const waiter of state.waiters) waiter.resolve()
+      state.waiters.clear()
+    },
+    waitAuthenticated(token, timeoutMs = 15_000) {
+      const state = grants.get(token)
+      if (!state) return Promise.reject(new Error('Cockpit MCP grant expired before bridge authentication'))
+      if (state.authenticated) return Promise.resolve()
+      return new Promise<void>((resolve, reject) => {
+        const waiter = { resolve: () => { clearTimeout(timer); state.waiters.delete(waiter); resolve() },
+          reject: (error: Error) => { clearTimeout(timer); state.waiters.delete(waiter); reject(error) } }
+        const timer = setTimeout(() => waiter.reject(new Error(`Cockpit MCP bridge did not authenticate within ${timeoutMs} ms`)), timeoutMs)
+        state.waiters.add(waiter)
+      })
+    },
   }
 }
 
@@ -50,6 +75,8 @@ export interface McpCommand {
  */
 export interface CockpitMcpLaunch extends McpCommand {
   readonly secretEnv: Readonly<Record<string, string>>
+  /** Required by Claude before the first user message crosses stdin. */
+  readonly ready?: () => Promise<void>
 }
 
 export const MCP_SERVER_NAME = 'cockpit'

@@ -123,7 +123,8 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
           : req.userMcpServers ? { mcpConfig: { mcpServers: req.userMcpServers } } : {}),
       },
       onEvent,
-      { env: claudeLaunchEnv(req.accountEnv), ...(req.validateSources ? { validateSources: req.validateSources } : {}) },
+      { env: claudeLaunchEnv(req.accountEnv), ...(req.validateSources ? { validateSources: req.validateSources } : {}),
+        ...(req.cockpit?.ready ? { hostReady: req.cockpit.ready } : {}) },
     )
   },
   codex: (req, onEvent) => {

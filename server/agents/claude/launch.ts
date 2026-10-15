@@ -26,6 +26,8 @@ export interface ClaudeLaunchDeps {
   validateSources?: () => void
   /** Shortened only by bounded startup tests; production waits for the pinned CLI's init response. */
   initializeTimeoutMs?: number
+  /** The packaged Cockpit MCP bridge authenticated to this session's scoped host. */
+  hostReady?: () => Promise<void>
 }
 
 /**
@@ -83,7 +85,7 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
         replays = capabilities.replayUserMessages
         const started = spawnClaude(input, fromProvider, deps, args, () => { prompt?.remove(); privateConfig.remove() })
         session = started.session
-        await started.initialized
+        await Promise.all([started.initialized, deps.hostReady?.() ?? Promise.resolve()])
         if (startupError) throw new Error(startupError)
         deps.validateSources?.()
       } catch (error) {

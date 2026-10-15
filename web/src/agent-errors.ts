@@ -22,6 +22,7 @@ function unwrap(message: string): string {
 
 const RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/usage limit|session limit|weekly limit|rate.?limit|limit reached|too many requests|\b429\b|quota/i, 'You have reached a usage limit'],
+  [/Cockpit MCP (bridge|host|grant)/i, 'Cockpit tools could not connect'],
   [/not (logged|signed) in|log ?in again|authenticat|unauthori[sz]ed|\b401\b|invalid api key|oauth/i, 'The agent is not signed in'],
   [/unsupported value|not supported with the .* model|invalid_request|\b400\b/i, 'The agent refused this request'],
   [/overloaded|\b5\d\d\b|internal server error|service unavailable/i, "The agent's service had a problem"],

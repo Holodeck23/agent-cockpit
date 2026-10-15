@@ -251,7 +251,8 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
           mcp: (grant) => {
             const token = sessions.issue(grant)
             return {
-              launch: { ...mcpCommand, secretEnv: { [MCP_URL_ENV]: baseUrl, [MCP_TOKEN_ENV]: token } },
+              launch: { ...mcpCommand, secretEnv: { [MCP_URL_ENV]: baseUrl, [MCP_TOKEN_ENV]: token },
+                ready: () => sessions.waitAuthenticated(token) },
               release: () => sessions.revoke(token),
             }
           },

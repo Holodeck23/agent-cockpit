@@ -74,6 +74,38 @@ function harness(executable: string) {
 }
 
 describe('review: a message sent while Claude is still starting is queued like any other', () => {
+  it('keeps first input behind the authenticated Cockpit bridge gate', async () => {
+    const claude = fakeClaude(HELP_WITHOUT_REPLAY, false)
+    const cwd = mkdtempSync(join(tmpdir(), 'cockpit-review-bridge-cwd-'))
+    const events: NormalizedEvent[] = []
+    let authenticate!: () => void
+    const hostReady = new Promise<void>((resolve) => { authenticate = resolve })
+    const session = launchClaude({ cwd }, (event) => events.push(event), { executable: claude.executable, hostReady: () => hostReady })
+    try {
+      session.send('one')
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      expect(() => readFileSync(claude.received, 'utf8')).toThrow()
+      authenticate()
+      await expect.poll(() => readFileSync(claude.received, 'utf8').includes('one'), { timeout: 5000 }).toBe(true)
+      await expect.poll(() => events.some((event) => event.kind === 'result'), { timeout: 5000 }).toBe(true)
+    } finally { await session.close() }
+  }, 15000)
+
+  it('does not dispatch first input when bridge authentication fails', async () => {
+    const claude = fakeClaude(HELP_WITHOUT_REPLAY, false)
+    const cwd = mkdtempSync(join(tmpdir(), 'cockpit-review-bridge-denied-'))
+    const events: NormalizedEvent[] = []
+    const session = launchClaude({ cwd }, (event) => events.push(event), {
+      executable: claude.executable, hostReady: () => Promise.reject(new Error('bridge authentication failed')),
+    })
+    try {
+      session.send('must not cross stdin')
+      await expect.poll(() => events.some((event) => event.kind === 'result'), { timeout: 5000 }).toBe(true)
+      expect(events).toContainEqual({ kind: 'error', message: 'bridge authentication failed' })
+      expect(() => readFileSync(claude.received, 'utf8')).toThrow()
+    } finally { await session.close() }
+  }, 15000)
+
   it('the session reports it queues from the start, and a message can be taken back before it was written', async () => {
     const { executable, received } = fakeClaude(HELP, true)
     const cwd = mkdtempSync(join(tmpdir(), 'cockpit-review-claude-cwd-'))

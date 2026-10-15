@@ -107,8 +107,10 @@ export async function handleMcpRoute(
   const { projectPath } = grant
 
   if (parts[2] === 'identity' && parts.length === 3 && method === 'GET') {
-    return sendJson(res, 200, { data: { server: 'cockpit', protocol: 1, threadId: grant.threadId,
+    sendJson(res, 200, { data: { server: 'cockpit', protocol: 1, threadId: grant.threadId,
       projectPath, cwd: grant.cwd, ...(grant.workspaceId ? { workspaceId: grant.workspaceId } : {}) } })
+    sessions.markAuthenticated(auth.slice('Bearer '.length))
+    return
   }
 
   if (parts[2] === 'conversations') {
