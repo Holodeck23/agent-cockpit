@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -29,4 +29,49 @@ it('binds approved MCP source, executable and script revisions without exposing 
   expect(snapshotMcpSources(input).revision).not.toBe(first.revision)
   writeFileSync(file, JSON.stringify({ mcpServers: { cockpit: { type: 'stdio', command: executable, args: [] } } }))
   expect(() => snapshotMcpSources(input)).toThrow(/Reserved/)
+})
+
+it('imports enabled installed plugin MCP definitions, binds revisions, and blocks unresolved plugins', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-plugin-mcp-'))
+  const home = join(root, 'home'), profile = join(home, '.claude'), cwd = join(root, 'project'), plugin = join(root, 'plugin')
+  mkdirSync(join(profile, 'plugins'), { recursive: true }); mkdirSync(cwd)
+  mkdirSync(join(plugin, '.claude-plugin'), { recursive: true })
+  const manifest = join(plugin, '.claude-plugin', 'plugin.json')
+  writeFileSync(manifest, JSON.stringify({ name: 'fixture', mcpServers: { fixture: { type: 'http', url: 'https://example.test/mcp' } } }))
+  writeFileSync(join(profile, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'fixture@local': [{ installPath: plugin }] } }))
+  const settings = join(profile, 'settings.json')
+  writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'fixture@local': true } }))
+  const input = { home, profileDir: profile, cwd, pathEnv: '/usr/bin:/bin' }
+  const first = snapshotMcpSources(input)
+  expect(first.review).toMatchObject([{ name: 'fixture', source: join(realpathSync(plugin), '.claude-plugin', 'plugin.json'), url: 'https://example.test/mcp' }])
+  expect(first.servers.fixture?.url).toBe('https://example.test/mcp')
+  writeFileSync(manifest, JSON.stringify({ name: 'fixture', mcpServers: { fixture: { type: 'http', url: 'https://example.test/new' } } }))
+  expect(snapshotMcpSources(input).revision).not.toBe(first.revision)
+  writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'unknown@builtin': true } }))
+  expect(() => snapshotMcpSources(input)).toThrow(/source is unresolved/)
+})
+
+it('pins plugin-relative executable scripts and blocks a plugin MCP file escaping by symlink', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-plugin-mcp-'))
+  const home = join(root, 'home'), profile = join(home, '.claude'), cwd = join(root, 'project'), plugin = join(root, 'plugin')
+  mkdirSync(join(profile, 'plugins'), { recursive: true }); mkdirSync(cwd)
+  mkdirSync(join(plugin, '.claude-plugin'), { recursive: true })
+  const script = join(plugin, 'server.js')
+  writeFileSync(script, 'process.stdout.write("ready")')
+  writeFileSync(join(plugin, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: 'node', args: ['./server.js'] } } }))
+  writeFileSync(join(plugin, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'fixture' }))
+  writeFileSync(join(profile, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'fixture@local': [{ installPath: plugin }] } }))
+  writeFileSync(join(profile, 'settings.json'), JSON.stringify({ enabledPlugins: { 'fixture@local': true } }))
+  const input = { home, profileDir: profile, cwd, pathEnv: process.env.PATH ?? '' }
+  const first = snapshotMcpSources(input)
+  expect(first.servers.fixture?.args).toEqual([realpathSync(script)])
+  writeFileSync(script, 'process.stdout.write("changed")')
+  expect(snapshotMcpSources(input).revision).not.toBe(first.revision)
+  writeFileSync(join(plugin, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: 'node', args: ['-e', 'process.exit(0)'] } } }))
+  expect(() => snapshotMcpSources(input)).toThrow(/pinned script/)
+  const external = join(root, 'external.json')
+  writeFileSync(external, JSON.stringify({ mcpServers: {} }))
+  symlinkSync(external, join(plugin, 'linked.json'))
+  writeFileSync(join(plugin, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'fixture', mcpServers: 'linked.json' }))
+  expect(() => snapshotMcpSources(input)).toThrow(/leaves its installed folder/)
 })

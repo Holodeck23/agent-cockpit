@@ -145,10 +145,12 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           </div> : null}
           {mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
             <strong>Connector source review</strong>
-            <small>These are explicit user and project MCP entries. Plugin connectors require separate verification. Review the source files before approving this exact revision, including when only a conversation enables connectors.</small>
+            <small>Review user, project and installed plugin connector sources before approving this exact revision, including when only a conversation enables connectors. Unresolved plugins remain blocked.</small>
             {mcpReview.review.length ? <ul>{mcpReview.review.map((source) => <li key={`${source.source}:${source.name}`}>
               <strong>{source.name}</strong> · {source.executable ?? source.url} · {source.source}
-            </li>)}</ul> : <small>No explicit connector entries found.</small>}
+              {source.executableHash ? <small>Executable SHA-256: {source.executableHash}</small> : null}
+              {source.referencedFiles?.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
+            </li>)}</ul> : <small>No connector entries found in reviewed sources.</small>}
             {mcpReview.review.length && approvedMcpRevision !== mcpReview.revision
               ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision), () => setApprovedMcpRevision(mcpReview.revision))}>Approve these source revisions</button>
               : approvedMcpRevision === mcpReview.revision ? <small>Reviewed for this project. Changes require another review.</small> : null}

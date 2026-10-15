@@ -217,7 +217,8 @@ export const api = {
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
   setPinnedFiles: (path: string, files: readonly string[]) => request<Project>('/api/projects/pins', { method: 'POST', body: { path, files } }),
-  claudeMcpSources: (path: string) => request<{ revision: string; review: { name: string; source: string; executable?: string; executableHash?: string; url?: string }[] }>(`/api/projects/claude-mcp?${new URLSearchParams({ path })}`),
+  claudeMcpSources: (path: string) => request<{ revision: string; review: { name: string; source: string; executable?: string; executableHash?: string;
+    referencedFiles?: readonly { path: string; hash: string }[]; url?: string }[] }>(`/api/projects/claude-mcp?${new URLSearchParams({ path })}`),
   approveClaudeMcp: (path: string, revision: string) => request<Project>('/api/projects/claude-mcp', { method: 'POST', body: { path, revision } }),
   claudeHookSources: (path: string) => request<{ revision: string; review: { event: string; source: string; executable: string; executableHash: string; referencedFiles: readonly { path: string; hash: string }[] }[] }>(`/api/projects/claude-hooks?${new URLSearchParams({ path })}`),
   approveClaudeHooks: (path: string, revision: string) => request<Project>('/api/projects/claude-hooks', { method: 'POST', body: { path, revision } }),
