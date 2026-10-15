@@ -62,7 +62,7 @@ export function modelSummary(choice: AgentChoice, agyListed?: readonly ModelOpti
 }
 
 export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): Partial<ThreadSettings> {
-  const { model: _model, effort: _effort, useChrome: _chrome, ...rest } = base ?? { useHooks: false }
+  const { model: _model, effort: _effort, useChrome: _chrome, ...rest } = base ?? { useHooks: false, hooksSetup: 'inherit' as const, mcpSetup: 'inherit' as const }
   return {
     ...rest,
     ...(choice.agent === 'claude' && choice.chrome ? { useChrome: true } : {}),

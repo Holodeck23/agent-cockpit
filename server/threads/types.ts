@@ -13,6 +13,9 @@ export const threadSettingsSchema = z.object({
   effort: z.enum(ALL_EFFORTS).optional(),
   permissionMode: z.enum(PERMISSION_MODES).default('manual'),
   useHooks: z.boolean().default(false),
+  /** New clients set these explicitly. Absence preserves legacy useHooks=false/true semantics. */
+  hooksSetup: z.enum(['inherit', 'on', 'off']).optional(),
+  mcpSetup: z.enum(['inherit', 'on', 'off']).optional(),
   /** Use my Chrome (H4, Claude only): applies at the next launch, so only while the conversation is idle. */
   useChrome: z.boolean().optional(),
 })
