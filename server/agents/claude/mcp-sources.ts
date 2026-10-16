@@ -9,6 +9,8 @@ export interface McpSourceSnapshot {
   readonly servers: Readonly<Record<string, Server>>
   readonly review: readonly { name: string; source: string; executable?: string; executableHash?: string;
     referencedFiles?: readonly { path: string; hash: string }[]; url?: string }[]
+  /** Entries omitted from the private config; approval acknowledges this degraded selection. */
+  readonly unavailable: readonly { name: string; source: string; reason: string }[]
 }
 
 function sha(bytes: Buffer | string): string { return createHash('sha256').update(bytes).digest('hex') }
@@ -73,6 +75,8 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
   digest.update(input.accountId ?? 'default-claude').update(String(input.accountGeneration ?? 1))
   const servers: Record<string, Server> = Object.create(null) as Record<string, Server>
   const review: McpSourceSnapshot['review'][number][] = []
+  const unavailable: McpSourceSnapshot['unavailable'][number][] = []
+  const seen = new Set<string>()
   const add = (file: string, definitions: unknown, pluginRoot?: string): void => {
     if (definitions === undefined) return
     if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) throw new Error(`Invalid MCP servers: ${file}`)
@@ -80,10 +84,15 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
     // Bind the selected definitions, rather than invalidating approval on every CLI write.
     digest.update(file).update(JSON.stringify(definitions))
     for (const [name, raw] of Object.entries(definitions)) {
-      if (name.toLowerCase() === 'cockpit' || Object.hasOwn(servers, name)) throw new Error(`Reserved or duplicate MCP server name: ${name}`)
+      if (name.toLowerCase() === 'cockpit' || seen.has(name)) throw new Error(`Reserved or duplicate MCP server name: ${name}`)
+      seen.add(name)
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`Invalid MCP server: ${name}`)
       const server = (pluginRoot ? substitutePluginRoot(raw, pluginRoot) : raw) as Server
       if (typeof server.command === 'string') {
+        if (['npx', 'pnpx', 'npm', 'yarn', 'bunx', 'uvx'].includes(basename(server.command))) {
+          unavailable.push({ name, source: file, reason: 'Pin a local executable before this connector can run' })
+          continue
+        }
         const command = executablePath(server.command, pluginRoot ?? input.cwd, input.pathEnv)
         const executableBytes = fileBytes(command)
         const executableHash = sha(executableBytes)
@@ -91,8 +100,9 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
         pinShebang(command, executableBytes, digest, pluginRoot ?? input.cwd, input.pathEnv)
         if (!Array.isArray(server.args) || !server.args.every((arg) => typeof arg === 'string')) throw new Error(`Invalid MCP arguments: ${name}`)
         // Package-manager launchers can download new code under an unchanged config.
-        if (['npx', 'pnpx', 'npm', 'yarn', 'bunx', 'uvx'].includes(basename(server.command)) || /(?:npx|pnpx|npm|yarn|bunx|uvx)(?:-cli)?\.(?:c?js|mjs)$/.test(basename(command))) {
-          throw new Error(`Pin a local executable before approving MCP server ${name}`)
+        if (/(?:npx|pnpx|npm|yarn|bunx|uvx)(?:-cli)?\.(?:c?js|mjs)$/.test(basename(command))) {
+          unavailable.push({ name, source: file, reason: 'Pin a local executable before this connector can run' })
+          continue
         }
         if (/^(?:node|python\d*(?:\.\d+)?|bash|sh|zsh|ruby|perl)$/.test(basename(command))) {
           const script = (server.args as string[])[0]
@@ -149,13 +159,17 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
   }
   if ([...enabled.values()].some(Boolean)) {
     const registryFile = join(profile, 'plugins', 'installed_plugins.json')
-    if (!existsSync(registryFile)) throw new Error('Enabled Claude plugins have no installed-source registry')
-    const registry = objectFromFile(registryFile).plugins
+    const registry = existsSync(registryFile) ? objectFromFile(registryFile).plugins : {}
     if (!registry || typeof registry !== 'object' || Array.isArray(registry)) throw new Error('Invalid Claude plugin registry')
     for (const [id, state] of enabled) {
       if (!state) continue
       const entries = (registry as Record<string, unknown>)[id]
-      if (!Array.isArray(entries) || entries.length !== 1 || !entries[0] || typeof entries[0] !== 'object') throw new Error(`Enabled Claude plugin source is unresolved: ${id}`)
+      if (!Array.isArray(entries) || entries.length === 0) {
+        digest.update(id).update('unavailable-plugin-source')
+        unavailable.push({ name: id, source: registryFile, reason: 'Enabled plugin has no installed source; it is omitted' })
+        continue
+      }
+      if (entries.length !== 1 || !entries[0] || typeof entries[0] !== 'object') throw new Error(`Enabled Claude plugin source is ambiguous: ${id}`)
       const path = (entries[0] as { installPath?: unknown }).installPath
       if (typeof path !== 'string' || !isAbsolute(path)) throw new Error(`Invalid Claude plugin source: ${id}`)
       const root = realpathSync(path)
@@ -179,5 +193,5 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
       } else if (declared !== undefined) throw new Error(`Claude plugin MCP source is unavailable: ${id}`)
     }
   }
-  return { revision: digest.digest('hex'), servers, review }
+  return { revision: digest.digest('hex'), servers, review, unavailable }
 }

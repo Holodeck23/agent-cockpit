@@ -35,7 +35,7 @@ it('binds approved MCP source, executable and script revisions without exposing 
   expect(() => snapshotMcpSources(input)).toThrow(/Reserved/)
 })
 
-it('imports enabled installed plugin MCP definitions, binds revisions, and blocks unresolved plugins', () => {
+it('imports installed plugin MCP definitions and visibly omits an uninstalled plugin', () => {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-plugin-mcp-'))
   const home = join(root, 'home'), profile = join(home, '.claude'), cwd = join(root, 'project'), plugin = join(root, 'plugin')
   mkdirSync(join(profile, 'plugins'), { recursive: true }); mkdirSync(cwd)
@@ -52,7 +52,22 @@ it('imports enabled installed plugin MCP definitions, binds revisions, and block
   writeFileSync(manifest, JSON.stringify({ name: 'fixture', mcpServers: { fixture: { type: 'http', url: 'https://example.test/new' } } }))
   expect(snapshotMcpSources(input).revision).not.toBe(first.revision)
   writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'unknown@builtin': true } }))
-  expect(() => snapshotMcpSources(input)).toThrow(/source is unresolved/)
+  const unavailable = snapshotMcpSources(input)
+  expect(unavailable.servers).toEqual({})
+  expect(unavailable.unavailable).toMatchObject([{ name: 'unknown@builtin', reason: expect.stringMatching(/omitted/) }])
+  expect(unavailable.revision).not.toBe(first.revision)
+})
+
+it('omits download-on-launch connector commands and reserves their names', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-plugin-mcp-'))
+  const home = join(root, 'home'), cwd = join(root, 'project')
+  mkdirSync(home); mkdirSync(cwd)
+  const file = join(cwd, '.mcp.json')
+  writeFileSync(file, JSON.stringify({ mcpServers: { dynamic: { command: 'npx', args: ['@playwright/mcp@latest'] },
+    verified: { type: 'http', url: 'https://example.test/mcp' } } }))
+  const snapshot = snapshotMcpSources({ home, cwd, pathEnv: '' })
+  expect(Object.keys(snapshot.servers)).toEqual(['verified'])
+  expect(snapshot.unavailable).toMatchObject([{ name: 'dynamic', reason: expect.stringMatching(/Pin a local executable/) }])
 })
 
 it('pins plugin-relative executable scripts and blocks a plugin MCP file escaping by symlink', () => {

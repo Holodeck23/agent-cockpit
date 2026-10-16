@@ -687,7 +687,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (setup?.hooks) {
       try {
         const snapshot = snapshotHookSources(sourceInput)
-        if (snapshot.review.length > 0 && trust?.claudeHooksApproval !== snapshot.revision) {
+        if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && trust?.claudeHooksApproval !== snapshot.revision) {
           sourceProblem = 'Claude hook sources need review in Project Settings before this conversation can start.'
         } else {
           hookSettings = snapshot.settings
@@ -695,7 +695,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
             if (snapshotHookSources(sourceInput).revision !== snapshot.revision) {
               throw new Error('Claude hook sources changed after review. Review them again before starting this conversation.')
             }
-            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeHooksApproval !== snapshot.revision) {
+            if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeHooksApproval !== snapshot.revision) {
               throw new Error('Claude hook approval changed before launch. Review the current sources again.')
             }
             if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath, workspaceId), meta).hooks) {
@@ -708,7 +708,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (setup?.connectors) {
       try {
         const snapshot = snapshotMcpSources(sourceInput)
-        if (snapshot.review.length > 0 && trust?.claudeMcpApproval !== snapshot.revision) {
+        if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && trust?.claudeMcpApproval !== snapshot.revision) {
           sourceProblem ??= 'Claude connector sources need review in Project Settings before this conversation can start.'
         } else {
           userMcpServers = snapshot.servers
@@ -718,7 +718,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
             if (snapshotMcpSources(sourceInput).revision !== snapshot.revision) {
               throw new Error('Claude connector sources changed after review. Review them again before starting this conversation.')
             }
-            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeMcpApproval !== snapshot.revision) {
+            if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeMcpApproval !== snapshot.revision) {
               throw new Error('Claude connector approval changed before launch. Review the current sources again.')
             }
             if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath, workspaceId), meta).connectors) {

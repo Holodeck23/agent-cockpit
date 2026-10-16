@@ -313,14 +313,14 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     let connectorSourceRevision: string | undefined
     if (setup?.hooks) {
       const snapshot = snapshotHookSources(sourceInput)
-      if (snapshot.review.length > 0 && project?.claudeHooksApproval !== snapshot.revision) {
+      if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && project?.claudeHooksApproval !== snapshot.revision) {
         throw new Error('Review Claude hook sources in Project Settings before enabling this schedule')
       }
       hookSourceRevision = snapshot.revision
     }
     if (setup?.connectors) {
       const snapshot = snapshotMcpSources(sourceInput)
-      if (snapshot.review.length > 0 && project?.claudeMcpApproval !== snapshot.revision) {
+      if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && project?.claudeMcpApproval !== snapshot.revision) {
         throw new Error('Review Claude connector sources in Project Settings before enabling this schedule')
       }
       connectorSourceRevision = snapshot.revision

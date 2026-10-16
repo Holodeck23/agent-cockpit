@@ -549,7 +549,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
           accountId: selected?.accountId ?? 'default-claude', accountGeneration: selected?.generation ?? 1,
           ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }) }
         catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not verify connector sources') }
-        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, cwd: at.cwd } }); return true }
+        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, unavailable: snapshot.unavailable, cwd: at.cwd } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Connector sources changed; review them again')
           const before = projects.list({ includeHidden: true }).find((project) => project.path === body.path)
@@ -574,7 +574,7 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
           accountId: selected?.accountId ?? 'default-claude', accountGeneration: selected?.generation ?? 1,
           ...(selected?.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }) }
         catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not verify hook sources') }
-        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, cwd: at.cwd } }); return true }
+        if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, unavailable: snapshot.unavailable, cwd: at.cwd } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Hook sources changed; review them again')
           const before = projects.list({ includeHidden: true }).find((project) => project.path === body.path)

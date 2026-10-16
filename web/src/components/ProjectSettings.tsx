@@ -155,27 +155,33 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           {hookReview ? <div className="field" role="group" aria-label="Claude hook sources">
             <strong>Hook source review</strong>
             <small>Checkout: {hookReview.cwd}</small>
-            <small>Review the executable and source file for each event. A source change needs another review; unsupported or unresolved plugin hooks stay blocked. A conversation can opt in when this project default is off.</small>
+            <small>Review each executable and source file. Missing plugin sources are omitted; other unsupported hooks block launch. A source change needs another review.</small>
             {hookReview.review.length ? <ul>{hookReview.review.map((source, index) => <li key={`${source.source}:${source.event}:${index}`}>
               <strong>{source.event}</strong> · {source.executable} · {source.source}
               <small>Executable SHA-256: {source.executableHash}</small>
               {source.referencedFiles.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
             </li>)}</ul> : <small>No executable hooks found in the reviewed sources.</small>}
-            {hookReview.review.length && approvedHookRevision !== hookReview.revision
-              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision, reviewWorkspaceId), () => setHookApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: hookReview.revision })))}>Approve these hook source revisions</button>
+            {hookReview.unavailable.length ? <ul>{hookReview.unavailable.map((source) => <li key={source.id}>
+              <strong>{source.id} unavailable</strong> · {source.reason} · {source.source}
+            </li>)}</ul> : null}
+            {(hookReview.review.length > 0 || hookReview.unavailable.length > 0) && approvedHookRevision !== hookReview.revision
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision, reviewWorkspaceId), () => setHookApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: hookReview.revision })))}>Approve reviewed hooks and omissions</button>
               : approvedHookRevision === hookReview.revision ? <small>Reviewed for this project and selected account. Changes require another review.</small> : null}
           </div> : null}
           {mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
             <strong>Connector source review</strong>
             <small>Checkout: {mcpReview.cwd}</small>
-            <small>Review user, project and installed plugin connector sources before approving this exact revision, including when only a conversation enables connectors. Unresolved plugins remain blocked.</small>
+            <small>Review user, project and installed plugin connector sources. Missing plugins and download-on-launch commands are omitted; other unsupported sources block launch.</small>
             {mcpReview.review.length ? <ul>{mcpReview.review.map((source) => <li key={`${source.source}:${source.name}`}>
               <strong>{source.name}</strong> · {source.executable ?? source.url} · {source.source}
               {source.executableHash ? <small>Executable SHA-256: {source.executableHash}</small> : null}
               {source.referencedFiles?.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
             </li>)}</ul> : <small>No connector entries found in reviewed sources.</small>}
-            {mcpReview.review.length && approvedMcpRevision !== mcpReview.revision
-              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision, reviewWorkspaceId), () => setMcpApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: mcpReview.revision })))}>Approve these source revisions</button>
+            {mcpReview.unavailable.length ? <ul>{mcpReview.unavailable.map((source) => <li key={`${source.source}:${source.name}`}>
+              <strong>{source.name} unavailable</strong> · {source.reason} · {source.source}
+            </li>)}</ul> : null}
+            {(mcpReview.review.length > 0 || mcpReview.unavailable.length > 0) && approvedMcpRevision !== mcpReview.revision
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision, reviewWorkspaceId), () => setMcpApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: mcpReview.revision })))}>Approve reviewed connectors and omissions</button>
               : approvedMcpRevision === mcpReview.revision ? <small>Reviewed for this project. Changes require another review.</small> : null}
           </div> : null}
           <label className="field-check">

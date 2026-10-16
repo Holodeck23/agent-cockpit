@@ -14,6 +14,8 @@ export interface HookSourceSnapshot {
   /** Passed as the sole explicit --settings snapshot, with ambient settings discovery disabled. */
   readonly settings: Readonly<{ hooks: Readonly<Record<string, readonly unknown[]>> }>
   readonly review: readonly HookSourceReview[]
+  /** Enabled plugins with no executable source are omitted from the private settings snapshot. */
+  readonly unavailable: readonly { id: string; source: string; reason: string }[]
 }
 export interface HookSourceInput {
   readonly home: string
@@ -93,6 +95,7 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
   const hooks: Record<string, unknown[]> = {}
   const plugins = new Map<string, boolean>()
   const review: HookSourceReview[] = []
+  const unavailable: HookSourceSnapshot['unavailable'][number][] = []
   const add = (source: string, raw: unknown, pluginRoot?: string): void => {
     if (raw === undefined) return
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`Invalid Claude hooks: ${source}`)
@@ -160,13 +163,17 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
   }
   if ([...plugins.values()].some(Boolean)) {
     const registryFile = join(root, 'plugins', 'installed_plugins.json')
-    if (!existsSync(registryFile)) throw new Error('Enabled Claude plugins have no installed-source registry')
-    const registry = readObject(registryFile).plugins
+    const registry = existsSync(registryFile) ? readObject(registryFile).plugins : {}
     if (!registry || typeof registry !== 'object' || Array.isArray(registry)) throw new Error('Invalid Claude plugin registry')
     for (const [id, enabled] of plugins) {
       if (!enabled) continue
       const rows = (registry as Record<string, unknown>)[id]
-      if (!Array.isArray(rows) || rows.length !== 1 || !rows[0] || typeof rows[0] !== 'object') throw new Error(`Enabled Claude plugin source is unresolved: ${id}`)
+      if (!Array.isArray(rows) || rows.length === 0) {
+        digest.update(id).update('unavailable-plugin-source')
+        unavailable.push({ id, source: registryFile, reason: 'Enabled plugin has no installed source; it is omitted' })
+        continue
+      }
+      if (rows.length !== 1 || !rows[0] || typeof rows[0] !== 'object') throw new Error(`Enabled Claude plugin source is ambiguous: ${id}`)
       const path = (rows[0] as { installPath?: unknown }).installPath
       if (typeof path !== 'string' || !isAbsolute(path)) throw new Error(`Invalid Claude plugin source: ${id}`)
       const pluginRoot = realpathSync(path)
@@ -184,5 +191,5 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
       else if (manifest.hooks !== undefined) throw new Error(`Claude plugin hook file is unavailable: ${id}`)
     }
   }
-  return { revision: digest.digest('hex'), settings: { hooks }, review }
+  return { revision: digest.digest('hex'), settings: { hooks }, review, unavailable }
 }

@@ -32,10 +32,14 @@ it('binds a literal hook executable, args, project, account, and changed script 
   expect(snapshotHookSources(f.input).revision).not.toBe(first.revision)
 })
 
-it('blocks unresolved plugins and dynamic shell commands instead of silently omitting their hooks', () => {
+it('omits an uninstalled enabled plugin visibly while still blocking dynamic hook commands', () => {
   const f = fixture()
   writeFileSync(f.settings, JSON.stringify({ enabledPlugins: { 'unknown@builtin': true } }))
-  expect(() => snapshotHookSources(f.input)).toThrow(/no installed-source registry/)
+  const unavailable = snapshotHookSources(f.input)
+  expect(unavailable.review).toEqual([])
+  expect(unavailable.settings.hooks).toEqual({})
+  expect(unavailable.unavailable).toMatchObject([{ id: 'unknown@builtin', reason: expect.stringMatching(/omitted/) }])
+  expect(snapshotHookSources(f.input).revision).toBe(unavailable.revision)
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script}; echo bypass` }] }] } }))
   expect(() => snapshotHookSources(f.input)).toThrow(/dynamic shell syntax/)
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script} [ab]` }] }] } }))
