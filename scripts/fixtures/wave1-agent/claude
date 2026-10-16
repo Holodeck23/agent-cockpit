@@ -5,6 +5,7 @@
 #   "ask"   ends the turn with a question;
 #   anything else replies with a long message that mentions "needle" three times.
 [ "$1" = "--version" ] && { echo "0.0.0 (Cockpit wave 1 fixture)"; exit 0; }
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 session=""
 previous=""
 for arg in "$@"; do
@@ -13,8 +14,9 @@ for arg in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"wave1-fixture"}\n' "$session"
 turn=0
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  fixture_replay_line
   turn=$((turn + 1))
   case "$line" in
     *'"text":"slow'*) sleep 4; text='Late reply.' ;;

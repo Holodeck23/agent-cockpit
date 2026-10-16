@@ -29,6 +29,8 @@ export async function launchPackagedApp(extraEnv: Readonly<Record<string, string
       SHELL: process.env.SHELL ?? '/bin/zsh',
       TMPDIR: process.env.TMPDIR ?? '/tmp',
       PATH: LAUNCHD_PATH,
+      // Synthetic provider fixtures may need Node even though Finder's PATH has none.
+      COCKPIT_FIXTURE_NODE: process.execPath,
       COCKPIT_HOME: mkdtempSync(join(tmpdir(), 'cockpit-app-state-')),
       ...extraEnv,
     },
