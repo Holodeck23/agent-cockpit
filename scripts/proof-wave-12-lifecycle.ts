@@ -92,7 +92,7 @@ const row = (dialog: Locator, name: string): Locator => dialog.getByRole('listit
 const runs = async (page: Page, id: string) => (await get<Detail>(page, `/api/threads/${id}/events`)).runs ?? []
 const workingIn = async (page: Page, id: string): Promise<string[]> => (await runs(page, id)).filter((r) => r.working).map((r) => r.workspaceId).sort()
 
-const launch = (extra: Record<string, string> = {}): Promise<ElectronApplication> => launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave12-agent'), ...extra })
+const launch = (extra: Record<string, string> = {}): Promise<ElectronApplication> => launchPackagedApp({ HOME: root, COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave12-agent'), ...extra })
 
 /** Enter, after the one-time tick that continuing a conversation in another checkout now needs (persona audit item 3). */
 async function sendNow(page: Page): Promise<void> {
@@ -131,6 +131,11 @@ try {
   await sendNow(page)
   const both = await until('both working', async () => (await workingIn(page, threadId)).length === 2)
   check('W12-15 one conversation runs two agents at once, one per workspace', Boolean(both), (await workingIn(page, threadId)).join(','))
+  const begun = await until('both held turns began', async () => {
+    const events = (await get<Detail>(page, `/api/threads/${threadId}/events`)).events
+    return [primary.id, rose.id].every((id) => events.some((e) => e.workspaceId === id && e.event.kind === 'assistant_text'))
+  }, 20_000)
+  if (!begun) throw new Error('Both held turns must report in before testing mid-turn Stop')
   await page.getByRole('button', { name: 'Stop all' }).waitFor()
   check('W12-15 the header offers Stop for the focused workspace and Stop all', await page.getByRole('button', { name: 'Stop Rose bed' }).count() === 1)
   check('W12-15 messages are labelled by the workspace they ran in', await page.locator('.author-where', { hasText: 'Rose bed' }).count() >= 1 && await page.locator('.author-where', { hasText: 'Main checkout' }).count() >= 1)
