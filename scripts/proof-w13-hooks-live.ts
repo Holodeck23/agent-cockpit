@@ -1,10 +1,11 @@
 // Background packaged proof that an approved project hook runs in the pinned Claude session.
+// NOT READY TO RUN: the native identity preflight and durable failure receipts (W13 handoff step 3) are still owed.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { launchPackagedApp } from './lib/launch-app.ts'
 import { apiPost, openProject } from './lib/ui.ts'
 
@@ -15,22 +16,23 @@ const hash = (path: string): string => createHash('sha256').update(readFileSync(
 assert.equal(hash(realpathSync(cli)), '8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081')
 assert.match(execFileSync(cli, ['--version'], { encoding: 'utf8' }), /^2\.1\.220 /)
 assert.equal(hash(process.execPath), '68f4d07ca49e0500cc135c7e0a445093e228e42e126ac22306d045f0a8c2636b')
-const managed = process.env.COCKPIT_W13_MANAGED_CLAUDE_PROFILE
-assert.ok(managed, 'Set COCKPIT_W13_MANAGED_CLAUDE_PROFILE to a signed-in Cockpit managed profile')
-const accountId = basename(managed)
+// The app borrows this established login by its literal profile path (electron/proof-account-context.ts).
+// No link to the profile is made: a link changes the CLI's credential namespace (W13 U0).
+const accountId = process.env.COCKPIT_PROOF_ACCOUNT_ID
+assert.ok(accountId, 'Set COCKPIT_PROOF_ACCOUNT_ID to the already signed-in managed Claude account; this proof never signs in')
 assert.match(accountId, /^[0-9a-f-]{36}$/)
 const accountRoot = join(process.env.HOME ?? '', '.agent-cockpit')
-assert.equal(realpathSync(dirname(managed)), realpathSync(join(accountRoot, 'account-profiles')))
 const accountFile = JSON.parse(readFileSync(join(accountRoot, 'accounts.json'), 'utf8')) as {
   accounts: Array<{ id: string; agent: string; mode: string; isolation: string }>
 }
 const account = accountFile.accounts.find((entry) => entry.id === accountId)
-assert.ok(account && account.agent === 'claude' && account.mode === 'managed' && account.isolation === 'CLAUDE_CONFIG_DIR')
+assert.ok(account && account.agent === 'claude' && account.mode === 'managed' && account.isolation === 'CLAUDE_CONFIG_DIR',
+  'COCKPIT_PROOF_ACCOUNT_ID is not a managed Claude account in ~/.agent-cockpit')
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'cockpit-w13-hook-live-')))
 const project = join(root, 'project'), marker = join(root, 'hook-started')
 const state = join(root, 'state')
-mkdirSync(join(state, 'account-profiles'), { recursive: true, mode: 0o700 })
-symlinkSync(realpathSync(managed), join(state, 'account-profiles', accountId))
+// Disposable metadata only: a copy of the one record and the project's choice of it, no profile folders.
+mkdirSync(state, { recursive: true, mode: 0o700 })
 writeFileSync(join(state, 'accounts.json'), JSON.stringify({ version: 1, revision: 1, accounts: [account],
   selections: { [project]: { claude: accountId } } }), { mode: 0o600 })
 mkdirSync(join(project, '.claude'), { recursive: true })
@@ -40,9 +42,9 @@ writeFileSync(script, `import { writeFileSync } from 'node:fs'\nwriteFileSync(${
 writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ hooks: {
   SessionStart: [{ hooks: [{ type: 'command', command: `${process.execPath} ${script}` }] }],
 } }))
-// The disposable account record selects the authorized managed profile; HOME stays real for Keychain.
-// Cockpit metadata stays in disposable state. Claude may write normal session data to its profile.
-const app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli) })
+// HOME stays real for Keychain. Cockpit metadata stays in disposable state; Claude may write its own
+// session data to the borrowed profile. A borrowed account that fails its checks stops the app at startup.
+const app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId })
 try {
   const page = await app.firstWindow()
   page.setDefaultTimeout(20_000)
@@ -76,7 +78,7 @@ try {
   }
   const result = events.find((event) => event.kind === 'result')
   assert.equal(result?.ok, true, result?.text?.includes('Not logged in')
-    ? 'The isolated Claude profile is not authenticated; stop and obtain an authorized test profile'
+    ? 'The borrowed Claude profile did not authenticate. Stop: no sign-in, no account switch, no retry'
     : 'The packaged Claude turn did not succeed')
   assert.equal(existsSync(marker), true, 'Reviewed SessionStart hook did not run')
   assert.equal(readFileSync(marker, 'utf8'), 'W13-HOOK-STARTED')
@@ -84,6 +86,6 @@ try {
   console.log(JSON.stringify({ packagedHookRan: true, hookSourceHash: hash(script), cliVersion: '2.1.220' }))
 } finally {
   await app.close()
-  unlinkSync(join(state, 'account-profiles', accountId))
+  // Nothing under root links to the real profile, so removing it cannot reach the login.
   rmSync(root, { recursive: true, force: true })
 }
