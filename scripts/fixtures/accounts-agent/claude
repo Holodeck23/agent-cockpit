@@ -34,6 +34,7 @@ if [ "$1" = "auth" ]; then
   esac
   exit 2
 fi
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 session=""; resume="-"; prompt=""; handoff=no; previous=""
 for arg in "$@"; do
   case "$previous" in
@@ -52,8 +53,9 @@ if [ -z "$email" ]; then
   exit 1
 fi
 turn=0
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  fixture_replay_line
   turn=$((turn + 1))
   case "$line" in *HOLD*) sleep 8 ;; esac
   printf '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","unifiedWindows":{"five_hour":{"utilization":0.%s}}}}\n' "${used:-10}"
