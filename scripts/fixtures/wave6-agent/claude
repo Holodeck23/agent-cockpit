@@ -12,6 +12,11 @@ if (@ARGV && $ARGV[0] eq '--help') { open(my $h, '<', "$here/../claude-help.txt"
 if (@ARGV && $ARGV[0] eq '--version') { print "0.0.0 (Cockpit wave 6 fixture)\n"; exit 0 }
 my $session = '';
 for (my $i = 0; $i < @ARGV; $i++) { $session = $ARGV[$i + 1] if $ARGV[$i] eq '--session-id' || $ARGV[$i] eq '--resume' }
+my ($config, $replay) = ('', 0);
+for (my $i = 0; $i < @ARGV; $i++) {
+  $config = $ARGV[$i + 1] if $ARGV[$i] eq '--mcp-config';
+  $replay = 1 if $ARGV[$i] eq '--replay-user-messages';
+}
 my $json = JSON::PP->new->canonical;
 sub out { print $json->encode($_[0]), "\n" }
 my $n = 0;
@@ -20,8 +25,19 @@ sub done_turn { out({ type => 'result', subtype => 'success', is_error => JSON::
 out({ type => 'system', subtype => 'init', session_id => $session, model => 'wave6-fixture' });
 while (my $line = <STDIN>) {
   my $message = eval { $json->decode($line) } or next;
+  if (($message->{type} // '') eq 'control_request' && ($message->{request}{subtype} // '') eq 'initialize') {
+    my $ok = $config && system($ENV{COCKPIT_FIXTURE_NODE} // 'node', "$here/../claude-mcp-ready.mjs", $config) == 0;
+    out({ type => 'control_response', response => { request_id => $message->{request_id}, subtype => $ok ? 'success' : 'error', response => $ok ? {} : { message => 'Fixture bridge initialization failed' } } });
+    next;
+  }
   next unless ($message->{type} // '') eq 'user';
   my @content = @{ $message->{message}{content} // [] };
+  if ($replay) {
+    my @text = grep { ($_->{type} // '') eq 'text' } @content;
+    out({ type => 'user', isReplay => JSON::PP::true,
+      (defined $message->{uuid} ? (uuid => $message->{uuid}) : ()),
+      message => { role => 'user', content => \@text } });
+  }
   my @images = grep { $_->{type} eq 'image' } @content;
   my ($first_text) = grep { $_->{type} eq 'text' } @content;
   my $text_last = @content && $content[-1]{type} eq 'text' ? 1 : 0;

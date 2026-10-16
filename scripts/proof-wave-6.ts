@@ -32,7 +32,7 @@ store.append(seeded.id, { kind: 'user_text', text: 'Show me the app icon' })
 store.append(seeded.id, { kind: 'image', file: icon.file, mediaType: icon.mediaType, from: 'agent', name: 'icon-1024.png' })
 store.append(seeded.id, { kind: 'assistant_text', messageId: 'm1', text: 'That is the icon.' })
 
-const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave6-agent') })
+const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave6-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave6-${name}.png`) })
 /** Polls from Node (an async waitForFunction predicate is always truthy). */
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {
