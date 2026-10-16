@@ -31,6 +31,7 @@ export async function launchPackagedApp(extraEnv: Readonly<Record<string, string
       PATH: LAUNCHD_PATH,
       // Synthetic provider fixtures may need Node even though Finder's PATH has none.
       COCKPIT_FIXTURE_NODE: process.execPath,
+      ...(process.env.COCKPIT_PROOF_BACKGROUND === '1' ? { COCKPIT_PROOF_BACKGROUND: '1' } : {}),
       COCKPIT_HOME: mkdtempSync(join(tmpdir(), 'cockpit-app-state-')),
       ...extraEnv,
     },

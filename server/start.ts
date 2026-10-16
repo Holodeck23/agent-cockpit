@@ -18,7 +18,7 @@ import { snapshotHookSources } from './agents/claude/hook-sources.ts'
 import { snapshotMcpSources } from './agents/claude/mcp-sources.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
-import { createAccountService, type AccountService } from './agents/accounts/service.ts'
+import { createAccountService, type AccountService, type BorrowedAccountContext } from './agents/accounts/service.ts'
 import { createAppServerQueryScope } from './agents/codex/app-server-query.ts'
 import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
@@ -47,6 +47,8 @@ import type { ListenerGroups } from './remote/preview/upstream.ts'
 import type { PreviewCapture, PreviewOpen } from './preview/types.ts'
 
 export interface StartOptions {
+  /** Proof host only: preserve an established login locator with disposable metadata. */
+  readonly borrowedAccount?: BorrowedAccountContext
   /** 0 picks a free port. */
   readonly port: number
   /** Inject adapters for deterministic integration tests. */
@@ -263,6 +265,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const agentLifecycle = lifecycle
   accounts = createAccountService({
     stateRoot: root,
+    ...(options.borrowedAccount ? { borrowedContext: options.borrowedAccount } : {}),
     query: appServerQueries.query,
     // The CLI a launch would run: the resolved one when found, else its command on PATH.
     executable: async (agent) => {

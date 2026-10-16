@@ -28,7 +28,18 @@ export interface AccountSessions {
   identityChanged(accountId: string, to: ResolvedAccount, from?: AccountRef): Promise<void>
 }
 
+/** Host-injected proof context. It borrows a login without owning or changing its profile. */
+export interface BorrowedAccountContext {
+  readonly accountId: string
+  readonly generation: number
+  readonly identityKey: string
+  readonly profileDir: string
+  /** Rechecks the original metadata before resolving or observing the borrowed account. */
+  readonly validate: () => void
+}
+
 export interface AccountServiceOptions {
+  readonly borrowedContext?: BorrowedAccountContext
   readonly stateRoot: string
   readonly store?: AccountStore
   /** The resolved CLI for an agent, the same one a launch runs. */
@@ -104,6 +115,20 @@ export function createAccountService(options: AccountServiceOptions) {
   const leavingKey = (projectPath: string, agent: AgentId): string => `${agent}\0${projectPath}`
 
   const dirFor = (account: Account): string | undefined => {
+    const borrowed = options.borrowedContext
+    if (borrowed) {
+      // A proof runs on one login only; every other account, the CLI defaults included, is refused on purpose.
+      if (account.id !== borrowed.accountId) {
+        throw new Error(`Proof mode: only the borrowed account can run here, so “${account.label}” (${label(account.agent)}) is blocked`)
+      }
+      borrowed.validate()
+      if (account.generation !== borrowed.generation || account.mode !== 'managed' || account.agent !== 'claude'
+        || account.isolation !== 'CLAUDE_CONFIG_DIR' || account.lastKnownKey !== borrowed.identityKey) {
+        throw new Error('Proof mode: this copy of the borrowed account no longer matches the login it borrowed (generation or identity changed). Stop this proof.')
+      }
+      // Never create instruction links or mutate the borrowed provider profile.
+      return borrowed.profileDir
+    }
     if (account.mode !== 'managed') return undefined
     const dir = store.profileDir(account.id)
     ensureSharedInstructions(account.agent, dir, options.homeDir ?? homedir())
@@ -239,6 +264,7 @@ export function createAccountService(options: AccountServiceOptions) {
     },
 
     async select(projectPath: string, agent: AgentId, accountId: string): Promise<Record<AgentId, string>> {
+      if (options.borrowedContext && accountId !== options.borrowedContext.accountId) throw new Error('This proof can only use its borrowed account')
       const account = store.get(accountId)
       if (!account || account.agent !== agent) throw new Error(`That account is not a ${label(agent)} account`)
       const previous = store.selected(projectPath, agent)
@@ -266,6 +292,7 @@ export function createAccountService(options: AccountServiceOptions) {
     },
     /** The Claude and Codex defaults, checked when the picker or project settings open. Overlapping calls share one check. */
     refreshDefaults(): Promise<void> {
+      if (options.borrowedContext) return Promise.resolve()
       refreshing ??= Promise.all(AGENT_IDS.filter(supportsProfiles).map((agent) => service.refresh(defaultAccountId(agent)).catch((error: unknown) => {
         console.warn(`[cockpit] could not check the ${label(agent)} account:`, error instanceof Error ? error.message : error)
       }))).then(() => undefined).finally(() => { refreshing = undefined })
@@ -274,6 +301,7 @@ export function createAccountService(options: AccountServiceOptions) {
 
     /** Starts the CLI's own sign-in in a new private context. */
     async startSignin(agent: AgentId, accountLabel: string): Promise<SigninView> {
+      if (options.borrowedContext) throw new Error('Sign-in is disabled while borrowing a proof account')
       if (!supportsProfiles(agent)) throw new Error(DEFAULT_ONLY_REASON[agent] ?? `${label(agent)} has no account profiles`)
       for (const { view } of signins.values()) if (view.agent === agent && !view.endedAt) throw new AccountBusyError(`A ${label(agent)} sign-in is already open`)
       const name = accountLabel.trim().slice(0, LABEL_MAX)
@@ -314,6 +342,7 @@ export function createAccountService(options: AccountServiceOptions) {
      * then is its folder deleted. The vendor account and the CLI default's sign-in are untouched.
      */
     async remove(accountId: string, removeOptions: { moveProjectsToDefault?: boolean } = {}): Promise<{ removed: true; message: string }> {
+      if (options.borrowedContext) throw new AccountInUseError('Borrowed proof accounts cannot be signed out or removed')
       const account = store.get(accountId)
       if (!account) throw new Error('Unknown account')
       if (account.mode !== 'managed') throw new AccountInUseError('The CLI default is not something Cockpit removes. Sign it out with the CLI itself if you mean to.')

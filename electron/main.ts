@@ -31,6 +31,7 @@ import { createBrowserAgentHost } from './browser-agent-host.ts'
 import { guardLocalPreview } from './preview-navigation.ts'
 import { RESIDENCY } from './browser-policy.ts'
 import type { BrowserHost } from '../server/browser/agent.ts'
+import { proofAccountContext } from './proof-account-context.ts'
 
 // The desktop app is the same loopback server as `npm start`, on a random port,
 // with a native window around it. The page talks to the server over HTTP/SSE
@@ -43,6 +44,16 @@ const CANVAS = { light: '#fafaf9', dark: '#202020' }
 const SHUTDOWN_GRACE_MS = 5000
 const WINDOW = { width: 1360, height: 860, minWidth: 980, minHeight: 640 }
 const isDev = !app.isPackaged
+// Install before any window is created; post-launch input isolation is too late to prevent focus.
+const proofBackground = !IS_RELEASE_BUILD && process.env.COCKPIT_PROOF_BACKGROUND === '1'
+if (proofBackground) {
+  if (process.platform === 'darwin') app.setActivationPolicy('accessory')
+  app.on('browser-window-created', (_event, window) => {
+    window.setFocusable(false)
+    window.setIgnoreMouseEvents(true)
+    window.setOpacity(0)
+  })
+}
 
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
@@ -85,7 +96,10 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus()
   })
   app.whenReady().then(boot).catch((error: unknown) => {
-    dialog.showErrorBox('Cockpit could not start', error instanceof Error ? error.message : String(error))
+    const message = error instanceof Error ? error.message : String(error)
+    // A modal would take focus from a background proof; its harness reads stderr and the exit code instead.
+    if (proofBackground) console.error(`[cockpit] could not start: ${message}`)
+    else dialog.showErrorBox('Cockpit could not start', message)
     app.exit(1)
   })
 }
@@ -95,6 +109,7 @@ async function boot(): Promise<void> {
   const windowKey = createWindowKey()
   running = await startServer({
     port: 0,
+    borrowedAccount: proofAccountContext(defaultRoot(), IS_RELEASE_BUILD),
     preferredPort: readAppPort(portFile),
     webDist: join(app.getAppPath(), 'dist'),
     // Each agent session spawns the cockpit MCP server with this app's own binary in
@@ -376,6 +391,7 @@ function createWindow(url: string): BrowserWindow {
   win.webContents.on('did-finish-load', sendFullScreen)
   saveWindowPlace = saveState
   win.once('ready-to-show', () => {
+    if (proofBackground) { win.showInactive(); return }
     if (place.maximized) win.maximize()
     win.show()
   })
