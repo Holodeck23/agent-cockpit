@@ -135,7 +135,7 @@ addEventListener('mouseup', () => { drag = null })
   const RESOLVE = [`--host-resolver-rules=MAP shop.test 127.0.0.1, MAP other.test 127.0.0.1`]
 
   async function launch(extra: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page }> {
-    const app = await launchPackagedApp({ COCKPIT_HOME: home, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave9-agent'), W9_ARGS: argsLog, COCKPIT_CHROME_NATIVE_HOSTS: hosts, ...extra }, RESOLVE)
+    const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: home, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave9-agent'), W9_ARGS: argsLog, COCKPIT_CHROME_NATIVE_HOSTS: hosts, ...extra }, RESOLVE)
     const page = await app.firstWindow()
     page.setDefaultTimeout(15_000)
     await page.waitForLoadState('domcontentloaded')
@@ -493,7 +493,9 @@ addEventListener('mouseup', () => { drag = null })
     const before = launches().length
     await say(page, 'after')
     await until('relaunch', async () => launches().length > before)
-    check('W9-12 turning it off applies at the next launch', launches().length > before && !(launches().at(-1) ?? '').includes('--chrome\n'))
+    const afterLaunches = launches()
+    check('W9-12 turning it off applies at the next launch', afterLaunches.length > before && !(afterLaunches.at(-1) ?? '').includes('--chrome\n'),
+      `${before} → ${afterLaunches.length}; last flags ${afterLaunches.at(-1)?.split('\n').filter((a) => a.startsWith('--')).join(' ')}`)
 
     // ---------- dark and narrow: the new controls stay usable ----------
     await setTheme(page, 'Dark')

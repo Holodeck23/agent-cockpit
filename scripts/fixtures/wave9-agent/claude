@@ -68,12 +68,13 @@ stop_background() {
 # EOF and termination must reap the fixture's own browser-call worker too.
 trap 'stop_background' 0
 trap 'exit 0' HUP INT TERM
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in
     *'"subtype":"interrupt"'*) stop_background; continue ;;
     *'"type":"user"'*) ;;
     *) continue ;;
   esac
+  fixture_replay_line
   turn=$((turn + 1))
   text=$(printf '%s' "$line" | sed -n 's/.*"text":"\([^"]*\)".*/\1/p')
   case "$text" in

@@ -62,7 +62,7 @@ const inPage = <T>(app: ElectronApplication, id: number, code: string): Promise<
   app.evaluate(({ webContents }, [wcId, js]) => webContents.fromId(wcId as number)!.executeJavaScript(js as string, true), [id, code] as const) as Promise<T>
 
 async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await launchPackagedApp({ COCKPIT_HOME: home, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave9-agent') })
+  const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: home, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave9-agent') })
   await app.evaluate(({ shell }) => {
     const opened: string[] = []
     ;(globalThis as { __opened?: string[] }).__opened = opened

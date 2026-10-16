@@ -68,7 +68,7 @@ export function settingsFromChoice(choice: AgentChoice, base?: ThreadSettings): 
   const { model: _model, effort: _effort, useChrome: _chrome, ...rest } = base ?? { useHooks: false, hooksSetup: 'inherit' as const, mcpSetup: 'inherit' as const }
   return {
     ...rest,
-    ...(choice.agent === 'claude' && choice.chrome ? { useChrome: true } : {}),
+    useChrome: choice.agent === 'claude' && choice.chrome === true,
     ...(choice.agent === 'claude' ? {
       hooksSetup: choice.hooksSetup ?? base?.hooksSetup ?? (base ? (base.useHooks ? 'on' : 'off') : 'inherit'),
       mcpSetup: choice.mcpSetup ?? base?.mcpSetup ?? (base ? 'off' : 'inherit'),

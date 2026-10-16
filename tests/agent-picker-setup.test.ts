@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AgentPicker, settingsFromChoice, type AgentChoice } from '../web/src/components/AgentPicker.tsx'
 import { resolveClaudeSetup } from '../server/agents/claude/setup.ts'
-import { threadSettingsSchema } from '../server/threads/types.ts'
+import { mergeThreadSettings, threadSettingsSchema } from '../server/threads/types.ts'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -38,4 +38,10 @@ it('offers independent per-conversation overrides and serializes Off without cha
   const settings = threadSettingsSchema.parse(settingsFromChoice(selected))
   expect(resolveClaudeSetup(settings, { claudeHooks: true, claudeMcp: true }, {}))
     .toMatchObject({ hooks: false, connectors: true })
+})
+
+it('serializes Chrome Off explicitly so an older session can turn it off', () => {
+  const current = threadSettingsSchema.parse({ useChrome: true })
+  const choice: AgentChoice = { agent: 'claude', model: '', effort: '', permissionMode: 'manual', chrome: false }
+  expect(mergeThreadSettings(current, settingsFromChoice(choice, current)).useChrome).toBe(false)
 })
