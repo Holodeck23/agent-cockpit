@@ -18,7 +18,7 @@ const root = mkdtempSync(join(tmpdir(), 'cockpit-wave7-proof-'))
 const project = join(root, 'app')
 mkdirSync(project)
 mkdirSync(PROOF_DIR, { recursive: true })
-const app = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
+const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: join(root, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave7-${name}.png`) })
 const get = <T>(page: Page, path: string): Promise<T> => page.evaluate(async (p) => (await (await fetch(p)).json()).data, path) as Promise<T>
 const workflowCount = async (page: Page) => (await get<unknown[]>(page, `/api/workflows?projectPath=${encodeURIComponent(project)}`)).length
@@ -316,7 +316,7 @@ const SERVER = `const http = require('node:http')
 http.createServer((req, res) => res.end('ok')).listen(0, '127.0.0.1', function () { console.log('Local: http://127.0.0.1:' + this.address().port + '/') })`
 for (const dir of [procs, procsOther]) { mkdirSync(dir); writeFileSync(join(dir, 'server.js'), SERVER); writeFileSync(join(dir, 'other.js'), SERVER) }
 interface Proc { id: string; name: string; status: string; pid?: number; url?: string; projectPath: string; owner: { kind: string; title?: string; formerly?: string }; sharedWith?: Array<{ title: string }> }
-const app2 = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state-procs'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave7-agent') })
+const app2 = await launchPackagedApp({ HOME: root, COCKPIT_HOME: join(root, 'state-procs'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave7-agent') })
 const p2 = await app2.firstWindow()
 const procList = async (dir: string): Promise<Proc[]> => (await get<Proc[]>(p2, '/api/processes')).filter((p) => p.projectPath === dir)
 const running = async (dir: string): Promise<Proc[]> => (await procList(dir)).filter((p) => p.status === 'running')
