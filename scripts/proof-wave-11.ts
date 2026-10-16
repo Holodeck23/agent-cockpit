@@ -121,6 +121,7 @@ let phoneBrowser: Browser | undefined
 let squatter: ChildProcess | undefined
 try {
   app = await launchPackagedApp({
+    HOME: root,
     COCKPIT_HOME: state,
     COCKPIT_AGENT_PATH: `${join(FIX, 'wave11-agent')}:${join(FIX, 'wave11-tailscale')}`,
     COCKPIT_PROOF_TAILSCALE: ts, COCKPIT_PROOF_TAILNET_HOST: HOST, COCKPIT_PROOF_TAILNET_LOGIN: LOGIN,
