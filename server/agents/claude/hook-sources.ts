@@ -53,25 +53,25 @@ const within = (root: string, path: string): boolean => {
   return pathFromRoot !== '..' && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot)
 }
 
-function pinShebang(path: string, bytes: Buffer, cwd: string, pathEnv: string, digest: ReturnType<typeof createHash>): void {
+function pinShebang(path: string, bytes: Buffer, cwd: string, pathEnv: string, home: string, digest: ReturnType<typeof createHash>): void {
   if (bytes[0] !== 0x23 || bytes[1] !== 0x21) return
   const line = bytes.toString('utf8', 2, Math.min(bytes.length, 512)).split('\n', 1)[0]?.trim() ?? ''
-  const [command] = literalArgv(line)
+  const [command] = literalArgv(line, home)
   if (!command || basename(command) === 'env') throw new Error(`Claude hook shebang has an unpinned runtime: ${path}`)
   const runtime = executablePath(command, cwd, pathEnv)
   digest.update(runtime).update(sha(readSource(runtime)))
 }
 
 /** Only literal argv is supported. Shell operators, interpolation, expansion and substitutions need separate review. */
-function literalArgv(command: string): string[] {
-  if (/[;|&><$`(){}*?\[\]~#\\\n\r]/.test(command)) throw new Error('Claude hook command uses dynamic shell syntax; review it separately')
+function literalArgv(command: string, home: string): string[] {
+  if (/[;|&><$`(){}*?\[\]#\\\n\r]/.test(command)) throw new Error('Claude hook command uses dynamic shell syntax; review it separately')
   const args: string[] = []
-  let token = '', quote: '"' | "'" | undefined, active = false
+  let token = '', quote: '"' | "'" | undefined, active = false, quotedTilde = false
   for (let i = 0; i < command.length; i++) {
     const char = command[i]!
     if (quote) {
       if (char === quote) quote = undefined
-      else { token += char; active = true }
+      else { token += char; active = true; if (char === '~') quotedTilde = true }
     } else if (char === '"' || char === "'") { quote = char; active = true }
     else if (/\s/.test(char)) { if (active) { args.push(token); token = ''; active = false } }
     else { token += char; active = true }
@@ -79,7 +79,12 @@ function literalArgv(command: string): string[] {
   if (quote) throw new Error('Claude hook command has an unterminated quote')
   if (active) args.push(token)
   if (args.length === 0) throw new Error('Claude hook command is empty')
-  return args
+  if (quotedTilde) throw new Error('Claude hook command has a quoted home shortcut; review it separately')
+  return args.map((arg) => {
+    if (arg.startsWith('~/')) return join(home, arg.slice(2))
+    if (arg.includes('~')) throw new Error('Claude hook command has an unsupported home shortcut')
+    return arg
+  })
 }
 
 /** Conservative source snapshot: unsupported or unresolved executable forms block hooks-on. */
@@ -111,11 +116,12 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
           const hook = item as { type?: unknown; command?: unknown }
           if (hook.type !== 'command' || typeof hook.command !== 'string') throw new Error(`Unsupported Claude hook type in ${source}`)
           const command = pluginRoot ? hook.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginRoot) : hook.command
-          const argv = literalArgv(command)
+          const argv = literalArgv(command, input.home)
           const executable = executablePath(argv[0]!, cwd, input.pathEnv)
           const kind = basename(executable)
           if (['env', 'npx', 'pnpx', 'bunx', 'uvx', 'yarn', 'npm'].includes(kind)) throw new Error(`Dynamic Claude hook launcher needs separate review: ${source}`)
-          if (/^(?:python\d*(?:\.\d+)?|node|bash|sh|zsh|ruby|perl)$/.test(kind)) {
+          const explicitInterpreter = /^(?:python\d*(?:\.\d+)?|node|bash|sh|zsh|ruby|perl)$/.test(kind)
+          if (explicitInterpreter) {
             const script = argv[1]
             if (!script || script.startsWith('-') || !existsSync(isAbsolute(script) ? script : resolve(cwd, script))) {
               throw new Error(`Claude hook interpreter needs a pinned script: ${source}`)
@@ -123,7 +129,7 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
           }
           const executableBytes = readSource(executable)
           const executableHash = sha(executableBytes)
-          pinShebang(executable, executableBytes, cwd, input.pathEnv, digest)
+          pinShebang(executable, executableBytes, cwd, input.pathEnv, input.home, digest)
           const referencedFiles: { path: string; hash: string }[] = []
           const resolvedArgs: string[] = []
           for (const arg of argv.slice(1)) {
@@ -134,7 +140,8 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
               const bytes = readSource(real)
               const hash = sha(bytes)
               digest.update(real).update(hash)
-              pinShebang(real, bytes, cwd, input.pathEnv, digest)
+              // An explicit interpreter reads this file itself; its shebang is not executed.
+              if (!explicitInterpreter) pinShebang(real, bytes, cwd, input.pathEnv, input.home, digest)
               referencedFiles.push({ path: real, hash })
               resolvedArgs.push(real)
             } else if (/\.(?:py|sh|js|cjs|mjs|ts)$/.test(arg)) throw new Error(`Claude hook script is unavailable: ${arg}`)

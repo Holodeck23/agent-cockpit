@@ -32,6 +32,19 @@ it('binds a literal hook executable, args, project, account, and changed script 
   expect(snapshotHookSources(f.input).revision).not.toBe(first.revision)
 })
 
+it('expands only a literal unquoted home script under a pinned interpreter', () => {
+  const f = fixture()
+  const script = join(f.home, 'guard.sh')
+  writeFileSync(script, '#!/usr/bin/env bash\nexit 0\n'); chmodSync(script, 0o755)
+  writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash ~/guard.sh' }] }] } }))
+  const first = snapshotHookSources(f.input)
+  expect(first.review[0]?.referencedFiles).toMatchObject([{ path: realpathSync(script) }])
+  expect((first.settings.hooks.PreToolUse?.[0] as { hooks: { command: string }[] }).hooks[0]?.command)
+    .toBe(`'${realpathSync('/bin/bash')}' '${realpathSync(script)}'`)
+  writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash "~/guard.sh"' }] }] } }))
+  expect(() => snapshotHookSources(f.input)).toThrow(/quoted home shortcut/)
+})
+
 it('omits an uninstalled enabled plugin visibly while still blocking dynamic hook commands', () => {
   const f = fixture()
   writeFileSync(f.settings, JSON.stringify({ enabledPlugins: { 'unknown@builtin': true } }))
