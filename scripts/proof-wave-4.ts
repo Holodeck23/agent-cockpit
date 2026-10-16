@@ -244,7 +244,8 @@ try {
   await page.getByRole('heading', { level: 1, name: 'Lines question' }).waitFor()
   const clip = page.locator('.message-clips [title="src/long.ts:3-5"]')
   check('F10 a sent range shows as path:lines', (await clip.innerText()) === 'long.ts:3-5')
-  await clip.hover()
+  // Focus opens the same peek without depending on the Mac's physical pointer in a background gate.
+  await clip.focus()
   // Scoped to this clip's own peek: another peek panel can still be closing (the wave-3 flake).
   const linesPeek = page.locator('.peek', { has: page.locator('[title="src/long.ts:3-5"]') }).locator('.peek-panel')
   check('F10 its peek shows only those lines', await until('peek', async () => (await linesPeek.locator('.peek-text').innerText()) === [3, 4, 5].map((n) => `export const value${n - 1} = "text ${n - 1}" // line ${n}`).join('\n')),
