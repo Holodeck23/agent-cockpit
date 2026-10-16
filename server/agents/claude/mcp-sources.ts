@@ -15,15 +15,25 @@ export interface McpSourceSnapshot {
 
 function sha(bytes: Buffer | string): string { return createHash('sha256').update(bytes).digest('hex') }
 
-function pinShebang(path: string, bytes: Buffer, digest: ReturnType<typeof createHash>, cwd: string, pathEnv: string): void {
-  if (bytes[0] !== 0x23 || bytes[1] !== 0x21) return
+function pinnedShebang(path: string, bytes: Buffer, digest: ReturnType<typeof createHash>, cwd: string, pathEnv: string):
+  { runtime: string; runtimeHash: string } | undefined {
+  if (bytes[0] !== 0x23 || bytes[1] !== 0x21) return undefined
   const line = bytes.toString('utf8', 2, Math.min(bytes.length, 512)).split('\n', 1)[0]?.trim() ?? ''
-  const command = line.split(/\s+/, 1)[0]
-  if (!command || basename(command) === 'env') throw new Error(`MCP shebang has an unpinned runtime: ${path}`)
-  const runtime = executablePath(command, cwd, pathEnv)
+  const words = line.split(/\s+/)
+  const usesEnv = words[0] === '/usr/bin/env' || words[0] === '/bin/env'
+  if (!words[0] || (usesEnv && words.length !== 2) || (!usesEnv && words.length !== 1)) {
+    throw new Error(`MCP shebang has an unsupported runtime: ${path}`)
+  }
+  const requested = usesEnv ? words[1]! : words[0]
+  if (['env', 'npx', 'pnpx', 'npm', 'yarn', 'bunx', 'uvx'].includes(basename(requested))) {
+    throw new Error(`MCP shebang has a dynamic runtime: ${path}`)
+  }
+  const runtime = executablePath(requested, cwd, pathEnv)
   const runtimeBytes = fileBytes(runtime)
   if (runtimeBytes[0] === 0x23 && runtimeBytes[1] === 0x21) throw new Error(`MCP shebang has a chained runtime: ${path}`)
-  digest.update(runtime).update(sha(runtimeBytes))
+  const runtimeHash = sha(runtimeBytes)
+  digest.update(runtime).update(runtimeHash)
+  return { runtime, runtimeHash }
 }
 
 function fileBytes(path: string): Buffer {
@@ -97,7 +107,7 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
         const executableBytes = fileBytes(command)
         const executableHash = sha(executableBytes)
         digest.update(command).update(executableHash)
-        pinShebang(command, executableBytes, digest, pluginRoot ?? input.cwd, input.pathEnv)
+        const shebang = pinnedShebang(command, executableBytes, digest, pluginRoot ?? input.cwd, input.pathEnv)
         if (!Array.isArray(server.args) || !server.args.every((arg) => typeof arg === 'string')) throw new Error(`Invalid MCP arguments: ${name}`)
         // Package-manager launchers can download new code under an unchanged config.
         if (/(?:npx|pnpx|npm|yarn|bunx|uvx)(?:-cli)?\.(?:c?js|mjs)$/.test(basename(command))) {
@@ -122,15 +132,16 @@ export function snapshotMcpSources(input: { readonly home: string; readonly cwd:
             const bytes = fileBytes(real)
             const hash = sha(bytes)
             digest.update(real).update(hash)
-            pinShebang(real, bytes, digest, pluginRoot ?? input.cwd, input.pathEnv)
+            pinnedShebang(real, bytes, digest, pluginRoot ?? input.cwd, input.pathEnv)
             referencedFiles.push({ path: real, hash })
             resolvedArgs.push(real)
           }
           else if (/\.(?:py|sh|js|cjs|mjs|ts)$/.test(arg)) throw new Error(`MCP script is unavailable: ${arg}`)
           else resolvedArgs.push(arg)
         }
-        review.push({ name, source: file, executable: command, executableHash, referencedFiles })
-        servers[name] = { ...server, command, args: resolvedArgs }
+        review.push({ name, source: file, executable: shebang?.runtime ?? command, executableHash: shebang?.runtimeHash ?? executableHash,
+          referencedFiles: shebang ? [{ path: command, hash: executableHash }, ...referencedFiles] : referencedFiles })
+        servers[name] = { ...server, command: shebang?.runtime ?? command, args: shebang ? [command, ...resolvedArgs] : resolvedArgs }
       } else if (typeof server.url === 'string') {
         const url = new URL(server.url)
         if (url.username || url.password) throw new Error(`MCP endpoint credentials need a private header: ${name}`)

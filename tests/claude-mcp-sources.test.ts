@@ -20,8 +20,9 @@ it('binds approved MCP source, executable and script revisions without exposing 
   writeFileSync(file, JSON.stringify({ mcpServers: { external: { type: 'stdio', command: executable, args: [script], env: { KEY: 'synthetic-secret' } } } }))
   const input = { home, cwd, pathEnv: '/usr/bin:/bin' }
   const first = snapshotMcpSources(input)
-  expect(first.review).toMatchObject([{ name: 'external', source: file, executable: realpathSync(executable) }])
-  expect(first.servers.external?.command).toBe(realpathSync(executable))
+  expect(first.review).toMatchObject([{ name: 'external', source: file, executable: realpathSync('/bin/sh'),
+    referencedFiles: [{ path: realpathSync(executable) }, { path: realpathSync(script) }] }])
+  expect(first.servers.external).toMatchObject({ command: realpathSync('/bin/sh'), args: [realpathSync(executable), realpathSync(script)] })
   expect(JSON.stringify(first.review)).not.toContain('synthetic-secret')
   expect(snapshotMcpSources({ ...input, accountId: 'other-account' }).revision).not.toBe(first.revision)
   expect(snapshotMcpSources({ ...input, accountGeneration: 2 }).revision).not.toBe(first.revision)
@@ -68,6 +69,21 @@ it('omits download-on-launch connector commands and reserves their names', () =>
   const snapshot = snapshotMcpSources({ home, cwd, pathEnv: '' })
   expect(Object.keys(snapshot.servers)).toEqual(['verified'])
   expect(snapshot.unavailable).toMatchObject([{ name: 'dynamic', reason: expect.stringMatching(/Pin a local executable/) }])
+})
+
+it('rewrites an env-shebang connector to pinned runtime and script bytes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-env-mcp-'))
+  const home = join(root, 'home'), cwd = join(root, 'project'), bin = join(root, 'bin')
+  mkdirSync(home); mkdirSync(cwd); mkdirSync(bin)
+  const script = join(bin, 'connector')
+  writeFileSync(script, '#!/usr/bin/env node\nprocess.stdout.write("ready")\n'); chmodSync(script, 0o755)
+  writeFileSync(join(cwd, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: script, args: ['mcp'] } } }))
+  const input = { home, cwd, pathEnv: `${join(process.execPath, '..')}:${process.env.PATH ?? ''}` }
+  const first = snapshotMcpSources(input)
+  expect(first.servers.fixture).toMatchObject({ command: realpathSync(process.execPath), args: [realpathSync(script), 'mcp'] })
+  expect(first.review[0]).toMatchObject({ executable: realpathSync(process.execPath), referencedFiles: [{ path: realpathSync(script) }] })
+  writeFileSync(script, '#!/usr/bin/env node\nprocess.stdout.write("changed")\n')
+  expect(snapshotMcpSources(input).revision).not.toBe(first.revision)
 })
 
 it('pins plugin-relative executable scripts and blocks a plugin MCP file escaping by symlink', () => {
