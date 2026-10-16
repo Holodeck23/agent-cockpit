@@ -18,9 +18,10 @@ turn=0
 FACT='Deploys go to staging first; production needs a tagged release.'
 say() { printf '{"type":"assistant","message":{"id":"mem-%s-%s","role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$turn" "$1" "$2"; }
 finish() { printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0,"duration_ms":5}\n'; }
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in
     *'"type":"user"'*)
+      fixture_replay_line
       turn=$((turn + 1))
       case "$line" in
         *remember*)

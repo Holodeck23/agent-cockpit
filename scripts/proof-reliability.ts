@@ -24,7 +24,7 @@ for (const [index, id] of ids.entries()) {
 }
 const app = await electron.launch({
   executablePath: EXECUTABLE,
-  env: { ...process.env, COCKPIT_HOME: stateRoot, PATH: LAUNCHD_PATH },
+  env: { ...process.env, COCKPIT_HOME: stateRoot, PATH: LAUNCHD_PATH, COCKPIT_FIXTURE_NODE: process.execPath },
 })
 await isolateProofInput(app)
 try {
