@@ -11,8 +11,9 @@ for arg in "$@"; do
   previous="$arg"
 done
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"preview-fixture"}\n' "$session"
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in *'"type":"user"'*) ;; *) continue ;; esac
+  fixture_replay_line
   command=$(printf '%s' "$line" | sed -n 's/.*with command \(.*\) and name.*/\1/p')
   if [ -z "$command" ]; then
     printf '{"type":"assistant","message":{"id":"orientation","role":"assistant","content":[{"type":"text","text":"This project contains README.md. Next, read the startup instructions."}]}}\n'

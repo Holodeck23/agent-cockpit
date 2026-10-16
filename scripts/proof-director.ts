@@ -12,7 +12,7 @@ const fixture = join(ROOT, 'scripts/fixtures/onboarding-agent')
 const home = mkdtempSync(join(tmpdir(), 'cockpit-director-proof-'))
 const project = mkdtempSync(join(tmpdir(), 'cockpit-first-project-'))
 writeFileSync(join(project, 'README.md'), '# First project\nA synthetic project for the director proof.\n')
-const env = { COCKPIT_HOME: home, COCKPIT_AGENT_PATH: fixture }
+const env = { HOME: home, COCKPIT_HOME: home, COCKPIT_AGENT_PATH: fixture }
 let app = await launchPackagedApp(env)
 let checks = 0
 function pass(label: string) { checks++; console.log(`PASS ${label}`) }
@@ -58,7 +58,7 @@ try {
 
   await app.close()
   const sampleHome = mkdtempSync(join(tmpdir(), 'cockpit-sample-proof-'))
-  app = await launchPackagedApp({ ...env, COCKPIT_HOME: sampleHome })
+  app = await launchPackagedApp({ ...env, HOME: sampleHome, COCKPIT_HOME: sampleHome })
   page = await app.firstWindow()
   page.setDefaultTimeout(25_000)
   await page.route('**/api/agents', (route) => route.fulfill({ json: { data: [] } }))
