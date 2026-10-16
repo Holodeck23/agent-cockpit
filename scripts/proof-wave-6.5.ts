@@ -23,7 +23,7 @@ writeFileSync(join(documentsDir(store.root, project), 'release-plan.md'), '# Rel
 const readOnly = mkdtempSync(join(tmpdir(), 'cockpit-wave65-readonly-'))
 chmodSync(readOnly, 0o500)
 
-const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
+const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave65-${name}.png`) })
 /** Polls from Node (an async waitForFunction predicate is always truthy). */
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {

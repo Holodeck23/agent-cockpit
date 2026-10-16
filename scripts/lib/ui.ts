@@ -49,6 +49,7 @@ export function messageBox(page: Page): Locator {
 export async function startConversation(page: Page, prompt: string): Promise<void> {
   await page.getByRole('button', { name: 'New conversation' }).click()
   await messageBox(page).fill(prompt)
+  await page.locator('.composer button.send:enabled').waitFor()
   await messageBox(page).press('Enter')
   await page.getByRole('heading', { level: 1, name: prompt.slice(0, 20) }).waitFor({ timeout: 15_000 })
 }
