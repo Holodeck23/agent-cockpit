@@ -25,7 +25,7 @@ async function start(page: Page, text: string): Promise<void> {
 }
 
 const { check, finish } = checker()
-const app = await launchPackagedApp({ COCKPIT_HOME: join(home, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/states-agent') })
+const app = await launchPackagedApp({ HOME: home, COCKPIT_HOME: join(home, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/states-agent') })
 const page = await app.firstWindow()
 await page.waitForLoadState('domcontentloaded')
 page.setDefaultTimeout(15_000)
