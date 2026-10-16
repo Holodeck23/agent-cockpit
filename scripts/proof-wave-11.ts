@@ -209,10 +209,10 @@ try {
   await shot(phone, 'phone-apps')
   const sockets: WebSocket[] = []
   // Which tab each socket belongs to, and whether it ever got a frame (a refused handshake never does).
-  const owner = new Map<WebSocket, Page>(), live = new Set<WebSocket>()
+  const owner = new Map<WebSocket, Page>(), live = new Set<WebSocket>(), lastFrame = new Map<WebSocket, number>()
   context.on('page', (p) => p.on('websocket', (ws) => {
     sockets.push(ws); owner.set(ws, p)
-    ws.on('framereceived', () => live.add(ws)); ws.on('close', () => live.delete(ws))
+    ws.on('framereceived', () => { live.add(ws); lastFrame.set(ws, Date.now()) }); ws.on('close', () => live.delete(ws))
   }))
   /** Taps View app and returns the tab the app opened in (a new one, or the one already named for it). */
   async function viewApp(name: string, origin: string): Promise<{ tab: Page; how: string } | undefined> {
@@ -261,7 +261,11 @@ try {
   // This page's socket, past Vite's "connected" frame. A socket the browser has only opened may not
   // reach Vite yet, and Vite does not replay an update to a client that connects after it (gate
   // 10-08 fc295d6 run 2: Vite logged the update, the page never got it, no reload).
-  const hmr = await until('the HMR socket', async () => sockets.find((ws) => owner.get(ws) === tabA && live.has(ws) && ws.url().startsWith(ORIGIN_A.replace('https', 'wss'))), 10_000)
+  const hmr = await until('the stable HMR socket', async () => {
+    const ready = sockets.filter((ws) => owner.get(ws) === tabA && live.has(ws) && !ws.isClosed() && ws.url().startsWith(ORIGIN_A.replace('https', 'wss')))
+    const latest = ready.at(-1)
+    return latest && Date.now() - (lastFrame.get(latest) ?? Date.now()) >= 1000 ? latest : undefined
+  }, 10_000)
   await tabA.evaluate(() => { (window as unknown as { proofMarker: string }).proofMarker = 'kept' })
   const editedAt = clock()
   writeFileSync(join(project, 'src/msg.js'), "export const msg = 'Hello from A (version 2, edited on the Mac)'\n")
