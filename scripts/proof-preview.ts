@@ -31,7 +31,7 @@ const showsApp = async (): Promise<boolean> => {
   return false
 }
 mkdirSync(PROOF_DIR, { recursive: true })
-const app = await launchPackagedApp({ COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/preview-agent') })
+const app = await launchPackagedApp({ HOME: dir, COCKPIT_HOME: join(dir, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/preview-agent') })
 const page = await app.firstWindow()
 await page.waitForLoadState('domcontentloaded')
 
