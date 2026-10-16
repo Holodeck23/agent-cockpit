@@ -64,7 +64,7 @@ fetch('http://127.0.0.1:${cockpitPort}/api/threads?probe=page-nocors', { mode: '
 await new Promise<void>((resolve) => devServer.listen(0, '127.0.0.1', resolve))
 const devUrl = `http://127.0.0.1:${(devServer.address() as AddressInfo).port}/`
 
-const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/ask-agent') })
+const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/ask-agent') })
 const statuses = new Map<string, number>()
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `window-key-${control ? 'control-' : ''}${name}.png`) })
 const blocked = (status: number | undefined): boolean => (control ? status !== undefined && status < 400 : status === 403)

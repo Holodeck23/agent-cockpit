@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/../claude-mcp-env.sh" "$@" || exit 1
 [ "$1" = "--help" ] && { cat "$(dirname "$0")/../claude-help.txt"; exit 0; }
 # Stand-in `claude` for `npm run proof:thread-menu`. Each turn asks permission for two shell
 # commands in a row, in the format Claude Code 2.1 uses (tests/fixtures/claude-turn-approval.jsonl),
@@ -21,9 +22,9 @@ ask() {
 answered() {
   printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_%s_%s","type":"tool_result","content":"step %s"}]}}\n' "$turn" "$1" "$1"
 }
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in
-    *'"type":"user"'*) turn=$((turn + 1)); ask 1 ;;
+    *'"type":"user"'*) fixture_replay_line; turn=$((turn + 1)); ask 1 ;;
     *'"type":"control_response"'*)
       case "$waiting" in
         1) answered 1; ask 2 ;;
