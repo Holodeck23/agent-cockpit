@@ -30,7 +30,7 @@ const ts = new Date().toISOString()
 const offline = store.create({ id: randomUUID(), title: 'Offline turn', projectPath: alpha, settings: threadSettingsSchema.parse({}), sessionId: randomUUID(), sessionStarted: false, completed: false, createdAt: ts, updatedAt: ts })
 for (const event of [{ kind: 'user_text', text: 'Hello' }, { kind: 'error', message: 'connect ECONNREFUSED 127.0.0.1:443' }] as NormalizedEvent[]) store.append(offline.id, event, ts)
 
-const env = { COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave1-agent') }
+const env = { HOME: root, COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave1-agent') }
 let app: ElectronApplication = await launchPackagedApp(env)
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave2-${name}.png`) })
 /** Polls from Node (an async waitForFunction predicate is always truthy). */
