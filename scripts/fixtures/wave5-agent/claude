@@ -58,7 +58,7 @@ drain() {
     done_turn
   done
 }
-while IFS= read -r line; do
+while fixture_read_line; do
   case "$line" in
     *'"subtype":"cancel_async_message"'*)
       id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
@@ -98,6 +98,7 @@ while IFS= read -r line; do
     printf '%s\t%s\n' "$uuid" "$text" >> "$queue"
     continue
   fi
+  fixture_replay_line
   turn=$((turn + 1))
   case "$line" in
     *'"text":"ask'*)

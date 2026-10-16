@@ -17,7 +17,7 @@ writeFileSync(join(project, 'notes.txt'), 'alpha\nbeta\ngamma\n')
 const store = createThreadStore(join(root, 'state'))
 mkdirSync(PROOF_DIR, { recursive: true })
 
-const app = await launchPackagedApp({ COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave5-agent') })
+const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave5-agent') })
 const shot = (page: Page, name: string) => page.screenshot({ path: join(PROOF_DIR, `wave5-${name}.png`) })
 /** Polls from Node (an async waitForFunction predicate is always truthy). */
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {
