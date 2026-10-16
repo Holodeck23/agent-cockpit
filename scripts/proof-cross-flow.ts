@@ -69,7 +69,7 @@ const openCard = async (page: Page): Promise<Locator> => {
 const openConversation = async (page: Page, title: string): Promise<void> => {
   await page.getByRole('navigation', { name: 'Conversations' }).getByText(title, { exact: false }).first().click()
 }
-const launch = (): Promise<ElectronApplication> => launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
+const launch = (): Promise<ElectronApplication> => launchPackagedApp({ HOME: root, COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
 
 let app: ElectronApplication | undefined
 try {
@@ -190,7 +190,11 @@ try {
     if (selected !== (index === target.getDay())) await button.click()
   }
   await page.getByLabel('At', { exact: true }).fill(hhmm(target))
-  await page.getByRole('button', { name: 'Save and enable schedule', exact: true }).click()
+  await page.getByRole('button', { name: 'Save and review schedule', exact: true }).click()
+  const scope = page.getByRole('group', { name: 'Review scheduled run scope' })
+  await scope.getByText('Review this schedule before enabling it').waitFor()
+  check('CROSS-02 the scheduled launch waits for an explicit scope review', await scope.getByRole('button', { name: 'Enable this schedule' }).isVisible())
+  await scope.getByRole('button', { name: 'Enable this schedule' }).click()
   await page.getByText(/^Scheduled · /).first().waitFor()
   const ranId = await until('the scheduled run', async () => {
     const t = (await get<Summary[]>(page, '/api/threads')).find((s) => s.meta.title === '@Garden site')
