@@ -38,7 +38,7 @@ const session = (label: string): Session => {
   return { home, project }
 }
 const launch = (s: Session, agentDir: string): Promise<ElectronApplication> =>
-  launchPackagedApp({ COCKPIT_HOME: join(s.home, 'state'), COCKPIT_AGENT_PATH: agentDir })
+  launchPackagedApp({ HOME: s.home, COCKPIT_HOME: join(s.home, 'state'), COCKPIT_AGENT_PATH: agentDir })
 
 async function quit(app: ElectronApplication): Promise<boolean> {
   let exited = false
