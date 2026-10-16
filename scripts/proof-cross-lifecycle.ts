@@ -52,7 +52,7 @@ const unrelated = spawn('/usr/bin/python3', ['-u', '-m', 'http.server', '0', '--
 unrelated.unref()
 
 async function crossTen(): Promise<void> {
-  const app = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state-10'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
+  const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: join(root, 'state-10'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
   const proc = app.process()
   let exited = false
   proc.on('exit', () => { exited = true })
@@ -106,8 +106,9 @@ async function crossTen(): Promise<void> {
     await again.waitFor()
     if (!(await again.getByRole('button', { name: 'Cancel', exact: true }).isVisible().catch(() => false))) await again.locator('summary').click()
     check('CROSS-10 the reopened window shows the check still running', await again.getByRole('button', { name: 'Cancel', exact: true }).isVisible())
-    const browserAgain = (await pageUrls(app)).some((u) => site?.url && u.startsWith(site.url))
-    console.log(`  (browser page after reopen: ${browserAgain ? 'still loaded' : 'not loaded'})`)
+    await page.getByRole('navigation', { name: 'Conversations' }).getByText('START-WEB the garden', { exact: false }).first().click()
+    const browserAgain = await until('browser page after returning to its conversation', async () => (await pageUrls(app)).some((u) => site?.url && u.startsWith(site.url)), 5_000)
+    check('CROSS-10 returning to its conversation restores the browser page', Boolean(browserAgain))
     await shot(page, '10-reopened')
 
     step('CROSS-10 a real Quit')
