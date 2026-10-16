@@ -9,7 +9,7 @@ for argument in "$@"; do
   if [ "$previous" = '--mcp-config' ]; then config=$argument; fi
   previous=$argument
 done
-if [ -n "$config" ]; then
+if [ -n "$config" ] && [ "$COCKPIT_FIXTURE_LEGACY_ENV" != '1' ]; then
   COCKPIT_MCP_TOKEN=$("$fixture_node" -e 'const fs=require("fs");const value=process.argv[1];const config=JSON.parse(value.startsWith("{")?value:fs.readFileSync(value,"utf8"));process.stdout.write(config.mcpServers.cockpit.env.COCKPIT_MCP_TOKEN)' "$config") || return 1
   COCKPIT_MCP_URL=$("$fixture_node" -e 'const fs=require("fs");const value=process.argv[1];const config=JSON.parse(value.startsWith("{")?value:fs.readFileSync(value,"utf8"));process.stdout.write(config.mcpServers.cockpit.env.COCKPIT_MCP_URL)' "$config") || return 1
   export COCKPIT_MCP_TOKEN COCKPIT_MCP_URL

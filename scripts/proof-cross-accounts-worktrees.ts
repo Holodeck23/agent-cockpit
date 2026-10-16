@@ -165,7 +165,8 @@ try {
   if (!existsSync(V015)) throw new Error(`No v0.1.5 build at ${V015}`)
   const legacy = await electron.launch({ executablePath: V015, env: {
     HOME: home, USER: process.env.USER ?? '', LOGNAME: process.env.USER ?? '', SHELL: join(ROOT, 'scripts/fixtures/wave10-cli/login-shell'), TMPDIR: process.env.TMPDIR ?? '/tmp',
-    PATH: LAUNCHD_PATH, COCKPIT_HOME: stateL, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/accounts-agent'), COCKPIT_PROOF_ACCOUNT_LOG: log,
+    PATH: LAUNCHD_PATH, COCKPIT_FIXTURE_NODE: process.execPath, COCKPIT_FIXTURE_LEGACY_ENV: '1', COCKPIT_HOME: stateL,
+    COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/accounts-agent'), COCKPIT_PROOF_ACCOUNT_LOG: log,
   } })
   await isolateProofInput(legacy)
   page = await legacy.firstWindow()
