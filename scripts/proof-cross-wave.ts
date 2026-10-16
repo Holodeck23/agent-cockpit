@@ -21,7 +21,7 @@ mkdirSync(PROOF_DIR, { recursive: true })
 const ICON = readFileSync(join(ROOT, 'build/icon-1024.png')).toString('base64')
 writeFileSync(join(documentsDir(store.root, project), 'release-plan.md'), '# Release plan\n')
 const newDocs = mkdtempSync(join(tmpdir(), 'cockpit-cross-wave-docs-'))
-const env = { COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') }
+const env = { HOME: root, COCKPIT_HOME: store.root, COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') }
 
 async function until(label: string, test: () => Promise<boolean>, ms = 10_000): Promise<boolean> {
   const end = Date.now() + ms
