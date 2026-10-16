@@ -17,7 +17,7 @@ const agentsAlive = (): number => {
 
 async function quitCase(label: string, veto: boolean): Promise<void> {
   const project = mkdtempSync(join(tmpdir(), 'cockpit-quit-proof-'))
-  const app = await launchPackagedApp({ COCKPIT_AGENT_PATH: agentDir })
+  const app = await launchPackagedApp({ HOME: project, COCKPIT_HOME: join(project, 'state'), COCKPIT_AGENT_PATH: agentDir })
   const proc = app.process()
   let exitedAt = 0
   proc.on('exit', () => { exitedAt = Date.now() })
@@ -34,6 +34,7 @@ async function quitCase(label: string, veto: boolean): Promise<void> {
       await page.evaluate("window.addEventListener('beforeunload', (event) => { event.preventDefault(); event.returnValue = '' })")
       await page.mouse.click(5, 300)
     }
+    for (let i = 0; i < 60 && agentsAlive() === 0; i += 1) await new Promise((r) => setTimeout(r, 250))
     check(`${label}: an agent is mid-turn before quitting`, agentsAlive() > 0)
     const quitAt = Date.now()
     execFile('osascript', ['-e', `tell application "${APP_BUNDLE}" to quit`])
