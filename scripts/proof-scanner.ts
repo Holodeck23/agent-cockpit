@@ -14,7 +14,7 @@ const root = mkdtempSync(join(tmpdir(), 'cockpit-scanner-proof-'))
 const project = join(root, 'app')
 mkdirSync(project)
 mkdirSync(PROOF_DIR, { recursive: true })
-const app = await launchPackagedApp({ COCKPIT_HOME: join(root, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
+const app = await launchPackagedApp({ HOME: root, COCKPIT_HOME: join(root, 'state'), COCKPIT_AGENT_PATH: join(ROOT, 'scripts/fixtures/wave65-agent') })
 // Keep the exact capture operation and its full error when a compositor/font wait times out.
 // Capture failures still fail the proof; no retry or animation suppression is used.
 async function capture(page: Page, label: string, options: Parameters<Page['screenshot']>[0] = {}): Promise<Buffer> {
