@@ -42,10 +42,12 @@ it('expands only a literal unquoted home script under a pinned interpreter', () 
   expect((first.settings.hooks.PreToolUse?.[0] as { hooks: { command: string }[] }).hooks[0]?.command)
     .toBe(`'${realpathSync('/bin/bash')}' '${realpathSync(script)}'`)
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash "~/guard.sh"' }] }] } }))
-  expect(() => snapshotHookSources(f.input)).toThrow(/quoted home shortcut/)
+  const quoted = snapshotHookSources(f.input)
+  expect(quoted.unavailable).toMatchObject([{ event: 'PreToolUse', reason: expect.stringMatching(/omitted/) }])
+  expect(quoted.settings.hooks.PreToolUse).toBeUndefined()
 })
 
-it('omits an uninstalled enabled plugin visibly while still blocking dynamic hook commands', () => {
+it('omits an uninstalled plugin and dynamic commands visibly without including an empty hook group', () => {
   const f = fixture()
   writeFileSync(f.settings, JSON.stringify({ enabledPlugins: { 'unknown@builtin': true } }))
   const unavailable = snapshotHookSources(f.input)
@@ -54,9 +56,13 @@ it('omits an uninstalled enabled plugin visibly while still blocking dynamic hoo
   expect(unavailable.unavailable).toMatchObject([{ id: 'unknown@builtin', reason: expect.stringMatching(/omitted/) }])
   expect(snapshotHookSources(f.input).revision).toBe(unavailable.revision)
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script}; echo bypass` }] }] } }))
-  expect(() => snapshotHookSources(f.input)).toThrow(/dynamic shell syntax/)
+  const dynamic = snapshotHookSources(f.input)
+  expect(dynamic.unavailable).toMatchObject([{ event: 'PreToolUse', reason: expect.stringMatching(/omitted/) }])
+  expect(dynamic.settings.hooks.PreToolUse).toBeUndefined()
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script} [ab]` }] }] } }))
-  expect(() => snapshotHookSources(f.input)).toThrow(/dynamic shell syntax/)
+  expect(snapshotHookSources(f.input).unavailable).toHaveLength(1)
+  writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'prompt', prompt: 'allow it' }] }] } }))
+  expect(() => snapshotHookSources(f.input)).toThrow(/Unsupported Claude hook type/)
 })
 
 it('rejects plugin hook files that resolve outside the installed plugin folder', () => {
@@ -108,5 +114,27 @@ it('passes only approved hook settings and rechecks the script immediately befor
   expect(() => launches[0]?.validateSources?.()).not.toThrow()
   writeFileSync(f.script, '#!/bin/sh\nexit 2\n')
   expect(() => launches[0]?.validateSources?.()).toThrow(/hook sources changed/)
+  await manager.shutdown()
+})
+
+it('requires project approval before launching with a dynamic policy hook omitted', async () => {
+  const f = fixture()
+  writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script}; echo dynamic` }] }] } }))
+  const revision = snapshotHookSources(f.input).revision
+  let approved = false
+  const launches: LaunchRequest[] = []
+  const manager = createThreadManager(createThreadStore(join(f.root, 'state')), {
+    accounts: { resolve: () => ({ accountId: 'account-one', generation: 1, label: 'Fixture', env: { CLAUDE_CONFIG_DIR: f.profileDir } }), describe: () => undefined },
+    projectTrust: () => ({ codexNetwork: false, claudeHooks: true, claudeMcp: false, ...(approved ? { claudeHooksApproval: revision } : {}) }),
+    launchers: { claude: (req) => { launches.push(req); return { agent: 'claude', alive: () => true, send: () => undefined,
+      interrupt: () => undefined, respondApproval: () => undefined, close: async () => undefined } } },
+  })
+  const settings = threadSettingsSchema.parse({ agent: 'claude', hooksSetup: 'inherit', mcpSetup: 'off' })
+  manager.create({ projectPath: f.cwd, settings, text: 'blocked' })
+  expect(launches).toHaveLength(0)
+  approved = true
+  manager.create({ projectPath: f.cwd, settings, text: 'reviewed omission' })
+  expect(launches).toHaveLength(1)
+  expect(launches[0]?.hookSettings?.hooks).toEqual({})
   await manager.shutdown()
 })

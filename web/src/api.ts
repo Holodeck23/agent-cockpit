@@ -222,7 +222,7 @@ export const api = {
     unavailable: { name: string; source: string; reason: string }[] }>(`/api/projects/claude-mcp?${new URLSearchParams({ path, ...inWorkspace(workspaceId) })}`),
   approveClaudeMcp: (path: string, revision: string, workspaceId?: string) => request<Project>('/api/projects/claude-mcp', { method: 'POST', body: { path, revision, ...inWorkspace(workspaceId) } }),
   claudeHookSources: (path: string, workspaceId?: string) => request<{ cwd: string; revision: string; review: { event: string; source: string; executable: string; executableHash: string; referencedFiles: readonly { path: string; hash: string }[] }[];
-    unavailable: { id: string; source: string; reason: string }[] }>(`/api/projects/claude-hooks?${new URLSearchParams({ path, ...inWorkspace(workspaceId) })}`),
+    unavailable: { id: string; source: string; event?: string; reason: string }[] }>(`/api/projects/claude-hooks?${new URLSearchParams({ path, ...inWorkspace(workspaceId) })}`),
   approveClaudeHooks: (path: string, revision: string, workspaceId?: string) => request<Project>('/api/projects/claude-hooks', { method: 'POST', body: { path, revision, ...inWorkspace(workspaceId) } }),
   setAntigravityTools: (path: string, connected: boolean) =>
     request<{ project: Project; message?: string; backup?: string }>('/api/projects/agy-mcp', { method: 'POST', body: { path, connected } }),

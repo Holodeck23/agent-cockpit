@@ -15,7 +15,7 @@ export interface HookSourceSnapshot {
   readonly settings: Readonly<{ hooks: Readonly<Record<string, readonly unknown[]>> }>
   readonly review: readonly HookSourceReview[]
   /** Enabled plugins with no executable source are omitted from the private settings snapshot. */
-  readonly unavailable: readonly { id: string; source: string; reason: string }[]
+  readonly unavailable: readonly { id: string; source: string; event?: string; reason: string }[]
 }
 export interface HookSourceInput {
   readonly home: string
@@ -107,16 +107,23 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
     digest.update(source).update(JSON.stringify(raw))
     for (const [event, rows] of Object.entries(raw)) {
       if (!Array.isArray(rows)) throw new Error(`Invalid Claude hook event: ${event}`)
-      for (const row of rows) {
+      for (const [groupIndex, row] of rows.entries()) {
         if (!row || typeof row !== 'object' || Array.isArray(row) || !Array.isArray((row as { hooks?: unknown }).hooks)) throw new Error(`Invalid Claude hook group: ${event}`)
         const group = row as { hooks: unknown[] }
         const resolvedHooks: Record<string, unknown>[] = []
-        for (const item of group.hooks) {
+        for (const [index, item] of group.hooks.entries()) {
           if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`Invalid Claude hook: ${event}`)
           const hook = item as { type?: unknown; command?: unknown }
           if (hook.type !== 'command' || typeof hook.command !== 'string') throw new Error(`Unsupported Claude hook type in ${source}`)
           const command = pluginRoot ? hook.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginRoot) : hook.command
-          const argv = literalArgv(command, input.home)
+          let argv: string[]
+          try { argv = literalArgv(command, input.home) }
+          catch (error) {
+            if (!(error instanceof Error) || !/dynamic shell syntax|home shortcut/.test(error.message)) throw error
+            unavailable.push({ id: `${event}:${groupIndex}:${index}:${sha(command).slice(0, 12)}`, source, event,
+              reason: 'Dynamic command is omitted; it may have affected permissions or context' })
+            continue
+          }
           const executable = executablePath(argv[0]!, cwd, input.pathEnv)
           const kind = basename(executable)
           if (['env', 'npx', 'pnpx', 'bunx', 'uvx', 'yarn', 'npm'].includes(kind)) throw new Error(`Dynamic Claude hook launcher needs separate review: ${source}`)
@@ -151,7 +158,7 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
           review.push({ event, source, executable, executableHash, referencedFiles })
           resolvedHooks.push({ ...hook, command: [executable, ...resolvedArgs].map(shellQuote).join(' ') })
         }
-        ;(hooks[event] ??= []).push({ ...row, hooks: resolvedHooks })
+        if (resolvedHooks.length > 0) (hooks[event] ??= []).push({ ...row, hooks: resolvedHooks })
       }
     }
   }
