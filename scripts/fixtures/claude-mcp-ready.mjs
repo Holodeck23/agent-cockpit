@@ -22,7 +22,8 @@ try {
   const { data } = await response.json()
   assert.equal(data.server, 'cockpit')
   assert.equal(data.protocol, 1)
-  assert.equal(realpathSync(data.projectPath), realpathSync(process.cwd()))
+  // A worktree turn belongs to the project but runs from its selected checkout.
+  assert.equal(realpathSync(data.cwd), realpathSync(process.cwd()))
 } finally {
   if (connected) await client.close()
 }

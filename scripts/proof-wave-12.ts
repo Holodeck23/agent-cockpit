@@ -133,7 +133,7 @@ const chips = async (page: Page): Promise<string[]> => (await page.locator('.ima
 const section = (page: Page, name: string) => (name === 'Processes' ? page.getByRole('button', { name: /^Processes/ }) : page.getByRole('tab', { name, exact: true })).click()
 
 const launch = (extra: Record<string, string> = {}): Promise<ElectronApplication> => launchPackagedApp({
-  COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(FIX, 'wave12-agent'), ...extra,
+  HOME: root, COCKPIT_HOME: state, COCKPIT_AGENT_PATH: join(FIX, 'wave12-agent'), ...extra,
 })
 
 let app: ElectronApplication | undefined
