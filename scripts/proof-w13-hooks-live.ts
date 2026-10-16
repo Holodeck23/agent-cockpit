@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { launchPackagedApp } from './lib/launch-app.ts'
 import { apiPost, openProject } from './lib/ui.ts'
 
@@ -15,8 +15,24 @@ const hash = (path: string): string => createHash('sha256').update(readFileSync(
 assert.equal(hash(realpathSync(cli)), '8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081')
 assert.match(execFileSync(cli, ['--version'], { encoding: 'utf8' }), /^2\.1\.220 /)
 assert.equal(hash(process.execPath), '68f4d07ca49e0500cc135c7e0a445093e228e42e126ac22306d045f0a8c2636b')
-const root = mkdtempSync(join(tmpdir(), 'cockpit-w13-hook-live-'))
+const managed = process.env.COCKPIT_W13_MANAGED_CLAUDE_PROFILE
+assert.ok(managed, 'Set COCKPIT_W13_MANAGED_CLAUDE_PROFILE to a signed-in Cockpit managed profile')
+const accountId = basename(managed)
+assert.match(accountId, /^[0-9a-f-]{36}$/)
+const accountRoot = join(process.env.HOME ?? '', '.agent-cockpit')
+assert.equal(realpathSync(dirname(managed)), realpathSync(join(accountRoot, 'account-profiles')))
+const accountFile = JSON.parse(readFileSync(join(accountRoot, 'accounts.json'), 'utf8')) as {
+  accounts: Array<{ id: string; agent: string; mode: string; isolation: string }>
+}
+const account = accountFile.accounts.find((entry) => entry.id === accountId)
+assert.ok(account && account.agent === 'claude' && account.mode === 'managed' && account.isolation === 'CLAUDE_CONFIG_DIR')
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'cockpit-w13-hook-live-')))
 const project = join(root, 'project'), marker = join(root, 'hook-started')
+const state = join(root, 'state')
+mkdirSync(join(state, 'account-profiles'), { recursive: true, mode: 0o700 })
+symlinkSync(realpathSync(managed), join(state, 'account-profiles', accountId))
+writeFileSync(join(state, 'accounts.json'), JSON.stringify({ version: 1, revision: 1, accounts: [account],
+  selections: { [project]: { claude: accountId } } }), { mode: 0o600 })
 mkdirSync(join(project, '.claude'), { recursive: true })
 writeFileSync(join(project, 'README.md'), '# Isolated W13 hook proof\n')
 const script = join(project, 'session-start.mjs')
@@ -24,14 +40,21 @@ writeFileSync(script, `import { writeFileSync } from 'node:fs'\nwriteFileSync(${
 writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ hooks: {
   SessionStart: [{ hooks: [{ type: 'command', command: `${process.execPath} ${script}` }] }],
 } }))
-// HOME controls Cockpit's source inventory; CLAUDE_CONFIG_DIR keeps the same signed-in CLI identity.
-// Strict mode and the private settings snapshot prevent ambient hooks from entering the provider.
-const app = await launchPackagedApp({ HOME: root, CLAUDE_CONFIG_DIR: join(process.env.HOME ?? '', '.claude'),
-  COCKPIT_HOME: join(root, 'state'), COCKPIT_AGENT_PATH: dirname(cli) })
+// The disposable account record selects the authorized managed profile; HOME stays real for Keychain.
+// Cockpit metadata stays in disposable state. Claude may write normal session data to its profile.
+const app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli) })
 try {
   const page = await app.firstWindow()
   page.setDefaultTimeout(20_000)
   await openProject(page, project, 'W13 hook proof')
+  const selectedAccount = await page.evaluate(async (path) => {
+    const listed = await (await fetch('/api/projects')).json() as { data: Array<{ projectId?: string; path: string }> }
+    const id = listed.data.find((entry) => entry.path === path)?.projectId
+    if (!id) return undefined
+    const choice = await (await fetch(`/api/projects/${id}/accounts`)).json() as { data: { selection: { claude: string } } }
+    return choice.data.selection.claude
+  }, project)
+  assert.equal(selectedAccount, accountId, 'The disposable project did not select the authorized managed account')
   const source = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
     project) as { revision: string; review: Array<{ event: string; referencedFiles: Array<{ path: string; hash: string }> }>; unavailable: unknown[] }
   assert.equal(source.review.length, 1)
@@ -61,4 +84,6 @@ try {
   console.log(JSON.stringify({ packagedHookRan: true, hookSourceHash: hash(script), cliVersion: '2.1.220' }))
 } finally {
   await app.close()
+  unlinkSync(join(state, 'account-profiles', accountId))
+  rmSync(root, { recursive: true, force: true })
 }
