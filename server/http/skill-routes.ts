@@ -2,10 +2,11 @@
 // account, never a path from the request; responses carry names and counts, never content. The one
 // path shown is where a linked entry points, so it can be reviewed before it is included.
 //   GET  /api/projects/:projectId/skills          current choice and what the CLI default profile offers
-//   POST /api/projects/:projectId/skills          { sourceAccountId, replacing?, includeLinks? } → chooses its current revision
+//   POST /api/projects/:projectId/skills          { sourceAccountId, replacing?, includeLinks?, includePlugins? } → chooses its current revision
 //   POST /api/projects/:projectId/skills/revoke   { selectionId } → stops loading them
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
+import { listEnabledPlugins, pluginEntries, pluginLeftOut, readPluginManifest, strippedManifest } from '../agents/setup/plugin-projection.ts'
 import { snapshotSkillSource } from '../agents/setup/skill-projection.ts'
 import type { SkillSelection, SkillSelectionStore } from '../agents/setup/skill-selection.ts'
 import { HttpError, parseBody, readJson, sendJson } from './json.ts'
@@ -20,7 +21,19 @@ export interface SkillRouteDeps {
 export const isSkillRoute = (parts: readonly string[]): boolean => parts[1] === 'projects' && parts[3] === 'skills'
 
 const viewOf = (row: SkillSelection) => ({ id: row.id, sourceAccountId: row.sourceAccountId, destinationAccountId: row.destinationAccountId,
-  counts: row.counts, selectedAt: row.selectedAt, includedLinks: row.includedLinks })
+  counts: row.counts, selectedAt: row.selectedAt, includedLinks: row.includedLinks, includedPlugins: row.includedPlugins.map((plugin) => plugin.key) })
+
+/** Enabled plugins as offered: what a stripped copy holds and what it leaves out. Keys and counts, no folders. */
+function offeredPlugins(profileDir: string) {
+  return listEnabledPlugins(profileDir).map((row) => {
+    if (row.problem) return { key: row.key, name: row.name, problem: row.problem }
+    const manifest = readPluginManifest(row.installPath)
+    const entries = pluginEntries(row.installPath, manifest)
+    return { key: row.key, name: row.name, ...(row.version ? { version: row.version } : {}), ...entries,
+      leftOut: { ...pluginLeftOut(row.installPath, manifest), manifestFields: strippedManifest(manifest).dropped },
+      includable: entries.skills + entries.commands + entries.agents > 0 }
+  })
+}
 
 export async function handleSkillRoute(
   req: IncomingMessage, res: ServerResponse, parts: readonly string[], deps: SkillRouteDeps,
@@ -34,27 +47,31 @@ export async function handleSkillRoute(
     let offered: ReturnType<typeof snapshotSkillSource> | undefined
     let problem: string | undefined
     try { offered = snapshotSkillSource(deps.defaultProfileDir) } catch (error) { problem = error instanceof Error ? error.message : 'Could not read your skills' }
-    // With included links, the choice's own revision is compared, read through the links it reviewed.
+    // With inclusions, the choice's own revision is compared, read through what it included.
     let currentRevision = offered?.revision
-    if (current?.includedLinks.length && offered) {
-      try { currentRevision = snapshotSkillSource(deps.defaultProfileDir, current.includedLinks).revision } catch { currentRevision = undefined }
+    if ((current?.includedLinks.length || current?.includedPlugins.length) && offered) {
+      try { currentRevision = snapshotSkillSource(deps.defaultProfileDir, { links: current.includedLinks, plugins: current.includedPlugins }).revision }
+      catch { currentRevision = undefined }
     }
+    let plugins: ReturnType<typeof offeredPlugins> = []
+    try { plugins = offered ? offeredPlugins(deps.defaultProfileDir) : [] } catch (error) { problem ??= error instanceof Error ? `Your plugins could not be read: ${error.message}` : 'Your plugins could not be read' }
     sendJson(res, 200, { data: {
       selection: current ? { ...viewOf(current), current: currentRevision === current.revision } : null,
       offered: offered ? { sourceAccountId: 'default-claude', skills: offered.skills, commands: offered.commands, agents: offered.agents,
         excluded: offered.excluded.map((row) => ({ path: row.path, reason: row.reason,
-          ...(row.reason === 'linked' && row.target ? { target: row.target } : {}), ...(row.includable ? { includable: true } : {}) })) } : null,
+          ...(row.reason === 'linked' && row.target ? { target: row.target } : {}), ...(row.includable ? { includable: true } : {}) })), plugins } : null,
       ...(problem ? { problem } : {}),
     } })
     return
   }
   if (method === 'POST' && parts.length === 4) {
     const body = parseBody(z.object({ sourceAccountId: z.literal('default-claude'), replacing: z.uuid().optional(),
-      includeLinks: z.array(z.string().min(1).max(500)).max(200).optional() }), await readJson(req))
+      includeLinks: z.array(z.string().min(1).max(500)).max(200).optional(), includePlugins: z.array(z.string().min(1).max(300)).max(100).optional() }), await readJson(req))
     const destination = deps.destination(path)
     try {
       const selected = deps.selections.select({ projectPath: path, destinationAccountId: destination.accountId, destinationGeneration: destination.generation,
-        sourceAccountId: body.sourceAccountId, sourceProfileDir: deps.defaultProfileDir, ...(body.includeLinks ? { includeLinks: body.includeLinks } : {}) }, body.replacing)
+        sourceAccountId: body.sourceAccountId, sourceProfileDir: deps.defaultProfileDir, ...(body.includeLinks ? { includeLinks: body.includeLinks } : {}),
+        ...(body.includePlugins ? { includePlugins: body.includePlugins } : {}) }, body.replacing)
       sendJson(res, 200, { data: { selection: viewOf(selected) } })
     } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not choose your skills') }
     return

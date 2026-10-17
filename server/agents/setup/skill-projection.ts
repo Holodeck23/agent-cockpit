@@ -3,13 +3,17 @@
 // sources and answers to bare skill names (W13 U6 receipts), so nothing else from the profile is
 // opened up. A projection is an immutable copy of one reviewed revision; the source is never passed.
 // A linked entry is copied only once the user has included that link, and only while it still
-// points at the folder or file they reviewed.
+// points at the folder or file they reviewed. An included plugin's skills, commands and agents are
+// copied, under its own name, into a nested folder its own --plugin-dir points at.
 import { createHash } from 'node:crypto'
 import { chmodSync, closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync,
   readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { listEnabledPlugins, PLUGIN_ROOTS, readPluginManifest, strippedManifest, type PluginRef } from './plugin-projection.ts'
 
 export const PROJECTION_PLUGIN = 'my-setup'
+/** Inside a projection: one stripped copy per included plugin, by name. Claude does not read it as part of my-setup. */
+export const PROJECTED_PLUGINS = '.cockpit-plugins'
 const ROOTS = ['skills', 'commands', 'agents'] as const
 const MAX_FILES = 5000
 const MAX_BYTES = 64 * 1024 * 1024
@@ -36,7 +40,11 @@ export interface SkillSourceSnapshot {
   readonly excluded: readonly SkillExclusion[]
   /** Included links whose content is in this revision. */
   readonly included: readonly SkillLink[]
+  /** Included plugins whose skills, commands and agents are in this revision, with their names. */
+  readonly plugins: readonly (PluginRef & { readonly name: string })[]
 }
+/** What a choice includes beyond the profile's own files. */
+export interface SkillInclusions { readonly links?: readonly SkillLink[]; readonly plugins?: readonly PluginRef[] }
 
 function readExact(path: string): Buffer {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
@@ -59,11 +67,13 @@ const resolved = (path: string): string | undefined => { try { return realpathSy
  * Reads the profile's skills, commands and agents. No link is followed, except an included one that
  * still points at its reviewed target; inside it, links are again not followed.
  */
-export function snapshotSkillSource(profileDir: string, include: readonly SkillLink[] = []): SkillSourceSnapshot {
+export function snapshotSkillSource(profileDir: string, inclusions: SkillInclusions = {}): SkillSourceSnapshot {
   if (!isAbsolute(profileDir)) throw new Error('Skill source must be absolute')
+  const include = inclusions.links ?? []
   const files: SkillSourceFile[] = []
   const excluded: SkillExclusion[] = []
   const included: SkillLink[] = []
+  const plugins: (PluginRef & { name: string })[] = []
   let total = 0
   const take = (path: string, relativePath: string, size: number): void => {
     if (size > MAX_FILE_BYTES) { excluded.push({ path: relativePath, reason: 'too-large' }); return }
@@ -103,13 +113,30 @@ export function snapshotSkillSource(profileDir: string, include: readonly SkillL
     if (stat.isSymbolicLink()) { excluded.push({ path: root, reason: 'linked' }); continue }
     if (stat.isDirectory()) walk(dir, root, true)
   }
+  // An included plugin counts only while it is still enabled and installed in the folder reviewed.
+  const enabled = inclusions.plugins?.length ? listEnabledPlugins(profileDir) : []
+  for (const ref of inclusions.plugins ?? []) {
+    const now = enabled.find((row) => row.key === ref.key && !row.problem)
+    if (!now || now.installPath !== ref.installPath) continue
+    const base = join(PROJECTED_PLUGINS, now.name)
+    files.push({ relativePath: join(base, '.claude-plugin', 'plugin.json'),
+      bytes: Buffer.from(JSON.stringify(strippedManifest(readPluginManifest(ref.installPath)).manifest)) })
+    for (const root of PLUGIN_ROOTS) {
+      const dir = join(ref.installPath, root)
+      if (!existsSync(dir)) continue
+      if (lstatSync(dir).isSymbolicLink()) { excluded.push({ path: join(base, root), reason: 'linked' }); continue }
+      if (lstatSync(dir).isDirectory()) walk(dir, join(base, root), false)
+    }
+    plugins.push({ ...ref, name: now.name })
+  }
   const digest = createHash('sha256')
   for (const file of files) digest.update(file.relativePath).update('\0').update(file.bytes).update('\0')
   // Which link was included, and where it pointed, is part of what was reviewed.
   for (const link of included) digest.update('link\0').update(link.path).update('\0').update(link.target).update('\0')
+  for (const plugin of plugins) digest.update('plugin\0').update(plugin.key).update('\0').update(plugin.installPath).update('\0')
   const under = (root: string): string[] => files.filter((f) => f.relativePath.startsWith(`${root}${sep}`)).map((f) => f.relativePath.slice(root.length + 1))
   return {
-    revision: digest.digest('hex'), files, excluded, included,
+    revision: digest.digest('hex'), files, excluded, included, plugins,
     skills: [...new Set(under('skills').filter((p) => p.endsWith(`${sep}SKILL.md`) && p.split(sep).length === 2).map((p) => p.split(sep)[0]!))],
     commands: under('commands').filter((p) => p.endsWith('.md')).map((p) => p.slice(0, -3).split(sep).join(':')),
     agents: under('agents').filter((p) => p.endsWith('.md') && !p.includes(sep)).map((p) => p.slice(0, -3)),
@@ -147,4 +174,9 @@ export function materializeSkillProjection(source: SkillSourceSnapshot, root: st
     throw error
   }
   return final
+}
+
+/** Every --plugin-dir a projection needs: my-setup itself, then each included plugin's copy. */
+export function projectionPluginDirs(source: SkillSourceSnapshot, projection: string): string[] {
+  return [projection, ...source.plugins.map((plugin) => join(projection, PROJECTED_PLUGINS, plugin.name))]
 }

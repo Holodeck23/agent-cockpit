@@ -858,7 +858,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(hookSettings ? { hookSettings } : {}),
         ...(validateSources ? { validateSources } : {}),
         ...(nativeMemory && !sourceProblem ? { nativeMemoryDirectory: nativeMemory.directory } : {}),
-        ...(skills && !sourceProblem ? { pluginDirs: [skills.pluginDir] } : {}),
+        ...(skills && !sourceProblem ? { pluginDirs: [...skills.pluginDirs] } : {}),
         ...(setup ? { effectiveHooks: setup.hooks } : {}),
         imagesDir: images.dir(meta.id),
         ...(account && Object.keys(account.env).length > 0 ? { accountEnv: account.env } : {}),

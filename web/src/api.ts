@@ -114,11 +114,20 @@ export interface SkillSelectionView {
   readonly counts: { readonly skills: number; readonly commands: number; readonly agents: number }; readonly selectedAt: string; readonly current?: boolean
   /** Links included after review, each with where it pointed then. */
   readonly includedLinks?: readonly { readonly path: string; readonly target: string }[]
+  /** Enabled plugins included after review, by key. */
+  readonly includedPlugins?: readonly string[]
+}
+/** A plugin enabled in the CLI default profile, as offered: what a copy without its hooks and connectors holds. */
+export interface OfferedPlugin {
+  readonly key: string; readonly name: string; readonly version?: string; readonly problem?: string
+  readonly skills?: number; readonly commands?: number; readonly agents?: number; readonly includable?: boolean
+  readonly leftOut?: { readonly hooks: boolean; readonly connectors: boolean; readonly manifestFields: readonly string[] }
 }
 export interface SkillsView {
   readonly selection: SkillSelectionView | null
   readonly offered: { readonly sourceAccountId: string; readonly skills: readonly string[]; readonly commands: readonly string[]; readonly agents: readonly string[]
-    readonly excluded: readonly { readonly path: string; readonly reason: 'linked' | 'not-a-file' | 'too-large'; readonly target?: string; readonly includable?: boolean }[] } | null
+    readonly excluded: readonly { readonly path: string; readonly reason: 'linked' | 'not-a-file' | 'too-large'; readonly target?: string; readonly includable?: boolean }[]
+    readonly plugins?: readonly OfferedPlugin[] } | null
   readonly problem?: string
 }
 
@@ -244,9 +253,10 @@ export const api = {
     request<{ revoked: boolean }>(`/api/projects/${projectId}/native-memory/revoke`, { method: 'POST', body: { selectionId } }),
   /** The project's choice of the user's own Claude skills, commands and agents (Mac only; names and counts only). */
   projectSkills: (projectId: string) => request<SkillsView>(`/api/projects/${projectId}/skills`),
-  chooseProjectSkills: (projectId: string, replacing?: string, includeLinks: readonly string[] = []) =>
+  chooseProjectSkills: (projectId: string, replacing?: string, includeLinks: readonly string[] = [], includePlugins: readonly string[] = []) =>
     request<{ selection: SkillSelectionView }>(`/api/projects/${projectId}/skills`, { method: 'POST',
-      body: { sourceAccountId: 'default-claude', ...(replacing ? { replacing } : {}), ...(includeLinks.length ? { includeLinks } : {}) } }),
+      body: { sourceAccountId: 'default-claude', ...(replacing ? { replacing } : {}), ...(includeLinks.length ? { includeLinks } : {}),
+        ...(includePlugins.length ? { includePlugins } : {}) } }),
   revokeProjectSkills: (projectId: string, selectionId: string) =>
     request<{ revoked: boolean }>(`/api/projects/${projectId}/skills/revoke`, { method: 'POST', body: { selectionId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),

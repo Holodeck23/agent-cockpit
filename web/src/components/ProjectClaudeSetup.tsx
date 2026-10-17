@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type NativeMemorySelectionView, type NativeMemoryView, type SkillSelectionView, type SkillsView } from '../api.ts'
+import { api, type NativeMemorySelectionView, type NativeMemoryView, type OfferedPlugin, type SkillSelectionView, type SkillsView } from '../api.ts'
 
 // The user's own Claude memory and skills for one project (W13 U5/U6). Each is a choice of one
 // reviewed revision for the project's Claude account: a change afterwards stops new conversations
@@ -73,8 +73,8 @@ function MemoryStatus({ selection, state }: { selection: NativeMemorySelectionVi
 interface SkillChoiceProps {
   readonly view: SkillsView
   readonly accountId?: string
-  /** `includeLinks`: the linked entries the user ticked after seeing where they point. */
-  readonly onChoose: (replacing: string | undefined, includeLinks: readonly string[]) => void
+  /** `includeLinks`: the linked entries the user ticked after seeing where they point; `includePlugins`: plugin keys. */
+  readonly onChoose: (replacing: string | undefined, includeLinks: readonly string[], includePlugins: readonly string[]) => void
   readonly onRevoke: (selectionId: string) => void
 }
 
@@ -85,13 +85,22 @@ export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoice
   const state = choiceState(chosen, accountId)
   const offered = view.offered
   const chosenLinks = (chosen?.includedLinks ?? []).map((link) => link.path)
+  const chosenPlugins = chosen?.includedPlugins ?? []
   const [ticked, setTicked] = useState<readonly string[]>(chosenLinks)
+  const [tickedPlugins, setTickedPlugins] = useState<readonly string[]>(chosenPlugins)
   // A new or replaced choice resets the ticks to what it includes.
-  useEffect(() => setTicked((chosen?.includedLinks ?? []).map((link) => link.path)), [chosen?.id])
+  useEffect(() => {
+    setTicked((chosen?.includedLinks ?? []).map((link) => link.path))
+    setTickedPlugins(chosen?.includedPlugins ?? [])
+  }, [chosen?.id])
+  const plugins = offered?.plugins ?? []
+  const pluginOffer = plugins.filter((plugin) => plugin.includable)
+  const pluginLeftOut = plugins.filter((plugin) => !plugin.includable)
   const reviewable = offered?.excluded.filter((row) => row.reason === 'linked' && row.includable) ?? []
   const leftOut = offered?.excluded.filter((row) => !(row.reason === 'linked' && row.includable)) ?? []
-  const pending = state === 'current' && !sameSet(ticked, chosenLinks)
-  const toggle = (path: string): void => setTicked((now) => (now.includes(path) ? now.filter((item) => item !== path) : [...now, path]))
+  const pending = state === 'current' && (!sameSet(ticked, chosenLinks) || !sameSet(tickedPlugins, chosenPlugins))
+  const flip = (now: readonly string[], item: string): readonly string[] => (now.includes(item) ? now.filter((entry) => entry !== item) : [...now, item])
+  const toggle = (path: string): void => setTicked((now) => flip(now, path))
   return (
     <div className="field claude-setup" role="group" aria-label="Your Claude skills">
       <strong>Your Claude skills</strong>
@@ -117,6 +126,23 @@ export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoice
             </li>
           ))}</ul>
         </> : null}
+        {pluginOffer.length ? <>
+          <small>Plugins you enabled ({pluginOffer.length}). Only their skills, commands and agents can load here, never their hooks or connectors. Each is included only if you tick it:</small>
+          <ul className="claude-setup-list">{pluginOffer.map((plugin) => (
+            <li key={plugin.key} className="claude-setup-row">
+              <label className="claude-setup-include">
+                <input type="checkbox" checked={tickedPlugins.includes(plugin.key)} onChange={() => setTickedPlugins((now) => flip(now, plugin.key))} />
+                <span><strong>{plugin.name}{plugin.version ? ` ${plugin.version}` : ''}</strong><small>{pluginSummary(plugin)}</small></span>
+              </label>
+            </li>
+          ))}</ul>
+        </> : null}
+        {pluginLeftOut.length ? <>
+          <small>Plugins not offered ({pluginLeftOut.length}):</small>
+          <ul className="claude-setup-list">{pluginLeftOut.map((plugin) => (
+            <li key={plugin.key} className="claude-setup-row"><span><strong>{plugin.name}</strong><small>{plugin.problem ?? 'no skills, commands or agents; its connectors do not load here'}</small></span></li>
+          ))}</ul>
+        </> : null}
         {leftOut.length ? <>
           <small>Not included ({leftOut.length}):</small>
           <ul className="claude-setup-list">{leftOut.map((row) => (
@@ -126,7 +152,7 @@ export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoice
       </> : null}
       <div className="claude-setup-actions">
         {offered && (state !== 'current' || pending)
-          ? <button type="button" className="button-soft" onClick={() => onChoose(chosen?.id, ticked)}>
+          ? <button type="button" className="button-soft" onClick={() => onChoose(chosen?.id, ticked, tickedPlugins)}>
             {pending ? 'Update my choice' : state === 'changed' ? 'Use the current version' : 'Use my skills'}</button>
           : null}
         {chosen ? <button type="button" className="button-soft" onClick={() => onRevoke(chosen.id)}>Stop loading my skills</button> : null}
@@ -138,10 +164,17 @@ export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoice
 function SkillStatus({ selection, state }: { selection: SkillSelectionView | null; state: ChoiceState }) {
   if (!selection || state === 'none') return <small role="status">Not loading your skills.</small>
   if (state === 'other-account') return <small role="status" className="claude-setup-warn">Chosen for a different Claude account, so they are not loaded. Choose again for this project&apos;s account.</small>
-  const links = selection.includedLinks?.length ?? 0
-  const counts = `${plural(selection.counts.skills, 'skill')}, ${plural(selection.counts.commands, 'command')}, ${plural(selection.counts.agents, 'agent')}${links ? `, with ${plural(links, 'linked entry', 'linked entries')}` : ''}`
+  const links = selection.includedLinks?.length ?? 0, plugins = selection.includedPlugins?.length ?? 0
+  const extras = [links ? plural(links, 'linked entry', 'linked entries') : '', plugins ? plural(plugins, 'plugin') : ''].filter(Boolean)
+  const counts = `${plural(selection.counts.skills, 'skill')}, ${plural(selection.counts.commands, 'command')}, ${plural(selection.counts.agents, 'agent')}${extras.length ? `, with ${extras.join(' and ')}` : ''}`
   if (state === 'changed') return <small role="alert" className="claude-setup-warn">Changed since you chose them on {when(selection.selectedAt)}. New Claude conversations here will not start until you review them again or stop loading them.</small>
   return <small role="status">Loading {counts}, chosen {when(selection.selectedAt)}.</small>
+}
+
+function pluginSummary(plugin: OfferedPlugin): string {
+  const holds = `${plural(plugin.skills ?? 0, 'skill')}, ${plural(plugin.commands ?? 0, 'command')}, ${plural(plugin.agents ?? 0, 'agent')}`
+  const without = [plugin.leftOut?.hooks ? 'hooks' : '', plugin.leftOut?.connectors ? 'connectors' : ''].filter(Boolean)
+  return without.length ? `${holds}; its ${without.join(' and ')} are left out` : holds
 }
 
 function NameList({ label, names }: { label: string; names: readonly string[] }) {
@@ -193,7 +226,7 @@ export function ProjectClaudeSetup({ projectId, projectPath }: { projectId: stri
         onChoose={(source, replacing) => act(() => api.chooseNativeMemory(projectId, source, replacing))}
         onRevoke={(id) => act(() => api.revokeNativeMemory(projectId, id))} /> : <small className="field">Checking Claude memory…</small>}
       {skills ? <SkillChoice view={skills} accountId={accountId}
-        onChoose={(replacing, includeLinks) => act(() => api.chooseProjectSkills(projectId, replacing, includeLinks))}
+        onChoose={(replacing, includeLinks, includePlugins) => act(() => api.chooseProjectSkills(projectId, replacing, includeLinks, includePlugins))}
         onRevoke={(id) => act(() => api.revokeProjectSkills(projectId, id))} /> : <small className="field">Checking your Claude skills…</small>}
       {error ? <small role="alert" className="field-error">{error}</small> : null}
     </fieldset>

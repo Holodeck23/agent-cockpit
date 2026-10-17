@@ -19,7 +19,10 @@ const skillSelection = { id: 's1', sourceAccountId: 'default-claude', destinatio
 const offered = { sourceAccountId: 'default-claude', skills: ['deploy', 'review'], commands: ['standup'], agents: [],
   excluded: [{ path: 'skills/linked-one', reason: 'linked' as const, target: '/elsewhere/linked-one', includable: true },
     { path: 'skills/deploy/vendor', reason: 'linked' as const, target: '/elsewhere/vendor' }, { path: 'skills/gone', reason: 'linked' as const },
-    { path: 'skills/huge/data.bin', reason: 'too-large' as const }] }
+    { path: 'skills/huge/data.bin', reason: 'too-large' as const }],
+  plugins: [{ key: 'vercel@market', name: 'vercel', version: '0.50.0', skills: 37, commands: 4, agents: 3, includable: true,
+    leftOut: { hooks: true, connectors: true, manifestFields: [] } }, { key: 'playwright@market', name: 'playwright', includable: false, skills: 0, commands: 0, agents: 0 },
+    { key: 'gone@market', name: 'gone', problem: 'its folder is missing' }] }
 const skills = (patch: Partial<SkillsView> = {}, accountId = 'acct-a'): string => renderToStaticMarkup(createElement(SkillChoice, {
   view: { selection: null, offered, ...patch }, accountId, onChoose: noop, onRevoke: noop,
 }))
@@ -86,6 +89,21 @@ describe('your Claude skills in Project Settings', () => {
     expect(html).toMatch(/Loading 2 skills, 1 command, 0 agents, chosen/)
     expect(html).not.toContain('Use my skills')
     expect(html).toContain('Stop loading my skills')
+  })
+
+  it('offers enabled plugins without their hooks or connectors, and says why others are not offered', () => {
+    const html = skills()
+    expect(html).toContain('Plugins you enabled (1). Only their skills, commands and agents can load here, never their hooks or connectors.')
+    expect(html).toMatch(/<input type="checkbox"\/><span><strong>vercel 0.50.0<\/strong><small>37 skills, 4 commands, 3 agents; its hooks and connectors are left out/)
+    expect(html).toContain('Plugins not offered (2):')
+    expect(html).toMatch(/playwright<\/strong><small>no skills, commands or agents; its connectors do not load here/)
+    expect(html).toMatch(/gone<\/strong><small>its folder is missing/)
+  })
+
+  it('a current choice with an included plugin ticks it and counts it', () => {
+    const html = skills({ selection: { ...skillSelection, includedPlugins: ['vercel@market'] } })
+    expect(html).toMatch(/Loading 2 skills, 1 command, 0 agents, with 1 plugin, chosen/)
+    expect(html).toMatch(/<input type="checkbox" checked=""\/><span><strong>vercel 0.50.0/)
   })
 
   it('a current choice with an included link ticks it and counts it', () => {

@@ -42,7 +42,7 @@ describe('skill projection (W13 U6)', () => {
     const f = fixture()
     const plain = snapshotSkillSource(f.profile)
     const link = { path: join('skills', 'linked'), target: f.elsewhere }
-    const snap = snapshotSkillSource(f.profile, [link])
+    const snap = snapshotSkillSource(f.profile, { links: [link] })
     expect(snap.skills).toEqual(['deploy', 'linked'])
     expect(snap.included).toEqual([link])
     expect(snap.excluded).toEqual([])
@@ -52,13 +52,13 @@ describe('skill projection (W13 U6)', () => {
     expect(lstatSync(join(dir, 'skills', 'linked')).isSymbolicLink()).toBe(false)
     // Edited where it points: a new revision.
     f.write(join(f.elsewhere, 'SKILL.md'), 'edited elsewhere')
-    expect(snapshotSkillSource(f.profile, [link]).revision).not.toBe(snap.revision)
+    expect(snapshotSkillSource(f.profile, { links: [link] }).revision).not.toBe(snap.revision)
     // Pointed somewhere else: not followed, and reported again as a link to review.
     const other = join(f.root, 'other')
     f.write(join(other, 'SKILL.md'), 'not reviewed')
     unlinkSync(join(f.profile, 'skills', 'linked'))
     symlinkSync(other, join(f.profile, 'skills', 'linked'))
-    const moved = snapshotSkillSource(f.profile, [link])
+    const moved = snapshotSkillSource(f.profile, { links: [link] })
     expect(moved.included).toEqual([])
     expect(moved.skills).toEqual(['deploy'])
     expect(moved.excluded).toEqual([{ path: join('skills', 'linked'), reason: 'linked', target: other, includable: true }])
@@ -70,7 +70,7 @@ describe('skill projection (W13 U6)', () => {
     symlinkSync(join(f.root, 'secret'), join(f.elsewhere, 'more'))
     symlinkSync(join(f.root, 'missing'), join(f.profile, 'skills', 'broken'))
     symlinkSync(join(f.root, 'secret'), join(f.profile, 'skills', 'deploy', 'vendor'))
-    const snap = snapshotSkillSource(f.profile, [{ path: join('skills', 'linked'), target: f.elsewhere }])
+    const snap = snapshotSkillSource(f.profile, { links: [{ path: join('skills', 'linked'), target: f.elsewhere }] })
     expect(snap.files.map((file) => file.relativePath)).not.toContain(join('skills', 'linked', 'more', 'notes.md'))
     expect(snap.excluded).toEqual([
       { path: join('skills', 'broken'), reason: 'linked' },
@@ -100,7 +100,7 @@ describe('skill projection (W13 U6)', () => {
     const chosen = selections.select({ projectPath: project, destinationAccountId: 'acct-a', destinationGeneration: 1, sourceAccountId: 'default-claude', sourceProfileDir: f.profile })
     expect(chosen.counts).toEqual({ skills: 1, commands: 1, agents: 1, excluded: 1 })
     const launched = provider({ projectPath: project, accountId: 'acct-a', accountGeneration: 1 })!
-    expect(readFileSync(join(launched.pluginDir, 'skills', 'deploy', 'SKILL.md'), 'utf8')).toContain('W13 fictional')
+    expect(readFileSync(join(launched.pluginDirs[0]!, 'skills', 'deploy', 'SKILL.md'), 'utf8')).toContain('W13 fictional')
     expect(provider({ projectPath: project, accountId: 'acct-b', accountGeneration: 1 })).toBeUndefined()
     expect(() => provider({ projectPath: project, accountId: 'acct-a', accountGeneration: 2 })).toThrow('different account generation')
     f.write(join(f.profile, 'agents', 'reviewer.md'), 'edited agent')
@@ -124,7 +124,7 @@ describe('skill projection (W13 U6)', () => {
     expect(chosen.includedLinks).toEqual([{ path: join('skills', 'linked'), target: f.elsewhere }])
     expect(chosen.counts).toEqual({ skills: 2, commands: 1, agents: 1, excluded: 0 })
     const launched = provider({ projectPath: project, accountId: 'acct-a', accountGeneration: 1 })!
-    expect(readFileSync(join(launched.pluginDir, 'skills', 'linked', 'SKILL.md'), 'utf8')).toBe('linked skill')
+    expect(readFileSync(join(launched.pluginDirs[0]!, 'skills', 'linked', 'SKILL.md'), 'utf8')).toBe('linked skill')
     expect(() => launched.validate()).not.toThrow()
     f.write(join(f.elsewhere, 'SKILL.md'), 'edited elsewhere')
     expect(() => launched.validate()).toThrow(/changed since they were chosen/)
@@ -168,6 +168,7 @@ describe('skill routes (W13 U6)', () => {
     // No folder but where the link points.
     expect(JSON.stringify(offered.body).replaceAll(f.elsewhere, '')).not.toContain(f.root)
     expect(offered.body.data.offered.excluded).toEqual([{ path: join('skills', 'linked'), reason: 'linked', target: f.elsewhere, includable: true }])
+    expect(offered.body.data.offered.plugins).toEqual([])
     const chosen = await call(`/api/projects/${projectId}/skills`, { sourceAccountId: 'default-claude' })
     expect(chosen.status).toBe(200)
     expect((await call(`/api/projects/${projectId}/skills`, { sourceAccountId: 'someone-else' })).status).toBe(400)
