@@ -20,7 +20,7 @@ import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createAccountService, type AccountService, type BorrowedAccountContext } from './agents/accounts/service.ts'
 import { createNativeMemorySelectionStore } from './agents/setup/native-memory-selection.ts'
-import { createNativeMemoryProvider } from './agents/setup/native-memory-launch.ts'
+import { createNativeMemoryProvider, removeNativeMemoryOverlays } from './agents/setup/native-memory-launch.ts'
 import { createSkillProvider, createSkillSelectionStore } from './agents/setup/skill-selection.ts'
 import { createAppServerQueryScope } from './agents/codex/app-server-query.ts'
 import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
@@ -237,13 +237,15 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   }
   // Native memory (W13 U5): private selections, and per-conversation overlays the provider may write to.
   const nativeMemorySelections = createNativeMemorySelectionStore(join(root, 'native-memory'))
-  const nativeMemoryProvider = createNativeMemoryProvider({ selections: nativeMemorySelections, overlayRoot: join(root, 'native-memory-overlays') })
+  const nativeMemoryOverlays = join(root, 'native-memory-overlays')
+  const nativeMemoryProvider = createNativeMemoryProvider({ selections: nativeMemorySelections, overlayRoot: nativeMemoryOverlays })
   // The user's own skills (W13 U6): project choices, and immutable per-revision plugin projections.
   const skillSelections = createSkillSelectionStore(join(root, 'skills'))
   const skillProvider = createSkillProvider({ selections: skillSelections, projectionRoot: join(root, 'skill-projections') })
   const manager = createThreadManager(store, {
     ...(options.policyRunner ? { policyRunner: options.policyRunner } : {}),
     nativeMemory: nativeMemoryProvider,
+    removeNativeMemory: (threadId) => removeNativeMemoryOverlays(nativeMemoryOverlays, threadId),
     skills: skillProvider,
     workspace: (workspaceId) => workspaces.get(workspaceId),
     workspaceFor: primaryWorkspaceId,

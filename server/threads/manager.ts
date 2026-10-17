@@ -234,6 +234,8 @@ export interface ManagerOptions {
   readonly accounts?: AccountBinding
   /** Selected native memory for a Claude conversation (W13 U5); without it none is loaded. */
   readonly nativeMemory?: NativeMemoryProvider
+  /** Removes a deleted conversation's private memory overlays, once its sessions have ended. */
+  readonly removeNativeMemory?: (threadId: string) => void
   /** The project's chosen own skills, commands and agents for Claude (W13 U6); without it none are loaded. */
   readonly skills?: SkillProvider
   /**
@@ -962,9 +964,12 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       } catch (error) {
         // A refused image leaves no empty conversation behind, nor an agent session that already started for it.
         deleted.add(meta.id)
-        void retire(meta.id)
+        const retired = retire(meta.id)
         store.remove(meta.id)
         images.remove(meta.id)
+        // Its session may have started with an overlay: removed once that session has ended.
+        void retired.then(() => options.removeNativeMemory?.(meta.id)).catch((cleanup: unknown) =>
+          console.error('[cockpit] could not remove a discarded conversation\'s memory overlay', cleanup))
         throw error
       }
       return meta
@@ -1069,6 +1074,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       await retire(threadId)
       store.remove(threadId)
       images.remove(threadId)
+      options.removeNativeMemory?.(threadId)
       lastStatus.delete(threadId)
       const update: ThreadUpdate = { threadId, event: { kind: 'thread_deleted' }, status: 'idle' }
       for (const listener of listeners) listener(update)

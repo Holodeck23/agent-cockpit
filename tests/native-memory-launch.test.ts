@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createNativeMemoryProvider, nativeMemoryScopes } from '../server/agents/setup/native-memory-launch.ts'
+import { createNativeMemoryProvider, nativeMemoryScopes, removeNativeMemoryOverlays } from '../server/agents/setup/native-memory-launch.ts'
 import { createNativeMemorySelectionStore } from '../server/agents/setup/native-memory-selection.ts'
 import { createThreadManager, type LaunchRequest } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
@@ -74,6 +74,32 @@ describe('native memory at launch (W13 U5d)', () => {
     expect(() => f.launch(randomUUID())).toThrow('Your Claude memory changed since it was chosen for this project')
   })
 
+  it('removes a deleted conversation\'s overlays, provider writes included, and nothing of another', () => {
+    const f = fixture()
+    f.choose({ projectPath: f.project })
+    const gone = randomUUID(), kept = randomUUID()
+    const first = f.launch(gone)!, other = f.launch(kept)!
+    writeFileSync(join(first.directory, 'provider-note.md'), 'written by the provider\n')
+    removeNativeMemoryOverlays(join(f.root, 'overlays'), gone)
+    expect(existsSync(join(f.root, 'overlays', gone))).toBe(false)
+    expect(existsSync(other.directory)).toBe(true)
+    expect(readFileSync(join(f.sourceDir, 'MEMORY.md'), 'utf8')).toContain('W13 fictional memory marker')
+    // Not a conversation identity: nothing is touched.
+    removeNativeMemoryOverlays(join(f.root, 'overlays'), '..')
+    expect(existsSync(other.directory)).toBe(true)
+  })
+
+  it('removes a link in a conversation\'s place without following it', () => {
+    const f = fixture()
+    const threadId = randomUUID(), outside = join(f.root, 'outside')
+    mkdirSync(outside); writeFileSync(join(outside, 'keep.md'), 'not Cockpit\'s\n')
+    mkdirSync(join(f.root, 'overlays'))
+    symlinkSync(outside, join(f.root, 'overlays', threadId))
+    removeNativeMemoryOverlays(join(f.root, 'overlays'), threadId)
+    expect(existsSync(join(f.root, 'overlays', threadId))).toBe(false)
+    expect(readFileSync(join(outside, 'keep.md'), 'utf8')).toBe('not Cockpit\'s\n')
+  })
+
   it('rechecks before later input: a replaced or revoked selection stops the running session', () => {
     const f = fixture()
     const first = f.choose({ projectPath: f.project })
@@ -107,6 +133,27 @@ describe('thread manager with native memory (W13 U5d)', () => {
     expect(() => launches[0]?.validateSources?.()).not.toThrow()
     f.selections.revoke({ projectPath: f.project }, selected.id)
     expect(() => launches[0]?.validateSources?.()).toThrow('Native memory selection changed. Start the conversation again to use the current choice.')
+    await manager.shutdown()
+  })
+
+  it('removes the conversation\'s overlay on delete, after its session has ended', async () => {
+    const f = fixture()
+    f.choose({ projectPath: f.project })
+    const launches: LaunchRequest[] = []
+    const order: string[] = []
+    const overlays = join(f.root, 'overlays')
+    const manager = createThreadManager(createThreadStore(join(f.root, 'threads')), {
+      accounts: { resolve: () => ({ accountId: 'acct-a', generation: 1, label: 'Fixture', env: {} }), describe: () => undefined },
+      nativeMemory: f.provider,
+      removeNativeMemory: (threadId) => { order.push('removed'); removeNativeMemoryOverlays(overlays, threadId) },
+      launchers: { claude: (req) => { launches.push(req); return { ...sessionStub, close: async () => { order.push('closed') } } } },
+    })
+    const meta = manager.create({ projectPath: f.project, settings: threadSettingsSchema.parse({ agent: 'claude', hooksSetup: 'off', mcpSetup: 'off' }), text: 'hello' })
+    const directory = launches[0]?.nativeMemoryDirectory
+    expect(directory && existsSync(directory)).toBe(true)
+    await manager.remove(meta.id)
+    expect(order).toEqual(['closed', 'removed'])
+    expect(existsSync(join(overlays, meta.id))).toBe(false)
     await manager.shutdown()
   })
 

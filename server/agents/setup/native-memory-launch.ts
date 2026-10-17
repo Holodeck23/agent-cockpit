@@ -1,7 +1,7 @@
 // Resolves a conversation's selected native memory into the private overlay its Claude session loads.
 // The source is never handed to the provider: only a reviewed revision's copy, kept per conversation
 // and selection so the provider's own memory writes survive later and resumed sessions.
-import { lstatSync, readdirSync } from 'node:fs'
+import { lstatSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { materializeNativeMemory } from './memory-overlay.ts'
 import type { NativeMemoryScope, NativeMemorySelection, NativeMemorySelectionStore } from './native-memory-selection.ts'
@@ -46,6 +46,13 @@ function existingOverlay(root: string): string | undefined {
   const stat = lstatSync(dir)
   if (stat.isSymbolicLink() || !stat.isDirectory() || (stat.mode & 0o077) !== 0) throw new Error('Native memory overlay is not private')
   return dir
+}
+
+/** Removes every private overlay made for a deleted conversation, with any memory its provider wrote there. */
+export function removeNativeMemoryOverlays(overlayRoot: string, threadId: string): void {
+  if (!UUID.test(threadId)) return
+  // A link in its place is removed, never followed.
+  rmSync(join(overlayRoot, threadId), { recursive: true, force: true })
 }
 
 export function createNativeMemoryProvider(options: { readonly selections: NativeMemorySelectionStore; readonly overlayRoot: string }): NativeMemoryProvider {
