@@ -4,6 +4,8 @@
 // stand-in for the CLI default profile, with its marker absent from every prompt.
 // COCKPIT_PROOF_SCENARIO=skill (U6): the user's own skill, chosen for the project, runs by its bare name
 // from the private plugin projection.
+// COCKPIT_PROOF_SCENARIO=policy (U3c): one approved PreToolUse hook, three Write turns. When it allows, the
+// file appears (the control); when it fails, or hangs past its timeout, the file must not.
 // One planned provider attempt, not a loop: it checks the borrowed login's identity in the packaged
 // app's own spawn context first and stops before sending if it is unknown or differs. Every outcome,
 // pass or the first failure, leaves a receipt in COCKPIT_PROOF_DIR before anything is cleaned up.
@@ -29,7 +31,7 @@ const AUTH_SELECTORS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_COD
 
 const hash = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const scenario = process.env.COCKPIT_PROOF_SCENARIO ?? 'hooks'
-if (scenario !== 'hooks' && scenario !== 'memory' && scenario !== 'skill') throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory or skill')
+if (!['hooks', 'memory', 'skill', 'policy'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill or policy')
 const evidence = process.env.COCKPIT_PROOF_DIR
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR
 assert.ok(evidence && privateDir, 'Set COCKPIT_PROOF_DIR (shared, sanitized) and COCKPIT_PROOF_PRIVATE_DIR (private)')
@@ -118,6 +120,29 @@ try {
   writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ hooks: {
     SessionStart: [{ hooks: [{ type: 'command', command: `${process.execPath} ${script}` }] }],
   } }))
+  // Policy scenario: one reviewed hook on every tool call, its behaviour set by a data file it reads (not part
+  // of its argv, so one review covers all three turns). The hung mode ends by ALLOWING after 30 s: only the
+  // runner's 3 s timeout can stop the Write; Claude's own timeout would let it through.
+  const policyMode = join(root, 'policy-mode'), policyLog = join(root, 'policy-log')
+  const policyScript = join(project, 'policy-hook.mjs')
+  if (scenario === 'policy') {
+    writeFileSync(policyScript, [
+      "import { appendFileSync, readFileSync } from 'node:fs'",
+      "let input = ''",
+      "process.stdin.on('data', (chunk) => { input += chunk })",
+      "process.stdin.on('end', () => {",
+      `  const mode = readFileSync(${JSON.stringify(policyMode)}, 'utf8').trim()`,
+      "  let tool = ''",
+      "  try { tool = JSON.parse(input).tool_name ?? '' } catch { tool = 'unreadable' }",
+      `  appendFileSync(${JSON.stringify(policyLog)}, mode + ' ' + tool + '\\n')`,
+      "  if (mode === 'allow') process.exit(0)",
+      "  if (mode === 'fail') process.exit(1)",
+      "  setTimeout(() => process.exit(0), 30_000)",
+      "})", ''].join('\n'))
+    writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ hooks: {
+      PreToolUse: [{ hooks: [{ type: 'command', command: `${process.execPath} ${policyScript}`, timeout: 3 }] }],
+    } }))
+  }
 
   // Memory scenario: a private synthetic default profile holds this project's memory; the marker is in
   // that file only, never in a prompt.
@@ -143,7 +168,7 @@ try {
   // session data to the borrowed profile. A borrowed account that fails its checks stops the app at startup.
   const page = await step('launch: packaged app in the background', async () => {
     app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId,
-      ...(scenario !== 'hooks' ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
+      ...(scenario === 'memory' || scenario === 'skill' ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
     // Observed in the running main process, not assumed from the launcher: what agents would inherit.
     const keys = await app.evaluate(() => Object.keys(process.env))
     facts.context = { ...facts.context as object, appEnvAuthSelectors: AUTH_SELECTORS.filter((name) => keys.includes(name)) }
@@ -256,6 +281,68 @@ try {
     })
     verdict = 'passed'
   }
+  if (scenario === 'policy') {
+    await step('hook review: exactly the one synthetic PreToolUse hook, approved, hooks on', async () => {
+      const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
+        project) as { revision: string; review: Array<{ event: string; referencedFiles: Array<{ hash: string }> }>; unavailable: unknown[] }
+      assert.equal(found.review.length, 1, `Expected only the synthetic hook, found ${found.review.length}`)
+      assert.equal(found.review[0]?.event, 'PreToolUse')
+      assert.equal(found.review[0]?.referencedFiles[0]?.hash, hash(policyScript))
+      assert.deepEqual(found.unavailable, [])
+      await apiPost(page, '/api/projects/claude-hooks', { path: project, revision: found.revision })
+      await apiPost(page, '/api/projects', { path: project, claudeHooks: true, claudeMcp: false })
+    })
+    const sanitize = (text: string): string => text.replaceAll(root!, '<root>')
+    const writeTurn = async (mode: 'allow' | 'fail' | 'hang') => {
+      writeFileSync(policyMode, mode)
+      const target = join(project, `protected-${mode}.txt`)
+      const created = await apiPost(page, '/api/threads', { projectPath: project,
+        text: `Use the Write tool to create the file ${target} containing exactly OK. Do not use any other tool. If the Write tool is blocked, do not retry: reply BLOCKED. Otherwise reply DONE.`,
+        settings: { agent: 'claude', model: 'haiku', permissionMode: 'acceptEdits', hooksSetup: 'inherit', mcpSetup: 'off' } }) as
+        { data?: { id: string }; error?: string }
+      assert.ok(created.data?.id, created.error ?? 'Thread creation failed')
+      let rows: Array<{ kind: string; text?: string; ok?: boolean; name?: string }> = []
+      const deadline = Date.now() + 150_000
+      while (Date.now() < deadline) {
+        rows = await page.evaluate(async (id) => (await (await fetch(`/api/threads/${id}/events`)).json()).data.events.map((row: { event: unknown }) => row.event), created.data.id)
+        if (rows.some((event) => event.kind === 'result')) break
+        await page.waitForTimeout(500)
+      }
+      output.push(`--- ${mode}`)
+      for (const event of rows) output.push(sanitize(`${event.kind}${event.name ? ` ${event.name}` : ''}${event.text ? `: ${event.text.slice(0, 240)}` : ''}`))
+      const result = rows.find((event) => event.kind === 'result')
+      assert.ok(result, `The ${mode} turn did not finish`)
+      assert.ok(!(result.text ?? '').includes('Not logged in'), 'The borrowed Claude profile did not authenticate. Stop: no sign-in, no account switch, no retry')
+      // The hung hook would allow after 30 s: wait past that before deciding nothing was written.
+      if (mode === 'hang') await page.waitForTimeout(31_000)
+      const log = existsSync(policyLog) ? readFileSync(policyLog, 'utf8') : ''
+      return { written: existsSync(target), content: existsSync(target) ? readFileSync(target, 'utf8') : undefined,
+        hookRan: log.split('\n').some((line) => line.startsWith(`${mode} `)), transcript: JSON.stringify(rows) }
+    }
+    const allow = await step('control: the hook allows, and the Write happens', async () => {
+      const seen = await writeTurn('allow')
+      assert.ok(seen.hookRan, 'The approved PreToolUse hook did not run')
+      assert.ok(seen.written && seen.content?.trim() === 'OK', 'The Write did not happen, so a block later would prove nothing')
+      return seen
+    })
+    const fail = await step('policy: the hook fails (exit 1), and the Write does not happen', async () => {
+      const seen = await writeTurn('fail')
+      assert.ok(seen.hookRan, 'The hook did not run')
+      assert.equal(seen.written, false, 'A failing policy hook let the Write through')
+      assert.ok(seen.transcript.includes('policy hook failed with exit code 1'), 'No denial reason reached the conversation')
+      return seen
+    })
+    const hang = await step('policy: the hook hangs past its 3 s timeout, and the Write does not happen', async () => {
+      const seen = await writeTurn('hang')
+      assert.ok(seen.hookRan, 'The hook did not run')
+      assert.equal(seen.written, false, 'A hung policy hook let the Write through')
+      assert.ok(seen.transcript.includes('did not answer within 3 seconds'), 'No timeout denial reached the conversation')
+      return seen
+    })
+    facts.policy = { control: { hookRan: allow.hookRan, written: allow.written }, fail: { hookRan: fail.hookRan, written: fail.written },
+      hang: { hookRan: hang.hookRan, written: hang.written, waitedPastHookAllow: true }, hookSourceHash: hash(policyScript) }
+    verdict = 'passed'
+  }
   if (scenario === 'hooks') {
   const review = await step('hook review: exactly the one synthetic SessionStart hook', async () => {
     const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
@@ -307,11 +394,11 @@ try {
   // Nothing under root links to the real profile, so removing it cannot reach the login.
   if (root) rmSync(root, { recursive: true, force: true })
   writeFileSync(join(evidence, 'output.txt'), `${output.join('\n')}\n`, { mode: 0o600 })
-  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}) })
+  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}) })
   const files = ['package-manifest.json', 'provider-context.json', 'output.txt'].filter((name) => existsSync(join(evidence, name)))
   writeJson(evidence, 'receipt.json', {
     scenario: { memory: 'W13-U5 packaged borrowed-account native memory proof', skill: 'W13-U6 packaged borrowed-account projected skill proof',
-      hooks: 'W13-U1 packaged borrowed-account hook proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
+      hooks: 'W13-U1 packaged borrowed-account hook proof', policy: 'W13-U3c packaged borrowed-account policy hook denial proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
     command: 'scripts/proof-w13-hooks-live.ts', provider: { cli: 'claude 2.1.220', cliHash: PINS.cli, nodeHash: PINS.node },
     package: facts.package, account: { alias: 'borrowed managed Claude', generation: (facts.context as { generation?: number } | undefined)?.generation },
     workspace: 'disposable project and Cockpit state', steps, verdict,
