@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { existsSync, lstatSync, readFileSync, statSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
@@ -53,6 +53,18 @@ if (proofBackground) {
     window.setIgnoreMouseEvents(true)
     window.setOpacity(0)
   })
+}
+
+// Proof builds only: a synthetic stand-in for the CLI default profile, so a memory proof never reads
+// or writes the user's own ~/.claude. Must be an absolute, private, unlinked folder.
+function proofDefaultClaudeProfile(): { claudeDefaultProfileDir?: string } {
+  const dir = process.env.COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE
+  if (IS_RELEASE_BUILD || !dir) return {}
+  const stat = isAbsolute(dir) && existsSync(dir) ? lstatSync(dir) : undefined
+  if (!stat || stat.isSymbolicLink() || !stat.isDirectory() || (stat.mode & 0o077) !== 0) {
+    throw new Error('Proof default Claude profile must be an absolute, private, unlinked folder. Stop this proof.')
+  }
+  return { claudeDefaultProfileDir: dir }
 }
 
 let running: RunningServer | undefined
@@ -110,6 +122,7 @@ async function boot(): Promise<void> {
   running = await startServer({
     port: 0,
     borrowedAccount: proofAccountContext(defaultRoot(), IS_RELEASE_BUILD),
+    ...proofDefaultClaudeProfile(),
     preferredPort: readAppPort(portFile),
     webDist: join(app.getAppPath(), 'dist'),
     // Each agent session spawns the cockpit MCP server with this app's own binary in

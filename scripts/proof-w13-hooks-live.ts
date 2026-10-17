@@ -1,14 +1,18 @@
-// Background packaged proof that an approved project hook runs in the pinned Claude session (W13 U1).
+// Background packaged proofs in the pinned Claude session under a borrowed managed login (W13).
+// COCKPIT_PROOF_SCENARIO=hooks (default, U1): an approved project hook runs.
+// COCKPIT_PROOF_SCENARIO=memory (U5): a project's selected native memory loads, from a synthetic
+// stand-in for the CLI default profile, with its marker absent from every prompt.
 // One planned provider attempt, not a loop: it checks the borrowed login's identity in the packaged
 // app's own spawn context first and stops before sending if it is unknown or differs. Every outcome,
 // pass or the first failure, leaves a receipt in COCKPIT_PROOF_DIR before anything is cleaned up.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { ElectronApplication } from 'playwright-core'
+import { claudeProjectSlug } from '../server/agents/setup/claude-inventory.ts'
 import { launchPackagedApp } from './lib/launch-app.ts'
 import { apiPost, openProject } from './lib/ui.ts'
 
@@ -22,6 +26,8 @@ const AUTH_SELECTORS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_COD
   'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_SECURESTORAGE_CONFIG_DIR', 'CLAUDE_CONFIG_DIR'] as const
 
 const hash = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
+const scenario = process.env.COCKPIT_PROOF_SCENARIO ?? 'hooks'
+if (scenario !== 'hooks' && scenario !== 'memory') throw new Error('COCKPIT_PROOF_SCENARIO is hooks or memory')
 const evidence = process.env.COCKPIT_PROOF_DIR
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR
 assert.ok(evidence && privateDir, 'Set COCKPIT_PROOF_DIR (shared, sanitized) and COCKPIT_PROOF_PRIVATE_DIR (private)')
@@ -111,10 +117,23 @@ try {
     SessionStart: [{ hooks: [{ type: 'command', command: `${process.execPath} ${script}` }] }],
   } }))
 
+  // Memory scenario: a private synthetic default profile holds this project's memory; the marker is in
+  // that file only, never in a prompt.
+  const defaultProfile = join(root, 'default-claude')
+  const memoryMarker = `quill-${randomBytes(4).toString('hex')}`
+  if (scenario === 'memory') {
+    const memoryDir = join(defaultProfile, 'projects', claudeProjectSlug(project), 'memory')
+    mkdirSync(memoryDir, { recursive: true, mode: 0o700 })
+    for (const dir of [defaultProfile, join(defaultProfile, 'projects')]) execFileSync('chmod', ['700', dir])
+    writeFileSync(join(memoryDir, 'MEMORY.md'), `# Project memory\n\nThe handoff word for this project is ${memoryMarker}.\n`, { mode: 0o600 })
+    writeJson(privateDir, 'memory-marker-private.json', { memoryMarker })
+  }
+
   // HOME stays real for Keychain. Cockpit metadata stays in disposable state; Claude may write its own
   // session data to the borrowed profile. A borrowed account that fails its checks stops the app at startup.
   const page = await step('launch: packaged app in the background', async () => {
-    app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId })
+    app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId,
+      ...(scenario === 'memory' ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
     // Observed in the running main process, not assumed from the launcher: what agents would inherit.
     const keys = await app.evaluate(() => Object.keys(process.env))
     facts.context = { ...facts.context as object, appEnvAuthSelectors: AUTH_SELECTORS.filter((name) => keys.includes(name)) }
@@ -125,15 +144,16 @@ try {
   })
   await openProject(page, project, 'W13 hook proof')
 
-  await step('selection: the project runs on the borrowed account', async () => {
+  const projectId = await step('selection: the project runs on the borrowed account', async () => {
     const selected = await page.evaluate(async (path) => {
       const listed = await (await fetch('/api/projects')).json() as { data: Array<{ projectId?: string; path: string }> }
       const id = listed.data.find((entry) => entry.path === path)?.projectId
       if (!id) return undefined
       const choice = await (await fetch(`/api/projects/${id}/accounts`)).json() as { data: { selection: { claude: string } } }
-      return choice.data.selection.claude
+      return { id, claude: choice.data.selection.claude }
     }, project)
-    assert.equal(selected, accountId, 'The disposable project did not select the borrowed account')
+    assert.equal(selected?.claude, accountId, 'The disposable project did not select the borrowed account')
+    return selected.id
   })
 
   // Read-only native identity query (`claude auth status`) in the packaged app's own spawn context. In
@@ -149,6 +169,47 @@ try {
     assert.equal(checked.data.account.generation, account.generation)
   })
 
+  if (scenario === 'memory') {
+    await step('memory selection: the default profile memory is chosen for this project', async () => {
+      const offered = await page.evaluate(async (id) => (await (await fetch(`/api/projects/${id}/native-memory`)).json()).data, projectId) as
+        { sources: Array<{ accountId: string; available: boolean }> }
+      assert.ok(offered.sources.some((row) => row.accountId === 'default-claude' && row.available), 'The synthetic default memory is not on offer')
+      const chosen = await apiPost(page, `/api/projects/${projectId}/native-memory`, { sourceAccountId: 'default-claude' }) as
+        { data?: { selection: { writePolicy: string; destinationAccountId: string } }; error?: string }
+      assert.ok(chosen.data, chosen.error ?? 'Selection failed')
+      // Another account's memory: shared for reading, never promoted automatically.
+      assert.equal(chosen.data.selection.writePolicy, 'review')
+      assert.equal(chosen.data.selection.destinationAccountId, accountId)
+    })
+    const prompt = 'What is the handoff word for this project? Reply with only the word. Do not use tools.'
+    assert.ok(!prompt.includes(memoryMarker))
+    const seen = await step('turn: one no-tools model turn completes', async () => {
+      const created = await apiPost(page, '/api/threads', { projectPath: project, text: prompt,
+        settings: { agent: 'claude', model: 'haiku', permissionMode: 'manual', hooksSetup: 'off', mcpSetup: 'off' } }) as
+        { data?: { id: string }; error?: string }
+      assert.ok(created.data?.id, created.error ?? 'Thread creation failed')
+      let rows: Array<{ kind: string; text?: string; ok?: boolean; name?: string }> = []
+      const deadline = Date.now() + 120_000
+      while (Date.now() < deadline) {
+        rows = await page.evaluate(async (id) => (await (await fetch(`/api/threads/${id}/events`)).json()).data.events.map((row: { event: unknown }) => row.event), created.data.id)
+        if (rows.some((event) => event.kind === 'result')) break
+        await page.waitForTimeout(500)
+      }
+      // The marker is private: shared output records only whether it came back.
+      for (const event of rows) output.push(`${event.kind}${event.name ? ` ${event.name}` : ''}${event.text ? `: ${event.text.replaceAll(memoryMarker, '<marker>').slice(0, 200)}` : ''}`)
+      const result = rows.find((event) => event.kind === 'result')
+      assert.equal(result?.ok, true, 'The packaged Claude turn did not succeed')
+      assert.ok(!rows.some((event) => event.kind === 'tool_use'), 'The turn used a tool, so a file read could explain the answer')
+      return rows
+    })
+    await step('memory: the reply carries the marker that exists only in the selected memory', () => {
+      const replied = seen.some((event) => event.kind === 'assistant_text' && event.text?.includes(memoryMarker))
+      facts.memory = { markerReturned: replied, markerInPrompt: false, writePolicy: 'review' }
+      assert.ok(replied, 'Selected native memory did not reach the packaged Claude session')
+    })
+    verdict = 'passed'
+  }
+  if (scenario === 'hooks') {
   const review = await step('hook review: exactly the one synthetic SessionStart hook', async () => {
     const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
       project) as { revision: string; review: Array<{ event: string; referencedFiles: Array<{ path: string; hash: string }> }>; unavailable: unknown[] }
@@ -190,6 +251,7 @@ try {
     facts.hookSourceHash = hash(script)
   })
   verdict = 'passed'
+  }
 } catch (error) {
   console.error(`[w13-u1] stopped: ${error instanceof Error ? error.message : String(error)}`)
   process.exitCode = 1
@@ -198,10 +260,10 @@ try {
   // Nothing under root links to the real profile, so removing it cannot reach the login.
   if (root) rmSync(root, { recursive: true, force: true })
   writeFileSync(join(evidence, 'output.txt'), `${output.join('\n')}\n`, { mode: 0o600 })
-  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight })
+  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.memory ? { memory: facts.memory } : {}) })
   const files = ['package-manifest.json', 'provider-context.json', 'output.txt'].filter((name) => existsSync(join(evidence, name)))
   writeJson(evidence, 'receipt.json', {
-    scenario: 'W13-U1 packaged borrowed-account hook proof', startedAt, finishedAt: new Date().toISOString(), source,
+    scenario: scenario === 'memory' ? 'W13-U5 packaged borrowed-account native memory proof' : 'W13-U1 packaged borrowed-account hook proof', startedAt, finishedAt: new Date().toISOString(), source,
     command: 'scripts/proof-w13-hooks-live.ts', provider: { cli: 'claude 2.1.220', cliHash: PINS.cli, nodeHash: PINS.node },
     package: facts.package, account: { alias: 'borrowed managed Claude', generation: (facts.context as { generation?: number } | undefined)?.generation },
     workspace: 'disposable project and Cockpit state', steps, verdict,
