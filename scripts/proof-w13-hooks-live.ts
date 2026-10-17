@@ -567,6 +567,8 @@ try {
       const own = await apiPost(page, `/api/projects/${projectId}/skills`, { sourceAccountId: 'default-claude' }) as { data?: unknown; error?: string }
       assert.ok(own.data, own.error ?? 'User skill selection failed')
     })
+    // The model may space the reply ("marker| plum"): the marker and the argument must both be there, in order.
+    const answered = (reply: string, marker: string, argument: string): boolean => new RegExp(`${marker}\\s*\\|\\s*${argument}`).test(reply)
     /** One new conversation, one no-tools turn: the reply, from nothing but the invoked skill. */
     const fresh = async (label: string, text: string): Promise<string> => {
       const created = await apiPost(page, '/api/threads', { projectPath: project, text,
@@ -590,16 +592,16 @@ try {
     }
     const checks: Record<string, boolean> = {}
     await step('project skill: /w13-proj-skill kiwi runs the project\'s own skill', async () => {
-      checks.projectSkill = (await fresh('project skill', '/w13-proj-skill kiwi')).includes(`${projectMarkers.own}|kiwi`)
+      checks.projectSkill = answered(await fresh('project skill', '/w13-proj-skill kiwi'), projectMarkers.own, 'kiwi')
       assert.ok(checks.projectSkill, 'The project skill did not run')
     })
     await step('same name: /w13-dup plum runs the user\'s skill, as the plain CLI does', async () => {
       const reply = await fresh('same name, bare', '/w13-dup plum')
-      checks.userWins = reply.includes(`${projectMarkers.dupUser}|plum`) && !reply.includes(projectMarkers.dupProject)
+      checks.userWins = answered(reply, projectMarkers.dupUser, 'plum') && !reply.includes(projectMarkers.dupProject)
       assert.ok(checks.userWins, 'A bare same-name skill did not resolve to the user\'s')
     })
     await step('same name: /project:w13-dup fig reaches the project\'s', async () => {
-      checks.projectByNamespace = (await fresh('same name, namespaced', '/project:w13-dup fig')).includes(`${projectMarkers.dupProject}|fig`)
+      checks.projectByNamespace = answered(await fresh('same name, namespaced', '/project:w13-dup fig'), projectMarkers.dupProject, 'fig')
       assert.ok(checks.projectByNamespace, 'The project\'s same-name skill was not reachable by its namespace')
     })
     facts.projectSkill = { checks }
