@@ -19,6 +19,8 @@ import { snapshotMcpSources } from './agents/claude/mcp-sources.ts'
 import { createAgyMcp } from './projects/agy-mcp.ts'
 import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents/lifecycle/service.ts'
 import { createAccountService, type AccountService, type BorrowedAccountContext } from './agents/accounts/service.ts'
+import { createNativeMemorySelectionStore } from './agents/setup/native-memory-selection.ts'
+import { createNativeMemoryProvider } from './agents/setup/native-memory-launch.ts'
 import { createAppServerQueryScope } from './agents/codex/app-server-query.ts'
 import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
@@ -49,6 +51,8 @@ import type { PreviewCapture, PreviewOpen } from './preview/types.ts'
 export interface StartOptions {
   /** Proof host only: preserve an established login locator with disposable metadata. */
   readonly borrowedAccount?: BorrowedAccountContext
+  /** The CLI default Claude profile memory may be selected from; ~/.claude unless a test isolates it. */
+  readonly claudeDefaultProfileDir?: string
   /** 0 picks a free port. */
   readonly port: number
   /** Inject adapters for deterministic integration tests. */
@@ -228,7 +232,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       return undefined
     }
   }
+  // Native memory (W13 U5): private selections, and per-conversation overlays the provider may write to.
+  const nativeMemorySelections = createNativeMemorySelectionStore(join(root, 'native-memory'))
+  const nativeMemoryProvider = createNativeMemoryProvider({ selections: nativeMemorySelections, overlayRoot: join(root, 'native-memory-overlays') })
   const manager = createThreadManager(store, {
+    nativeMemory: nativeMemoryProvider,
     workspace: (workspaceId) => workspaces.get(workspaceId),
     workspaceFor: primaryWorkspaceId,
     instructions: (projectPath) => {
@@ -427,7 +435,15 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // proof:wave-12 part 2 (W12-11) only: the app dies after Git started a merge, before Cockpit recorded its end.
   const crashAfterGit = process.env.COCKPIT_PROOF_MERGE_CRASH === '1' ? { afterGit: () => { process.kill(process.pid, 'SIGKILL') } } : {}
   const merges = createMergeService(root, { workspaces, activeIn }, crashAfterGit)
-  const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService, worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
+  const api = createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle: agentLifecycle, accounts: accountService,
+    nativeMemory: { selections: nativeMemorySelections, defaultProfileDir: options.claudeDefaultProfileDir ?? join(homedir(), '.claude'),
+      label: (id) => accountService.describe(id)?.label,
+      destination: (projectPath) => {
+        const selected = accountService.resolve(projectPath, 'claude')
+        return { accountId: selected.accountId, generation: selected.generation,
+          ...(selected.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }
+      } },
+    worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,
       processOwner: (threadId, workspaceId) => {
         const meta = manager.summaries().find((t) => t.meta.id === threadId)?.meta
