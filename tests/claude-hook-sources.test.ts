@@ -58,7 +58,7 @@ it('omits an uninstalled plugin and dynamic commands visibly without including a
   expect(snapshotHookSources(f.input).revision).toBe(unavailable.revision)
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script}; echo bypass` }] }] } }))
   const dynamic = snapshotHookSources(f.input)
-  expect(dynamic.unavailable).toMatchObject([{ event: 'PreToolUse', reason: expect.stringMatching(/omitted/) }])
+  expect(dynamic.unavailable).toMatchObject([{ event: 'PreToolUse', reason: expect.stringMatching(/move it into a script file.*omitted/) }])
   expect(() => requireCompleteHookSources(dynamic)).toThrow(/unresolved sources/)
   expect(dynamic.settings.hooks.PreToolUse).toBeUndefined()
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script} [ab]` }] }] } }))

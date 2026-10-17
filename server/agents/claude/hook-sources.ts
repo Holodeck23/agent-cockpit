@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { readBuiltinPlugin, type BuiltinPluginReport } from './builtin-plugins.ts'
 
 export interface HookSourceReview {
   readonly event: string
@@ -24,6 +25,8 @@ export interface HookSourceInput {
   readonly profileDir?: string
   readonly accountId?: string
   readonly accountGeneration?: number
+  /** What the Claude CLI says about a `@builtin` plugin; asks the CLI on pathEnv when absent. */
+  readonly builtinPlugin?: (id: string) => BuiltinPluginReport
 }
 
 /** Review can identify omissions, but it cannot authorize an unknown hook to be silently absent. */
@@ -128,7 +131,7 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
           catch (error) {
             if (!(error instanceof Error) || !/dynamic shell syntax|home shortcut/.test(error.message)) throw error
             unavailable.push({ id: `${event}:${groupIndex}:${index}:${sha(command).slice(0, 12)}`, source, event,
-              reason: 'Dynamic command is omitted; it may have affected permissions or context' })
+              reason: 'Inline shell command; move it into a script file and point the hook at that file. Until then it is omitted, and it may have affected permissions or context' })
             continue
           }
           const executable = executablePath(argv[0]!, cwd, input.pathEnv)
@@ -189,6 +192,16 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
     for (const [id, enabled] of plugins) {
       if (!enabled) continue
       const rows = (registry as Record<string, unknown>)[id]
+      if ((!Array.isArray(rows) || rows.length === 0) && id.endsWith('@builtin')) {
+        // Shipped inside the CLI, so there is no folder to review: it passes only if that CLI says it has no hooks.
+        const report = (input.builtinPlugin ?? ((plugin) => readBuiltinPlugin(plugin, { home: input.home, pathEnv: input.pathEnv, ...(input.profileDir ? { profileDir: input.profileDir } : {}) })))(id)
+        digest.update(id).update(JSON.stringify(report))
+        if (report.state === 'absent' || (report.state === 'present' && report.hooks === 0)) continue
+        unavailable.push({ id, source: registryFile, reason: report.state === 'present'
+          ? `Built-in plugin has ${report.hooks} hook${report.hooks === 1 ? '' : 's'} Cockpit cannot pass through; it is omitted`
+          : `${report.reason}; it is omitted` })
+        continue
+      }
       if (!Array.isArray(rows) || rows.length === 0) {
         digest.update(id).update('unavailable-plugin-source')
         unavailable.push({ id, source: registryFile, reason: 'Enabled plugin has no installed source; it is omitted' })
