@@ -57,3 +57,24 @@
 .project-settings > header, .project-settings > footer, .project-settings > .remove-confirm { flex: none; }
 .field-error { color: var(--danger); }
 .project-settings > .modal-error { flex: none; }
+
+/* The user's own Claude memory and skills (components/ProjectClaudeSetup.tsx). */
+.claude-setup-group { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.claude-setup > small { font-size: 12px; font-weight: 400; line-height: 1.45; color: var(--muted); }
+.claude-setup > small.claude-setup-warn { padding: 6px 10px; border-left: 3px solid var(--p-orange); border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--p-orange) 9%, var(--panel)); color: var(--strong); }
+.claude-setup-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.claude-setup-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-md); min-width: 0; }
+.claude-setup-row > span { display: grid; gap: 1px; min-width: 0; }
+.claude-setup-row strong { font-size: 13px; font-weight: 550; color: var(--strong); overflow-wrap: anywhere; }
+.claude-setup-row small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.claude-setup-row .button-soft, .claude-setup-actions .button-soft, .claude-setup-stop { flex: none; padding: 5px 12px; font-size: 12.5px; }
+.claude-setup-stop { justify-self: start; }
+.claude-setup-chosen { flex: none; font-size: 12px; font-weight: 600; color: var(--success); }
+.claude-setup-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.claude-setup-actions:empty { display: none; }
+.claude-setup-names { font-size: 12px; font-weight: 400; color: var(--secondary); }
+.claude-setup-names summary { cursor: default; color: var(--muted); }
+.claude-setup-namelist { margin: 6px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.claude-setup-namelist span { font-weight: 600; color: var(--strong); }

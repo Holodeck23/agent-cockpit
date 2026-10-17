@@ -39,6 +39,12 @@ const viewOf = (deps: NativeMemoryRouteDeps, row: NativeMemorySelection) => ({
   destinationAccountId: row.destinationAccountId, writePolicy: row.writePolicy, fileCount: row.fileCount, selectedAt: row.selectedAt,
 })
 
+// Whether the chosen memory would still load for the account it was chosen for: memory the CLI has
+// changed since then needs another review before a conversation can start with it.
+function stillCurrent(deps: NativeMemoryRouteDeps, scope: { projectPath: string }, row: NativeMemorySelection): boolean {
+  try { return deps.selections.validate(scope, row.destinationAccountId, row.destinationGeneration)?.id === row.id } catch { return false }
+}
+
 export async function handleNativeMemoryRoute(
   req: IncomingMessage, res: ServerResponse, parts: readonly string[], deps: NativeMemoryRouteDeps,
   projectPath: (projectId: string) => string | undefined,
@@ -50,7 +56,7 @@ export async function handleNativeMemoryRoute(
   if (method === 'GET' && parts.length === 4) {
     const current = deps.selections.get(scope)
     sendJson(res, 200, { data: {
-      selection: current ? viewOf(deps, current) : null,
+      selection: current ? { ...viewOf(deps, current), current: stillCurrent(deps, scope, current) } : null,
       sources: sourcesFor(deps, path).map((source) => ({ accountId: source.accountId,
         label: deps.label(source.accountId) ?? source.accountId, available: existsSync(join(source.dir, 'MEMORY.md')) })),
     } })

@@ -71,7 +71,7 @@ describe('native memory at launch (W13 U5d)', () => {
     expect(f.launch(randomUUID(), 'acct-b')).toBeUndefined()
     expect(() => f.launch(randomUUID(), 'acct-a', 2)).toThrow('Native memory selection belongs to a different account generation')
     writeFileSync(join(f.sourceDir, 'MEMORY.md'), 'edited after review')
-    expect(() => f.launch(randomUUID())).toThrow('Native memory source changed after selection')
+    expect(() => f.launch(randomUUID())).toThrow('Your Claude memory changed since it was chosen for this project')
   })
 
   it('rechecks before later input: a replaced or revoked selection stops the running session', () => {

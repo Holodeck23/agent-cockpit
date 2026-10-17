@@ -110,7 +110,7 @@ export function createNativeMemorySelectionStore(root: string): NativeMemorySele
       try { current = snapshotNativeMemory(selected.sourceDir) }
       catch { throw new Error('Native memory source is unavailable or changed') }
       if (current.revision !== selected.sourceRevision || current.fileCount !== selected.fileCount) {
-        throw new Error('Native memory source changed after selection')
+        throw new Error('Your Claude memory changed since it was chosen for this project. Review it again in Project Settings.')
       }
       return selected
     },

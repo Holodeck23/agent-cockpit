@@ -75,7 +75,7 @@ describe('native memory selection (W13 U5c)', () => {
     expect(() => validate(f.scope, 'acct-a', 2)).toThrow('Native memory selection belongs to a different account generation')
     expect(() => validate(f.scope, 'acct-b', 1)).toThrow('Native memory selection belongs to a different account generation')
     writeFileSync(join(f.sourceDir, 'notes', 'detail.md'), 'edited after review')
-    expect(() => validate(f.scope, 'acct-a', 1)).toThrow('Native memory source changed after selection')
+    expect(() => validate(f.scope, 'acct-a', 1)).toThrow('Your Claude memory changed since it was chosen for this project')
     rmSync(f.sourceDir, { recursive: true })
     expect(() => validate(f.scope, 'acct-a', 1)).toThrow(/unavailable/)
     expect(validate({ projectPath: join(f.root, 'elsewhere') }, 'acct-a', 1)).toBeUndefined()

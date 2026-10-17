@@ -7,6 +7,7 @@ import { isActiveWorktree } from '../workspaces.ts'
 import { avatarDataUrl } from '../project-image.ts'
 import { AntigravityTools } from './AntigravityTools.tsx'
 import { AccountChoice } from './AccountChoice.tsx'
+import { ProjectClaudeSetup } from './ProjectClaudeSetup.tsx'
 import { agentName } from '../transcript.ts'
 import { ProjectAvatar } from './ProjectAvatar.tsx'
 
@@ -186,6 +187,7 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
               ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeMcp(project.path, mcpReview.revision, reviewWorkspaceId), () => setMcpApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: mcpReview.revision })))}>Approve reviewed connectors and omissions</button>
               : approvedMcpRevision === mcpReview.revision ? <small>Reviewed for this project. Changes require another review.</small> : null}
           </div> : null}
+          {native && project.projectId ? <ProjectClaudeSetup projectId={project.projectId} projectPath={project.path} /> : null}
           <label className="field-check">
             <input type="checkbox" checked={codexNetwork} onChange={(e) => { setCodexNetwork(e.target.checked); setSaved(false) }} />
             <span>

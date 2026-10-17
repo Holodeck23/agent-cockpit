@@ -99,6 +99,27 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 /** `{ workspaceId }` for a worktree (the route then works in its folder), nothing for the primary (the path alone means it). */
 const inWorkspace = (workspaceId?: string): { workspaceId?: string } => (workspaceId ? { workspaceId } : {})
 
+/** A project's Claude memory choice (W13 U5). `current` is false once the memory changed after it was chosen. */
+export interface NativeMemorySelectionView {
+  readonly id: string; readonly sourceAccountId: string; readonly sourceLabel: string; readonly destinationAccountId: string
+  readonly writePolicy: 'managed-auto' | 'review'; readonly fileCount: number; readonly selectedAt: string; readonly current?: boolean
+}
+export interface NativeMemoryView {
+  readonly selection: NativeMemorySelectionView | null
+  readonly sources: readonly { readonly accountId: string; readonly label: string; readonly available: boolean }[]
+}
+/** A project's choice of the user's own Claude skills (W13 U6). `current` is false once they changed after it was chosen. */
+export interface SkillSelectionView {
+  readonly id: string; readonly sourceAccountId: string; readonly destinationAccountId: string
+  readonly counts: { readonly skills: number; readonly commands: number; readonly agents: number }; readonly selectedAt: string; readonly current?: boolean
+}
+export interface SkillsView {
+  readonly selection: SkillSelectionView | null
+  readonly offered: { readonly sourceAccountId: string; readonly skills: readonly string[]; readonly commands: readonly string[]; readonly agents: readonly string[]
+    readonly excluded: readonly { readonly path: string; readonly reason: 'linked' | 'not-a-file' | 'too-large' }[] } | null
+  readonly problem?: string
+}
+
 /** The project's branch state plus the conversations that would block a switch. */
 export type GitView = GitState & { readonly busy: readonly string[]; readonly pushedTo?: string }
 
@@ -213,6 +234,18 @@ export const api = {
   projectAccounts: (projectId: string) => request<{ selection: Record<AgentId, string> }>(`/api/projects/${projectId}/accounts`),
   selectAccount: (projectId: string, agent: AgentId, accountId: string) =>
     request<{ selection: Record<AgentId, string> }>(`/api/projects/${projectId}/accounts/${agent}`, { method: 'POST', body: { accountId } }),
+  /** The project's Claude memory choice and the accounts it can come from (Mac only; no paths, no content). */
+  nativeMemory: (projectId: string) => request<NativeMemoryView>(`/api/projects/${projectId}/native-memory`),
+  chooseNativeMemory: (projectId: string, sourceAccountId: string, replacing?: string) =>
+    request<{ selection: NativeMemorySelectionView }>(`/api/projects/${projectId}/native-memory`, { method: 'POST', body: { sourceAccountId, ...(replacing ? { replacing } : {}) } }),
+  revokeNativeMemory: (projectId: string, selectionId: string) =>
+    request<{ revoked: boolean }>(`/api/projects/${projectId}/native-memory/revoke`, { method: 'POST', body: { selectionId } }),
+  /** The project's choice of the user's own Claude skills, commands and agents (Mac only; names and counts only). */
+  projectSkills: (projectId: string) => request<SkillsView>(`/api/projects/${projectId}/skills`),
+  chooseProjectSkills: (projectId: string, replacing?: string) =>
+    request<{ selection: SkillSelectionView }>(`/api/projects/${projectId}/skills`, { method: 'POST', body: { sourceAccountId: 'default-claude', ...(replacing ? { replacing } : {}) } }),
+  revokeProjectSkills: (projectId: string, selectionId: string) =>
+    request<{ revoked: boolean }>(`/api/projects/${projectId}/skills/revoke`, { method: 'POST', body: { selectionId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),

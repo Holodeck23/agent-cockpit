@@ -50,6 +50,7 @@ describe('native memory routes', () => {
     const listed = JSON.stringify((await s.call(`/api/projects/${s.projectId}/native-memory`)).body)
     expect(listed).not.toContain(s.dir)
     expect(listed).not.toContain('fictional route marker')
+    expect(JSON.parse(listed).data.selection.current).toBe(true)
 
     await s.call('/api/threads', { projectPath: s.project, text: 'hello', settings: { agent: 'claude', hooksSetup: 'off', mcpSetup: 'off' } })
     const directory = s.launches.at(-1)?.nativeMemoryDirectory
@@ -72,5 +73,16 @@ describe('native memory routes', () => {
     // A second choice without naming the current one is a stale review.
     expect((await s.call(`/api/projects/${s.projectId}/native-memory`, { sourceAccountId: 'default-claude' })).status).toBe(409)
     expect((await s.call('/api/projects/not-a-project/native-memory')).status).toBe(404)
+  })
+
+  it('says when the chosen memory changed after it was chosen', async () => {
+    const s = await start()
+    mkdirSync(s.memory, { recursive: true })
+    writeFileSync(join(s.memory, 'MEMORY.md'), '# before\n')
+    await s.call(`/api/projects/${s.projectId}/native-memory`, { sourceAccountId: 'default-claude' })
+    writeFileSync(join(s.memory, 'MEMORY.md'), '# after the CLI wrote to it\n')
+    const listed = (await s.call(`/api/projects/${s.projectId}/native-memory`)).body.data
+    expect(listed.selection.current).toBe(false)
+    expect(JSON.stringify(listed)).not.toContain(s.dir)
   })
 })
