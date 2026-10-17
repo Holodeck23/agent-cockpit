@@ -73,15 +73,19 @@ export function runHook(argv: readonly string[], stdin: string, timeoutMs: numbe
     try { child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], detached: true }) }
     catch (error) { resolve({ kind: 'error', message: error instanceof Error ? error.message : String(error) }); return }
     let stdout = '', stderr = '', settled = false, timedOut = false
-    const finish = (outcome: HookOutcome): void => { if (!settled) { settled = true; clearTimeout(timer); resolve(outcome) } }
+    let grace: ReturnType<typeof setTimeout> | undefined
+    const finish = (outcome: HookOutcome): void => { if (!settled) { settled = true; clearTimeout(timer); clearTimeout(grace); resolve(outcome) } }
     const group = (signal: NodeJS.Signals): void => { try { if (child.pid) process.kill(-child.pid, signal) } catch { /* Already gone. */ } }
+    // Answered only once the whole group has been sent SIGKILL: the runner exits right after it answers,
+    // which would cancel any kill still pending, and a hook that ignores SIGTERM would outlive its timeout.
+    const timedOutNow = (): void => { group('SIGKILL'); finish({ kind: 'timeout', ms: timeoutMs }) }
     const timer = setTimeout(() => {
       timedOut = true
       group('SIGTERM')
-      setTimeout(() => group('SIGKILL'), KILL_GRACE_MS).unref()
-      // Answer now: a hook that ignores SIGTERM must not hold the action open past its timeout.
-      finish({ kind: 'timeout', ms: timeoutMs })
+      // At most the grace period: as soon as the hook itself has gone, what it left in its group goes too.
+      grace = setTimeout(timedOutNow, KILL_GRACE_MS)
     }, timeoutMs)
+    child.on('exit', () => { if (timedOut) timedOutNow() })
     child.stdout!.on('data', (chunk: Buffer) => { if (stdout.length < MAX_OUTPUT) stdout += chunk.toString('utf8') })
     child.stderr!.on('data', (chunk: Buffer) => { if (stderr.length < MAX_OUTPUT) stderr += chunk.toString('utf8') })
     child.on('error', (error) => finish({ kind: 'error', message: error.message }))

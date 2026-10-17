@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -88,6 +88,23 @@ describe('the runner as Claude runs it', () => {
     spawnSync('/bin/sleep', ['2.5'])
     expect(existsSync(join(dir, 'hook.sh.late'))).toBe(false)
     expect(existsSync(join(dir, 'hook.sh.done'))).toBe(false)
+  }, 30_000)
+
+  it('ends a timed-out hook that ignores SIGTERM, and its children, before answering', () => {
+    // An ignored signal is inherited, so the backgrounded child ignores SIGTERM too: only SIGKILL ends them.
+    // 2 s, so even a loaded machine has run the trap before the timeout: killed earlier, the case is never reached.
+    const { dir, script } = hook("trap '' TERM; sleep 30 & echo \"$$ $!\" > \"$0.pids\"; sleep 30")
+    const run = viaClaude([script], 2000)
+    expect(run.status).toBe(2)
+    expect(run.stderr).toContain('did not answer within 2 seconds')
+    const pids = readFileSync(join(dir, 'hook.sh.pids'), 'utf8').trim().split(' ').map(Number)
+    expect(pids).toHaveLength(2)
+    const living = (): number[] => pids.filter((pid) => { try { process.kill(pid, 0); return true } catch { return false } })
+    // Ended when the runner answered; a moment is allowed only for the system to reap them.
+    for (let waited = 0; living().length && waited < 1000; waited += 100) spawnSync('/bin/sleep', ['0.1'])
+    const alive = living()
+    for (const pid of alive) { try { process.kill(pid, 'SIGKILL') } catch { /* gone */ } }
+    expect(alive).toEqual([])
   }, 30_000)
 
   it('blocks when the runner itself cannot start or is given nothing to run', () => {
