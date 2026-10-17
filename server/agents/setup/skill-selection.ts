@@ -7,7 +7,7 @@ import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { ensurePrivateDir, writeFileAtomic } from '../../files/atomic.ts'
 import { StoreReadError } from '../../state/read-error.ts'
-import { materializeSkillProjection, snapshotSkillSource } from './skill-projection.ts'
+import { materializeSkillProjection, snapshotSkillSource, type SkillLink } from './skill-projection.ts'
 
 const selectionSchema = z.object({
   id: z.uuid(),
@@ -18,14 +18,17 @@ const selectionSchema = z.object({
   sourceProfileDir: z.string().refine(isAbsolute),
   revision: z.string().regex(/^[a-f0-9]{64}$/),
   counts: z.object({ skills: z.number().int().min(0), commands: z.number().int().min(0), agents: z.number().int().min(0), excluded: z.number().int().min(0) }),
+  /** Links the user reviewed and included, each with the real folder or file it pointed at then. */
+  includedLinks: z.array(z.object({ path: z.string().min(1).max(500), target: z.string().refine(isAbsolute) })).default([]),
   selectedAt: z.iso.datetime(),
 })
 const fileSchema = z.object({ version: z.literal(1), revision: z.number().int().min(0), selections: z.array(selectionSchema) })
 export type SkillSelection = z.output<typeof selectionSchema>
 
 export interface SkillSelectionStore {
-  select(input: Pick<SkillSelection, 'projectPath' | 'destinationAccountId' | 'destinationGeneration' | 'sourceAccountId' | 'sourceProfileDir'>,
-    expectedSelectionId?: string): SkillSelection
+  /** `includeLinks` names linked entries (as offered) to include, at the target each points to now. */
+  select(input: Pick<SkillSelection, 'projectPath' | 'destinationAccountId' | 'destinationGeneration' | 'sourceAccountId' | 'sourceProfileDir'>
+    & { readonly includeLinks?: readonly string[] }, expectedSelectionId?: string): SkillSelection
   get(projectPath: string): SkillSelection | undefined
   revoke(projectPath: string, expectedSelectionId: string): boolean
 }
@@ -44,13 +47,19 @@ export function createSkillSelectionStore(root: string): SkillSelectionStore {
   const get = (projectPath: string): SkillSelection | undefined => read().selections.find((row) => row.projectPath === projectPath)
   return {
     get,
-    select(input, expectedSelectionId) {
-      const source = snapshotSkillSource(input.sourceProfileDir)
+    select({ includeLinks = [], ...input }, expectedSelectionId) {
+      const offered = snapshotSkillSource(input.sourceProfileDir)
+      const links: SkillLink[] = [...new Set(includeLinks)].map((path) => {
+        const row = offered.excluded.find((entry) => entry.path === path && entry.reason === 'linked')
+        if (!row?.includable || !row.target) throw new Error(`${path} is not a link that can be included`)
+        return { path, target: row.target }
+      })
+      const source = snapshotSkillSource(input.sourceProfileDir, links)
       const current = read()
       if (current.selections.find((row) => row.projectPath === input.projectPath)?.id !== expectedSelectionId) {
         throw new Error('Skill selection changed; review it again')
       }
-      const selected = selectionSchema.parse({ ...input, id: randomUUID(), revision: source.revision, selectedAt: new Date().toISOString(),
+      const selected = selectionSchema.parse({ ...input, id: randomUUID(), revision: source.revision, selectedAt: new Date().toISOString(), includedLinks: links,
         counts: { skills: source.skills.length, commands: source.commands.length, agents: source.agents.length, excluded: source.excluded.length } })
       write({ version: 1, revision: current.revision + 1,
         selections: [...current.selections.filter((row) => row.projectPath !== input.projectPath), selected] })
@@ -84,7 +93,7 @@ export function createSkillProvider(options: { readonly selections: SkillSelecti
     if (!selected || selected.destinationAccountId !== input.accountId) return undefined
     if (selected.destinationGeneration !== input.accountGeneration) throw new Error('Skill selection belongs to a different account generation')
     let source: ReturnType<typeof snapshotSkillSource>
-    try { source = snapshotSkillSource(selected.sourceProfileDir) } catch { throw new Error('Your skills could not be read. Review them again in Project Settings.') }
+    try { source = snapshotSkillSource(selected.sourceProfileDir, selected.includedLinks) } catch { throw new Error('Your skills could not be read. Review them again in Project Settings.') }
     if (source.revision !== selected.revision) throw new Error(CHANGED)
     const pluginDir = materializeSkillProjection(source, options.projectionRoot)
     return {
@@ -93,7 +102,7 @@ export function createSkillProvider(options: { readonly selections: SkillSelecti
       validate: () => {
         const current = options.selections.get(input.projectPath)
         if (current?.id !== selected.id) throw new Error('Skill selection changed. Start the conversation again to use the current choice.')
-        if (snapshotSkillSource(selected.sourceProfileDir).revision !== selected.revision) throw new Error(CHANGED)
+        if (snapshotSkillSource(selected.sourceProfileDir, selected.includedLinks).revision !== selected.revision) throw new Error(CHANGED)
       },
     }
   }

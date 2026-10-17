@@ -1,7 +1,8 @@
 // A project's own Claude skills, commands and agents (W13 U6). The source is host-computed from an
-// account, never a path from the request; responses carry names and counts, never paths or content.
+// account, never a path from the request; responses carry names and counts, never content. The one
+// path shown is where a linked entry points, so it can be reviewed before it is included.
 //   GET  /api/projects/:projectId/skills          current choice and what the CLI default profile offers
-//   POST /api/projects/:projectId/skills          { sourceAccountId, replacing? } → chooses its current revision
+//   POST /api/projects/:projectId/skills          { sourceAccountId, replacing?, includeLinks? } → chooses its current revision
 //   POST /api/projects/:projectId/skills/revoke   { selectionId } → stops loading them
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -19,7 +20,7 @@ export interface SkillRouteDeps {
 export const isSkillRoute = (parts: readonly string[]): boolean => parts[1] === 'projects' && parts[3] === 'skills'
 
 const viewOf = (row: SkillSelection) => ({ id: row.id, sourceAccountId: row.sourceAccountId, destinationAccountId: row.destinationAccountId,
-  counts: row.counts, selectedAt: row.selectedAt })
+  counts: row.counts, selectedAt: row.selectedAt, includedLinks: row.includedLinks })
 
 export async function handleSkillRoute(
   req: IncomingMessage, res: ServerResponse, parts: readonly string[], deps: SkillRouteDeps,
@@ -33,20 +34,27 @@ export async function handleSkillRoute(
     let offered: ReturnType<typeof snapshotSkillSource> | undefined
     let problem: string | undefined
     try { offered = snapshotSkillSource(deps.defaultProfileDir) } catch (error) { problem = error instanceof Error ? error.message : 'Could not read your skills' }
+    // With included links, the choice's own revision is compared, read through the links it reviewed.
+    let currentRevision = offered?.revision
+    if (current?.includedLinks.length && offered) {
+      try { currentRevision = snapshotSkillSource(deps.defaultProfileDir, current.includedLinks).revision } catch { currentRevision = undefined }
+    }
     sendJson(res, 200, { data: {
-      selection: current ? { ...viewOf(current), current: offered?.revision === current.revision } : null,
+      selection: current ? { ...viewOf(current), current: currentRevision === current.revision } : null,
       offered: offered ? { sourceAccountId: 'default-claude', skills: offered.skills, commands: offered.commands, agents: offered.agents,
-        excluded: offered.excluded.map((row) => ({ path: row.path, reason: row.reason })) } : null,
+        excluded: offered.excluded.map((row) => ({ path: row.path, reason: row.reason,
+          ...(row.reason === 'linked' && row.target ? { target: row.target } : {}), ...(row.includable ? { includable: true } : {}) })) } : null,
       ...(problem ? { problem } : {}),
     } })
     return
   }
   if (method === 'POST' && parts.length === 4) {
-    const body = parseBody(z.object({ sourceAccountId: z.literal('default-claude'), replacing: z.uuid().optional() }), await readJson(req))
+    const body = parseBody(z.object({ sourceAccountId: z.literal('default-claude'), replacing: z.uuid().optional(),
+      includeLinks: z.array(z.string().min(1).max(500)).max(200).optional() }), await readJson(req))
     const destination = deps.destination(path)
     try {
       const selected = deps.selections.select({ projectPath: path, destinationAccountId: destination.accountId, destinationGeneration: destination.generation,
-        sourceAccountId: body.sourceAccountId, sourceProfileDir: deps.defaultProfileDir }, body.replacing)
+        sourceAccountId: body.sourceAccountId, sourceProfileDir: deps.defaultProfileDir, ...(body.includeLinks ? { includeLinks: body.includeLinks } : {}) }, body.replacing)
       sendJson(res, 200, { data: { selection: viewOf(selected) } })
     } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not choose your skills') }
     return

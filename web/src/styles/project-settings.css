@@ -70,6 +70,10 @@
 .claude-setup-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px;
   border: 1px solid var(--border); border-radius: var(--r-md); min-width: 0; }
 .claude-setup-row > span { display: grid; gap: 1px; min-width: 0; }
+.claude-setup-include { display: flex; align-items: flex-start; gap: 8px; min-width: 0; cursor: pointer; }
+.claude-setup-include > input { flex: none; margin-top: 3px; }
+.claude-setup-include > span { display: grid; gap: 1px; min-width: 0; }
+.claude-setup-include small { overflow-wrap: anywhere; }
 .claude-setup-row strong { font-size: 13px; font-weight: 550; color: var(--strong); overflow-wrap: anywhere; }
 .claude-setup-row small { font-size: 12px; font-weight: 400; color: var(--muted); }
 .claude-setup-row .button-soft, .claude-setup-actions .button-soft, .claude-setup-stop { flex: none; padding: 5px 12px; font-size: 12.5px; }

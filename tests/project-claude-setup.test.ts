@@ -17,7 +17,9 @@ const memory = (patch: Partial<NativeMemoryView> = {}): string => renderToStatic
 const skillSelection = { id: 's1', sourceAccountId: 'default-claude', destinationAccountId: 'acct-a',
   counts: { skills: 2, commands: 1, agents: 0 }, selectedAt: '2026-10-17T08:00:00.000Z', current: true }
 const offered = { sourceAccountId: 'default-claude', skills: ['deploy', 'review'], commands: ['standup'], agents: [],
-  excluded: [{ path: 'skills/linked-one', reason: 'linked' as const }, { path: 'skills/huge/data.bin', reason: 'too-large' as const }] }
+  excluded: [{ path: 'skills/linked-one', reason: 'linked' as const, target: '/elsewhere/linked-one', includable: true },
+    { path: 'skills/deploy/vendor', reason: 'linked' as const, target: '/elsewhere/vendor' }, { path: 'skills/gone', reason: 'linked' as const },
+    { path: 'skills/huge/data.bin', reason: 'too-large' as const }] }
 const skills = (patch: Partial<SkillsView> = {}, accountId = 'acct-a'): string => renderToStaticMarkup(createElement(SkillChoice, {
   view: { selection: null, offered, ...patch }, accountId, onChoose: noop, onRevoke: noop,
 }))
@@ -70,8 +72,11 @@ describe('your Claude skills in Project Settings', () => {
     expect(html).toContain('Not loading your skills.')
     expect(html).toContain('On offer: 2 skills, 1 command, 0 agents.')
     expect(html).toContain('deploy, review')
-    expect(html).toContain('Not included (2):')
-    expect(html).toMatch(/skills\/linked-one<\/strong><small>linked from elsewhere, not included until it can be reviewed/)
+    expect(html).toContain('Linked from elsewhere (1). Each is included only if you tick it, after checking where it points:')
+    expect(html).toMatch(/<input type="checkbox"\/><span><strong>skills\/linked-one<\/strong><small>links to \/elsewhere\/linked-one/)
+    expect(html).toContain('Not included (3):')
+    expect(html).toMatch(/skills\/deploy\/vendor<\/strong><small>linked from elsewhere, not included until it can be reviewed/)
+    expect(html).toMatch(/skills\/gone<\/strong><small>a link that points nowhere/)
     expect(html).toMatch(/skills\/huge\/data.bin<\/strong><small>over the size limit/)
     expect(html).toContain('>Use my skills</button>')
   })
@@ -81,6 +86,13 @@ describe('your Claude skills in Project Settings', () => {
     expect(html).toMatch(/Loading 2 skills, 1 command, 0 agents, chosen/)
     expect(html).not.toContain('Use my skills')
     expect(html).toContain('Stop loading my skills')
+  })
+
+  it('a current choice with an included link ticks it and counts it', () => {
+    const html = skills({ selection: { ...skillSelection, includedLinks: [{ path: 'skills/linked-one', target: '/elsewhere/linked-one' }] } })
+    expect(html).toMatch(/Loading 2 skills, 1 command, 0 agents, with 1 linked entry, chosen/)
+    expect(html).toMatch(/<input type="checkbox" checked=""\/><span><strong>skills\/linked-one/)
+    expect(html).not.toContain('Update my choice')
   })
 
   it('changed since chosen: review again', () => {

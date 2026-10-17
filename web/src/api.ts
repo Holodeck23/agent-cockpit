@@ -112,11 +112,13 @@ export interface NativeMemoryView {
 export interface SkillSelectionView {
   readonly id: string; readonly sourceAccountId: string; readonly destinationAccountId: string
   readonly counts: { readonly skills: number; readonly commands: number; readonly agents: number }; readonly selectedAt: string; readonly current?: boolean
+  /** Links included after review, each with where it pointed then. */
+  readonly includedLinks?: readonly { readonly path: string; readonly target: string }[]
 }
 export interface SkillsView {
   readonly selection: SkillSelectionView | null
   readonly offered: { readonly sourceAccountId: string; readonly skills: readonly string[]; readonly commands: readonly string[]; readonly agents: readonly string[]
-    readonly excluded: readonly { readonly path: string; readonly reason: 'linked' | 'not-a-file' | 'too-large' }[] } | null
+    readonly excluded: readonly { readonly path: string; readonly reason: 'linked' | 'not-a-file' | 'too-large'; readonly target?: string; readonly includable?: boolean }[] } | null
   readonly problem?: string
 }
 
@@ -242,8 +244,9 @@ export const api = {
     request<{ revoked: boolean }>(`/api/projects/${projectId}/native-memory/revoke`, { method: 'POST', body: { selectionId } }),
   /** The project's choice of the user's own Claude skills, commands and agents (Mac only; names and counts only). */
   projectSkills: (projectId: string) => request<SkillsView>(`/api/projects/${projectId}/skills`),
-  chooseProjectSkills: (projectId: string, replacing?: string) =>
-    request<{ selection: SkillSelectionView }>(`/api/projects/${projectId}/skills`, { method: 'POST', body: { sourceAccountId: 'default-claude', ...(replacing ? { replacing } : {}) } }),
+  chooseProjectSkills: (projectId: string, replacing?: string, includeLinks: readonly string[] = []) =>
+    request<{ selection: SkillSelectionView }>(`/api/projects/${projectId}/skills`, { method: 'POST',
+      body: { sourceAccountId: 'default-claude', ...(replacing ? { replacing } : {}), ...(includeLinks.length ? { includeLinks } : {}) } }),
   revokeProjectSkills: (projectId: string, selectionId: string) =>
     request<{ revoked: boolean }>(`/api/projects/${projectId}/skills/revoke`, { method: 'POST', body: { selectionId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
