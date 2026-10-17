@@ -14,12 +14,14 @@ const evidenceDir = process.env.COCKPIT_PROOF_DIR ?? ''
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const accountId = process.env.COCKPIT_PROOF_ACCOUNT_ID ?? ''
 const mode = process.env.COCKPIT_PROOF_SKILL_MODE ?? 'project'
+// plugin-bare: the plugin fixture invoked by its bare skill name, as a user types it in a terminal.
+const pluginMode = mode === 'plugin' || mode === 'plugin-bare'
 const receipt: Record<string, unknown> = { probe: 'W13 Claude native slash skill with argument',
   mode, verdict: 'STOPPED', startedAt: new Date().toISOString(), providerCalls: 0 }
 
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
-  assert.ok(mode === 'project' || mode === 'project-strict' || mode === 'plugin', 'Unknown skill proof mode')
+  assert.ok(mode === 'project' || mode === 'project-strict' || pluginMode, 'Unknown skill proof mode')
   assert.ok(isAbsolute(cli) && isAbsolute(evidenceDir) && isAbsolute(privateDir) && /^[0-9a-f-]{36}$/.test(accountId))
   assert.equal(sha(cli), '8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081')
   assert.equal(sha(process.execPath), '68f4d07ca49e0500cc135c7e0a445093e228e42e126ac22306d045f0a8c2636b')
@@ -34,10 +36,10 @@ try {
   const fixture = mkdtempSync(join(privateDir, 'fixture-'))
   const project = join(fixture, 'project')
   const plugin = join(fixture, 'plugin')
-  const skill = mode === 'plugin' ? join(plugin, 'skills', 'w13-proof-skill') : join(project, '.claude', 'skills', 'w13-proof-skill')
+  const skill = pluginMode ? join(plugin, 'skills', 'w13-proof-skill') : join(project, '.claude', 'skills', 'w13-proof-skill')
   mkdirSync(skill, { recursive: true, mode: 0o700 })
   mkdirSync(project, { recursive: true, mode: 0o700 })
-  if (mode === 'plugin') {
+  if (pluginMode) {
     const meta = join(plugin, '.claude-plugin')
     mkdirSync(meta, { recursive: true, mode: 0o700 })
     writeFileSync(join(meta, 'plugin.json'), JSON.stringify({ name: 'w13-proof-plugin', version: '1.0.0' }), { mode: 0o600 })
@@ -56,7 +58,7 @@ try {
   const { stdout, stderr } = await run(cli, ['--print', '--output-format', 'json', '--no-session-persistence',
     '--model', 'haiku', '--tools', '', '--strict-mcp-config', '--mcp-config', mcp,
     '--setting-sources', mode === 'project' ? 'project,local' : '', '--settings', settings,
-    ...(mode === 'plugin' ? ['--plugin-dir', plugin] : []), invocation],
+    ...(pluginMode ? ['--plugin-dir', plugin] : []), invocation],
   { cwd: project, env, timeout: 90_000, maxBuffer: 2_000_000 })
   writeFileSync(join(fixture, 'provider-output.json'), stdout, { mode: 0o600 })
   if (stderr) writeFileSync(join(fixture, 'provider-stderr.txt'), stderr, { mode: 0o600 })
