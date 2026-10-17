@@ -13,6 +13,8 @@
 // COCKPIT_PROOF_SCENARIO=project-skill (U6): the project's own .claude skill, chosen in Project Settings, runs by its bare
 // name; a user skill and a project skill of one name resolve to the user's, as in the plain CLI, and /project:<name>
 // reaches the project's. Each in a new conversation, so no answer can come from history.
+// COCKPIT_PROOF_SCENARIO=mcp (U3/A4): a connector reviewed and approved in Cockpit is called in the packaged app. The
+// project's .mcp.json names the synthetic ping server, whose answer is a random marker absent from every prompt.
 // COCKPIT_PROOF_SCENARIO=policy (U3c): one approved PreToolUse hook, three Write turns. When it allows, the
 // file appears (the control); when it fails, or hangs past its timeout, the file must not.
 // One planned provider attempt, not a loop: it checks the borrowed login's identity in the packaged
@@ -40,7 +42,7 @@ const AUTH_SELECTORS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_COD
 
 const hash = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const scenario = process.env.COCKPIT_PROOF_SCENARIO ?? 'hooks'
-if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle', 'plugin', 'project-skill'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy, lifecycle, plugin or project-skill')
+if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle', 'plugin', 'project-skill', 'mcp'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy, lifecycle, plugin, project-skill or mcp')
 const evidence = process.env.COCKPIT_PROOF_DIR
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR
 assert.ok(evidence && privateDir, 'Set COCKPIT_PROOF_DIR (shared, sanitized) and COCKPIT_PROOF_PRIVATE_DIR (private)')
@@ -226,7 +228,15 @@ try {
     execFileSync('chmod', ['-R', 'go-rwx', defaultProfile])
     writeJson(privateDir, 'project-skill-markers-private.json', projectMarkers)
   }
-  const secrets = [...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord, pluginMarker, ...Object.values(projectMarkers)]
+  // MCP scenario: the project's own connector definition, pointing at the synthetic ping server.
+  const pingMarker = `W13PING${randomBytes(6).toString('hex').toUpperCase()}`
+  const pingFixture = realpathSync(new URL('./fixtures/w13-mcp-ping.mjs', import.meta.url).pathname)
+  if (scenario === 'mcp') {
+    writeFileSync(join(project, '.mcp.json'), JSON.stringify({ mcpServers: { w13ping: { type: 'stdio', command: process.execPath, args: [pingFixture],
+      env: { W13_PING_MARKER: pingMarker } } } }))
+    writeJson(privateDir, 'mcp-marker-private.json', { pingMarker })
+  }
+  const secrets = [pingMarker, ...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord, pluginMarker, ...Object.values(projectMarkers)]
   const mask = (text: string): string => secrets.reduce((out, secret, i) => out.replaceAll(secret, `<secret${i}>`), text)
 
   // HOME stays real for Keychain. Cockpit metadata stays in disposable state; Claude may write its own
@@ -607,6 +617,57 @@ try {
     facts.projectSkill = { checks }
     verdict = 'passed'
   }
+  if (scenario === 'mcp') {
+    type Row = { kind: string; text?: string; ok?: boolean; name?: string; content?: string; requestId?: string; toolName?: string }
+    await step('connector review: exactly the project\'s synthetic ping server, approved, connectors on', async () => {
+      const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-mcp?path=${encodeURIComponent(path)}`)).json()), project) as
+        { data?: { revision: string; review: Array<{ name: string; executableHash?: string; referencedFiles?: Array<{ hash: string }> }>; unavailable: Array<{ name: string }> }; error?: string }
+      assert.ok(found.data, found.error ?? 'Connector review failed')
+      // Anything else would be the borrowed profile's own connectors: never approved by a proof.
+      assert.deepEqual(found.data.review.map((row) => row.name), ['w13ping'], `Expected only the synthetic connector, found ${found.data.review.map((row) => row.name).join(', ')}`)
+      assert.deepEqual(found.data.unavailable, [], 'Unexpected unavailable connectors')
+      assert.equal(found.data.review[0]?.executableHash, hash(process.execPath))
+      facts.mcpReview = { name: 'w13ping', executableHash: found.data.review[0]?.executableHash, scriptHash: hash(pingFixture) }
+      await apiPost(page, '/api/projects/claude-mcp', { path: project, revision: found.data.revision })
+      await apiPost(page, '/api/projects', { path: project, claudeHooks: false, claudeMcp: true })
+    })
+    const checks: Record<string, boolean> = {}
+    await step('call: Claude calls the approved connector and replies with what it returned', async () => {
+      const created = await apiPost(page, '/api/threads', { projectPath: project,
+        text: 'Call the ping tool of the w13ping connector once, then reply with exactly the text it returned. Do not use any other tool except to find that one.',
+        settings: { agent: 'claude', model: 'haiku', permissionMode: 'manual', hooksSetup: 'off', mcpSetup: 'inherit' } }) as { data?: { id: string }; error?: string }
+      assert.ok(created.data?.id, created.error ?? 'Thread creation failed')
+      const id = created.data.id
+      const answered = new Set<string>()
+      let rows: Row[] = []
+      const deadline = Date.now() + 150_000
+      while (Date.now() < deadline) {
+        rows = await page.evaluate(async (thread) => (await (await fetch(`/api/threads/${thread}/events`)).json()).data.events.map((row: { event: unknown }) => row.event), id)
+        // Only the one approved connector tool is allowed; any other request fails the proof.
+        for (const request of rows.filter((event) => event.kind === 'approval_request' && !answered.has(event.requestId ?? ''))) {
+          answered.add(request.requestId ?? '')
+          const allow = request.toolName === 'mcp__w13ping__ping'
+          await apiPost(page, `/api/threads/${id}/approvals/${request.requestId}`, { behavior: allow ? 'allow' : 'deny' })
+          assert.ok(allow, `Claude asked to use ${request.toolName}`)
+        }
+        if (rows.some((event) => event.kind === 'result')) break
+        await page.waitForTimeout(500)
+      }
+      for (const event of rows) output.push(mask(`${event.kind}${event.name ? ` ${event.name}` : ''}${event.toolName ? ` ${event.toolName}` : ''}${event.text ? `: ${event.text.slice(0, 200)}` : ''}${event.content ? ` => ${event.content.slice(0, 120)}` : ''}`))
+      const result = rows.find((event) => event.kind === 'result')
+      assert.ok(result, 'The turn did not finish')
+      assert.ok(!(result.text ?? '').includes('Not logged in'), 'The borrowed Claude profile did not authenticate. Stop: no sign-in, no account switch, no retry')
+      checks.toolCalled = rows.some((event) => event.kind === 'tool_use' && event.name === 'mcp__w13ping__ping')
+      checks.markerInToolResult = rows.some((event) => event.kind === 'tool_result' && (event.content ?? '').includes(pingMarker))
+      checks.markerInReply = rows.some((event) => event.kind === 'assistant_text' && (event.text ?? '').includes(pingMarker))
+      checks.approvalsAnswered = answered.size > 0
+      assert.ok(checks.toolCalled, 'The approved connector tool was not called')
+      assert.ok(checks.markerInToolResult, 'The connector\'s answer did not come back as the tool result')
+      assert.ok(checks.markerInReply, 'The reply does not carry the connector\'s answer')
+    })
+    facts.mcp = { checks, review: facts.mcpReview }
+    verdict = 'passed'
+  }
   if (scenario === 'policy') {
     await step('hook review: exactly the one synthetic PreToolUse hook, approved, hooks on', async () => {
       const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
@@ -720,14 +781,15 @@ try {
   // Nothing under root links to the real profile, so removing it cannot reach the login.
   if (root) rmSync(root, { recursive: true, force: true })
   writeFileSync(join(evidence, 'output.txt'), `${output.join('\n')}\n`, { mode: 0o600 })
-  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}), ...(facts.plugin ? { plugin: facts.plugin } : {}), ...(facts.projectSkill ? { projectSkill: facts.projectSkill } : {}) })
+  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}), ...(facts.plugin ? { plugin: facts.plugin } : {}), ...(facts.projectSkill ? { projectSkill: facts.projectSkill } : {}), ...(facts.mcp ? { mcp: facts.mcp } : {}) })
   const files = ['package-manifest.json', 'provider-context.json', 'output.txt'].filter((name) => existsSync(join(evidence, name)))
   writeJson(evidence, 'receipt.json', {
     scenario: { memory: 'W13-U5 packaged borrowed-account native memory proof', skill: 'W13-U6 packaged borrowed-account projected skill proof',
       hooks: 'W13-U1 packaged borrowed-account hook proof', policy: 'W13-U3c packaged borrowed-account policy hook denial proof',
       lifecycle: 'W13-U5/U6 packaged borrowed-account memory and skill lifecycle proof',
       plugin: 'W13-U6 packaged borrowed-account stripped plugin skill proof',
-      'project-skill': 'W13-U6 packaged borrowed-account project skill and same-name precedence proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
+      'project-skill': 'W13-U6 packaged borrowed-account project skill and same-name precedence proof',
+      mcp: 'W13-U3/A4 packaged borrowed-account approved connector call proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
     command: 'scripts/proof-w13-hooks-live.ts', provider: { cli: 'claude 2.1.220', cliHash: PINS.cli, nodeHash: PINS.node },
     package: facts.package, account: { alias: 'borrowed managed Claude', generation: (facts.context as { generation?: number } | undefined)?.generation },
     workspace: 'disposable project and Cockpit state', steps, verdict,
