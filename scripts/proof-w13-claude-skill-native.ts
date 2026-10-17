@@ -19,7 +19,7 @@ const receipt: Record<string, unknown> = { probe: 'W13 Claude native slash skill
 
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
-  assert.ok(mode === 'project' || mode === 'plugin', 'Unknown skill proof mode')
+  assert.ok(mode === 'project' || mode === 'project-strict' || mode === 'plugin', 'Unknown skill proof mode')
   assert.ok(isAbsolute(cli) && isAbsolute(evidenceDir) && isAbsolute(privateDir) && /^[0-9a-f-]{36}$/.test(accountId))
   assert.equal(sha(cli), '8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081')
   assert.equal(sha(process.execPath), '68f4d07ca49e0500cc135c7e0a445093e228e42e126ac22306d045f0a8c2636b')
@@ -55,7 +55,7 @@ try {
   const invocation = mode === 'plugin' ? '/w13-proof-plugin:w13-proof-skill banana' : '/w13-proof-skill banana'
   const { stdout, stderr } = await run(cli, ['--print', '--output-format', 'json', '--no-session-persistence',
     '--model', 'haiku', '--tools', '', '--strict-mcp-config', '--mcp-config', mcp,
-    '--setting-sources', mode === 'plugin' ? '' : 'project,local', '--settings', settings,
+    '--setting-sources', mode === 'project' ? 'project,local' : '', '--settings', settings,
     ...(mode === 'plugin' ? ['--plugin-dir', plugin] : []), invocation],
   { cwd: project, env, timeout: 90_000, maxBuffer: 2_000_000 })
   writeFileSync(join(fixture, 'provider-output.json'), stdout, { mode: 0o600 })
