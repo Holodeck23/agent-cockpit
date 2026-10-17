@@ -28,6 +28,8 @@ export interface ClaudeLaunchDeps {
   initializeTimeoutMs?: number
   /** The packaged Cockpit MCP bridge authenticated to this session's scoped host. */
   hostReady?: () => Promise<void>
+  /** Host-selected, private run overlay; provider writes remain there after this process exits. */
+  nativeMemoryDirectory?: string
 }
 
 /**
@@ -77,20 +79,23 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
       deps.validateSources?.()
       const prompt = input.appendSystemPrompt && capabilities.appendSystemPromptFile ? writePromptFile(input.appendSystemPrompt) : undefined
       const selected = claudeLaunchSchema.parse(input)
-      const privateConfig = writePrivateClaudeConfig(selected.mcpConfig, selected.useHooks ? selected.hookSettings : { disableAllHooks: true })
+      let privateConfig: ReturnType<typeof writePrivateClaudeConfig> | undefined
       try {
-        const args = buildClaudeArgs({ ...input, mcpConfigFile: privateConfig.mcpFile, settingsFile: privateConfig.settingsFile,
+        const config = writePrivateClaudeConfig(selected.mcpConfig,
+          selected.useHooks ? selected.hookSettings : { disableAllHooks: true }, deps.nativeMemoryDirectory)
+        privateConfig = config
+        const args = buildClaudeArgs({ ...input, mcpConfigFile: config.mcpFile, settingsFile: config.settingsFile,
           ...(prompt ? { appendSystemPrompt: undefined, appendSystemPromptFile: prompt.file } : {}) }, capabilities)
         validateClaudeArgs(args, capabilities)
         replays = capabilities.replayUserMessages
-        const started = spawnClaude(input, fromProvider, deps, args, () => { prompt?.remove(); privateConfig.remove() })
+        const started = spawnClaude(input, fromProvider, deps, args, () => { prompt?.remove(); config.remove() })
         session = started.session
         await Promise.all([started.initialized, deps.hostReady?.() ?? Promise.resolve()])
         if (startupError) throw new Error(startupError)
         deps.validateSources?.()
       } catch (error) {
         prompt?.remove()
-        privateConfig.remove()
+        privateConfig?.remove()
         throw error
       }
       if (ended) return
