@@ -4,6 +4,9 @@
 // stand-in for the CLI default profile, with its marker absent from every prompt.
 // COCKPIT_PROOF_SCENARIO=skill (U6): the user's own skill, chosen for the project, runs by its bare name
 // from the private plugin projection.
+// COCKPIT_PROOF_SCENARIO=lifecycle (U5/U6): selected memory and skills in one conversation's later turns, after an app
+// restart resumes it, and after /compact; then deleting it removes its memory overlay. Every stage asks for a word or
+// marker that appeared nowhere earlier in the conversation, so history cannot stand in for memory or a skill.
 // COCKPIT_PROOF_SCENARIO=policy (U3c): one approved PreToolUse hook, three Write turns. When it allows, the
 // file appears (the control); when it fails, or hangs past its timeout, the file must not.
 // One planned provider attempt, not a loop: it checks the borrowed login's identity in the packaged
@@ -12,10 +15,10 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { ElectronApplication } from 'playwright-core'
+import type { ElectronApplication, Page } from 'playwright-core'
 import { claudeProjectSlug } from '../server/agents/setup/claude-inventory.ts'
 import { launchPackagedApp } from './lib/launch-app.ts'
 import { apiPost, openProject } from './lib/ui.ts'
@@ -31,7 +34,7 @@ const AUTH_SELECTORS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_COD
 
 const hash = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const scenario = process.env.COCKPIT_PROOF_SCENARIO ?? 'hooks'
-if (!['hooks', 'memory', 'skill', 'policy'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill or policy')
+if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy or lifecycle')
 const evidence = process.env.COCKPIT_PROOF_DIR
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR
 assert.ok(evidence && privateDir, 'Set COCKPIT_PROOF_DIR (shared, sanitized) and COCKPIT_PROOF_PRIVATE_DIR (private)')
@@ -164,11 +167,32 @@ try {
     writeJson(privateDir, 'skill-marker-private.json', { skillMarker })
   }
 
+  // Lifecycle scenario: one memory word per stage and one skill per later stage, each private to that stage.
+  const stages = ['a', 'b', 'c', 'd'] as const
+  const lifeWords = Object.fromEntries(stages.map((stage) => [stage, `quill${stage}${randomBytes(4).toString('hex')}`])) as Record<typeof stages[number], string>
+  const lifeSkills = Object.fromEntries(stages.slice(1).map((stage) => [stage, `W13LIFE${stage.toUpperCase()}${randomBytes(5).toString('hex').toUpperCase()}`])) as Record<'b' | 'c' | 'd', string>
+  const conversationWord = `heron${randomBytes(4).toString('hex')}`
+  if (scenario === 'lifecycle') {
+    const memoryDir = join(defaultProfile, 'projects', claudeProjectSlug(project), 'memory')
+    mkdirSync(memoryDir, { recursive: true, mode: 0o700 })
+    for (const dir of [defaultProfile, join(defaultProfile, 'projects')]) execFileSync('chmod', ['700', dir])
+    writeFileSync(join(memoryDir, 'MEMORY.md'), ['# Project memory', '', ...stages.map((stage) => `- The stage ${stage.toUpperCase()} handoff word is ${lifeWords[stage]}.`), ''].join('\n'), { mode: 0o600 })
+    mkdirSync(join(defaultProfile, 'skills'), { recursive: true, mode: 0o700 })
+    for (const [stage, skillMarker] of Object.entries(lifeSkills)) {
+      const skillDir = join(defaultProfile, 'skills', `w13-life-${stage}`)
+      mkdirSync(skillDir, { recursive: true, mode: 0o700 })
+      writeFileSync(join(skillDir, 'SKILL.md'), `---\nname: w13-life-${stage}\ndescription: Synthetic W13 lifecycle skill ${stage}.\n---\n\nWhen invoked, reply with exactly ${skillMarker}| followed by the invocation argument. Do not use tools.\n`, { mode: 0o600 })
+    }
+    writeJson(privateDir, 'lifecycle-markers-private.json', { lifeWords, lifeSkills, conversationWord })
+  }
+  const secrets = [...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord]
+  const mask = (text: string): string => secrets.reduce((out, secret, i) => out.replaceAll(secret, `<secret${i}>`), text)
+
   // HOME stays real for Keychain. Cockpit metadata stays in disposable state; Claude may write its own
   // session data to the borrowed profile. A borrowed account that fails its checks stops the app at startup.
   const page = await step('launch: packaged app in the background', async () => {
     app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId,
-      ...(scenario === 'memory' || scenario === 'skill' ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
+      ...(scenario === 'memory' || scenario === 'skill' || scenario === 'lifecycle' ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
     // Observed in the running main process, not assumed from the launcher: what agents would inherit.
     const keys = await app.evaluate(() => Object.keys(process.env))
     facts.context = { ...facts.context as object, appEnvAuthSelectors: AUTH_SELECTORS.filter((name) => keys.includes(name)) }
@@ -193,16 +217,17 @@ try {
 
   // Read-only native identity query (`claude auth status`) in the packaged app's own spawn context. In
   // proof mode any other principal, or none, bumps the copy's generation and the service refuses it.
-  await step('identity preflight: the packaged context reports the borrowed principal', async () => {
-    const checked = await apiPost(page, `/api/accounts/${accountId}/refresh`, {}) as
+  const preflight = (on: Page, label = '') => step(`identity preflight${label}: the packaged context reports the borrowed principal`, async () => {
+    const checked = await apiPost(on, `/api/accounts/${accountId}/refresh`, {}) as
       { data?: { changed: boolean; account: { generation: number; identity?: { state: string } } }; error?: string }
-    facts.identityPreflight = { ok: Boolean(checked.data), changed: checked.data?.changed, identityState: checked.data?.account.identity?.state,
+    facts[`identityPreflight${label ? 'AfterRestart' : ''}`] = { ok: Boolean(checked.data), changed: checked.data?.changed, identityState: checked.data?.account.identity?.state,
       generationBefore: account.generation, generationAfter: checked.data?.account.generation, error: checked.error }
     assert.ok(checked.data, `Identity preflight refused: ${checked.error ?? 'no response'}. Stop: no sign-in, no account switch, no retry`)
     assert.equal(checked.data.account.identity?.state, 'known', 'The borrowed login reports no account. Stop before sending')
     assert.equal(checked.data.changed, false, 'The borrowed login reports a different account. Stop before sending')
     assert.equal(checked.data.account.generation, account.generation)
   })
+  await preflight(page)
 
   if (scenario === 'memory') {
     await step('memory selection: the default profile memory is chosen for this project', async () => {
@@ -279,6 +304,146 @@ try {
       facts.skill = { markerAndArgumentReturned: replied, invokedByBareName: true }
       assert.ok(replied, 'The projected skill did not run in the packaged Claude session')
     })
+    verdict = 'passed'
+  }
+  if (scenario === 'lifecycle') {
+    type Row = { kind: string; text?: string; ok?: boolean; name?: string; phase?: string; sessionId?: string }
+    const eventsOf = async (on: Page, id: string): Promise<Row[]> =>
+      on.evaluate(async (thread) => (await (await fetch(`/api/threads/${thread}/events`)).json()).data.events.map((row: { event: unknown }) => row.event), id)
+    /** Sends one message (or starts the conversation) and waits for the turn's own result. */
+    const turn = async (on: Page, label: string, text: string, id?: string): Promise<{ id: string; rows: Row[] }> => {
+      const before = id ? (await eventsOf(on, id)).filter((event) => event.kind === 'result').length : 0
+      const sent = id
+        ? await apiPost(on, `/api/threads/${id}/messages`, { text }) as { data?: unknown; error?: string }
+        : await apiPost(on, '/api/threads', { projectPath: project, text,
+          settings: { agent: 'claude', model: 'haiku', permissionMode: 'manual', hooksSetup: 'off', mcpSetup: 'off' } }) as { data?: { id: string }; error?: string }
+      assert.ok(sent.data, sent.error ?? `${label}: the message was refused`)
+      const thread = id ?? (sent.data as { id: string }).id
+      let rows: Row[] = []
+      const deadline = Date.now() + 180_000
+      while (Date.now() < deadline) {
+        rows = await eventsOf(on, thread)
+        if (rows.filter((event) => event.kind === 'result').length > before) break
+        await on.waitForTimeout(500)
+      }
+      output.push(`--- ${label}`)
+      for (const event of rows.slice(-12)) output.push(mask(`${event.kind}${event.name ? ` ${event.name}` : ''}${event.phase ? ` ${event.phase}` : ''}${event.text ? `: ${event.text.slice(0, 200)}` : ''}`))
+      const results = rows.filter((event) => event.kind === 'result')
+      assert.ok(results.length > before, `${label}: the turn did not finish`)
+      const result = results[results.length - 1]!
+      assert.ok(!(result.text ?? '').includes('Not logged in'), 'The borrowed Claude profile did not authenticate. Stop: no sign-in, no account switch, no retry')
+      assert.equal(result.ok, true, `${label}: the turn did not succeed`)
+      assert.ok(!rows.some((event) => event.kind === 'tool_use'), `${label}: a tool was used, so a file read could explain the answer`)
+      return { id: thread, rows }
+    }
+    /** The reply of the newest turn only. */
+    const lastReply = (rows: Row[]): string => {
+      const lastUser = rows.map((event) => event.kind).lastIndexOf('user_text')
+      return rows.slice(lastUser + 1).filter((event) => event.kind === 'assistant_text').map((event) => event.text ?? '').join('')
+    }
+    const seenBefore = (rows: Row[], secret: string): boolean => rows.some((event) => (event.text ?? '').includes(secret))
+    const overlays = join(state, 'native-memory-overlays')
+    const overlayOf = (id: string): { path: string; ino: number } => {
+      const selectionDirs = readdirSync(join(overlays, id))
+      assert.equal(selectionDirs.length, 1, 'Expected one selection overlay for the conversation')
+      const memoryDirs = readdirSync(join(overlays, id, selectionDirs[0]!)).filter((name) => name.startsWith('memory-'))
+      assert.equal(memoryDirs.length, 1, 'Expected exactly one private memory copy')
+      const path = join(overlays, id, selectionDirs[0]!, memoryDirs[0]!)
+      return { path, ino: statSync(path).ino }
+    }
+
+    await step('selection: the default profile memory and its 3 skills are chosen for this project', async () => {
+      const memory = await apiPost(page, `/api/projects/${projectId}/native-memory`, { sourceAccountId: 'default-claude' }) as
+        { data?: { selection: { destinationAccountId: string } }; error?: string }
+      assert.ok(memory.data, memory.error ?? 'Memory selection failed')
+      assert.equal(memory.data.selection.destinationAccountId, accountId)
+      const skills = await apiPost(page, `/api/projects/${projectId}/skills`, { sourceAccountId: 'default-claude' }) as
+        { data?: { selection: { destinationAccountId: string; counts: { skills: number } } }; error?: string }
+      assert.ok(skills.data, skills.error ?? 'Skill selection failed')
+      assert.equal(skills.data.selection.counts.skills, 3)
+    })
+    const ask = (stage: string) => `What is the stage ${stage} handoff word in this project's memory? Reply with only the word. Do not use tools.`
+    const checks: Record<string, boolean> = {}
+
+    const first = await step('initial: memory word A, in a new conversation', async () => {
+      const done = await turn(page, 'initial memory A', `The conversation word is ${conversationWord}; keep it in mind for later. ${ask('A')}`)
+      checks.initialMemory = lastReply(done.rows).includes(lifeWords.a)
+      assert.ok(checks.initialMemory, 'Initial turn: memory word A did not come back')
+      return done
+    })
+    const threadId = first.id
+    const overlayBefore = overlayOf(threadId)
+    await step('later: skill B, then memory word B, in the same session', async () => {
+      const before = await eventsOf(page, threadId)
+      assert.ok(!seenBefore(before, lifeSkills.b) && !seenBefore(before, lifeWords.b), 'Stage B secrets appeared before they were asked for')
+      const skill = await turn(page, 'later skill B', '/w13-life-b plum', threadId)
+      checks.laterSkill = lastReply(skill.rows).includes(`${lifeSkills.b}|plum`)
+      assert.ok(checks.laterSkill, 'Later turn: skill B did not run')
+      const memory = await turn(page, 'later memory B', ask('B'), threadId)
+      checks.laterMemory = lastReply(memory.rows).includes(lifeWords.b)
+      assert.ok(checks.laterMemory, 'Later turn: memory word B did not come back')
+    })
+    const sessionsBefore = (await eventsOf(page, threadId)).filter((event) => event.kind === 'session').map((event) => event.sessionId)
+
+    await step('restart: the app quits and relaunches on the same state', async () => {
+      await app?.close()
+      app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId,
+        COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile })
+      const keys = await app.evaluate(() => Object.keys(process.env))
+      assert.deepEqual(AUTH_SELECTORS.filter((name) => keys.includes(name)), [], 'An ambient auth selector could substitute another account')
+    })
+    const again = await app!.firstWindow()
+    again.setDefaultTimeout(20_000)
+    await openProject(again, project, 'W13 hook proof')
+    await preflight(again, ' after restart')
+
+    await step('resumed: the conversation word from history and memory word C, then skill C', async () => {
+      const before = await eventsOf(again, threadId)
+      assert.ok(!seenBefore(before, lifeWords.c) && !seenBefore(before, lifeSkills.c), 'Stage C secrets appeared before they were asked for')
+      const resumed = await turn(again, 'resumed memory C', 'Reply with exactly two words separated by one space: first the conversation word I gave you at the start of this conversation, then the stage C handoff word in this project\'s memory. Do not use tools.', threadId)
+      const reply = lastReply(resumed.rows)
+      checks.resumedHistory = reply.includes(conversationWord)
+      checks.resumedMemory = reply.includes(lifeWords.c)
+      assert.ok(checks.resumedHistory, 'Resumed turn: the conversation word is missing, so the native session did not resume')
+      assert.ok(checks.resumedMemory, 'Resumed turn: memory word C did not come back')
+      const skill = await turn(again, 'resumed skill C', '/w13-life-c fig', threadId)
+      checks.resumedSkill = lastReply(skill.rows).includes(`${lifeSkills.c}|fig`)
+      assert.ok(checks.resumedSkill, 'Resumed turn: skill C did not run')
+    })
+    const overlayAfterResume = overlayOf(threadId)
+    await step('overlay: the resumed session reused the conversation\'s private memory copy', () => {
+      checks.overlayReused = overlayAfterResume.path === overlayBefore.path && overlayAfterResume.ino === overlayBefore.ino
+      assert.ok(checks.overlayReused, 'The resumed session got a new memory copy instead of the conversation\'s own')
+    })
+
+    await step('compaction: /compact summarises the conversation', async () => {
+      const done = await turn(again, 'compact', '/compact', threadId)
+      const lastUser = done.rows.map((event) => event.kind).lastIndexOf('user_text')
+      checks.compacted = done.rows.slice(lastUser + 1).some((event) => event.kind === 'compaction' && event.phase === 'finished' && event.ok === true)
+      assert.ok(checks.compacted, 'No successful compaction was reported')
+    })
+    await step('compacted: memory word D, then skill D', async () => {
+      const before = await eventsOf(again, threadId)
+      assert.ok(!seenBefore(before, lifeWords.d) && !seenBefore(before, lifeSkills.d), 'Stage D secrets appeared before they were asked for')
+      const memory = await turn(again, 'compacted memory D', ask('D'), threadId)
+      checks.compactedMemory = lastReply(memory.rows).includes(lifeWords.d)
+      assert.ok(checks.compactedMemory, 'After compaction: memory word D did not come back')
+      const skill = await turn(again, 'compacted skill D', '/w13-life-d kiwi', threadId)
+      checks.compactedSkill = lastReply(skill.rows).includes(`${lifeSkills.d}|kiwi`)
+      assert.ok(checks.compactedSkill, 'After compaction: skill D did not run')
+    })
+    const sessionsAfter = (await eventsOf(again, threadId)).filter((event) => event.kind === 'session').map((event) => event.sessionId)
+
+    await step('delete: removing the conversation removes its memory overlay', async () => {
+      const removed = await again.evaluate(async (id) => (await fetch(`/api/threads/${id}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: '{}' })).json(), threadId) as
+        { data?: { deleted: string }; error?: string }
+      assert.equal(removed.data?.deleted, threadId, removed.error ?? 'Delete failed')
+      checks.overlayRemoved = !existsSync(join(overlays, threadId))
+      assert.ok(checks.overlayRemoved, 'The deleted conversation\'s memory overlay is still on disk')
+    })
+    // Whether Claude kept its own session id across the resume: recorded, not required.
+    facts.lifecycle = { checks, sessionIdsBeforeRestart: new Set(sessionsBefore).size, sessionIdsAfter: new Set(sessionsAfter).size,
+      sameNativeSessionAcrossRestart: sessionsBefore.length > 0 && sessionsAfter.slice(sessionsBefore.length).every((id) => id === sessionsBefore[0]) }
     verdict = 'passed'
   }
   if (scenario === 'policy') {
@@ -394,11 +559,12 @@ try {
   // Nothing under root links to the real profile, so removing it cannot reach the login.
   if (root) rmSync(root, { recursive: true, force: true })
   writeFileSync(join(evidence, 'output.txt'), `${output.join('\n')}\n`, { mode: 0o600 })
-  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}) })
+  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}) })
   const files = ['package-manifest.json', 'provider-context.json', 'output.txt'].filter((name) => existsSync(join(evidence, name)))
   writeJson(evidence, 'receipt.json', {
     scenario: { memory: 'W13-U5 packaged borrowed-account native memory proof', skill: 'W13-U6 packaged borrowed-account projected skill proof',
-      hooks: 'W13-U1 packaged borrowed-account hook proof', policy: 'W13-U3c packaged borrowed-account policy hook denial proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
+      hooks: 'W13-U1 packaged borrowed-account hook proof', policy: 'W13-U3c packaged borrowed-account policy hook denial proof',
+      lifecycle: 'W13-U5/U6 packaged borrowed-account memory and skill lifecycle proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
     command: 'scripts/proof-w13-hooks-live.ts', provider: { cli: 'claude 2.1.220', cliHash: PINS.cli, nodeHash: PINS.node },
     package: facts.package, account: { alias: 'borrowed managed Claude', generation: (facts.context as { generation?: number } | undefined)?.generation },
     workspace: 'disposable project and Cockpit state', steps, verdict,
