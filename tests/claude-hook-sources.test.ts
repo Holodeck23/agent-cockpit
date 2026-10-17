@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFile
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { snapshotHookSources } from '../server/agents/claude/hook-sources.ts'
+import { requireCompleteHookSources, snapshotHookSources } from '../server/agents/claude/hook-sources.ts'
 import { createThreadManager, type LaunchRequest } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
@@ -54,10 +54,12 @@ it('omits an uninstalled plugin and dynamic commands visibly without including a
   expect(unavailable.review).toEqual([])
   expect(unavailable.settings.hooks).toEqual({})
   expect(unavailable.unavailable).toMatchObject([{ id: 'unknown@builtin', reason: expect.stringMatching(/omitted/) }])
+  expect(() => requireCompleteHookSources(unavailable)).toThrow(/unresolved sources/)
   expect(snapshotHookSources(f.input).revision).toBe(unavailable.revision)
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script}; echo bypass` }] }] } }))
   const dynamic = snapshotHookSources(f.input)
   expect(dynamic.unavailable).toMatchObject([{ event: 'PreToolUse', reason: expect.stringMatching(/omitted/) }])
+  expect(() => requireCompleteHookSources(dynamic)).toThrow(/unresolved sources/)
   expect(dynamic.settings.hooks.PreToolUse).toBeUndefined()
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script} [ab]` }] }] } }))
   expect(snapshotHookSources(f.input).unavailable).toHaveLength(1)
@@ -117,7 +119,7 @@ it('passes only approved hook settings and rechecks the script immediately befor
   await manager.shutdown()
 })
 
-it('requires project approval before launching with a dynamic policy hook omitted', async () => {
+it('blocks an omitted policy hook even after approval of the remaining revision', async () => {
   const f = fixture()
   writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `${f.script}; echo dynamic` }] }] } }))
   const revision = snapshotHookSources(f.input).revision
@@ -134,7 +136,6 @@ it('requires project approval before launching with a dynamic policy hook omitte
   expect(launches).toHaveLength(0)
   approved = true
   manager.create({ projectPath: f.cwd, settings, text: 'reviewed omission' })
-  expect(launches).toHaveLength(1)
-  expect(launches[0]?.hookSettings?.hooks).toEqual({})
+  expect(launches).toHaveLength(0)
   await manager.shutdown()
 })

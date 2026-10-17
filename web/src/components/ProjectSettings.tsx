@@ -155,20 +155,20 @@ export function ProjectSettings({ project, onSave, onImage, onRemove, onClose }:
           {hookReview ? <div className="field" role="group" aria-label="Claude hook sources">
             <strong>Hook source review</strong>
             <small>Checkout: {hookReview.cwd}</small>
-            <small>Review each executable and source file. Missing plugin sources and dynamic shell commands are omitted; other unsupported hooks block launch. A source change needs another review.</small>
+            <small>Review each executable and source file. Every unresolved hook must be fixed before hooks can run. A source change needs another review.</small>
             {hookReview.review.length ? <ul>{hookReview.review.map((source, index) => <li key={`${source.source}:${source.event}:${index}`}>
               <strong>{source.event}</strong> · {source.executable} · {source.source}
               <small>Executable SHA-256: {source.executableHash}</small>
               {source.referencedFiles.map((file) => <small key={file.path}>Script: {file.path} · SHA-256: {file.hash}</small>)}
             </li>)}</ul> : <small>No executable hooks found in the reviewed sources.</small>}
-            {hookReview.unavailable.length ? <><small role="alert">These hooks will not run. An omitted hook may have guarded an action or supplied context. Review this list before approving this project.</small>
+            {hookReview.unavailable.length ? <><small role="alert">Hooks are blocked here because these sources cannot be reproduced safely. Fix the sources, or turn hooks off for this project or conversation.</small>
               <ul>{hookReview.unavailable.map((source) => <li key={`${source.source}:${source.id}`}>
                 <strong>{source.event ?? source.id} unavailable</strong> · {source.reason} · {source.source}
                 {source.event ? <small>Command fingerprint: {source.id}</small> : null}
               </li>)}</ul></> : null}
-            {(hookReview.review.length > 0 || hookReview.unavailable.length > 0) && approvedHookRevision !== hookReview.revision
-              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision, reviewWorkspaceId), () => setHookApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: hookReview.revision })))}>Approve reviewed hooks and omissions</button>
-              : approvedHookRevision === hookReview.revision ? <small>Reviewed for this project and selected account. Changes require another review.</small> : null}
+            {hookReview.unavailable.length === 0 && hookReview.review.length > 0 && approvedHookRevision !== hookReview.revision
+              ? <button type="button" className="button-soft" onClick={() => run(() => api.approveClaudeHooks(project.path, hookReview.revision, reviewWorkspaceId), () => setHookApprovals((prior) => ({ ...prior, [reviewWorkspaceId ?? '']: hookReview.revision })))}>Approve reviewed hooks</button>
+              : hookReview.unavailable.length === 0 && approvedHookRevision === hookReview.revision ? <small>Reviewed for this project and selected account. Changes require another review.</small> : null}
           </div> : null}
           {mcpReview ? <div className="field" role="group" aria-label="Claude connector sources">
             <strong>Connector source review</strong>

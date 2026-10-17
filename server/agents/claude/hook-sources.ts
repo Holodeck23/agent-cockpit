@@ -26,6 +26,13 @@ export interface HookSourceInput {
   readonly accountGeneration?: number
 }
 
+/** Review can identify omissions, but it cannot authorize an unknown hook to be silently absent. */
+export function requireCompleteHookSources(snapshot: HookSourceSnapshot): void {
+  if (snapshot.unavailable.length > 0) {
+    throw new Error('Claude hooks include unresolved sources. Turn hooks off for this conversation or resolve every listed source before launch.')
+  }
+}
+
 const sha = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
 const readSource = (path: string): Buffer => {
   if (lstatSync(path).isSymbolicLink() || !statSync(path).isFile()) throw new Error(`Review the linked or non-file Claude hook source separately: ${path}`)

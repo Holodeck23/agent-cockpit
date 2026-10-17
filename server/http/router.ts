@@ -46,7 +46,7 @@ import type { AgentStatus } from '../agents/status.ts'
 import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { AGENT_IDS } from '../agents/capabilities/types.ts'
 import { snapshotMcpSources } from '../agents/claude/mcp-sources.ts'
-import { snapshotHookSources } from '../agents/claude/hook-sources.ts'
+import { requireCompleteHookSources, snapshotHookSources } from '../agents/claude/hook-sources.ts'
 import type { AgyMcp } from '../projects/agy-mcp.ts'
 import type { Lifecycle } from '../agents/lifecycle/service.ts'
 import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
@@ -577,6 +577,8 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         if (method === 'GET') { sendJson(res, 200, { data: { revision: snapshot.revision, review: snapshot.review, unavailable: snapshot.unavailable, cwd: at.cwd } }); return true }
         if (method === 'POST') {
           if (body.revision !== snapshot.revision) throw new HttpError(409, 'Hook sources changed; review them again')
+          try { requireCompleteHookSources(snapshot) }
+          catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Hook sources are incomplete') }
           const before = projects.list({ includeHidden: true }).find((project) => project.path === body.path)
           const updated = projects.approveClaudeHooks(body.path, snapshot.revision, approvalWorkspace)
           await manager.revokeProjectClaudeSetup(body.path, before, updated)

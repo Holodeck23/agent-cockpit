@@ -9,7 +9,7 @@ import type { CapabilityService } from '../agents/capabilities/service.ts'
 import { launchOpencode } from '../agents/opencode/launch.ts'
 import { launchClaude } from '../agents/claude/launch.ts'
 import { snapshotMcpSources } from '../agents/claude/mcp-sources.ts'
-import { snapshotHookSources } from '../agents/claude/hook-sources.ts'
+import { requireCompleteHookSources, snapshotHookSources } from '../agents/claude/hook-sources.ts'
 import { resolveClaudeSetup } from '../agents/claude/setup.ts'
 import type { Project } from '../projects/store.ts'
 import { launchCodex } from '../agents/codex/launch.ts'
@@ -687,15 +687,18 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     if (setup?.hooks) {
       try {
         const snapshot = snapshotHookSources(sourceInput)
-        if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && trust?.claudeHooksApproval !== snapshot.revision) {
+        requireCompleteHookSources(snapshot)
+        if (snapshot.review.length > 0 && trust?.claudeHooksApproval !== snapshot.revision) {
           sourceProblem = 'Claude hook sources need review in Project Settings before this conversation can start.'
         } else {
           hookSettings = snapshot.settings
           validateSources = () => {
-            if (snapshotHookSources(sourceInput).revision !== snapshot.revision) {
+            const current = snapshotHookSources(sourceInput)
+            if (current.revision !== snapshot.revision) {
               throw new Error('Claude hook sources changed after review. Review them again before starting this conversation.')
             }
-            if ((snapshot.review.length > 0 || snapshot.unavailable.length > 0) && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeHooksApproval !== snapshot.revision) {
+            requireCompleteHookSources(current)
+            if (snapshot.review.length > 0 && options.projectTrust?.(meta.projectPath, workspaceId)?.claudeHooksApproval !== snapshot.revision) {
               throw new Error('Claude hook approval changed before launch. Review the current sources again.')
             }
             if (!resolveClaudeSetup(meta.settings, options.projectTrust?.(meta.projectPath, workspaceId), meta).hooks) {
