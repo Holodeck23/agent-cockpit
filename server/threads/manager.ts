@@ -22,6 +22,7 @@ import { isRefusal, workspaceFolder } from '../projects/resolve.ts'
 import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
+import type { NativeMemoryLaunch, NativeMemoryProvider } from '../agents/setup/native-memory-launch.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { attribute, partition } from './workspace-events.ts'
 import { awaitingOf } from './turns.ts'
@@ -51,6 +52,8 @@ export interface LaunchRequest {
   /** User MCP definitions from the exact source revision reviewed for this project. */
   readonly userMcpServers?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   readonly validateSources?: () => void
+  /** Private overlay of the conversation's selected native memory (Claude autoMemoryDirectory). */
+  readonly nativeMemoryDirectory?: string
   readonly effectiveHooks?: boolean
   readonly hookSettings?: Readonly<Record<string, unknown>>
 }
@@ -124,7 +127,8 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       },
       onEvent,
       { env: claudeLaunchEnv(req.accountEnv), ...(req.validateSources ? { validateSources: req.validateSources } : {}),
-        ...(req.cockpit?.ready ? { hostReady: req.cockpit.ready } : {}) },
+        ...(req.cockpit?.ready ? { hostReady: req.cockpit.ready } : {}),
+        ...(req.nativeMemoryDirectory ? { nativeMemoryDirectory: req.nativeMemoryDirectory } : {}) },
     )
   },
   codex: (req, onEvent) => {
@@ -224,6 +228,8 @@ export interface ManagerOptions {
   readonly launchGate?: (agent: AgentId) => string | undefined
   /** The account each launch runs under (W12.1); without it every session uses the CLI default. */
   readonly accounts?: AccountBinding
+  /** Selected native memory for a Claude conversation (W13 U5); without it none is loaded. */
+  readonly nativeMemory?: NativeMemoryProvider
   /** A registered workspace by ID (M1); without it every session runs in the conversation's project folder. */
   readonly workspace?: (workspaceId: string) => Workspace | undefined
 }
@@ -745,6 +751,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         }
       }
     }
+    let nativeMemory: NativeMemoryLaunch | undefined
+    if (meta.settings.agent === 'claude' && options.nativeMemory && cwd !== undefined && !sourceProblem) {
+      try {
+        nativeMemory = options.nativeMemory({ threadId: meta.id, projectPath: meta.projectPath, ...(workspaceId ? { workspaceId } : {}),
+          accountId: account?.accountId ?? defaultAccountId('claude'), accountGeneration: account?.generation ?? 1 })
+      } catch (error) { sourceProblem ??= error instanceof Error ? error.message : 'Could not verify the selected native memory' }
+      if (nativeMemory) {
+        const validateEarlier = validateSources, checkMemory = nativeMemory.validate
+        validateSources = () => { validateEarlier?.(); checkMemory() }
+      }
+    }
     const mcp = sourceProblem ? undefined : options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     let launching = true
     const deliver: EventSink = (event) => {
@@ -814,6 +831,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(userMcpServers ? { userMcpServers } : {}),
         ...(hookSettings ? { hookSettings } : {}),
         ...(validateSources ? { validateSources } : {}),
+        ...(nativeMemory && !sourceProblem ? { nativeMemoryDirectory: nativeMemory.directory } : {}),
         ...(setup ? { effectiveHooks: setup.hooks } : {}),
         imagesDir: images.dir(meta.id),
         ...(account && Object.keys(account.env).length > 0 ? { accountEnv: account.env } : {}),
