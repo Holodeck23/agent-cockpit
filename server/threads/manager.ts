@@ -23,6 +23,7 @@ import { redactBrowserEvent } from '../browser/agent-policy.ts'
 import type { AccountRef, AgentId, AgentSession, ApprovalBehavior, EventSink, NormalizedEvent, OutgoingImage, PendingApproval, WorkflowSnapshot } from '../agents/types.ts'
 import { defaultAccountId, type ResolvedAccount } from '../agents/accounts/types.ts'
 import type { NativeMemoryLaunch, NativeMemoryProvider } from '../agents/setup/native-memory-launch.ts'
+import type { SkillLaunch, SkillProvider } from '../agents/setup/skill-selection.ts'
 import { deriveStatus, latestTurn, messageCountOf, openQuestion, previewOf } from './status.ts'
 import { attribute, partition } from './workspace-events.ts'
 import { awaitingOf } from './turns.ts'
@@ -54,6 +55,8 @@ export interface LaunchRequest {
   readonly validateSources?: () => void
   /** Private overlay of the conversation's selected native memory (Claude autoMemoryDirectory). */
   readonly nativeMemoryDirectory?: string
+  /** Private projection of the user's reviewed skills, commands and agents (Claude --plugin-dir). */
+  readonly pluginDirs?: readonly string[]
   readonly effectiveHooks?: boolean
   readonly hookSettings?: Readonly<Record<string, unknown>>
 }
@@ -119,6 +122,7 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
         useHooks: req.effectiveHooks ?? req.settings.useHooks,
         ...(req.hookSettings ? { hookSettings: req.hookSettings } : {}),
         chrome: req.settings.useChrome === true,
+        ...(req.pluginDirs?.length ? { pluginDirs: [...req.pluginDirs] } : {}),
         sessionId: req.sessionId,
         resume: req.resume,
         appendSystemPrompt: instructionsFor(req),
@@ -230,6 +234,8 @@ export interface ManagerOptions {
   readonly accounts?: AccountBinding
   /** Selected native memory for a Claude conversation (W13 U5); without it none is loaded. */
   readonly nativeMemory?: NativeMemoryProvider
+  /** The project's chosen own skills, commands and agents for Claude (W13 U6); without it none are loaded. */
+  readonly skills?: SkillProvider
   /** A registered workspace by ID (M1); without it every session runs in the conversation's project folder. */
   readonly workspace?: (workspaceId: string) => Workspace | undefined
 }
@@ -762,6 +768,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         validateSources = () => { validateEarlier?.(); checkMemory() }
       }
     }
+    let skills: SkillLaunch | undefined
+    if (meta.settings.agent === 'claude' && options.skills && cwd !== undefined && !sourceProblem) {
+      try {
+        skills = options.skills({ projectPath: meta.projectPath, accountId: account?.accountId ?? defaultAccountId('claude'), accountGeneration: account?.generation ?? 1 })
+      } catch (error) { sourceProblem ??= error instanceof Error ? error.message : 'Could not verify the chosen skills' }
+      if (skills) {
+        const validateEarlier = validateSources, checkSkills = skills.validate
+        validateSources = () => { validateEarlier?.(); checkSkills() }
+      }
+    }
     const mcp = sourceProblem ? undefined : options.mcp?.({ threadId: meta.id, projectPath: meta.projectPath, cwd: cwd ?? meta.projectPath, ...(workspaceId ? { workspaceId } : {}) })
     let launching = true
     const deliver: EventSink = (event) => {
@@ -832,6 +848,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
         ...(hookSettings ? { hookSettings } : {}),
         ...(validateSources ? { validateSources } : {}),
         ...(nativeMemory && !sourceProblem ? { nativeMemoryDirectory: nativeMemory.directory } : {}),
+        ...(skills && !sourceProblem ? { pluginDirs: [skills.pluginDir] } : {}),
         ...(setup ? { effectiveHooks: setup.hooks } : {}),
         imagesDir: images.dir(meta.id),
         ...(account && Object.keys(account.env).length > 0 ? { accountEnv: account.env } : {}),

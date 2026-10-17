@@ -21,6 +21,7 @@ import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents
 import { createAccountService, type AccountService, type BorrowedAccountContext } from './agents/accounts/service.ts'
 import { createNativeMemorySelectionStore } from './agents/setup/native-memory-selection.ts'
 import { createNativeMemoryProvider } from './agents/setup/native-memory-launch.ts'
+import { createSkillProvider, createSkillSelectionStore } from './agents/setup/skill-selection.ts'
 import { createAppServerQueryScope } from './agents/codex/app-server-query.ts'
 import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
@@ -235,8 +236,12 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // Native memory (W13 U5): private selections, and per-conversation overlays the provider may write to.
   const nativeMemorySelections = createNativeMemorySelectionStore(join(root, 'native-memory'))
   const nativeMemoryProvider = createNativeMemoryProvider({ selections: nativeMemorySelections, overlayRoot: join(root, 'native-memory-overlays') })
+  // The user's own skills (W13 U6): project choices, and immutable per-revision plugin projections.
+  const skillSelections = createSkillSelectionStore(join(root, 'skills'))
+  const skillProvider = createSkillProvider({ selections: skillSelections, projectionRoot: join(root, 'skill-projections') })
   const manager = createThreadManager(store, {
     nativeMemory: nativeMemoryProvider,
+    skills: skillProvider,
     workspace: (workspaceId) => workspaces.get(workspaceId),
     workspaceFor: primaryWorkspaceId,
     instructions: (projectPath) => {
@@ -442,6 +447,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         const selected = accountService.resolve(projectPath, 'claude')
         return { accountId: selected.accountId, generation: selected.generation,
           ...(selected.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }
+      } },
+    skills: { selections: skillSelections, defaultProfileDir: options.claudeDefaultProfileDir ?? join(homedir(), '.claude'),
+      destination: (projectPath) => {
+        const selected = accountService.resolve(projectPath, 'claude')
+        return { accountId: selected.accountId, generation: selected.generation }
       } },
     worktrees, memory, presets, runs, results, checks, observingRun: runObserver.observing, importHome: process.env.COCKPIT_IMPORT_HOME,
     mcp: { sessions, processes, openUrl,

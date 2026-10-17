@@ -52,6 +52,7 @@ import type { Lifecycle } from '../agents/lifecycle/service.ts'
 import { handleAgentLifecycleRoute, isAgentLifecycleRoute } from './agent-lifecycle-routes.ts'
 import { handleAccountRoute, isAccountRoute } from './account-routes.ts'
 import { handleNativeMemoryRoute, isNativeMemoryRoute, type NativeMemoryRouteDeps } from './native-memory-routes.ts'
+import { handleSkillRoute, isSkillRoute, type SkillRouteDeps } from './skill-routes.ts'
 import { handleWorkspaceRoute, isWorkspaceRoute } from './workspace-routes.ts'
 import type { AccountService } from '../agents/accounts/service.ts'
 import type { WorktreeService } from '../projects/worktrees.ts'
@@ -156,6 +157,8 @@ export interface ApiDeps {
   readonly accounts?: AccountService
   /** Native memory selection for projects (W13 U5); absent means the routes are not offered. */
   readonly nativeMemory?: NativeMemoryRouteDeps
+  /** The project's own Claude skills, commands and agents (W13 U6). */
+  readonly skills?: SkillRouteDeps
   /** Worktree workspaces (M1, W12.2); desktop only. */
   readonly worktrees?: WorktreeService
   /** Remove, archive, restore and Git's view of registered worktrees (W12.4); desktop only. */
@@ -193,7 +196,7 @@ function withIdentity(list: readonly Project[], workspaces: WorkspaceStore | und
   }
 }
 
-export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, nativeMemory, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
+export function createApiHandler({ manager, store, projects, workspaces, worktreeLifecycle, merges, processes, mcp, workflows, remote, phonePreviews, agents, capabilities, agyMcp, lifecycle, accounts, nativeMemory, skills, worktrees, memory, presets, runs, results, checks, observingRun, importHome = homedir() }: ApiDeps, allowedPorts: readonly number[], windowKey?: string) {
   const recovery = createRecovery({ store, manager, importHome, agents: agents ?? (async () => []) })
   const images = createImageStore(store.root)
   const scope = createWorkspaceScope(projects, workspaces)
@@ -284,6 +287,15 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
       if (isAccountRoute(parts) && accounts) {
         if (viaPhone) throw new HttpError(403, 'Accounts are only available on the Mac')
         await handleAccountRoute(req, res, url, parts, accounts, (projectId) => {
+          const known = workspaces?.list().projects.find((p) => p.id === projectId)?.path
+          return known && projects.list().some((p) => p.path === known) ? known : undefined
+        })
+        return true
+      }
+      // Skill selection reads the user's own profile: the Mac only.
+      if (isSkillRoute(parts) && skills) {
+        if (viaPhone) throw new HttpError(403, 'Skill selection is only available on the Mac')
+        await handleSkillRoute(req, res, parts, skills, (projectId) => {
           const known = workspaces?.list().projects.find((p) => p.id === projectId)?.path
           return known && projects.list().some((p) => p.path === known) ? known : undefined
         })

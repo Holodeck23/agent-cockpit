@@ -48,6 +48,8 @@ export const claudeLaunchSchema = z
     /** Only reviewed hook settings are passed; provider settings discovery is disabled. */
     hookSettings: z.record(z.string(), z.unknown()).default({}),
     settingsFile: z.string().min(1).max(4096).optional(),
+    /** Host-built private plugin folders (the user's reviewed skills projection); never a request path. */
+    pluginDirs: z.array(z.string().min(1).max(4096).refine((dir) => dir.startsWith('/'))).max(4).default([]),
     /** Tools that run without an approval prompt, e.g. the cockpit MCP's read-only tools. */
     allowedTools: z
       .array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/))
@@ -83,6 +85,7 @@ export function buildClaudeArgs(
     // The Chrome tools are added by this switch even under --strict-mcp-config (probed on 2.1.289).
     ...(o.chrome ? ['--chrome'] : []),
     '--settings', o.settingsFile ?? JSON.stringify(settings),
+    ...o.pluginDirs.flatMap((dir) => ['--plugin-dir', dir]),
     // Cockpit owns scheduling and notifications; the agent must not self-schedule.
     '--disallowed-tools', 'ScheduleWakeup,CronCreate,PushNotification,RemoteTrigger',
     ...(o.model ? ['--model', o.model] : []),
