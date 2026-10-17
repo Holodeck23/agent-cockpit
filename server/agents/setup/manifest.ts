@@ -1,7 +1,7 @@
 /** Host-owned setup inventory. This module is pure: discovery and provider launches live in adapters. */
 export const SETUP_MANIFEST_VERSION = 1
 
-export type SetupKind = 'hook' | 'mcp' | 'instruction' | 'memory' | 'skill'
+export type SetupKind = 'hook' | 'mcp' | 'instruction' | 'memory' | 'skill' | 'agent'
 export type SetupEvidence = 'call' | 'load' | 'policy-denial' | 'invocation'
 export type SetupLayer = 'source' | 'native' | 'packaged' | 'installed'
 export type SetupLifecycle = 'initial' | 'later' | 'resumed' | 'compacted'
