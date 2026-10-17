@@ -7,6 +7,9 @@
 // COCKPIT_PROOF_SCENARIO=lifecycle (U5/U6): selected memory and skills in one conversation's later turns, after an app
 // restart resumes it, and after /compact; then deleting it removes its memory overlay. Every stage asks for a word or
 // marker that appeared nowhere earlier in the conversation, so history cannot stand in for memory or a skill.
+// COCKPIT_PROOF_SCENARIO=plugin (U6): an enabled plugin's skill, included in Project Settings, answers by its namespaced
+// and its bare name. Hooks are on and the project's reviewed hook runs, but the plugin's own hook must not: only its
+// skills, commands and agents are copied.
 // COCKPIT_PROOF_SCENARIO=policy (U3c): one approved PreToolUse hook, three Write turns. When it allows, the
 // file appears (the control); when it fails, or hangs past its timeout, the file must not.
 // One planned provider attempt, not a loop: it checks the borrowed login's identity in the packaged
@@ -34,7 +37,7 @@ const AUTH_SELECTORS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_COD
 
 const hash = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const scenario = process.env.COCKPIT_PROOF_SCENARIO ?? 'hooks'
-if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy or lifecycle')
+if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle', 'plugin'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy, lifecycle or plugin')
 const evidence = process.env.COCKPIT_PROOF_DIR
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR
 assert.ok(evidence && privateDir, 'Set COCKPIT_PROOF_DIR (shared, sanitized) and COCKPIT_PROOF_PRIVATE_DIR (private)')
@@ -185,14 +188,35 @@ try {
     }
     writeJson(privateDir, 'lifecycle-markers-private.json', { lifeWords, lifeSkills, conversationWord })
   }
-  const secrets = [...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord]
+  // Plugin scenario: a synthetic enabled plugin with one skill and a SessionStart hook that must never run here.
+  const pluginMarker = `W13PLUG${randomBytes(6).toString('hex').toUpperCase()}`
+  const pluginHookRan = join(root, 'plugin-hook-ran')
+  if (scenario === 'plugin') {
+    const pluginDir = join(defaultProfile, 'plugins', 'cache', 'w13-market', 'w13plug', '1.0.0')
+    const files: Record<string, string> = {
+      '.claude-plugin/plugin.json': JSON.stringify({ name: 'w13plug', version: '1.0.0', description: 'Synthetic W13 plugin' }),
+      'skills/w13-plug-skill/SKILL.md': `---\nname: w13-plug-skill\ndescription: Synthetic W13 plugin skill.\n---\n\nWhen invoked, reply with exactly ${pluginMarker}| followed by the invocation argument. Do not use tools.\n`,
+      'hooks/plugin-hook.mjs': `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(pluginHookRan)}, 'PLUGIN-HOOK-RAN')\n`,
+      'hooks/hooks.json': JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: `${process.execPath} \${CLAUDE_PLUGIN_ROOT}/hooks/plugin-hook.mjs` }] }] } }),
+    }
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(pluginDir, path)), { recursive: true, mode: 0o700 })
+      writeFileSync(join(pluginDir, path), text, { mode: 0o600 })
+    }
+    writeFileSync(join(defaultProfile, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2,
+      plugins: { 'w13plug@w13-market': [{ scope: 'user', installPath: pluginDir, version: '1.0.0' }] } }), { mode: 0o600 })
+    writeFileSync(join(defaultProfile, 'settings.json'), JSON.stringify({ enabledPlugins: { 'w13plug@w13-market': true } }), { mode: 0o600 })
+    execFileSync('chmod', ['-R', 'go-rwx', defaultProfile])
+    writeJson(privateDir, 'plugin-marker-private.json', { pluginMarker })
+  }
+  const secrets = [...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord, pluginMarker]
   const mask = (text: string): string => secrets.reduce((out, secret, i) => out.replaceAll(secret, `<secret${i}>`), text)
 
   // HOME stays real for Keychain. Cockpit metadata stays in disposable state; Claude may write its own
   // session data to the borrowed profile. A borrowed account that fails its checks stops the app at startup.
   const page = await step('launch: packaged app in the background', async () => {
     app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId,
-      ...(scenario === 'memory' || scenario === 'skill' || scenario === 'lifecycle' ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
+      ...(['memory', 'skill', 'lifecycle', 'plugin'].includes(scenario) ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
     // Observed in the running main process, not assumed from the launcher: what agents would inherit.
     const keys = await app.evaluate(() => Object.keys(process.env))
     facts.context = { ...facts.context as object, appEnvAuthSelectors: AUTH_SELECTORS.filter((name) => keys.includes(name)) }
@@ -446,6 +470,75 @@ try {
       sameNativeSessionAcrossRestart: sessionsBefore.length > 0 && sessionsAfter.slice(sessionsBefore.length).every((id) => id === sessionsBefore[0]) }
     verdict = 'passed'
   }
+  if (scenario === 'plugin') {
+    type Row = { kind: string; text?: string; ok?: boolean; name?: string }
+    const eventsOf = async (id: string): Promise<Row[]> =>
+      page.evaluate(async (thread) => (await (await fetch(`/api/threads/${thread}/events`)).json()).data.events.map((row: { event: unknown }) => row.event), id)
+    await step('plugin selection: the enabled plugin is offered and included, its hooks left out', async () => {
+      const offered = await page.evaluate(async (id) => (await (await fetch(`/api/projects/${id}/skills`)).json()).data, projectId) as
+        { offered: { plugins: Array<{ key: string; skills: number; includable?: boolean; leftOut?: { hooks: boolean } }> } | null }
+      const row = offered.offered?.plugins.find((plugin) => plugin.key === 'w13plug@w13-market')
+      assert.ok(row?.includable && row.skills === 1 && row.leftOut?.hooks === true, 'The synthetic plugin is not offered as expected')
+      const chosen = await apiPost(page, `/api/projects/${projectId}/skills`, { sourceAccountId: 'default-claude', includePlugins: ['w13plug@w13-market'] }) as
+        { data?: { selection: { includedPlugins: string[]; destinationAccountId: string } }; error?: string }
+      assert.ok(chosen.data, chosen.error ?? 'Selection failed')
+      assert.deepEqual(chosen.data.selection.includedPlugins, ['w13plug@w13-market'])
+      assert.equal(chosen.data.selection.destinationAccountId, accountId)
+    })
+    await step('hooks on: the project\'s one reviewed SessionStart hook is approved', async () => {
+      const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
+        project) as { revision: string; review: Array<{ event: string; referencedFiles: Array<{ hash: string }> }>; unavailable: unknown[] }
+      assert.equal(found.review.length, 1, `Expected only the project's synthetic hook, found ${found.review.length}`)
+      assert.equal(found.review[0]?.referencedFiles[0]?.hash, hash(script))
+      await apiPost(page, '/api/projects/claude-hooks', { path: project, revision: found.revision })
+      await apiPost(page, '/api/projects', { path: project, claudeHooks: true, claudeMcp: false })
+    })
+    const turn = async (label: string, text: string, id?: string): Promise<{ id: string; rows: Row[] }> => {
+      const before = id ? (await eventsOf(id)).filter((event) => event.kind === 'result').length : 0
+      const sent = id ? await apiPost(page, `/api/threads/${id}/messages`, { text }) as { data?: unknown; error?: string }
+        : await apiPost(page, '/api/threads', { projectPath: project, text,
+          settings: { agent: 'claude', model: 'haiku', permissionMode: 'manual', hooksSetup: 'inherit', mcpSetup: 'off' } }) as { data?: { id: string }; error?: string }
+      assert.ok(sent.data, sent.error ?? `${label}: refused`)
+      const thread = id ?? (sent.data as { id: string }).id
+      let rows: Row[] = []
+      const deadline = Date.now() + 120_000
+      while (Date.now() < deadline) {
+        rows = await eventsOf(thread)
+        if (rows.filter((event) => event.kind === 'result').length > before) break
+        await page.waitForTimeout(500)
+      }
+      output.push(`--- ${label}`)
+      for (const event of rows.slice(-6)) output.push(mask(`${event.kind}${event.name ? ` ${event.name}` : ''}${event.text ? `: ${event.text.slice(0, 200)}` : ''}`))
+      const result = rows.filter((event) => event.kind === 'result')[before]
+      assert.ok(result, `${label}: the turn did not finish`)
+      assert.ok(!(result.text ?? '').includes('Not logged in'), 'The borrowed Claude profile did not authenticate. Stop: no sign-in, no account switch, no retry')
+      assert.equal(result.ok, true, `${label}: the turn did not succeed`)
+      assert.ok(!rows.some((event) => event.kind === 'tool_use'), `${label}: a tool was used`)
+      return { id: thread, rows }
+    }
+    const replyAfter = (rows: Row[]): string => rows.slice(rows.map((event) => event.kind).lastIndexOf('user_text') + 1)
+      .filter((event) => event.kind === 'assistant_text').map((event) => event.text ?? '').join('')
+    const checks: Record<string, boolean> = {}
+    const named = await step('namespaced: /w13plug:w13-plug-skill pear runs the plugin skill', async () => {
+      const done = await turn('namespaced', '/w13plug:w13-plug-skill pear')
+      checks.namespaced = replyAfter(done.rows).includes(`${pluginMarker}|pear`)
+      assert.ok(checks.namespaced, 'The plugin skill did not run by its namespaced name')
+      return done
+    })
+    await step('bare: /w13-plug-skill fig runs it too', async () => {
+      const done = await turn('bare', '/w13-plug-skill fig', named.id)
+      checks.bare = replyAfter(done.rows).includes(`${pluginMarker}|fig`)
+      assert.ok(checks.bare, 'The plugin skill did not run by its bare name')
+    })
+    await step('hooks: the project\'s reviewed hook ran, the plugin\'s own hook did not', () => {
+      checks.projectHookRan = existsSync(marker) && readFileSync(marker, 'utf8') === 'W13-HOOK-STARTED'
+      checks.pluginHookAbsent = !existsSync(pluginHookRan)
+      assert.ok(checks.projectHookRan, 'Hooks were not on, so the plugin hook\'s absence would prove nothing')
+      assert.ok(checks.pluginHookAbsent, 'The plugin\'s own hook ran')
+    })
+    facts.plugin = { checks }
+    verdict = 'passed'
+  }
   if (scenario === 'policy') {
     await step('hook review: exactly the one synthetic PreToolUse hook, approved, hooks on', async () => {
       const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
@@ -559,12 +652,13 @@ try {
   // Nothing under root links to the real profile, so removing it cannot reach the login.
   if (root) rmSync(root, { recursive: true, force: true })
   writeFileSync(join(evidence, 'output.txt'), `${output.join('\n')}\n`, { mode: 0o600 })
-  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}) })
+  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}), ...(facts.plugin ? { plugin: facts.plugin } : {}) })
   const files = ['package-manifest.json', 'provider-context.json', 'output.txt'].filter((name) => existsSync(join(evidence, name)))
   writeJson(evidence, 'receipt.json', {
     scenario: { memory: 'W13-U5 packaged borrowed-account native memory proof', skill: 'W13-U6 packaged borrowed-account projected skill proof',
       hooks: 'W13-U1 packaged borrowed-account hook proof', policy: 'W13-U3c packaged borrowed-account policy hook denial proof',
-      lifecycle: 'W13-U5/U6 packaged borrowed-account memory and skill lifecycle proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
+      lifecycle: 'W13-U5/U6 packaged borrowed-account memory and skill lifecycle proof',
+      plugin: 'W13-U6 packaged borrowed-account stripped plugin skill proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
     command: 'scripts/proof-w13-hooks-live.ts', provider: { cli: 'claude 2.1.220', cliHash: PINS.cli, nodeHash: PINS.node },
     package: facts.package, account: { alias: 'borrowed managed Claude', generation: (facts.context as { generation?: number } | undefined)?.generation },
     workspace: 'disposable project and Cockpit state', steps, verdict,
