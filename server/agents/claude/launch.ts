@@ -57,8 +57,18 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     onEvent({ kind: 'result', ok: false, ...(stopped ? { stopped: true } : {}) })
     onEvent({ kind: 'exit', code: null })
   }
-  const closeFailedStart = (): void => {
-    if (session) void session.close().catch((error: unknown) => onEvent({ kind: 'error', message: `Could not close Claude Code after startup failed: ${error instanceof Error ? error.message : String(error)}` }))
+  const closeSession = (): void => {
+    if (session) void session.close().catch((error: unknown) => onEvent({ kind: 'error', message: `Could not close Claude Code: ${error instanceof Error ? error.message : String(error)}` }))
+  }
+  const sendChecked = (text: string, queuedId?: string, images?: readonly OutgoingImage[]): void => {
+    if (ended || !session) return
+    try { deps.validateSources?.() }
+    catch {
+      finish(new Error('Claude setup sources changed before input; review Project Settings. The message was not delivered.'))
+      closeSession()
+      return
+    }
+    session.send(text, queuedId, images)
   }
   const fromProvider: EventSink = (event) => {
     if (ended) return
@@ -105,16 +115,17 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
       const waiting = pending
       pending = []
       for (const message of waiting) {
-        session.send(message.text, message.queuedId, message.images)
+        sendChecked(message.text, message.queuedId, message.images)
+        if (ended) break
         // Without --replay-user-messages Claude never says when it takes a message, so one the manager is
         // waiting on counts as taken once it is written, as a message sent after startup would have.
         if (message.queuedId && !replays) onEvent({ kind: 'user_taken', text: message.text, id: message.queuedId })
       }
-    }).catch((error: unknown) => { finish(error); closeFailedStart() })
+    }).catch((error: unknown) => { finish(error); closeSession() })
   return {
     agent: 'claude',
     send(text, queuedId, images) {
-      if (session && initialized) session.send(text, queuedId, images)
+      if (session && initialized) sendChecked(text, queuedId, images)
       else if (!ended) pending = [...pending, { text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) }]
       else onEvent({ kind: 'error', message: 'Agent process is not running' })
     },
@@ -134,7 +145,7 @@ export function launchClaude(input: ClaudeLaunchInput, events: EventSink, deps: 
     },
     interrupt() {
       if (session && initialized) session.interrupt()
-      else if (session) { finish(undefined, true); closeFailedStart() }
+      else if (session) { finish(undefined, true); closeSession() }
       else { finish(undefined, true); controller.abort() }
     },
     async close() {

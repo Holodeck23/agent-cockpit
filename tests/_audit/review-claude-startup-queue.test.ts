@@ -60,11 +60,11 @@ done
 const managers: ThreadManager[] = []
 afterEach(async () => { for (const manager of managers.splice(0)) await manager.shutdown() })
 
-function harness(executable: string) {
+function harness(executable: string, validateSources?: () => void) {
   const store = createThreadStore(mkdtempSync(join(tmpdir(), 'cockpit-review-claude-state-')))
   const project = mkdtempSync(join(tmpdir(), 'cockpit-review-claude-project-'))
   const manager = createThreadManager(store, {
-    launchers: { claude: (request, onEvent) => launchClaude({ cwd: request.cwd, ...(request.sessionId ? { sessionId: request.sessionId } : {}) }, onEvent, { executable }) },
+    launchers: { claude: (request, onEvent) => launchClaude({ cwd: request.cwd, ...(request.sessionId ? { sessionId: request.sessionId } : {}) }, onEvent, { executable, validateSources }) },
   })
   managers.push(manager)
   const events = (id: string) => store.events(id).map((e) => e.event)
@@ -74,6 +74,42 @@ function harness(executable: string) {
 }
 
 describe('review: a message sent while Claude is still starting is queued like any other', () => {
+  it('records a failed later dispatch without leaving the conversation busy', async () => {
+    const claude = fakeClaude(HELP_WITHOUT_REPLAY, false)
+    let approved = true
+    const { manager, thread, events, status } = harness(claude.executable, () => {
+      if (!approved) throw new Error('changed private setup path')
+    })
+    await expect.poll(() => events(thread.id).some((event) => event.kind === 'result' && event.ok), { timeout: 5000 }).toBe(true)
+    approved = false
+    manager.send(thread.id, 'recover this unsent message')
+    await expect.poll(() => events(thread.id).some((event) => event.kind === 'error' && event.message.includes('message was not delivered')), { timeout: 5000 }).toBe(true)
+    expect(events(thread.id).some((event) => event.kind === 'user_text' && event.text === 'recover this unsent message')).toBe(true)
+    expect(readFileSync(claude.received, 'utf8')).not.toContain('recover this unsent message')
+    expect(isBusy(status(thread.id))).toBe(false)
+  }, 15000)
+
+  it('rechecks approved sources before a later message reaches provider stdin', async () => {
+    const claude = fakeClaude(HELP_WITHOUT_REPLAY, false)
+    const cwd = mkdtempSync(join(tmpdir(), 'cockpit-review-source-change-'))
+    const events: NormalizedEvent[] = []
+    let approved = true
+    const session = launchClaude({ cwd }, (event) => events.push(event), {
+      executable: claude.executable,
+      validateSources: () => { if (!approved) throw new Error('private source locator changed') },
+    })
+    try {
+      session.send('one')
+      await expect.poll(() => events.some((event) => event.kind === 'result' && event.ok), { timeout: 5000 }).toBe(true)
+      approved = false
+      session.send('must not reach provider stdin')
+      await expect.poll(() => events.some((event) => event.kind === 'error' && event.message.includes('message was not delivered')), { timeout: 5000 }).toBe(true)
+      expect(readFileSync(claude.received, 'utf8')).not.toContain('must not reach provider stdin')
+      expect(events.some((event) => event.kind === 'error' && event.message.includes('private source locator'))).toBe(false)
+      expect(session.alive()).toBe(false)
+    } finally { await session.close() }
+  }, 15000)
+
   it('keeps first input behind the authenticated Cockpit bridge gate', async () => {
     const claude = fakeClaude(HELP_WITHOUT_REPLAY, false)
     const cwd = mkdtempSync(join(tmpdir(), 'cockpit-review-bridge-cwd-'))
