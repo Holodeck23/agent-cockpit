@@ -567,8 +567,8 @@ try {
       const own = await apiPost(page, `/api/projects/${projectId}/skills`, { sourceAccountId: 'default-claude' }) as { data?: unknown; error?: string }
       assert.ok(own.data, own.error ?? 'User skill selection failed')
     })
-    // The model may space the reply ("marker| plum"): the marker and the argument must both be there, in order.
-    const answered = (reply: string, marker: string, argument: string): boolean => new RegExp(`${marker}\\s*\\|\\s*${argument}`).test(reply)
+    // Which skill ran is the marker that came back; the model formats the rest freely ("M|plum", "M| plum", "Mplum").
+    const answered = (reply: string, marker: string, argument: string): boolean => reply.includes(marker) && reply.includes(argument)
     /** One new conversation, one no-tools turn: the reply, from nothing but the invoked skill. */
     const fresh = async (label: string, text: string): Promise<string> => {
       const created = await apiPost(page, '/api/threads', { projectPath: project, text,
