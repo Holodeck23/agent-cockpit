@@ -21,7 +21,8 @@ import { createLifecycle, type Lifecycle, type LifecycleOptions } from './agents
 import { createAccountService, type AccountService, type BorrowedAccountContext } from './agents/accounts/service.ts'
 import { createNativeMemorySelectionStore } from './agents/setup/native-memory-selection.ts'
 import { createNativeMemoryProvider, removeNativeMemoryOverlays } from './agents/setup/native-memory-launch.ts'
-import { createSkillProvider, createSkillSelectionStore } from './agents/setup/skill-selection.ts'
+import { PROJECT_PLUGIN } from './agents/setup/skill-projection.ts'
+import { combineSkillProviders, createSkillProvider, createSkillSelectionStore } from './agents/setup/skill-selection.ts'
 import { createAppServerQueryScope } from './agents/codex/app-server-query.ts'
 import { AGENT_COMMANDS } from './agents/capabilities/types.ts'
 import { createMcpSessions, MCP_TOKEN_ENV, MCP_URL_ENV, type McpCommand } from './mcp/sessions.ts'
@@ -242,11 +243,15 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   // The user's own skills (W13 U6): project choices, and immutable per-revision plugin projections.
   const skillSelections = createSkillSelectionStore(join(root, 'skills'))
   const skillProvider = createSkillProvider({ selections: skillSelections, projectionRoot: join(root, 'skill-projections') })
+  // The project's own skills (its .claude folder), under strict setting sources only through this review.
+  const projectSkillSelections = createSkillSelectionStore(join(root, 'project-skills'))
+  const projectSkillProvider = createSkillProvider({ selections: projectSkillSelections, projectionRoot: join(root, 'project-skill-projections'),
+    identity: { name: PROJECT_PLUGIN, description: "This project's own Claude skills, commands and agents, as reviewed in Cockpit" }, projectSkills: true })
   const manager = createThreadManager(store, {
     ...(options.policyRunner ? { policyRunner: options.policyRunner } : {}),
     nativeMemory: nativeMemoryProvider,
     removeNativeMemory: (threadId) => removeNativeMemoryOverlays(nativeMemoryOverlays, threadId),
-    skills: skillProvider,
+    skills: combineSkillProviders(skillProvider, projectSkillProvider),
     workspace: (workspaceId) => workspaces.get(workspaceId),
     workspaceFor: primaryWorkspaceId,
     instructions: (projectPath) => {
@@ -453,7 +458,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         return { accountId: selected.accountId, generation: selected.generation,
           ...(selected.env.CLAUDE_CONFIG_DIR ? { profileDir: selected.env.CLAUDE_CONFIG_DIR } : {}) }
       } },
-    skills: { selections: skillSelections, defaultProfileDir: options.claudeDefaultProfileDir ?? join(homedir(), '.claude'),
+    skills: { selections: skillSelections, projectSelections: projectSkillSelections, defaultProfileDir: options.claudeDefaultProfileDir ?? join(homedir(), '.claude'),
       destination: (projectPath) => {
         const selected = accountService.resolve(projectPath, 'claude')
         return { accountId: selected.accountId, generation: selected.generation }

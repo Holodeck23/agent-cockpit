@@ -70,8 +70,19 @@ function MemoryStatus({ selection, state }: { selection: NativeMemorySelectionVi
   return <small role="status">Loading {from}.</small>
 }
 
+/** The words for each kind of skill choice: the user's own, or the project's own (its .claude folder). */
+const SKILL_TEXT = {
+  own: { title: 'Your Claude skills', about: "Skills, commands and agents from your CLI default profile, loaded in this project's Claude conversations as they were when you chose them.",
+    none: 'Not loading your skills.', choose: 'Use my skills', stop: 'Stop loading my skills' },
+  project: { title: "This project's Claude skills",
+    about: "Skills, commands and agents in this project's .claude folder, loaded in its Claude conversations as they were when you chose them. Not yet in worktree conversations.",
+    none: "Not loading this project's skills.", choose: "Use this project's skills", stop: "Stop loading this project's skills" },
+} as const
+
 interface SkillChoiceProps {
   readonly view: SkillsView
+  readonly kind?: keyof typeof SKILL_TEXT
+  /** Undefined for the project's own skills: they are the repository's, for any account. */
   readonly accountId?: string
   /** `includeLinks`: the linked entries the user ticked after seeing where they point; `includePlugins`: plugin keys. */
   readonly onChoose: (replacing: string | undefined, includeLinks: readonly string[], includePlugins: readonly string[]) => void
@@ -80,7 +91,8 @@ interface SkillChoiceProps {
 
 const sameSet = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item) => b.includes(item))
 
-export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoiceProps) {
+export function SkillChoice({ view, kind = 'own', accountId, onChoose, onRevoke }: SkillChoiceProps) {
+  const text = SKILL_TEXT[kind]
   const chosen = view.selection
   const state = choiceState(chosen, accountId)
   const offered = view.offered
@@ -102,10 +114,10 @@ export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoice
   const flip = (now: readonly string[], item: string): readonly string[] => (now.includes(item) ? now.filter((entry) => entry !== item) : [...now, item])
   const toggle = (path: string): void => setTicked((now) => flip(now, path))
   return (
-    <div className="field claude-setup" role="group" aria-label="Your Claude skills">
-      <strong>Your Claude skills</strong>
-      <small>Skills, commands and agents from your CLI default profile, loaded in this project&apos;s Claude conversations as they were when you chose them.</small>
-      <SkillStatus selection={chosen} state={state} />
+    <div className="field claude-setup" role="group" aria-label={text.title}>
+      <strong>{text.title}</strong>
+      <small>{text.about}</small>
+      <SkillStatus selection={chosen} state={state} none={text.none} />
       {view.problem ? <small role="alert" className="field-error">{view.problem}</small> : null}
       {offered ? <>
         <small>On offer: {plural(offered.skills.length, 'skill')}, {plural(offered.commands.length, 'command')}, {plural(offered.agents.length, 'agent')}.</small>
@@ -151,18 +163,18 @@ export function SkillChoice({ view, accountId, onChoose, onRevoke }: SkillChoice
         </> : null}
       </> : null}
       <div className="claude-setup-actions">
-        {offered && (state !== 'current' || pending)
+        {offered && (state !== 'current' || pending) && (chosen || offered.skills.length + offered.commands.length + offered.agents.length + reviewable.length + pluginOffer.length > 0)
           ? <button type="button" className="button-soft" onClick={() => onChoose(chosen?.id, ticked, tickedPlugins)}>
-            {pending ? 'Update my choice' : state === 'changed' ? 'Use the current version' : 'Use my skills'}</button>
+            {pending ? 'Update my choice' : state === 'changed' ? 'Use the current version' : text.choose}</button>
           : null}
-        {chosen ? <button type="button" className="button-soft" onClick={() => onRevoke(chosen.id)}>Stop loading my skills</button> : null}
+        {chosen ? <button type="button" className="button-soft" onClick={() => onRevoke(chosen.id)}>{text.stop}</button> : null}
       </div>
     </div>
   )
 }
 
-function SkillStatus({ selection, state }: { selection: SkillSelectionView | null; state: ChoiceState }) {
-  if (!selection || state === 'none') return <small role="status">Not loading your skills.</small>
+function SkillStatus({ selection, state, none }: { selection: SkillSelectionView | null; state: ChoiceState; none: string }) {
+  if (!selection || state === 'none') return <small role="status">{none}</small>
   if (state === 'other-account') return <small role="status" className="claude-setup-warn">Chosen for a different Claude account, so they are not loaded. Choose again for this project&apos;s account.</small>
   const links = selection.includedLinks?.length ?? 0, plugins = selection.includedPlugins?.length ?? 0
   const extras = [links ? plural(links, 'linked entry', 'linked entries') : '', plugins ? plural(plugins, 'plugin') : ''].filter(Boolean)
@@ -181,10 +193,11 @@ function NameList({ label, names }: { label: string; names: readonly string[] })
   return names.length ? <p className="claude-setup-namelist"><span>{label}</span> {names.join(', ')}</p> : null
 }
 
-/** Both choices for one project, re-read when the window regains focus or its Claude account changes. */
+/** The three choices for one project, re-read when the window regains focus or its Claude account changes. */
 export function ProjectClaudeSetup({ projectId, projectPath }: { projectId: string; projectPath: string }) {
   const [memory, setMemory] = useState<NativeMemoryView>()
   const [skills, setSkills] = useState<SkillsView>()
+  const [repoSkills, setRepoSkills] = useState<SkillsView>()
   const [accountId, setAccountId] = useState<string>()
   const [revision, setRevision] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -203,12 +216,13 @@ export function ProjectClaudeSetup({ projectId, projectPath }: { projectId: stri
 
   useEffect(() => {
     let live = true
-    void Promise.allSettled([api.nativeMemory(projectId), api.projectSkills(projectId), api.projectAccounts(projectId)]).then(([m, s, a]) => {
+    void Promise.allSettled([api.nativeMemory(projectId), api.projectSkills(projectId), api.projectAccounts(projectId), api.repoSkills(projectId)]).then(([m, s, a, r]) => {
       if (!live) return
       if (m.status === 'fulfilled') setMemory(m.value)
       if (s.status === 'fulfilled') setSkills(s.value)
       if (a.status === 'fulfilled') setAccountId(a.value.selection.claude)
-      const failed = [m, s, a].find((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (r.status === 'fulfilled') setRepoSkills(r.value)
+      const failed = [m, s, a, r].find((r): r is PromiseRejectedResult => r.status === 'rejected')
       setError(failed ? message(failed.reason) : '')
     })
     return () => { live = false }
@@ -228,6 +242,9 @@ export function ProjectClaudeSetup({ projectId, projectPath }: { projectId: stri
       {skills ? <SkillChoice view={skills} accountId={accountId}
         onChoose={(replacing, includeLinks, includePlugins) => act(() => api.chooseProjectSkills(projectId, replacing, includeLinks, includePlugins))}
         onRevoke={(id) => act(() => api.revokeProjectSkills(projectId, id))} /> : <small className="field">Checking your Claude skills…</small>}
+      {repoSkills ? <SkillChoice view={repoSkills} kind="project"
+        onChoose={(replacing, includeLinks) => act(() => api.chooseRepoSkills(projectId, replacing, includeLinks))}
+        onRevoke={(id) => act(() => api.revokeRepoSkills(projectId, id))} /> : <small className="field">Checking this project&apos;s Claude skills…</small>}
       {error ? <small role="alert" className="field-error">{error}</small> : null}
     </fieldset>
   )

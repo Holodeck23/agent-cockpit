@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { ensurePrivateDir, writeFileAtomic } from '../../files/atomic.ts'
 import { StoreReadError } from '../../state/read-error.ts'
 import { listEnabledPlugins, type PluginRef } from './plugin-projection.ts'
-import { materializeSkillProjection, projectionPluginDirs, snapshotSkillSource, type SkillLink } from './skill-projection.ts'
+import { realpathSync } from 'node:fs'
+import { materializeSkillProjection, projectionPluginDirs, snapshotSkillSource, type ProjectionIdentity, type SkillLink } from './skill-projection.ts'
 
 const selectionSchema = z.object({
   id: z.uuid(),
@@ -94,29 +95,72 @@ export interface SkillLaunch {
   readonly selectionId: string
   readonly validate: () => void
 }
-export type SkillProvider = (input: { readonly projectPath: string; readonly accountId: string; readonly accountGeneration: number }) => SkillLaunch | undefined
+export type SkillProvider = (input: {
+  readonly projectPath: string; readonly accountId: string; readonly accountGeneration: number
+  /** The folder the conversation runs in: the main checkout or a worktree. */
+  readonly cwd?: string
+}) => SkillLaunch | undefined
 
 const CHANGED = 'Your skills, commands or agents changed since they were chosen for this project. Review them again in Project Settings.'
+const PROJECT_CHANGED = "This project's skills, commands or agents changed since they were chosen. Review them again in Project Settings."
 
-export function createSkillProvider(options: { readonly selections: SkillSelectionStore; readonly projectionRoot: string }): SkillProvider {
+interface SkillProviderOptions {
+  readonly selections: SkillSelectionStore
+  readonly projectionRoot: string
+  /** The plugin the projection loads as; the user's own (my-setup) by default. */
+  readonly identity?: ProjectionIdentity
+  /**
+   * A project's own skills are the repository's, the same for every account, and are read from its main
+   * checkout: they load there, for any account, and not yet in a worktree, whose files may differ.
+   */
+  readonly projectSkills?: boolean
+}
+
+const samePath = (a: string, b: string): boolean => { try { return realpathSync(a) === realpathSync(b) } catch { return a === b } }
+
+export function createSkillProvider(options: SkillProviderOptions): SkillProvider {
+  const changed = options.projectSkills ? PROJECT_CHANGED : CHANGED
   return (input) => {
     const selected = options.selections.get(input.projectPath)
-    // Chosen for another account: not this conversation's to load, and not a reason to stop it.
-    if (!selected || selected.destinationAccountId !== input.accountId) return undefined
-    if (selected.destinationGeneration !== input.accountGeneration) throw new Error('Skill selection belongs to a different account generation')
+    if (!selected) return undefined
+    if (options.projectSkills) {
+      if (input.cwd !== undefined && !samePath(input.cwd, input.projectPath)) return undefined
+    } else {
+      // Chosen for another account: not this conversation's to load, and not a reason to stop it.
+      if (selected.destinationAccountId !== input.accountId) return undefined
+      if (selected.destinationGeneration !== input.accountGeneration) throw new Error('Skill selection belongs to a different account generation')
+    }
     let source: ReturnType<typeof snapshotSkillSource>
     const inclusions = { links: selected.includedLinks, plugins: selected.includedPlugins }
-    try { source = snapshotSkillSource(selected.sourceProfileDir, inclusions) } catch { throw new Error('Your skills could not be read. Review them again in Project Settings.') }
-    if (source.revision !== selected.revision) throw new Error(CHANGED)
-    const pluginDirs = projectionPluginDirs(source, materializeSkillProjection(source, options.projectionRoot))
+    try { source = snapshotSkillSource(selected.sourceProfileDir, inclusions) } catch { throw new Error('The chosen skills could not be read. Review them again in Project Settings.') }
+    if (source.revision !== selected.revision) throw new Error(changed)
+    const pluginDirs = projectionPluginDirs(source, materializeSkillProjection(source, options.projectionRoot, options.identity))
     return {
       pluginDirs,
       selectionId: selected.id,
       validate: () => {
         const current = options.selections.get(input.projectPath)
         if (current?.id !== selected.id) throw new Error('Skill selection changed. Start the conversation again to use the current choice.')
-        if (snapshotSkillSource(selected.sourceProfileDir, inclusions).revision !== selected.revision) throw new Error(CHANGED)
+        if (snapshotSkillSource(selected.sourceProfileDir, inclusions).revision !== selected.revision) throw new Error(changed)
       },
+    }
+  }
+}
+
+/**
+ * One launch from the user's own choice and the project's. A bare name resolves to the first plugin
+ * folder that has it, so the order is the CLI's own precedence (2.1.220, measured): the user's skill
+ * over a project skill of the same name; enabled plugins, which are namespaced, last.
+ */
+export function combineSkillProviders(own: SkillProvider, project: SkillProvider): SkillProvider {
+  return (input) => {
+    const mine = own(input), theirs = project(input)
+    if (!mine) return theirs
+    if (!theirs) return mine
+    return {
+      pluginDirs: [mine.pluginDirs[0]!, ...theirs.pluginDirs, ...mine.pluginDirs.slice(1)],
+      selectionId: mine.selectionId,
+      validate: () => { mine.validate(); theirs.validate() },
     }
   }
 }

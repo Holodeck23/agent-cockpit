@@ -259,6 +259,13 @@ export const api = {
         ...(includePlugins.length ? { includePlugins } : {}) } }),
   revokeProjectSkills: (projectId: string, selectionId: string) =>
     request<{ revoked: boolean }>(`/api/projects/${projectId}/skills/revoke`, { method: 'POST', body: { selectionId } }),
+  /** The project's own skills from its .claude folder (Mac only; names and counts, and where a link points). */
+  repoSkills: (projectId: string) => request<SkillsView>(`/api/projects/${projectId}/project-skills`),
+  chooseRepoSkills: (projectId: string, replacing?: string, includeLinks: readonly string[] = []) =>
+    request<{ selection: SkillSelectionView }>(`/api/projects/${projectId}/project-skills`, { method: 'POST',
+      body: { sourceAccountId: 'project', ...(replacing ? { replacing } : {}), ...(includeLinks.length ? { includeLinks } : {}) } }),
+  revokeRepoSkills: (projectId: string, selectionId: string) =>
+    request<{ revoked: boolean }>(`/api/projects/${projectId}/project-skills/revoke`, { method: 'POST', body: { selectionId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),

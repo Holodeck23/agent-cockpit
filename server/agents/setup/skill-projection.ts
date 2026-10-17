@@ -12,6 +12,10 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { listEnabledPlugins, PLUGIN_ROOTS, readPluginManifest, strippedManifest, type PluginRef } from './plugin-projection.ts'
 
 export const PROJECTION_PLUGIN = 'my-setup'
+/** The project's own skills (its .claude folder), reviewed the same way and loaded after the user's. */
+export const PROJECT_PLUGIN = 'project'
+export interface ProjectionIdentity { readonly name: string; readonly description: string }
+const OWN_IDENTITY: ProjectionIdentity = { name: PROJECTION_PLUGIN, description: 'Your own Claude skills, commands and agents, as reviewed in Cockpit' }
 /** Inside a projection: one stripped copy per included plugin, by name. Claude does not read it as part of my-setup. */
 export const PROJECTED_PLUGINS = '.cockpit-plugins'
 const ROOTS = ['skills', 'commands', 'agents'] as const
@@ -147,7 +151,7 @@ export function snapshotSkillSource(profileDir: string, inclusions: SkillInclusi
  * The private plugin folder for exactly this revision, made once and then reused. Built beside its
  * final name and renamed into place, so a half-written projection is never loaded.
  */
-export function materializeSkillProjection(source: SkillSourceSnapshot, root: string): string {
+export function materializeSkillProjection(source: SkillSourceSnapshot, root: string, identity: ProjectionIdentity = OWN_IDENTITY): string {
   if (!isAbsolute(root) || !/^[a-f0-9]{64}$/.test(source.revision)) throw new Error('Invalid skill projection')
   mkdirSync(root, { recursive: true, mode: 0o700 })
   chmodSync(root, 0o700)
@@ -158,8 +162,8 @@ export function materializeSkillProjection(source: SkillSourceSnapshot, root: st
   try {
     chmodSync(building, 0o700)
     mkdirSync(join(building, '.claude-plugin'), { mode: 0o700 })
-    writeFileSync(join(building, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: PROJECTION_PLUGIN, version: '1.0.0',
-      description: 'Your own Claude skills, commands and agents, as reviewed in Cockpit' }), { mode: 0o600 })
+    writeFileSync(join(building, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: identity.name, version: '1.0.0',
+      description: identity.description }), { mode: 0o600 })
     for (const file of source.files) {
       const target = resolve(building, file.relativePath)
       const from = relative(building, target)

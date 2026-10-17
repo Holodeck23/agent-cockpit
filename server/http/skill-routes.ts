@@ -4,7 +4,10 @@
 //   GET  /api/projects/:projectId/skills          current choice and what the CLI default profile offers
 //   POST /api/projects/:projectId/skills          { sourceAccountId, replacing?, includeLinks?, includePlugins? } → chooses its current revision
 //   POST /api/projects/:projectId/skills/revoke   { selectionId } → stops loading them
+// The same three under /project-skills choose the project's own skills, from its .claude folder.
+// Those are the repository's, so a choice is not tied to an account.
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { join } from 'node:path'
 import { z } from 'zod'
 import { listEnabledPlugins, pluginEntries, pluginLeftOut, readPluginManifest, strippedManifest } from '../agents/setup/plugin-projection.ts'
 import { snapshotSkillSource } from '../agents/setup/skill-projection.ts'
@@ -13,12 +16,14 @@ import { HttpError, parseBody, readJson, sendJson } from './json.ts'
 
 export interface SkillRouteDeps {
   readonly selections: SkillSelectionStore
+  /** The project's own skills; without it the /project-skills routes are not found. */
+  readonly projectSelections?: SkillSelectionStore
   readonly destination: (projectPath: string) => { readonly accountId: string; readonly generation: number }
   /** The CLI default profile: the user's own setup. */
   readonly defaultProfileDir: string
 }
 
-export const isSkillRoute = (parts: readonly string[]): boolean => parts[1] === 'projects' && parts[3] === 'skills'
+export const isSkillRoute = (parts: readonly string[]): boolean => parts[1] === 'projects' && (parts[3] === 'skills' || parts[3] === 'project-skills')
 
 const viewOf = (row: SkillSelection) => ({ id: row.id, sourceAccountId: row.sourceAccountId, destinationAccountId: row.destinationAccountId,
   counts: row.counts, selectedAt: row.selectedAt, includedLinks: row.includedLinks, includedPlugins: row.includedPlugins.map((plugin) => plugin.key) })
@@ -42,22 +47,27 @@ export async function handleSkillRoute(
   const method = req.method ?? 'GET'
   const path = projectPath(parts[2] ?? '')
   if (!path) throw new HttpError(404, 'Unknown project')
+  const ofProject = parts[3] === 'project-skills'
+  const selections = ofProject ? deps.projectSelections : deps.selections
+  if (!selections) throw new HttpError(404, 'Not found')
+  const sourceDir = ofProject ? join(path, '.claude') : deps.defaultProfileDir
+  const sourceAccountId = ofProject ? 'project' : 'default-claude'
   if (method === 'GET' && parts.length === 4) {
-    const current = deps.selections.get(path)
+    const current = selections.get(path)
     let offered: ReturnType<typeof snapshotSkillSource> | undefined
     let problem: string | undefined
-    try { offered = snapshotSkillSource(deps.defaultProfileDir) } catch (error) { problem = error instanceof Error ? error.message : 'Could not read your skills' }
+    try { offered = snapshotSkillSource(sourceDir) } catch (error) { problem = error instanceof Error ? error.message : 'Could not read your skills' }
     // With inclusions, the choice's own revision is compared, read through what it included.
     let currentRevision = offered?.revision
     if ((current?.includedLinks.length || current?.includedPlugins.length) && offered) {
-      try { currentRevision = snapshotSkillSource(deps.defaultProfileDir, { links: current.includedLinks, plugins: current.includedPlugins }).revision }
+      try { currentRevision = snapshotSkillSource(sourceDir, { links: current.includedLinks, plugins: current.includedPlugins }).revision }
       catch { currentRevision = undefined }
     }
     let plugins: ReturnType<typeof offeredPlugins> = []
-    try { plugins = offered ? offeredPlugins(deps.defaultProfileDir) : [] } catch (error) { problem ??= error instanceof Error ? `Your plugins could not be read: ${error.message}` : 'Your plugins could not be read' }
+    try { plugins = offered && !ofProject ? offeredPlugins(deps.defaultProfileDir) : [] } catch (error) { problem ??= error instanceof Error ? `Your plugins could not be read: ${error.message}` : 'Your plugins could not be read' }
     sendJson(res, 200, { data: {
       selection: current ? { ...viewOf(current), current: currentRevision === current.revision } : null,
-      offered: offered ? { sourceAccountId: 'default-claude', skills: offered.skills, commands: offered.commands, agents: offered.agents,
+      offered: offered ? { sourceAccountId, skills: offered.skills, commands: offered.commands, agents: offered.agents,
         excluded: offered.excluded.map((row) => ({ path: row.path, reason: row.reason,
           ...(row.reason === 'linked' && row.target ? { target: row.target } : {}), ...(row.includable ? { includable: true } : {}) })), plugins } : null,
       ...(problem ? { problem } : {}),
@@ -65,12 +75,13 @@ export async function handleSkillRoute(
     return
   }
   if (method === 'POST' && parts.length === 4) {
-    const body = parseBody(z.object({ sourceAccountId: z.literal('default-claude'), replacing: z.uuid().optional(),
+    const body = parseBody(z.object({ sourceAccountId: z.literal(sourceAccountId), replacing: z.uuid().optional(),
       includeLinks: z.array(z.string().min(1).max(500)).max(200).optional(), includePlugins: z.array(z.string().min(1).max(300)).max(100).optional() }), await readJson(req))
     const destination = deps.destination(path)
     try {
-      const selected = deps.selections.select({ projectPath: path, destinationAccountId: destination.accountId, destinationGeneration: destination.generation,
-        sourceAccountId: body.sourceAccountId, sourceProfileDir: deps.defaultProfileDir, ...(body.includeLinks ? { includeLinks: body.includeLinks } : {}),
+      if (ofProject && body.includePlugins?.length) throw new Error('A project has no plugins to include')
+      const selected = selections.select({ projectPath: path, destinationAccountId: destination.accountId, destinationGeneration: destination.generation,
+        sourceAccountId: body.sourceAccountId, sourceProfileDir: sourceDir, ...(body.includeLinks ? { includeLinks: body.includeLinks } : {}),
         ...(body.includePlugins ? { includePlugins: body.includePlugins } : {}) }, body.replacing)
       sendJson(res, 200, { data: { selection: viewOf(selected) } })
     } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not choose your skills') }
@@ -78,7 +89,7 @@ export async function handleSkillRoute(
   }
   if (method === 'POST' && parts.length === 5 && parts[4] === 'revoke') {
     const { selectionId } = parseBody(z.object({ selectionId: z.uuid() }), await readJson(req))
-    try { sendJson(res, 200, { data: { revoked: deps.selections.revoke(path, selectionId) } }) }
+    try { sendJson(res, 200, { data: { revoked: selections.revoke(path, selectionId) } }) }
     catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Could not stop loading your skills') }
     return
   }

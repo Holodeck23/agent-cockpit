@@ -781,7 +781,7 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     let skills: SkillLaunch | undefined
     if (meta.settings.agent === 'claude' && options.skills && cwd !== undefined && !sourceProblem) {
       try {
-        skills = options.skills({ projectPath: meta.projectPath, accountId: account?.accountId ?? defaultAccountId('claude'), accountGeneration: account?.generation ?? 1 })
+        skills = options.skills({ projectPath: meta.projectPath, accountId: account?.accountId ?? defaultAccountId('claude'), accountGeneration: account?.generation ?? 1, cwd })
       } catch (error) { sourceProblem ??= error instanceof Error ? error.message : 'Could not verify the chosen skills' }
       if (skills) {
         const validateEarlier = validateSources, checkSkills = skills.validate
