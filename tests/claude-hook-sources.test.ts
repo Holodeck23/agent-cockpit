@@ -107,12 +107,17 @@ it('passes only approved hook settings and rechecks the script immediately befor
   const manager = createThreadManager(store, {
     accounts: { resolve: () => ({ accountId: 'account-one', generation: 1, label: 'Fixture', env: { CLAUDE_CONFIG_DIR: f.profileDir } }), describe: () => undefined },
     projectTrust: () => ({ codexNetwork: false, claudeHooks: true, claudeMcp: false, claudeHooksApproval: revision }),
+    policyRunner: { command: '/fixture/Cockpit', args: ['/fixture/hook-runner.cjs'], env: { ELECTRON_RUN_AS_NODE: '1' } },
     launchers: { claude: (req) => { launches.push(req); return { agent: 'claude', alive: () => true, send: () => undefined,
       interrupt: () => undefined, respondApproval: () => undefined, close: async () => undefined } } },
   })
   manager.create({ projectPath: f.cwd, settings: threadSettingsSchema.parse({ agent: 'claude', hooksSetup: 'inherit', mcpSetup: 'off' }), text: 'hello' })
   expect(launches).toHaveLength(1)
-  expect((launches[0]?.hookSettings?.hooks as Record<string, unknown[]>).PreToolUse).toHaveLength(1)
+  const groups = (launches[0]?.hookSettings?.hooks as Record<string, Array<{ hooks: Array<{ command: string; timeout: number }> }>>).PreToolUse
+  expect(groups).toHaveLength(1)
+  // The approved hook runs through the policy runner, with Claude's own timeout above the runner's.
+  expect(groups?.[0]?.hooks[0]).toEqual({ type: 'command', timeout: 70,
+    command: `ELECTRON_RUN_AS_NODE='1' '/fixture/Cockpit' '/fixture/hook-runner.cjs' '--event' 'PreToolUse' '--timeout-ms' '60000' '--' '${realpathSync(f.script)}'; s=$?; [ "$s" -eq 0 ] || exit 2` })
   expect(() => launches[0]?.validateSources?.()).not.toThrow()
   writeFileSync(f.script, '#!/bin/sh\nexit 2\n')
   expect(() => launches[0]?.validateSources?.()).toThrow(/hook sources changed/)
@@ -138,4 +143,34 @@ it('blocks an omitted policy hook even after approval of the remaining revision'
   manager.create({ projectPath: f.cwd, settings, text: 'reviewed omission' })
   expect(launches).toHaveLength(0)
   await manager.shutdown()
+})
+
+it('does not start with hooks on when blocking hooks exist and there is no policy runner', async () => {
+  const f = fixture()
+  writeFileSync(f.settings, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: f.script }] }] } }))
+  const revision = snapshotHookSources(f.input).revision
+  const launches: LaunchRequest[] = []
+  const manager = createThreadManager(createThreadStore(join(f.root, 'state')), {
+    accounts: { resolve: () => ({ accountId: 'account-one', generation: 1, label: 'Fixture', env: { CLAUDE_CONFIG_DIR: f.profileDir } }), describe: () => undefined },
+    projectTrust: () => ({ codexNetwork: false, claudeHooks: true, claudeMcp: false, claudeHooksApproval: revision }),
+    launchers: { claude: (req) => { launches.push(req); return { agent: 'claude', alive: () => true, send: () => undefined,
+      interrupt: () => undefined, respondApproval: () => undefined, close: async () => undefined } } },
+  })
+  manager.create({ projectPath: f.cwd, settings: threadSettingsSchema.parse({ agent: 'claude', hooksSetup: 'inherit', mcpSetup: 'off' }), text: 'hello' })
+  expect(launches).toHaveLength(0)
+  await manager.shutdown()
+})
+
+it('wraps only events that can block, keeps the revision, and honours a hook timeout', () => {
+  const f = fixture()
+  writeFileSync(f.settings, JSON.stringify({ hooks: {
+    Stop: [{ hooks: [{ type: 'command', command: f.script, timeout: 5 }] }],
+    PostToolUse: [{ hooks: [{ type: 'command', command: f.script }] }] } }))
+  const plain = snapshotHookSources(f.input)
+  const wrapped = snapshotHookSources({ ...f.input, policyRunner: { command: '/fixture/Cockpit', args: ['/fixture/hook-runner.cjs'] } })
+  expect(wrapped.revision).toBe(plain.revision)
+  expect(wrapped.policyHooks).toBe(1)
+  const hook = (event: string) => (wrapped.settings.hooks[event]?.[0] as { hooks: Array<{ command: string; timeout?: number }> }).hooks[0]!
+  expect(hook('Stop')).toMatchObject({ timeout: 15, command: expect.stringContaining(`'--event' 'Stop' '--timeout-ms' '5000'`) })
+  expect(hook('PostToolUse').command).toBe(`'${realpathSync(f.script)}'`)
 })

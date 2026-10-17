@@ -72,6 +72,8 @@ export interface StartOptions {
   readonly stateRoot?: string
   /** How to start the cockpit MCP server; without it, agent sessions get no cockpit tools. */
   readonly mcp?: McpCommand
+  /** How Claude runs Cockpit's policy hook runner; without it, blocking hooks keep hooks-on off (W13 U3c). */
+  readonly policyRunner?: McpCommand
   /** Opens a preview for the user; defaults to macOS `open`. The app retargets this to its preview pane. */
   readonly openUrl?: (preview: PreviewOpen) => Promise<void> | void
   /** Captures a local preview for an agent to inspect. Available in the desktop shell. */
@@ -240,6 +242,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
   const skillSelections = createSkillSelectionStore(join(root, 'skills'))
   const skillProvider = createSkillProvider({ selections: skillSelections, projectionRoot: join(root, 'skill-projections') })
   const manager = createThreadManager(store, {
+    ...(options.policyRunner ? { policyRunner: options.policyRunner } : {}),
     nativeMemory: nativeMemoryProvider,
     skills: skillProvider,
     workspace: (workspaceId) => workspaces.get(workspaceId),

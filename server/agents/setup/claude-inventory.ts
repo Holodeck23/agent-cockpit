@@ -9,9 +9,9 @@ import { snapshotHookSources } from '../claude/hook-sources.ts'
 import { snapshotMcpSources } from '../claude/mcp-sources.ts'
 import { scoutClaudeSources, type ClaudeSourceCandidate } from './claude-source-scout.ts'
 import type { SetupCapability, SetupKind } from './manifest.ts'
+import { POLICY_EVENTS } from '../../hooks/policy-runner.ts'
 
 /** Hook events whose handler can stop or rewrite an action; losing one silently fails open. */
-const POLICY_EVENTS = new Set(['PreToolUse', 'PermissionRequest', 'UserPromptSubmit', 'Stop', 'SubagentStop'])
 const MAX_ENTRIES = 2000
 
 export interface ClaudeInventoryProblem {

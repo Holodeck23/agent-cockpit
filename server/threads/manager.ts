@@ -236,6 +236,11 @@ export interface ManagerOptions {
   readonly nativeMemory?: NativeMemoryProvider
   /** The project's chosen own skills, commands and agents for Claude (W13 U6); without it none are loaded. */
   readonly skills?: SkillProvider
+  /**
+   * Cockpit's policy hook runner (W13 U3c): Claude hooks on events that can block run through it, so a failing,
+   * hung or unreadable hook denies. Without it, a project with such hooks cannot start with hooks on.
+   */
+  readonly policyRunner?: { readonly command: string; readonly args: readonly string[]; readonly env?: Readonly<Record<string, string>> }
   /** A registered workspace by ID (M1); without it every session runs in the conversation's project folder. */
   readonly workspace?: (workspaceId: string) => Workspace | undefined
 }
@@ -698,14 +703,17 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     let validateSources: (() => void) | undefined
     if (setup?.hooks) {
       try {
-        const snapshot = snapshotHookSources(sourceInput)
+        const hookInput = { ...sourceInput, ...(options.policyRunner ? { policyRunner: options.policyRunner } : {}) }
+        const snapshot = snapshotHookSources(hookInput)
         requireCompleteHookSources(snapshot)
-        if (snapshot.review.length > 0 && trust?.claudeHooksApproval !== snapshot.revision) {
+        if (snapshot.policyHooks > 0 && !options.policyRunner) {
+          sourceProblem = 'Claude hooks that can block an action need Cockpit’s policy hook runner, which this build does not include. Turn hooks off for this conversation.'
+        } else if (snapshot.review.length > 0 && trust?.claudeHooksApproval !== snapshot.revision) {
           sourceProblem = 'Claude hook sources need review in Project Settings before this conversation can start.'
         } else {
           hookSettings = snapshot.settings
           validateSources = () => {
-            const current = snapshotHookSources(sourceInput)
+            const current = snapshotHookSources(hookInput)
             if (current.revision !== snapshot.revision) {
               throw new Error('Claude hook sources changed after review. Review them again before starting this conversation.')
             }

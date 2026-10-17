@@ -23,7 +23,9 @@ await Promise.all([
   build({ ...common, entryPoints: ['electron/preload.ts'], outfile: 'dist-electron/preload.cjs' }),
   // The cockpit MCP server each agent session spawns (see server/mcp/stdio.ts).
   build({ ...common, entryPoints: ['server/mcp/stdio.ts'], outfile: 'dist-electron/mcp.cjs' }),
+  // The policy hook runner Claude runs for hooks that can block (see server/hooks/policy-runner.ts).
+  build({ ...common, entryPoints: ['server/hooks/policy-runner-main.ts'], outfile: 'dist-electron/hook-runner.cjs' }),
 ])
 // Dock animation frames (scripts/make-dock-frames.ts), loaded by electron/dock-activity.ts.
 cpSync(`${root}build/dock`, `${root}dist-electron/dock`, { recursive: true })
-console.log(`[build-electron] ${process.env.COCKPIT_RELEASE_BUILD === '1' ? 'RELEASE build (debug flags refused), ' : ''}dist-electron/dock/, dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs`)
+console.log(`[build-electron] ${process.env.COCKPIT_RELEASE_BUILD === '1' ? 'RELEASE build (debug flags refused), ' : ''}dist-electron/dock/, dist-electron/main.cjs, dist-electron/preload.cjs, dist-electron/mcp.cjs, dist-electron/hook-runner.cjs`)

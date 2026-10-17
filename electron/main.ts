@@ -132,6 +132,12 @@ async function boot(): Promise<void> {
       args: [join(app.getAppPath(), 'dist-electron', 'mcp.cjs')],
       env: { ELECTRON_RUN_AS_NODE: '1' },
     },
+    // Claude hooks that can block an action run through this, so a failing or hung one denies (W13 U3c).
+    policyRunner: {
+      command: process.execPath,
+      args: [join(app.getAppPath(), 'dist-electron', 'hook-runner.cjs')],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    },
     openUrl: showPreview,
     capturePreview,
     inspectPreview,

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { readBuiltinPlugin, type BuiltinPluginReport } from './builtin-plugins.ts'
+import { POLICY_EVENTS, policyHookCommand } from '../../hooks/policy-runner.ts'
 
 export interface HookSourceReview {
   readonly event: string
@@ -17,6 +18,8 @@ export interface HookSourceSnapshot {
   readonly review: readonly HookSourceReview[]
   /** Enabled plugins with no executable source are omitted from the private settings snapshot. */
   readonly unavailable: readonly { id: string; source: string; event?: string; reason: string }[]
+  /** Hooks on events that can block an action. Each runs through the policy runner when one is given. */
+  readonly policyHooks: number
 }
 export interface HookSourceInput {
   readonly home: string
@@ -27,7 +30,17 @@ export interface HookSourceInput {
   readonly accountGeneration?: number
   /** What the Claude CLI says about a `@builtin` plugin; asks the CLI on pathEnv when absent. */
   readonly builtinPlugin?: (id: string) => BuiltinPluginReport
+  /**
+   * Cockpit's policy hook runner (dist-electron/hook-runner.cjs). With it, a policy hook that fails, hangs or
+   * answers with something unknown blocks its action. Not part of the reviewed revision: it is Cockpit's own.
+   */
+  readonly policyRunner?: { readonly command: string; readonly args: readonly string[]; readonly env?: Readonly<Record<string, string>> }
 }
+
+/** Claude's documented default for a command hook with no timeout of its own. */
+const DEFAULT_HOOK_TIMEOUT_SECONDS = 60
+/** The native timeout sits this far above the runner's, so Claude's own (non-blocking) timeout never fires first. */
+const NATIVE_TIMEOUT_MARGIN_SECONDS = 10
 
 /** Review can identify omissions, but it cannot authorize an unknown hook to be silently absent. */
 export function requireCompleteHookSources(snapshot: HookSourceSnapshot): void {
@@ -111,6 +124,7 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
   const plugins = new Map<string, boolean>()
   const review: HookSourceReview[] = []
   const unavailable: HookSourceSnapshot['unavailable'][number][] = []
+  let policyHooks = 0
   const add = (source: string, raw: unknown, pluginRoot?: string): void => {
     if (raw === undefined) return
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`Invalid Claude hooks: ${source}`)
@@ -123,7 +137,7 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
         const resolvedHooks: Record<string, unknown>[] = []
         for (const [index, item] of group.hooks.entries()) {
           if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`Invalid Claude hook: ${event}`)
-          const hook = item as { type?: unknown; command?: unknown }
+          const hook = item as { type?: unknown; command?: unknown; timeout?: unknown }
           if (hook.type !== 'command' || typeof hook.command !== 'string') throw new Error(`Unsupported Claude hook type in ${source}`)
           const command = pluginRoot ? hook.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginRoot) : hook.command
           let argv: string[]
@@ -166,6 +180,15 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
           }
           digest.update(executable).update(executableHash).update(JSON.stringify(resolvedArgs))
           review.push({ event, source, executable, executableHash, referencedFiles })
+          if (POLICY_EVENTS.has(event)) {
+            policyHooks += 1
+            if (input.policyRunner) {
+              const seconds = typeof hook.timeout === 'number' && hook.timeout > 0 ? hook.timeout : DEFAULT_HOOK_TIMEOUT_SECONDS
+              resolvedHooks.push({ ...hook, timeout: seconds + NATIVE_TIMEOUT_MARGIN_SECONDS,
+                command: policyHookCommand(input.policyRunner, event, Math.round(seconds * 1000), [executable, ...resolvedArgs]) })
+              continue
+            }
+          }
           resolvedHooks.push({ ...hook, command: [executable, ...resolvedArgs].map(shellQuote).join(' ') })
         }
         if (resolvedHooks.length > 0) (hooks[event] ??= []).push({ ...row, hooks: resolvedHooks })
@@ -225,5 +248,5 @@ export function snapshotHookSources(input: HookSourceInput): HookSourceSnapshot 
       else if (manifest.hooks !== undefined) throw new Error(`Claude plugin hook file is unavailable: ${id}`)
     }
   }
-  return { revision: digest.digest('hex'), settings: { hooks }, review, unavailable }
+  return { revision: digest.digest('hex'), settings: { hooks }, review, unavailable, policyHooks }
 }
