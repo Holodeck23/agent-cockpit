@@ -1,7 +1,8 @@
 // W13 Project Settings for the user's own Claude memory and skills, run against the PACKAGED proof app
 // in the background: `COCKPIT_PROOF_BACKGROUND=1 tsx scripts/proof-w13-settings-ui.ts`. No agent usage.
 // A private synthetic default profile stands in for ~/.claude. Nothing chosen, then chosen, then changed
-// since chosen (review again), chosen again and stopped; light, dark and narrow captures of each.
+// since chosen (review again), chosen again, a linked skill reviewed and included, then left out again,
+// and stopped; light, dark and narrow captures of each.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -60,9 +61,12 @@ try {
     && await memory(page).getByRole('button', { name: 'Use this memory' }).first().isEnabled())
   const offer = await skills(page).innerText()
   check('nothing chosen: skills on offer are counted', offer.includes('On offer: 2 skills, 1 command, 1 agent.'), offer)
-  check('the linked skill is listed as not included, with why', /skills\/shared-skill\s*linked from elsewhere, not included until it can be reviewed/.test(offer), offer)
+  const linkTarget = join(elsewhere, 'shared-skill')
+  const include = skills(page).getByRole('checkbox', { name: /skills\/shared-skill/ })
+  check('the linked skill is offered for review, unticked, with where it points', offer.includes('Linked from elsewhere (1).')
+    && offer.includes(`links to ${linkTarget}`) && !await include.isChecked(), offer)
   const text = await group(page).innerText()
-  check('no folder path is shown', !text.includes(home) && !text.includes('/Users/'))
+  check('no folder path is shown but where the link points', !text.replaceAll(linkTarget, '').includes(home) && !text.includes('/Users/'))
   await capture(page, '1-none')
 
   await memory(page).getByRole('button', { name: 'Use this memory' }).first().click()
@@ -105,6 +109,18 @@ try {
   await memory(page).getByText(/^Loading CLI default, 2 files, chosen/).waitFor()
   await skills(page).getByText(/^Loading 2 skills, 1 command, 1 agent, chosen/).waitFor()
   check('reviewed again: both are current', await page.getByRole('alert').filter({ hasText: 'Changed since' }).count() === 0)
+
+  // Reviewed where it points, the linked skill is ticked and the choice updated to include it.
+  check('nothing to update until a tick changes', await skills(page).getByRole('button', { name: 'Update my choice' }).count() === 0)
+  await include.check()
+  await skills(page).getByRole('button', { name: 'Update my choice' }).click()
+  await skills(page).getByText(/^Loading 3 skills, 1 command, 1 agent, with 1 linked entry, chosen/).waitFor()
+  check('included: the link loads and stays ticked', await include.isChecked() && await skills(page).getByRole('button', { name: 'Update my choice' }).count() === 0)
+  await capture(page, '5-linked')
+  await include.uncheck()
+  await skills(page).getByRole('button', { name: 'Update my choice' }).click()
+  await skills(page).getByText(/^Loading 2 skills, 1 command, 1 agent, chosen/).waitFor()
+  check('left out again: back to the profile alone', !await include.isChecked())
 
   await page.getByRole('button', { name: 'Stop loading memory' }).click()
   await memory(page).getByText('Not loading any memory.').waitFor()
