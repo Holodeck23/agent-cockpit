@@ -16,6 +16,8 @@ if (process.env.COCKPIT_PROOF_BACKGROUND !== '1') throw new Error('Run with COCK
 const home = realpathSync(mkdtempSync(join(tmpdir(), 'cockpit-w13-settings-ui-')))
 const state = join(home, 'state'), project = join(home, 'bakery-site'), profile = join(home, 'default-claude'), elsewhere = join(home, 'elsewhere')
 mkdirSync(project); writeFileSync(join(project, 'README.md'), '# demo\n')
+mkdirSync(join(project, '.claude', 'skills', 'bake-check'), { recursive: true })
+writeFileSync(join(project, '.claude', 'skills', 'bake-check', 'SKILL.md'), '---\nname: bake-check\ndescription: Check the oven.\n---\nCheck.\n')
 const memoryDir = join(profile, 'projects', claudeProjectSlug(project), 'memory')
 const write = (path: string, text: string): void => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, text, { mode: 0o600 }) }
 write(join(memoryDir, 'MEMORY.md'), '# Bakery memory\n\n- [Deploys](deploys.md): how the shop goes live\n')
@@ -45,6 +47,7 @@ page.setDefaultTimeout(15_000)
 const group = (page: Page) => page.locator('.claude-setup-group')
 const memory = (page: Page) => page.getByRole('group', { name: 'Claude memory' })
 const skills = (page: Page) => page.getByRole('group', { name: 'Your Claude skills' })
+const repoSkills = (page: Page) => page.getByRole('group', { name: "This project's Claude skills" })
 const theme = (page: Page, mode: 'light' | 'dark') => page.evaluate((m) => { document.documentElement.dataset.theme = m }, mode)
 /** The window regains focus: the settings re-read both choices, as when the user comes back from a terminal. */
 const refocus = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('focus')))
@@ -140,6 +143,16 @@ try {
   await plugin.uncheck()
   await skills(page).getByRole('button', { name: 'Update my choice' }).click()
   await skills(page).getByText(/^Loading 2 skills, 1 command, 1 agent, chosen/).waitFor()
+
+  // The project's own skills: offered, chosen, stopped.
+  check("the project's own skill is offered, not yet loaded", (await repoSkills(page).innerText()).includes('On offer: 1 skill, 0 commands, 0 agents.')
+    && await repoSkills(page).getByText("Not loading this project's skills.").isVisible())
+  await repoSkills(page).getByRole('button', { name: "Use this project's skills" }).click()
+  await repoSkills(page).getByText(/^Loading 1 skill, 0 commands, 0 agents, chosen/).waitFor()
+  await capture(page, '7-project')
+  await repoSkills(page).getByRole('button', { name: "Stop loading this project's skills" }).click()
+  await repoSkills(page).getByText("Not loading this project's skills.").waitFor()
+  check("the project's skills can be chosen and stopped", true)
 
   await page.getByRole('button', { name: 'Stop loading memory' }).click()
   await memory(page).getByText('Not loading any memory.').waitFor()

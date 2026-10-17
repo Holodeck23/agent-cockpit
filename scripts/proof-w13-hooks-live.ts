@@ -10,6 +10,9 @@
 // COCKPIT_PROOF_SCENARIO=plugin (U6): an enabled plugin's skill, included in Project Settings, answers by its namespaced
 // and its bare name. Hooks are on and the project's reviewed hook runs, but the plugin's own hook must not: only its
 // skills, commands and agents are copied.
+// COCKPIT_PROOF_SCENARIO=project-skill (U6): the project's own .claude skill, chosen in Project Settings, runs by its bare
+// name; a user skill and a project skill of one name resolve to the user's, as in the plain CLI, and /project:<name>
+// reaches the project's. Each in a new conversation, so no answer can come from history.
 // COCKPIT_PROOF_SCENARIO=policy (U3c): one approved PreToolUse hook, three Write turns. When it allows, the
 // file appears (the control); when it fails, or hangs past its timeout, the file must not.
 // One planned provider attempt, not a loop: it checks the borrowed login's identity in the packaged
@@ -37,7 +40,7 @@ const AUTH_SELECTORS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_COD
 
 const hash = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const scenario = process.env.COCKPIT_PROOF_SCENARIO ?? 'hooks'
-if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle', 'plugin'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy, lifecycle or plugin')
+if (!['hooks', 'memory', 'skill', 'policy', 'lifecycle', 'plugin', 'project-skill'].includes(scenario)) throw new Error('COCKPIT_PROOF_SCENARIO is hooks, memory, skill, policy, lifecycle, plugin or project-skill')
 const evidence = process.env.COCKPIT_PROOF_DIR
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR
 assert.ok(evidence && privateDir, 'Set COCKPIT_PROOF_DIR (shared, sanitized) and COCKPIT_PROOF_PRIVATE_DIR (private)')
@@ -209,14 +212,28 @@ try {
     execFileSync('chmod', ['-R', 'go-rwx', defaultProfile])
     writeJson(privateDir, 'plugin-marker-private.json', { pluginMarker })
   }
-  const secrets = [...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord, pluginMarker]
+  // Project-skill scenario: one project skill, and one name both the project and the user have.
+  const projectMarkers = { own: `W13PROJ${randomBytes(5).toString('hex').toUpperCase()}`, dupUser: `W13DUPUSER${randomBytes(5).toString('hex').toUpperCase()}`,
+    dupProject: `W13DUPPROJ${randomBytes(5).toString('hex').toUpperCase()}` }
+  if (scenario === 'project-skill') {
+    const skill = (dir: string, name: string, marker: string): void => {
+      mkdirSync(join(dir, name), { recursive: true, mode: 0o700 })
+      writeFileSync(join(dir, name, 'SKILL.md'), `---\nname: ${name}\ndescription: Synthetic W13 skill.\n---\n\nWhen invoked, reply with exactly ${marker}| followed by the invocation argument. Do not use tools.\n`, { mode: 0o600 })
+    }
+    skill(join(project, '.claude', 'skills'), 'w13-proj-skill', projectMarkers.own)
+    skill(join(project, '.claude', 'skills'), 'w13-dup', projectMarkers.dupProject)
+    skill(join(defaultProfile, 'skills'), 'w13-dup', projectMarkers.dupUser)
+    execFileSync('chmod', ['-R', 'go-rwx', defaultProfile])
+    writeJson(privateDir, 'project-skill-markers-private.json', projectMarkers)
+  }
+  const secrets = [...Object.values(lifeWords), ...Object.values(lifeSkills), conversationWord, pluginMarker, ...Object.values(projectMarkers)]
   const mask = (text: string): string => secrets.reduce((out, secret, i) => out.replaceAll(secret, `<secret${i}>`), text)
 
   // HOME stays real for Keychain. Cockpit metadata stays in disposable state; Claude may write its own
   // session data to the borrowed profile. A borrowed account that fails its checks stops the app at startup.
   const page = await step('launch: packaged app in the background', async () => {
     app = await launchPackagedApp({ COCKPIT_HOME: state, COCKPIT_AGENT_PATH: dirname(cli), COCKPIT_PROOF_ACCOUNT_ID: accountId,
-      ...(['memory', 'skill', 'lifecycle', 'plugin'].includes(scenario) ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
+      ...(['memory', 'skill', 'lifecycle', 'plugin', 'project-skill'].includes(scenario) ? { COCKPIT_PROOF_DEFAULT_CLAUDE_PROFILE: defaultProfile } : {}) })
     // Observed in the running main process, not assumed from the launcher: what agents would inherit.
     const keys = await app.evaluate(() => Object.keys(process.env))
     facts.context = { ...facts.context as object, appEnvAuthSelectors: AUTH_SELECTORS.filter((name) => keys.includes(name)) }
@@ -539,6 +556,55 @@ try {
     facts.plugin = { checks }
     verdict = 'passed'
   }
+  if (scenario === 'project-skill') {
+    type Row = { kind: string; text?: string; ok?: boolean; name?: string }
+    await step('selection: the project\'s skills and the user\'s own are both chosen', async () => {
+      const offered = await page.evaluate(async (id) => (await (await fetch(`/api/projects/${id}/project-skills`)).json()).data, projectId) as
+        { offered: { skills: string[] } | null }
+      assert.deepEqual(offered.offered?.skills, ['w13-dup', 'w13-proj-skill'], 'The project skills are not on offer')
+      const fromProject = await apiPost(page, `/api/projects/${projectId}/project-skills`, { sourceAccountId: 'project' }) as { data?: unknown; error?: string }
+      assert.ok(fromProject.data, fromProject.error ?? 'Project skill selection failed')
+      const own = await apiPost(page, `/api/projects/${projectId}/skills`, { sourceAccountId: 'default-claude' }) as { data?: unknown; error?: string }
+      assert.ok(own.data, own.error ?? 'User skill selection failed')
+    })
+    /** One new conversation, one no-tools turn: the reply, from nothing but the invoked skill. */
+    const fresh = async (label: string, text: string): Promise<string> => {
+      const created = await apiPost(page, '/api/threads', { projectPath: project, text,
+        settings: { agent: 'claude', model: 'haiku', permissionMode: 'manual', hooksSetup: 'off', mcpSetup: 'off' } }) as { data?: { id: string }; error?: string }
+      assert.ok(created.data?.id, created.error ?? `${label}: refused`)
+      let rows: Row[] = []
+      const deadline = Date.now() + 120_000
+      while (Date.now() < deadline) {
+        rows = await page.evaluate(async (id) => (await (await fetch(`/api/threads/${id}/events`)).json()).data.events.map((row: { event: unknown }) => row.event), created.data.id)
+        if (rows.some((event) => event.kind === 'result')) break
+        await page.waitForTimeout(500)
+      }
+      output.push(`--- ${label}`)
+      for (const event of rows) output.push(mask(`${event.kind}${event.name ? ` ${event.name}` : ''}${event.text ? `: ${event.text.slice(0, 200)}` : ''}`))
+      const result = rows.find((event) => event.kind === 'result')
+      assert.ok(result, `${label}: the turn did not finish`)
+      assert.ok(!(result.text ?? '').includes('Not logged in'), 'The borrowed Claude profile did not authenticate. Stop: no sign-in, no account switch, no retry')
+      assert.equal(result.ok, true, `${label}: the turn did not succeed`)
+      assert.ok(!rows.some((event) => event.kind === 'tool_use'), `${label}: a tool was used`)
+      return rows.filter((event) => event.kind === 'assistant_text').map((event) => event.text ?? '').join('')
+    }
+    const checks: Record<string, boolean> = {}
+    await step('project skill: /w13-proj-skill kiwi runs the project\'s own skill', async () => {
+      checks.projectSkill = (await fresh('project skill', '/w13-proj-skill kiwi')).includes(`${projectMarkers.own}|kiwi`)
+      assert.ok(checks.projectSkill, 'The project skill did not run')
+    })
+    await step('same name: /w13-dup plum runs the user\'s skill, as the plain CLI does', async () => {
+      const reply = await fresh('same name, bare', '/w13-dup plum')
+      checks.userWins = reply.includes(`${projectMarkers.dupUser}|plum`) && !reply.includes(projectMarkers.dupProject)
+      assert.ok(checks.userWins, 'A bare same-name skill did not resolve to the user\'s')
+    })
+    await step('same name: /project:w13-dup fig reaches the project\'s', async () => {
+      checks.projectByNamespace = (await fresh('same name, namespaced', '/project:w13-dup fig')).includes(`${projectMarkers.dupProject}|fig`)
+      assert.ok(checks.projectByNamespace, 'The project\'s same-name skill was not reachable by its namespace')
+    })
+    facts.projectSkill = { checks }
+    verdict = 'passed'
+  }
   if (scenario === 'policy') {
     await step('hook review: exactly the one synthetic PreToolUse hook, approved, hooks on', async () => {
       const found = await page.evaluate(async (path) => (await (await fetch(`/api/projects/claude-hooks?path=${encodeURIComponent(path)}`)).json()).data,
@@ -652,13 +718,14 @@ try {
   // Nothing under root links to the real profile, so removing it cannot reach the login.
   if (root) rmSync(root, { recursive: true, force: true })
   writeFileSync(join(evidence, 'output.txt'), `${output.join('\n')}\n`, { mode: 0o600 })
-  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}), ...(facts.plugin ? { plugin: facts.plugin } : {}) })
+  writeJson(evidence, 'provider-context.json', { context: facts.context, identityPreflight: facts.identityPreflight, ...(facts.identityPreflightAfterRestart ? { identityPreflightAfterRestart: facts.identityPreflightAfterRestart } : {}), ...(facts.memory ? { memory: facts.memory } : {}), ...(facts.skill ? { skill: facts.skill } : {}), ...(facts.policy ? { policy: facts.policy } : {}), ...(facts.lifecycle ? { lifecycle: facts.lifecycle } : {}), ...(facts.plugin ? { plugin: facts.plugin } : {}), ...(facts.projectSkill ? { projectSkill: facts.projectSkill } : {}) })
   const files = ['package-manifest.json', 'provider-context.json', 'output.txt'].filter((name) => existsSync(join(evidence, name)))
   writeJson(evidence, 'receipt.json', {
     scenario: { memory: 'W13-U5 packaged borrowed-account native memory proof', skill: 'W13-U6 packaged borrowed-account projected skill proof',
       hooks: 'W13-U1 packaged borrowed-account hook proof', policy: 'W13-U3c packaged borrowed-account policy hook denial proof',
       lifecycle: 'W13-U5/U6 packaged borrowed-account memory and skill lifecycle proof',
-      plugin: 'W13-U6 packaged borrowed-account stripped plugin skill proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
+      plugin: 'W13-U6 packaged borrowed-account stripped plugin skill proof',
+      'project-skill': 'W13-U6 packaged borrowed-account project skill and same-name precedence proof' }[scenario], startedAt, finishedAt: new Date().toISOString(), source,
     command: 'scripts/proof-w13-hooks-live.ts', provider: { cli: 'claude 2.1.220', cliHash: PINS.cli, nodeHash: PINS.node },
     package: facts.package, account: { alias: 'borrowed managed Claude', generation: (facts.context as { generation?: number } | undefined)?.generation },
     workspace: 'disposable project and Cockpit state', steps, verdict,
