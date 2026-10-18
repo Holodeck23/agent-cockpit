@@ -1,9 +1,16 @@
 import { expect, it } from 'vitest'
-import { ClaudeSkillResourceOracle } from '../scripts/lib/w13-claude-skill-oracle.ts'
+import { ClaudeSkillResourceOracle, requireNativeSkillCommand } from '../scripts/lib/w13-claude-skill-oracle.ts'
 const marker = 'selected-' + 'a'.repeat(32), resource = 'reference-' + 'b'.repeat(32), excluded = 'excluded-' + 'c'.repeat(32)
 const args = '--label "two words"  --target fixture'
 const path = '/owned/skill/reference.txt'
 const fresh = () => new ClaudeSkillResourceOracle('session', path, marker, resource, excluded, args)
+it('holds input for an absent, ambiguous or missing native skill inventory and distinguishes namespaced commands', () => {
+  expect(() => requireNativeSkillCommand([{ name: 'proof:skill' }], 'proof:skill')).not.toThrow()
+  for (const commands of [undefined, [], [{ name: 'skill' }], [{ name: 'proof:skill' }, { name: 'proof:skill' }]]) {
+    expect(() => requireNativeSkillCommand(commands, 'proof:skill')).toThrow()
+  }
+  expect(() => requireNativeSkillCommand([{ name: '' }], '')).toThrow()
+})
 const tool = (file = path, name = 'Read') => ({ type: 'assistant', session_id: 'session', message: { content: [{ type: 'tool_use', id: 'read', name, input: { file_path: file } }] } })
 const result = (id = 'read', content = resource) => ({ type: 'user', session_id: 'session', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
 const done = { session_id: 'session', subtype: 'success', is_error: false, result: `${marker}\n${resource}\n${args}` }

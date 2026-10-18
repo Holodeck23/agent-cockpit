@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline'
 import { claudeIdentityFrom } from '../server/agents/accounts/identity.ts'
 import { ParentCompletionOracle, ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
 import { assessClaudeMemoryRecall } from './lib/w13-claude-memory-oracle.ts'
-import { ClaudeSkillResourceOracle } from './lib/w13-claude-skill-oracle.ts'
+import { ClaudeSkillResourceOracle, requireNativeSkillCommand } from './lib/w13-claude-skill-oracle.ts'
 
 const sha = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const cli = process.env.COCKPIT_W13_CLAUDE ?? ''
@@ -20,6 +20,8 @@ const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const descriptor = process.env.COCKPIT_PROOF_CONTEXT ?? ''
 const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'synthetic'
 const probeKind = process.env.COCKPIT_W13_PROBE_KIND ?? 'completion-cycles'
+const skillInvocation = process.env.COCKPIT_W13_SKILL_INVOCATION ?? 'namespaced'
+const fixtureCheckout = process.env.COCKPIT_W13_SYNTHETIC_CHECKOUT ?? 'primary'
 const completionProbe = probeKind.startsWith('completion-')
 const memoryProbe = probeKind.startsWith('memory-')
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
@@ -31,6 +33,12 @@ try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
   assert.ok(['synthetic', 'primary', 'worktree'].includes(workspaceKind))
   assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource'].includes(probeKind))
+  assert.ok(['namespaced', 'bare'].includes(skillInvocation))
+  assert.ok(['primary', 'worktree'].includes(fixtureCheckout))
+  if (skillInvocation === 'bare') {
+    assert.equal(probeKind, 'skill-resource')
+    assert.equal(workspaceKind, 'synthetic', 'Bare discovery must not write into the actual checkout')
+  }
   receipt.scenario = completionProbe ? receipt.scenario : memoryProbe
     ? 'native-claude-controlled-memory-recall' : 'native-claude-selected-skill-resource'
   receipt.probeKind = probeKind
@@ -95,10 +103,27 @@ try {
   receipt.identityMatched = true
   receipt.accountGeneration = account.generation
   receipt.provider = { name: 'claude', version: '2.1.220', executableSha256: sha(cli), runtimeSha256: sha(process.execPath) }
-  const project = workspaceKind === 'primary' ? join(dirname(dirname(root)), 'agent-cockpit')
+  let project = workspaceKind === 'primary' ? join(dirname(dirname(root)), 'agent-cockpit')
     : workspaceKind === 'worktree' ? root : join(privateDir, 'project')
   if (workspaceKind === 'synthetic') mkdirSync(project, { mode: 0o700 })
   else assert.equal(realpathSync(project), project)
+  if (skillInvocation === 'bare') {
+    const gitHome = join(privateDir, 'git-home')
+    mkdirSync(gitHome, { mode: 0o700 })
+    const gitEnv = { HOME: gitHome, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
+    execFileSync('/usr/bin/git', ['init', '-q', project], { env: gitEnv, timeout: 10_000 })
+    if (fixtureCheckout === 'worktree') {
+      execFileSync('/usr/bin/git', ['-C', project, '-c', 'core.hooksPath=/dev/null', '-c', 'user.name=W13 fixture', '-c', 'user.email=w13@example.invalid',
+        'commit', '--allow-empty', '-qm', 'Synthetic worktree baseline'], { env: gitEnv, timeout: 10_000 })
+      const worktree = join(privateDir, 'worktree')
+      execFileSync('/usr/bin/git', ['-C', project, '-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '-q', '-b', 'w13-fixture', worktree], { env: gitEnv, timeout: 10_000 })
+      project = worktree
+    }
+    project = realpathSync(project)
+    receipt.fixtureWorkspaceScope = fixtureCheckout
+  }
+  const settingSources = skillInvocation === 'bare' ? 'project' : ''
+  if (skillInvocation === 'bare') receipt.nativeSettingSources = ['owned-fixture-project']
   const settings = join(privateDir, 'settings.json'), mcp = join(privateDir, 'mcp.json')
   const memoryEnabled = probeKind === 'memory-on'
   const selected = `W13MEM_SELECTED_${randomUUID()}`, excluded = `W13MEM_EXCLUDED_${randomUUID()}`
@@ -126,8 +151,17 @@ try {
     plugin = realpathSync(join(privateDir, 'selected-plugin'))
     skillSource = join(plugin, 'skills/w13-proof-skill/SKILL.md')
     resourceFile = join(plugin, 'skills/w13-proof-skill/reference.txt')
+    if (skillInvocation === 'bare') {
+      const bareSource = join(project, '.claude/skills/w13-proof-skill')
+      mkdirSync(bareSource, { recursive: true, mode: 0o700 })
+      writeFileSync(join(bareSource, 'SKILL.md'), readFileSync(skillSource), { flag: 'wx', mode: 0o600 })
+      writeFileSync(join(bareSource, 'reference.txt'), readFileSync(resourceFile), { flag: 'wx', mode: 0o600 })
+      skillSource = join(bareSource, 'SKILL.md'); resourceFile = join(bareSource, 'reference.txt')
+      plugin = ''
+    }
     skillSourceHash = sha(skillSource); resourceHash = sha(resourceFile)
-    prompt = `/w13-proof-plugin:w13-proof-skill ${skillArgs}`
+    prompt = `${skillInvocation === 'bare' ? '/w13-proof-skill' : '/w13-proof-plugin:w13-proof-skill'} ${skillArgs}`
+    receipt.skillInvocation = skillInvocation
   }
   writeFileSync(settings, JSON.stringify({ hooks: {}, enabledPlugins: {}, autoMemoryEnabled: memoryEnabled,
     ...(memoryProbe ? { autoMemoryDirectory: join(privateDir, 'selected-memory') } : {}) }), { flag: 'wx', mode: 0o600 })
@@ -141,7 +175,7 @@ try {
     identityKey: identity.key, sessionId, runId, project, lifecycleGeneration: 1, settingsSha256: sha(settings),
     ...(memoryProbe ? { memorySelection: memoryEnabled, selectedMarker: selected, excludedMarker: excluded,
       selectedMemorySha256: sha(join(privateDir, 'selected-memory/MEMORY.md')), excludedMemorySha256: sha(join(privateDir, 'unselected-memory/MEMORY.md')) } : {}),
-    ...(skillOracle ? { plugin, skillSourceHash, resourceHash, skillMarker, resourceMarker, otherSkillMarker, arguments: skillArgs } : {}) }, null, 2) + '\n')
+    ...(skillOracle ? { plugin, skillInvocation, skillSource, resourceFile, skillSourceHash, resourceHash, skillMarker, resourceMarker, otherSkillMarker, arguments: skillArgs } : {}) }, null, 2) + '\n')
   receipt.bindingRecordedPrivately = true
   await new Promise<void>((resolve, reject) => {
     let finished = false, initialized = false, failure: Error | undefined
@@ -149,7 +183,7 @@ try {
     const child = spawn(cli, ['--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
       '--permission-prompt-tool', 'stdio', '--session-id', sessionId, '--no-session-persistence',
       '--model', 'haiku', '--tools', skillOracle ? 'Read' : '', '--strict-mcp-config', '--mcp-config', mcp,
-      '--setting-sources', '', '--settings', settings, ...(skillOracle ? ['--plugin-dir', plugin] : [])], { cwd: project, env, stdio: ['pipe', 'pipe', 'pipe'] })
+      '--setting-sources', settingSources, '--settings', settings, ...(skillOracle && plugin ? ['--plugin-dir', plugin] : [])], { cwd: project, env, stdio: ['pipe', 'pipe', 'pipe'] })
     const send = (message: unknown): void => { child.stdin.write(JSON.stringify(message) + '\n') }
     const stop = (error?: Error): void => {
       if (error) failure ??= error
@@ -197,6 +231,12 @@ try {
           const current = selectedAccount()
           assert.equal(current.generation, account.generation)
           assert.equal(current.identity?.key, account.identity?.key)
+          if (skillOracle) {
+            assert.equal(sha(skillSource), skillSourceHash); assert.equal(sha(resourceFile), resourceHash)
+            requireNativeSkillCommand(message.response.response?.commands,
+              skillInvocation === 'bare' ? 'w13-proof-skill' : 'w13-proof-plugin:w13-proof-skill')
+            receipt.skillDiscoveredBeforeInput = true
+          }
           initialized = true
           clearTimeout(initTimer)
           receipt.modelInputs = 1
@@ -264,7 +304,7 @@ try {
   receipt.finishedAt = new Date().toISOString()
   receipt.limitations = [completionProbe ? 'Parent Stop only; no subagent was started'
     : memoryProbe ? 'Synthetic selected auto-memory overlay only; no real memory copied or native writeback/lifecycle proof'
-      : 'Synthetic selected plugin skill and one read-only resource; no real user skill or executable dependency', 'Mechanism feasibility, not production hook enforcement or cancellation',
+      : `Synthetic selected ${skillInvocation} skill and one read-only resource; no real user skill or executable dependency`, 'Mechanism feasibility, not production hook enforcement or cancellation',
     'Default/managed and primary/worktree matrix remains to qualify', 'Callback failure semantics are not claimed fail-closed',
     'No-session-persistence requested; provider-side retention is not controlled by this probe']
   attempt?.writeReceipt(receipt)

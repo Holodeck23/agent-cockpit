@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { isAbsolute, resolve } from 'node:path'
 
+/** A native initialize response must expose the exact command before any model input. */
+export function requireNativeSkillCommand(commands: unknown, expected: string): void {
+  assert.ok(typeof expected === 'string' && expected.length > 0)
+  assert.ok(Array.isArray(commands), 'Native command inventory is missing')
+  assert.equal(commands.filter((command) => command?.name === expected).length, 1,
+    'Selected native skill command is missing or ambiguous')
+}
+
 /** Actual native Read/result linkage, separate from the model's final text assertion. */
 export class ClaudeSkillResourceOracle {
   private reads = new Set<string>()
