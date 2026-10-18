@@ -1,0 +1,1189 @@
+diff --git a/.gitignore b/.gitignore
+index dbcd863..5e07426 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -96,0 +97,2 @@ __pycache__/
++
++/target.noindex/
+diff --git a/PROVENANCE-W13.md b/PROVENANCE-W13.md
+new file mode 100644
+index 0000000..bc16f1e
+--- /dev/null
++++ b/PROVENANCE-W13.md
+@@ -0,0 +1,11 @@
++# W13 native Codex memory-root candidate
++
++Upstream reference: https://github.com/openai/codex.git, annotated tag rust-v0.162.1 (7a078f6bb4ce0dc2a81408b334ce52979d92c603), peeled source commit092d3acd6bec3e3a14bdc7e7a2810ab628ab759d. Tag is not claimed cryptographically verified. Original LICENSE (Apache-2.0) and NOTICE are retained without alteration. Upstream reference lives at third-party/codex-upstream-w13-0.162.1 and remains source-clean; this declared candidate checkout is tools/codex-w13-memory-root, branch codex/w13-memory-root. Both are under the shared repos root. This baseline/candidate pair is intentional.
++
++Source classes: unmodified upstream files are verbatim adoption; changes recorded after this file are adapted implementation for the W13 contract. David delegated the scope choice on19October2026 (“your call”); the execution owner chose a separate native extension. No installation/replacement/publication or auth relocation is authorized by this candidate. Upstream push URL is disabled; completed patches and provenance are checkpointed on the already-authorized owned Cockpit branch. No new GitHub fork or remote is created.
++
++Build source pin: codex-rs/rust-toolchain.toml specifies Rust1.95.0 with clippy/rustfmt/rust-src. Rust1.95.0 was installed with David's explicit approval for this build; default stable1.92.0 was retained. Initial locked build found release-local package versions0.0.0 in Cargo.lock versus0.162.1 in the manifest. Offline workspace-only resolution corrected161 local entries; all external package records/checksums/revisions are byte-equivalent as parsed data. All369 configuration tests and6 focused consumer regressions pass. The latter cover actual native-tool note writes, cached namespace/revocation, versioned read isolation, reset sentinels, account-home preservation, consolidation config without spawning a worker, and import-destination discovery. Full CLI build and end-to-end native proof remain open. The pinned official binary remains the comparison baseline; its matching version alone is not a reproducible-build proof.
++
++Planned change: optional memories.root selects a separate base directory containing the existing version-specific memories/ and memories_v2/ trees, with memories_extensions/ cleanup confined to that base. This explicit version nesting preserves dual-write and reset behavior while leaving native credential discovery at the original HOME/CODEX_HOME locator. Omitted root preserves existing paths. Root must be explicitly absolute; no relative or tilde expansion for this setting. One resolver must supply read context, native memory tools, readable sandbox roots, startup/consolidation, status/reset and applicable import destinations. Thread-local cached memory namespace must not switch mid-session. Config path is consistency/selection, not a same-user filesystem security sandbox.
++
++Before adoption: parser/default/version/concurrency/negative-root tests, actual native read/write/next-session recall, unchanged native principal/credential locator, package hashes and all W13 required gates. Keep native generation off in probes until any controlled native-worker exception is explicitly authorized. No automatic helper/subagent, installer, application launch or provider call was started by source acquisition.
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 1cee117..b30500b 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -279 +279 @@ name = "app_test_support"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -1898 +1898 @@ name = "codex-agent-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -1910 +1910 @@ name = "codex-agent-graph-store"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -1925 +1925 @@ name = "codex-agent-identity"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -1945 +1945 @@ name = "codex-agent-message-board-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -1968 +1968 @@ name = "codex-agent-message-board-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -1991 +1991 @@ name = "codex-agent-roles"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2004 +2004 @@ name = "codex-analytics"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2027 +2027 @@ name = "codex-ansi-escape"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2038 +2038 @@ name = "codex-api"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2076 +2076 @@ name = "codex-app-server"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2190 +2190 @@ name = "codex-app-server-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2217 +2217 @@ name = "codex-app-server-daemon"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2243 +2243 @@ name = "codex-app-server-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2277 +2277 @@ name = "codex-app-server-protocol-noop-macros"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2281 +2281 @@ name = "codex-app-server-test-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2303 +2303 @@ name = "codex-app-server-transport"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2345 +2345 @@ name = "codex-apply-patch"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2365 +2365 @@ name = "codex-arg0"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2389 +2389 @@ name = "codex-async-utils"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2399 +2399 @@ name = "codex-attachment-store"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2409 +2409 @@ name = "codex-aws-auth"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2435 +2435 @@ name = "codex-backend-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2455 +2455 @@ name = "codex-backend-openapi-models"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2464 +2464 @@ name = "codex-build-info"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2477 +2477 @@ name = "codex-bwrap"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2486 +2486 @@ name = "codex-chatgpt"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2508 +2508 @@ name = "codex-cli"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2610 +2610 @@ name = "codex-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2624 +2624 @@ name = "codex-cloud-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2648 +2648 @@ name = "codex-cloud-config"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2674 +2674 @@ name = "codex-cloud-tasks"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2707 +2707 @@ name = "codex-cloud-tasks-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2722 +2722 @@ name = "codex-cloud-tasks-mock-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2731 +2731 @@ name = "codex-code-mode"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2754 +2754 @@ name = "codex-code-mode-host"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2783 +2783 @@ name = "codex-code-mode-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2801 +2801 @@ name = "codex-code-mode-runtime"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2819 +2819 @@ name = "codex-collaboration-mode-templates"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2823 +2823 @@ name = "codex-config"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2873 +2873 @@ name = "codex-config-schema"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2882 +2882 @@ name = "codex-connectors"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2904 +2904 @@ name = "codex-connectors-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2918 +2918 @@ name = "codex-context-fragments"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -2928 +2928 @@ name = "codex-core"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3070 +3070 @@ name = "codex-core-api"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3093 +3093 @@ name = "codex-core-plugin-common"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3104 +3104 @@ name = "codex-core-plugins"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3161 +3161 @@ name = "codex-diagnostics"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3169 +3169 @@ name = "codex-exec"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3221 +3221 @@ name = "codex-exec-server"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3290 +3290 @@ name = "codex-exec-server-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3307 +3307 @@ name = "codex-exec-server-test-support"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3322 +3322 @@ name = "codex-execpolicy"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3340 +3340 @@ name = "codex-experimental-api-macros"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3349 +3349 @@ name = "codex-extension-api"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3371 +3371 @@ name = "codex-extension-items"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3383 +3383 @@ name = "codex-external-agent-migration"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3413 +3413 @@ name = "codex-features"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3427 +3427 @@ name = "codex-feedback"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3454 +3454 @@ name = "codex-file-search"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3470 +3470 @@ name = "codex-file-system"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3482 +3482 @@ name = "codex-file-watcher"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3493 +3493 @@ name = "codex-git-attribution"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3506 +3506 @@ name = "codex-git-utils"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3534 +3534 @@ name = "codex-goal-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3559 +3559 @@ name = "codex-guardian-context"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3571 +3571 @@ name = "codex-guardian-reviewer"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3596 +3596 @@ name = "codex-guardian-v2"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3633 +3633 @@ name = "codex-history"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3645 +3645 @@ name = "codex-history-notes-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3670 +3670 @@ name = "codex-home"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3682 +3682 @@ name = "codex-hooks"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3710 +3710 @@ name = "codex-http-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3746 +3746 @@ name = "codex-image-generation-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3774 +3774 @@ name = "codex-install-context"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3787 +3787 @@ name = "codex-keyring-store"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3798 +3798 @@ name = "codex-linux-sandbox"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3827 +3827 @@ name = "codex-lmstudio"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3841 +3841 @@ name = "codex-login"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3887 +3887 @@ name = "codex-mcp"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3927 +3927 @@ name = "codex-mcp-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3960 +3960 @@ name = "codex-memories-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3982 +3982 @@ name = "codex-memories-read"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -3992 +3992 @@ name = "codex-memories-write"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4029 +4029 @@ name = "codex-mermaid"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4038 +4038 @@ name = "codex-message-history"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4052 +4052 @@ name = "codex-model-provider"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4086 +4086 @@ name = "codex-model-provider-info"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4104 +4104 @@ name = "codex-models-manager"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4123 +4123 @@ name = "codex-mxc-sandbox"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4145 +4145 @@ name = "codex-network-proxy"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4194 +4194 @@ name = "codex-ollama"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4214 +4214 @@ name = "codex-otel"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4251 +4251 @@ name = "codex-otel-trace-websocket"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4262 +4262 @@ name = "codex-plugin"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4277 +4277 @@ name = "codex-process-hardening"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4285 +4285 @@ name = "codex-prompts"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4302 +4302 @@ name = "codex-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4347 +4347 @@ name = "codex-queue-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4368 +4368 @@ name = "codex-realtime-webrtc"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4387 +4387 @@ name = "codex-response-debug-context"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4398 +4398 @@ name = "codex-responses-api-proxy"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4415 +4415 @@ name = "codex-rmcp-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4466 +4466 @@ name = "codex-rollout"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4497 +4497 @@ name = "codex-rollout-trace"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4513 +4513 @@ name = "codex-sandboxing"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4541 +4541 @@ name = "codex-secrets"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4562 +4562 @@ name = "codex-shell-command"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4585 +4585 @@ name = "codex-shell-escalation"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4605 +4605 @@ name = "codex-skills"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4622 +4622 @@ name = "codex-skills-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4660 +4660 @@ name = "codex-state"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4687 +4687 @@ name = "codex-stdio-to-uds"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4699 +4699 @@ name = "codex-tcp-tunnel"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4720 +4720 @@ name = "codex-terminal-detection"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4728 +4728 @@ name = "codex-test-binary-support"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4736 +4736 @@ name = "codex-thread-manager-sample"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4747 +4747 @@ name = "codex-thread-store"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4778 +4778 @@ name = "codex-tools"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4804 +4804 @@ name = "codex-tui"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4930 +4930 @@ name = "codex-uds"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4944 +4944 @@ name = "codex-user-verification"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4964 +4964 @@ name = "codex-utils-absolute-path"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4978 +4978 @@ name = "codex-utils-approval-presets"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4985 +4985 @@ name = "codex-utils-audio"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -4999 +4999 @@ name = "codex-utils-cache"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5008 +5008 @@ name = "codex-utils-cargo-bin"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5017 +5017 @@ name = "codex-utils-cli"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5029 +5029 @@ name = "codex-utils-elapsed"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5033 +5033 @@ name = "codex-utils-fuzzy-match"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5037 +5037 @@ name = "codex-utils-git-discovery"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5050 +5050 @@ name = "codex-utils-home-dir"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5060 +5060 @@ name = "codex-utils-image"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5074 +5074 @@ name = "codex-utils-json-to-toml"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5083 +5083 @@ name = "codex-utils-oss"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5093 +5093 @@ name = "codex-utils-output-truncation"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5103 +5103 @@ name = "codex-utils-path"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5114 +5114 @@ name = "codex-utils-path-uri"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5130 +5130 @@ name = "codex-utils-plugins"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5144 +5144 @@ name = "codex-utils-process"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5152 +5152 @@ name = "codex-utils-pty"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5171 +5171 @@ name = "codex-utils-readiness"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5181 +5181 @@ name = "codex-utils-redacted-string"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5189 +5189 @@ name = "codex-utils-rustls-provider"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5196 +5196 @@ name = "codex-utils-sandbox-summary"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5206 +5206 @@ name = "codex-utils-sleep-inhibitor"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5216 +5216 @@ name = "codex-utils-stream-parser"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5223 +5223 @@ name = "codex-utils-string"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5233 +5233 @@ name = "codex-utils-template"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5240 +5240 @@ name = "codex-v8-poc"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5248 +5248 @@ name = "codex-voice-host"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5275 +5275 @@ name = "codex-web-search-extension"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5297 +5297 @@ name = "codex-websocket-auth"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5316 +5316 @@ name = "codex-websocket-client"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5332 +5332 @@ name = "codex-windows-sandbox"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5362 +5362 @@ name = "codex-windows-sandbox-service"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5379 +5379 @@ name = "codex-windows-sandbox-test-support"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5386 +5386 @@ name = "codex-workload-identity"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5401 +5401 @@ name = "codex-worktree"
+-version = "0.0.0"
++version = "0.162.1"
+@@ -5642 +5642 @@ name = "core_test_support"
+-version = "0.0.0"
++version = "0.162.1"
+diff --git a/codex-rs/app-server/src/external_agent_migration/processor.rs b/codex-rs/app-server/src/external_agent_migration/processor.rs
+index 5737235..749c3fb 100644
+--- a/codex-rs/app-server/src/external_agent_migration/processor.rs
++++ b/codex-rs/app-server/src/external_agent_migration/processor.rs
+@@ -130,2 +130,2 @@ impl ExternalAgentConfigRequestProcessor {
+-            .migration_service
+-            .with_migration_source(params.migration_source.as_deref());
++            .migration_service_for_source(params.migration_source.as_deref())
++            .await?;
+@@ -201,2 +201,2 @@ impl ExternalAgentConfigRequestProcessor {
+-            .migration_service
+-            .with_migration_source(params.migration_source.as_deref());
++            .migration_service_for_source(params.migration_source.as_deref())
++            .await?;
+@@ -357,0 +358,19 @@ impl ExternalAgentConfigRequestProcessor {
++    async fn migration_service_for_source(
++        &self,
++        migration_source: Option<&str>,
++    ) -> Result<ExternalAgentConfigService, JSONRPCErrorError> {
++        let config = self
++            .config_manager
++            .load_latest_config(/*fallback_cwd*/ None)
++            .await
++            .map_err(|err| {
++                internal_error(format!("failed to resolve native memory namespace: {err}"))
++            })?;
++        Ok(self
++            .migration_service
++            .with_migration_source(migration_source)
++            .with_memory_base(
++                codex_config::memory_root::base(&config.memories, &config.codex_home).to_path_buf(),
++            ))
++    }
++
+diff --git a/codex-rs/app-server/src/request_processors/memory_status.rs b/codex-rs/app-server/src/request_processors/memory_status.rs
+index b784701..93303a4 100644
+--- a/codex-rs/app-server/src/request_processors/memory_status.rs
++++ b/codex-rs/app-server/src/request_processors/memory_status.rs
+@@ -31,4 +31,5 @@ impl ThreadRequestProcessor {
+-        let root = self
+-            .config
+-            .codex_home
+-            .join(MemoryVersion::V2.directory_name());
++        let root = codex_config::memory_root::for_version(
++            &self.config.memories,
++            &self.config.codex_home,
++            MemoryVersion::V2,
++        );
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 8bdf6bb..66af2d1 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1915,8 +1915,12 @@ impl ThreadRequestProcessor {
+-        clear_memory_roots_contents(&self.config.codex_home)
+-            .await
+-            .map_err(|err| {
+-                internal_error(format!(
+-                    "failed to clear memory directories under {}: {err}",
+-                    self.config.codex_home.display()
+-                ))
+-            })?;
++        clear_memory_roots_contents(&codex_config::memory_root::base(
++            &self.config.memories,
++            &self.config.codex_home,
++        ))
++        .await
++        .map_err(|err| {
++            internal_error(format!(
++                "failed to clear memory directories under {}: {err}",
++                codex_config::memory_root::base(&self.config.memories, &self.config.codex_home)
++                    .display()
++            ))
++        })?;
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+index 8d062a2..d50a661 100644
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -2138 +2138,5 @@ async fn run_debug_clear_memories_command(
+-    clear_memory_roots_contents(&config.codex_home).await?;
++    clear_memory_roots_contents(&codex_config::memory_root::base(
++        &config.memories,
++        &config.codex_home,
++    ))
++    .await?;
+@@ -2147 +2151 @@ async fn run_debug_clear_memories_command(
+-        config.codex_home.display()
++        codex_config::memory_root::base(&config.memories, &config.codex_home).display()
+diff --git a/codex-rs/config/src/lib.rs b/codex-rs/config/src/lib.rs
+index b51ad2f..42470cd 100644
+--- a/codex-rs/config/src/lib.rs
++++ b/codex-rs/config/src/lib.rs
+@@ -27,0 +28 @@ mod mcp_types;
++pub mod memory_root;
+diff --git a/codex-rs/config/src/memory_root.rs b/codex-rs/config/src/memory_root.rs
+new file mode 100644
+index 0000000..e5e9d11
+--- /dev/null
++++ b/codex-rs/config/src/memory_root.rs
+@@ -0,0 +1,82 @@
++//! Versioned native memory storage, independent of the account credential locator.
++
++use crate::types::MemoriesConfig;
++use codex_protocol::MemoryVersion;
++use codex_utils_absolute_path::AbsolutePathBuf;
++use serde::Deserialize;
++use serde::Deserializer;
++use serde::de::Error;
++use std::path::PathBuf;
++
++pub fn base(config: &MemoriesConfig, codex_home: &AbsolutePathBuf) -> AbsolutePathBuf {
++    config.root.clone().unwrap_or_else(|| codex_home.clone())
++}
++
++pub fn for_version(
++    config: &MemoriesConfig,
++    codex_home: &AbsolutePathBuf,
++    version: MemoryVersion,
++) -> AbsolutePathBuf {
++    base(config, codex_home).join(version.directory_name())
++}
++
++pub(crate) fn deserialize_root<'de, D>(deserializer: D) -> Result<Option<AbsolutePathBuf>, D::Error>
++where
++    D: Deserializer<'de>,
++{
++    Option::<PathBuf>::deserialize(deserializer)?
++        .map(|path| {
++            if !path.is_absolute() {
++                return Err(D::Error::custom(
++                    "memories.root must be an explicit absolute path",
++                ));
++            }
++            AbsolutePathBuf::from_absolute_path_checked(path).map_err(D::Error::custom)
++        })
++        .transpose()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::types::MemoriesToml;
++    use codex_utils_absolute_path::test_support::PathExt;
++
++    #[test]
++    fn default_and_explicit_bases_preserve_both_version_namespaces() {
++        let account = tempfile::tempdir().unwrap();
++        let isolated = tempfile::tempdir().unwrap();
++        let home = account.path().abs();
++        let configured = MemoriesConfig {
++            root: Some(isolated.path().abs()),
++            dual_write: true,
++            ..Default::default()
++        };
++        for version in [MemoryVersion::V1, MemoryVersion::V2] {
++            assert_eq!(
++                for_version(&MemoriesConfig::default(), &home, version),
++                home.join(version.directory_name())
++            );
++            assert_eq!(
++                for_version(&configured, &home, version),
++                isolated.path().abs().join(version.directory_name())
++            );
++        }
++        assert_eq!(configured.version, MemoryVersion::V1);
++        assert!(configured.dual_write);
++        assert!(!isolated.path().join("memories").exists());
++        assert!(!account.path().join("memories").exists());
++    }
++
++    #[test]
++    fn rejects_relative_or_home_expanded_root_even_with_a_deserialization_base() {
++        let dir = tempfile::tempdir().unwrap();
++        let _guard = codex_utils_absolute_path::AbsolutePathBufGuard::new(dir.path());
++        for path in ["relative", "../other", "~/memory", ""] {
++            assert!(toml::from_str::<MemoriesToml>(&format!("root = {path:?}")).is_err());
++        }
++        let parsed: MemoriesToml =
++            toml::from_str(&format!("root = {:?}", dir.path().display().to_string())).unwrap();
++        assert_eq!(MemoriesConfig::from(parsed).root, Some(dir.path().abs()));
++    }
++}
+diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
+index fab6fb2..ff80fca 100644
+--- a/codex-rs/config/src/types.rs
++++ b/codex-rs/config/src/types.rs
+@@ -319,0 +320,3 @@ pub struct MemoriesToml {
++    /// Optional absolute base for versioned memory directories; does not relocate credentials.
++    #[serde(default, deserialize_with = "crate::memory_root::deserialize_root")]
++    pub root: Option<AbsolutePathBuf>,
+@@ -356,0 +360 @@ pub struct MemoriesConfig {
++    pub root: Option<AbsolutePathBuf>,
+@@ -375,0 +380 @@ impl Default for MemoriesConfig {
++            root: None,
+@@ -397,0 +403 @@ impl From<MemoriesToml> for MemoriesConfig {
++            root: toml.root,
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 5864a5d..cfdd1fa 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -2607,0 +2608,9 @@
++        "root": {
++          "allOf": [
++            {
++              "$ref": "#/definitions/AbsolutePathBuf"
++            }
++          ],
++          "default": null,
++          "description": "Optional absolute base for versioned memory directories; does not relocate credentials."
++        },
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index 806bd80..186ccf6 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -53,0 +54,36 @@ use codex_config::types::MemoriesToml;
++
++#[tokio::test]
++async fn w13_memory_root_explicit_memory_base_retains_account_home_and_selected_version() {
++    let home = tempdir().unwrap();
++    let cwd = tempdir().unwrap();
++    let isolated = tempdir().unwrap();
++    let config = Config::load_from_base_config_with_overrides(
++        ConfigToml {
++            memories: Some(MemoriesToml {
++                root: Some(isolated.path().abs()),
++                version: Some(codex_protocol::MemoryVersion::V2),
++                ..Default::default()
++            }),
++            ..Default::default()
++        },
++        ConfigOverrides {
++            cwd: Some(cwd.path().to_path_buf()),
++            ..Default::default()
++        },
++        home.path().abs(),
++    )
++    .await
++    .unwrap();
++    assert_eq!(config.codex_home, home.path().abs());
++    assert_eq!(config.memories.version, codex_protocol::MemoryVersion::V2);
++    assert_eq!(
++        codex_config::memory_root::for_version(
++            &config.memories,
++            &config.codex_home,
++            config.memories.version
++        ),
++        isolated.path().abs().join("memories_v2")
++    );
++    assert!(!isolated.path().join("memories_v2").exists());
++    assert!(!home.path().join("memories_v2").exists());
++}
+@@ -340,0 +377 @@ consolidation_model = "gpt-5.2"
++            root: None,
+@@ -368,0 +406 @@ consolidation_model = "gpt-5.2"
++            root: None,
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 1eb2cdf..e1958f1 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -37,0 +38 @@ use codex_config::loader::project_trust_key;
++pub use codex_config::memory_root;
+@@ -3527 +3528 @@ impl Config {
+-        let memories_root = codex_home.join(memories_config.version.directory_name());
++        let memories_root = codex_config::memory_root::for_version(&memories_config, &codex_home, memories_config.version);
+diff --git a/codex-rs/ext/memories/src/extension.rs b/codex-rs/ext/memories/src/extension.rs
+index 3db27e4..a5bcae9 100644
+--- a/codex-rs/ext/memories/src/extension.rs
++++ b/codex-rs/ext/memories/src/extension.rs
+@@ -41 +41 @@ pub(crate) struct MemoriesExtensionConfig {
+-    pub(crate) codex_home: AbsolutePathBuf,
++    pub(crate) memory_base: AbsolutePathBuf,
+@@ -50 +50,4 @@ impl MemoriesExtensionConfig {
+-            codex_home: config.codex_home.clone(),
++            memory_base: codex_core::config::memory_root::base(
++                &config.memories,
++                &config.codex_home,
++            ),
+@@ -71 +74 @@ impl ContextContributor for MemoriesExtension {
+-                build_memory_tool_developer_instructions(&config.codex_home, config.version).await
++                build_memory_tool_developer_instructions(&config.memory_base, config.version).await
+@@ -129,0 +133 @@ impl ConfigContributor<Config> for MemoriesExtension {
++            config.memory_base = previous.memory_base.clone();
+@@ -153 +157 @@ impl ToolContributor for MemoriesExtension {
+-                    .codex_home
++                    .memory_base
+@@ -172,0 +177,92 @@ pub fn install(
++
++#[cfg(test)]
++mod isolated_root_tests {
++    use super::*;
++    use codex_extension_api::NoopTurnItemEmitter;
++    use codex_extension_api::ToolCall;
++    use codex_extension_api::ToolCallSource;
++    use codex_extension_api::ToolName;
++    use codex_extension_api::ToolPayload;
++    use codex_utils_output_truncation::TruncationPolicy;
++
++    #[tokio::test]
++    async fn w13_memory_root_native_note_write_stays_in_initial_namespace_after_config_change() {
++        let account = tempfile::tempdir().unwrap();
++        let cwd = tempfile::tempdir().unwrap();
++        let first = tempfile::tempdir().unwrap();
++        let second = tempfile::tempdir().unwrap();
++        let mut config = codex_core::config::ConfigBuilder::default()
++            .codex_home(account.path().to_path_buf())
++            .fallback_cwd(Some(cwd.path().to_path_buf()))
++            .build()
++            .await
++            .unwrap();
++        config
++            .features
++            .enable(Feature::MemoryTool)
++            .expect("enable fixture memory feature");
++        config.memories.dedicated_tools = true;
++        config.memories.use_memories = true;
++        config.memories.root = Some(AbsolutePathBuf::from_absolute_path(first.path()).unwrap());
++        let extension = MemoriesExtension::default();
++        let session = ExtensionData::new("session");
++        for version in [MemoryVersion::V1, MemoryVersion::V2] {
++            config.memories.version = version;
++            let thread = ExtensionData::new("thread");
++            thread.insert(MemoriesExtensionConfig::from_config(&config));
++            let mut changed = config.clone();
++            changed.memories.root =
++                Some(AbsolutePathBuf::from_absolute_path(second.path()).unwrap());
++            changed.memories.version = if version == MemoryVersion::V1 {
++                MemoryVersion::V2
++            } else {
++                MemoryVersion::V1
++            };
++            extension.on_config_changed(&session, &thread, &config, &changed);
++            let tool_name = ToolName::namespaced(
++                crate::MEMORY_TOOLS_NAMESPACE,
++                crate::ADD_AD_HOC_NOTE_TOOL_NAME,
++            );
++            let tool = extension
++                .tools(&session, &thread)
++                .into_iter()
++                .find(|tool| tool.tool_name() == tool_name)
++                .unwrap();
++            let payload = ToolPayload::Function { arguments: serde_json::json!({
++                "filename": "2026-10-19T00-00-00-isolated-root.md", "note": "isolated note sentinel"
++            }).to_string() };
++            tool.handle(ToolCall {
++                turn_id: "turn-1".to_string(),
++                call_id: "call-1".to_string(),
++                tool_name,
++                model: "gpt-test".to_string(),
++                codex_turn_metadata: None,
++                truncation_policy: TruncationPolicy::Bytes(1024),
++                source: ToolCallSource::Direct,
++                conversation_history: codex_extension_api::ConversationHistory::default(),
++                turn_item_emitter: Arc::new(NoopTurnItemEmitter),
++                environments: Vec::new(),
++                payload,
++            })
++            .await
++            .unwrap();
++            assert_eq!(
++                tokio::fs::read_to_string(
++                    first
++                        .path()
++                        .join(version.directory_name())
++                        .join("extensions/ad_hoc/notes/2026-10-19T00-00-00-isolated-root.md")
++                )
++                .await
++                .unwrap(),
++                "isolated note sentinel"
++            );
++            assert!(!account.path().join(version.directory_name()).exists());
++            assert!(!second.path().join(version.directory_name()).exists());
++            // Revocation still applies even though the original namespace is retained.
++            changed.memories.use_memories = false;
++            extension.on_config_changed(&session, &thread, &config, &changed);
++            assert!(extension.tools(&session, &thread).is_empty());
++        }
++    }
++}
+diff --git a/codex-rs/ext/memories/src/prompts_tests.rs b/codex-rs/ext/memories/src/prompts_tests.rs
+index a2267f3..45a0e3b 100644
+--- a/codex-rs/ext/memories/src/prompts_tests.rs
++++ b/codex-rs/ext/memories/src/prompts_tests.rs
+@@ -6,0 +7,45 @@ use tokio::fs as tokio_fs;
++#[tokio::test]
++async fn w13_memory_root_isolated_base_has_no_fallback_to_account_or_other_memory_version() {
++    let account = tempdir().unwrap();
++    let isolated = tempdir().unwrap();
++    let home = AbsolutePathBuf::from_absolute_path(account.path()).unwrap();
++    let memory_base = AbsolutePathBuf::from_absolute_path(isolated.path()).unwrap();
++    for version in [MemoryVersion::V1, MemoryVersion::V2] {
++        tokio_fs::create_dir_all(home.join(version.directory_name()))
++            .await
++            .unwrap();
++        tokio_fs::write(
++            home.join(version.directory_name())
++                .join("memory_summary.md"),
++            "ACCOUNT_NEGATIVE_SENTINEL",
++        )
++        .await
++        .unwrap();
++    }
++    assert!(
++        build_memory_tool_developer_instructions(&memory_base, MemoryVersion::V1)
++            .await
++            .is_none()
++    );
++    for version in [MemoryVersion::V1, MemoryVersion::V2] {
++        let root = memory_base.join(version.directory_name());
++        tokio_fs::create_dir_all(&root).await.unwrap();
++        let selected = format!("ISOLATED_{version:?}_SENTINEL");
++        tokio_fs::write(root.join("memory_summary.md"), &selected)
++            .await
++            .unwrap();
++        let instructions = build_memory_tool_developer_instructions(&memory_base, version)
++            .await
++            .unwrap();
++        assert!(instructions.contains(&selected));
++        assert!(instructions.contains(&root.display().to_string()));
++        assert!(!instructions.contains("ACCOUNT_NEGATIVE_SENTINEL"));
++        let other = if version == MemoryVersion::V1 {
++            MemoryVersion::V2
++        } else {
++            MemoryVersion::V1
++        };
++        assert!(!instructions.contains(&format!("ISOLATED_{other:?}_SENTINEL")));
++    }
++}
++
+diff --git a/codex-rs/ext/memories/src/tests.rs b/codex-rs/ext/memories/src/tests.rs
+index a4f780d..b440997 100644
+--- a/codex-rs/ext/memories/src/tests.rs
++++ b/codex-rs/ext/memories/src/tests.rs
+@@ -66 +66 @@ fn tools_are_not_contributed_when_disabled() {
+-        codex_home: test_path_buf("/tmp/codex-home").abs(),
++        memory_base: test_path_buf("/tmp/codex-home").abs(),
+@@ -84 +84 @@ fn tools_are_not_contributed_when_dedicated_tools_disabled() {
+-        codex_home: test_path_buf("/tmp/codex-home").abs(),
++        memory_base: test_path_buf("/tmp/codex-home").abs(),
+@@ -102 +102 @@ fn tools_are_contributed_when_enabled_with_dedicated_tools() {
+-        codex_home: test_path_buf("/tmp/codex-home").abs(),
++        memory_base: test_path_buf("/tmp/codex-home").abs(),
+@@ -132 +132 @@ fn install_registers_dedicated_tool_contributor() {
+-        codex_home: test_path_buf("/tmp/codex-home").abs(),
++        memory_base: test_path_buf("/tmp/codex-home").abs(),
+@@ -193 +193 @@ async fn prompt_contribution_uses_memory_summary_when_enabled() {
+-        codex_home: tempdir.path().abs(),
++        memory_base: tempdir.path().abs(),
+diff --git a/codex-rs/external-agent-migration/src/detect/mod.rs b/codex-rs/external-agent-migration/src/detect/mod.rs
+index 15f172c..8520c68 100644
+--- a/codex-rs/external-agent-migration/src/detect/mod.rs
++++ b/codex-rs/external-agent-migration/src/detect/mod.rs
+@@ -62 +62 @@ impl ExternalAgentConfigService {
+-            && let Some(item) = memory::detect(&self.codex_home, &self.external_agent_home)?
++            && let Some(item) = memory::detect(&self.memory_base, &self.external_agent_home)?
+diff --git a/codex-rs/external-agent-migration/src/service.rs b/codex-rs/external-agent-migration/src/service.rs
+index 129ee8f..6ee3a51 100644
+--- a/codex-rs/external-agent-migration/src/service.rs
++++ b/codex-rs/external-agent-migration/src/service.rs
+@@ -69,0 +70 @@ pub struct ExternalAgentConfigService {
++    pub(super) memory_base: PathBuf,
+@@ -89,0 +91 @@ impl ExternalAgentConfigService {
++            memory_base: codex_home.clone(),
+@@ -106,0 +109 @@ impl ExternalAgentConfigService {
++            memory_base: self.memory_base.clone(),
+@@ -116,0 +120,6 @@ impl ExternalAgentConfigService {
++    pub fn with_memory_base(&self, memory_base: PathBuf) -> Self {
++        let mut service = self.clone();
++        service.memory_base = memory_base;
++        service
++    }
++
+@@ -161,0 +171 @@ impl ExternalAgentConfigService {
++            memory_base: codex_home.clone(),
+@@ -402 +412 @@ impl ExternalAgentConfigService {
+-                            &self.codex_home,
++                            &self.memory_base,
+@@ -413 +423 @@ impl ExternalAgentConfigService {
+-                        let target_path = memory_import::resources_root(&self.codex_home);
++                        let target_path = memory_import::resources_root(&self.memory_base);
+diff --git a/codex-rs/external-agent-migration/src/service_tests/memory.rs b/codex-rs/external-agent-migration/src/service_tests/memory.rs
+index 5504a85..cb3c647 100644
+--- a/codex-rs/external-agent-migration/src/service_tests/memory.rs
++++ b/codex-rs/external-agent-migration/src/service_tests/memory.rs
+@@ -3,0 +4,47 @@ use pretty_assertions::assert_eq;
++#[tokio::test]
++async fn w13_memory_root_memory_detection_uses_selected_base_after_migration_source_selection() {
++    let root = TempDir::new().unwrap();
++    let account = root.path().join("account");
++    let isolated = root.path().join("isolated");
++    let external = root.path().join("external");
++    let project = external.join("projects/fictional-project");
++    let cwd = root.path().join("fictional-cwd");
++    fs::create_dir_all(project.join("memory")).unwrap();
++    fs::create_dir_all(&cwd).unwrap();
++    fs::create_dir_all(&account).unwrap();
++    fs::write(account.join("auth.json"), "fictional credential sentinel").unwrap();
++    fs::write(project.join("memory/MEMORY.md"), "fictional project memory").unwrap();
++    fs::write(
++        project.join("session.jsonl"),
++        serde_json::json!({
++            "type": "user", "cwd": cwd, "timestamp": "2026-07-13T00:00:00Z",
++            "message": {"content": "fictional session"}
++        })
++        .to_string(),
++    )
++    .unwrap();
++    let service = service_for_paths(external, account.clone())
++        .with_memory_base(isolated.clone())
++        .with_migration_source(None);
++    let items = service
++        .detect(ExternalAgentConfigDetectOptions {
++            include_home: true,
++            include_memory: true,
++            cwds: None,
++        })
++        .await
++        .unwrap();
++    let memory = items
++        .iter()
++        .find(|item| item.item_type == ExternalAgentConfigMigrationItemType::Memory)
++        .unwrap();
++    assert!(memory.description.contains(&isolated.display().to_string()));
++    assert!(!memory.description.contains(&account.display().to_string()));
++    assert_eq!(service.codex_home(), account.as_path());
++    assert_eq!(
++        fs::read_to_string(account.join("auth.json")).unwrap(),
++        "fictional credential sentinel"
++    );
++    assert!(!account.join("memories").exists());
++}
++
+diff --git a/codex-rs/memories/write/src/control.rs b/codex-rs/memories/write/src/control.rs
+index 9d0da1a..e4ae050 100644
+--- a/codex-rs/memories/write/src/control.rs
++++ b/codex-rs/memories/write/src/control.rs
+@@ -51,0 +52,59 @@ mod tests {
++    #[tokio::test]
++    async fn w13_memory_root_isolated_reset_preserves_credential_and_original_memory_sentinels() {
++        let account = tempdir().unwrap();
++        let isolated = tempdir().unwrap();
++        tokio::fs::write(
++            account.path().join("auth.json"),
++            "fictional credential sentinel",
++        )
++        .await
++        .unwrap();
++        for name in ["memories", "memories_v2", "memories_extensions"] {
++            tokio::fs::create_dir_all(account.path().join(name))
++                .await
++                .unwrap();
++            tokio::fs::write(
++                account.path().join(name).join("keep.txt"),
++                "account memory sentinel",
++            )
++            .await
++            .unwrap();
++            tokio::fs::create_dir_all(isolated.path().join(name))
++                .await
++                .unwrap();
++            tokio::fs::write(
++                isolated.path().join(name).join("remove.txt"),
++                "isolated memory sentinel",
++            )
++            .await
++            .unwrap();
++        }
++        let home =
++            codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(account.path()).unwrap();
++        let config = codex_config::types::MemoriesConfig {
++            root: Some(
++                codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(isolated.path())
++                    .unwrap(),
++            ),
++            ..Default::default()
++        };
++        clear_memory_roots_contents(&codex_config::memory_root::base(&config, &home))
++            .await
++            .unwrap();
++        assert_eq!(
++            tokio::fs::read_to_string(account.path().join("auth.json"))
++                .await
++                .unwrap(),
++            "fictional credential sentinel"
++        );
++        for name in ["memories", "memories_v2", "memories_extensions"] {
++            assert_eq!(
++                tokio::fs::read_to_string(account.path().join(name).join("keep.txt"))
++                    .await
++                    .unwrap(),
++                "account memory sentinel"
++            );
++            assert!(!isolated.path().join(name).join("remove.txt").exists());
++        }
++    }
++
+diff --git a/codex-rs/memories/write/src/phase2.rs b/codex-rs/memories/write/src/phase2.rs
+index d6d245f..ad16181 100644
+--- a/codex-rs/memories/write/src/phase2.rs
++++ b/codex-rs/memories/write/src/phase2.rs
+@@ -60,3 +60,5 @@ pub async fn run(
+-    let root = config
+-        .codex_home
+-        .join(config.memories.version.directory_name());
++    let root = codex_config::memory_root::for_version(
++        &config.memories,
++        &config.codex_home,
++        config.memories.version,
++    );
+@@ -299,3 +301,5 @@ mod agent {
+-        let root = config
+-            .codex_home
+-            .join(config.memories.version.directory_name());
++        let root = codex_config::memory_root::for_version(
++            &config.memories,
++            &config.codex_home,
++            config.memories.version,
++        );
+diff --git a/codex-rs/memories/write/src/phase2_workspace_roots_tests.rs b/codex-rs/memories/write/src/phase2_workspace_roots_tests.rs
+index 0b0c7ba..13d9e57 100644
+--- a/codex-rs/memories/write/src/phase2_workspace_roots_tests.rs
++++ b/codex-rs/memories/write/src/phase2_workspace_roots_tests.rs
+@@ -10,0 +11,44 @@ use tempfile::TempDir;
++#[tokio::test]
++async fn w13_memory_root_consolidation_config_binds_only_isolated_version() {
++    let account = TempDir::new().unwrap();
++    let cwd = TempDir::new().unwrap();
++    let isolated = TempDir::new().unwrap();
++    let mut config = codex_core::config::ConfigBuilder::default()
++        .codex_home(account.path().to_path_buf())
++        .fallback_cwd(Some(cwd.path().to_path_buf()))
++        .build()
++        .await
++        .unwrap();
++    config.memories.root = Some(
++        codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(isolated.path()).unwrap(),
++    );
++    let provider = create_model_provider(config.model_provider.clone(), None);
++    for version in [
++        codex_protocol::MemoryVersion::V1,
++        codex_protocol::MemoryVersion::V2,
++    ] {
++        config.memories.version = version;
++        let worker = agent::get_config(
++            &config,
++            config.permissions.effective_permission_profile(),
++            provider.as_ref(),
++        )
++        .unwrap();
++        let expected = config
++            .memories
++            .root
++            .as_ref()
++            .unwrap()
++            .join(version.directory_name());
++        assert_eq!(worker.cwd, expected);
++        assert_eq!(worker.workspace_roots, vec![expected]);
++        assert_eq!(worker.codex_home, config.codex_home);
++        assert!(!worker.memories.generate_memories);
++        assert!(!worker.memories.use_memories);
++        assert!(worker.ephemeral);
++    }
++    // Constructing the worker config is not spawning it, and creates no memory artifacts.
++    assert!(!isolated.path().join("memories").exists());
++    assert!(!isolated.path().join("memories_v2").exists());
++}
++
+diff --git a/codex-rs/memories/write/src/start.rs b/codex-rs/memories/write/src/start.rs
+index ebd0b99..ac229f4 100644
+--- a/codex-rs/memories/write/src/start.rs
++++ b/codex-rs/memories/write/src/start.rs
+@@ -64,3 +64,5 @@ pub fn start_memories_startup_task(
+-            let root = config
+-                .codex_home
+-                .join(config.memories.version.directory_name());
++            let root = codex_config::memory_root::for_version(
++                &config.memories,
++                &config.codex_home,
++                config.memories.version,
++            );

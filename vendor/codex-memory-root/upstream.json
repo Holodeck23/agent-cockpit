@@ -15,8 +15,15 @@
   "candidateBuilt": false,
   "installedRuntimeChanged": false,
   "role": "Source/provenance pin only; candidate implementation and qualification are separate",
-  "patchStatus": "IN_PROGRESS_NOT_ADOPTED",
+  "patchStatus": "SOURCE_TESTED_CANDIDATE_UNBUILT",
   "toolchainInstallAuthorized": true,
   "installedRustForCandidate": "1.95.0",
-  "globalDefaultRustChanged": false
+  "globalDefaultRustChanged": false,
+  "candidateSourceCommit": "5c9cd072b52fd6dc32f5f8f3d7c07ae5ae32f0b2",
+  "patchSha256": "43d0df6d2521233916bee99ad0832b4551fc3ca2c0aa046c167588de58c065f5",
+  "patchAppliesToPristineSource": true,
+  "uniqueUnitTestsPassed": 375,
+  "warningFollowupTestsPassed": 2,
+  "externalLockEntriesUnchanged": true,
+  "patchFormat": "git binary diff with zero context; requires --unidiff-zero and pinned baseline/index"
 }
