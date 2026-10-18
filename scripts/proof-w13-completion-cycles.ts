@@ -12,6 +12,7 @@ import { claudeIdentityFrom } from '../server/agents/accounts/identity.ts'
 import { ParentCompletionOracle, ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
 import { assessClaudeMemoryRecall } from './lib/w13-claude-memory-oracle.ts'
 import { ClaudeSkillResourceOracle, requireNativeSkillCommand } from './lib/w13-claude-skill-oracle.ts'
+import { assessClaudeInstructions, type InstructionSource } from './lib/w13-claude-instruction-oracle.ts'
 
 const sha = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const cli = process.env.COCKPIT_W13_CLAUDE ?? ''
@@ -25,6 +26,7 @@ const fixtureCheckout = process.env.COCKPIT_W13_SYNTHETIC_CHECKOUT ?? 'primary'
 const skillCollision = process.env.COCKPIT_W13_SKILL_COLLISION === '1'
 const completionProbe = probeKind.startsWith('completion-')
 const memoryProbe = probeKind.startsWith('memory-')
+const instructionProbe = probeKind === 'instruction-precedence'
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', modelInputs: 0, identityQueries: 0,
   layer: 'direct-cli', accountAlias: 'authorized-managed', protocolBudgetMs: 15_000, launchBudgetMs: 60_000 }
@@ -33,15 +35,16 @@ let attempt: ProbeAttempt | undefined, oracle: ParentCompletionOracle | undefine
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
   assert.ok(['synthetic', 'primary', 'worktree'].includes(workspaceKind))
-  assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource'].includes(probeKind))
+  assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource', 'instruction-precedence'].includes(probeKind))
   assert.ok(['namespaced', 'bare'].includes(skillInvocation))
   assert.ok(['primary', 'worktree'].includes(fixtureCheckout))
   if (skillInvocation === 'bare' || skillCollision) {
     assert.equal(probeKind, 'skill-resource')
     assert.equal(workspaceKind, 'synthetic', 'Bare discovery must not write into the actual checkout')
   }
+  if (instructionProbe) assert.equal(workspaceKind, 'synthetic', 'Instruction fixtures must not modify a real checkout')
   receipt.scenario = completionProbe ? receipt.scenario : memoryProbe
-    ? 'native-claude-controlled-memory-recall' : 'native-claude-selected-skill-resource'
+    ? 'native-claude-controlled-memory-recall' : instructionProbe ? 'native-claude-instruction-precedence' : 'native-claude-selected-skill-resource'
   receipt.probeKind = probeKind
   const notBefore = Number(process.env.COCKPIT_W13_NOT_BEFORE_MS ?? '0')
   assert.ok(Number.isSafeInteger(notBefore) && notBefore >= 0 && Date.now() >= notBefore, 'Recorded provider reset has not arrived')
@@ -108,7 +111,7 @@ try {
     : workspaceKind === 'worktree' ? root : join(privateDir, 'project')
   if (workspaceKind === 'synthetic') mkdirSync(project, { mode: 0o700 })
   else assert.equal(realpathSync(project), project)
-  if (skillInvocation === 'bare' || skillCollision) {
+  if (skillInvocation === 'bare' || skillCollision || instructionProbe) {
     const gitHome = join(privateDir, 'git-home')
     mkdirSync(gitHome, { mode: 0o700 })
     const gitEnv = { HOME: gitHome, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
@@ -123,7 +126,7 @@ try {
     project = realpathSync(project)
     receipt.fixtureWorkspaceScope = fixtureCheckout
   }
-  const settingSources = skillInvocation === 'bare' || skillCollision ? 'project' : ''
+  const settingSources = skillInvocation === 'bare' || skillCollision || instructionProbe ? 'project' : ''
   if (settingSources) receipt.nativeSettingSources = ['owned-fixture-project']
   const settings = join(privateDir, 'settings.json'), mcp = join(privateDir, 'mcp.json')
   const memoryEnabled = probeKind === 'memory-on'
@@ -135,6 +138,36 @@ try {
     writeFileSync(join(privateDir, 'unselected-memory/MEMORY.md'), `# Unselected memory\nThe other W13 selection word is ${excluded}.\n`, { flag: 'wx', mode: 0o600 })
     prompt = 'What is the synthetic W13 selection word from auto memory? Reply with only that word, or UNKNOWN if absent. Do not use tools.'
     receipt.nativeMemorySelection = memoryEnabled ? 'on' : 'off'
+  }
+  let instructionSources: InstructionSource[] = [], instructionHashes: string[] = [], instructionWords: string[] = []
+  let instructionExcluded = '', instructionRootShared = '', instructionEvents = '', instructionHook = '', instructionHookHash = ''
+  if (instructionProbe) {
+    const base = project, nested = join(base, 'nested'), sibling = join(base, 'sibling')
+    mkdirSync(nested, { mode: 0o700 }); mkdirSync(sibling, { mode: 0o700 })
+    instructionWords = ['ROOT', 'IMPORT', 'NESTED', 'SHARED'].map((name) => `W13_INSTRUCTION_${name}_${randomUUID()}`)
+    instructionExcluded = `W13_INSTRUCTION_SIBLING_${randomUUID()}`
+    instructionRootShared = `W13_INSTRUCTION_ROOT_SHARED_${randomUUID()}`
+    instructionSources = [{ file: join(base, 'CLAUDE.md') },
+      { file: join(nested, 'selected-import.md'), parent: join(base, 'CLAUDE.md') }, { file: join(nested, 'CLAUDE.md') }]
+    const contents = [
+      `# Synthetic W13 instructions\nThe synthetic W13 root word is ${instructionWords[0]}.\nThe synthetic W13 shared selection word is ${instructionRootShared}.\n@nested/selected-import.md\n`,
+      `# Synthetic relative import\nThe synthetic W13 import word is ${instructionWords[1]}.\n`,
+      `# Synthetic nested instructions\nThe synthetic W13 nested word is ${instructionWords[2]}.\nThe synthetic W13 shared selection word is ${instructionWords[3]}.\n`,
+    ]
+    instructionSources.forEach((source, index) => writeFileSync(source.file, contents[index]!, { flag: 'wx', mode: 0o600 }))
+    writeFileSync(join(sibling, 'CLAUDE.md'), `The synthetic W13 sibling word is ${instructionExcluded}.\n`, { flag: 'wx', mode: 0o600 })
+    instructionHashes = instructionSources.map((source) => sha(source.file))
+    instructionEvents = join(privateDir, 'instruction-events-private.jsonl')
+    writeFileSync(instructionEvents, '', { flag: 'wx', mode: 0o600 })
+    instructionHook = join(privateDir, 'instruction-observer.cjs')
+    // Observer only: no provider output, file reads, network, or policy decisions. Native paths stay private.
+    writeFileSync(instructionHook, `const fs = require('node:fs'); let input = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', c => { input += c; if (input.length > 65536) process.exit(1); });\nprocess.stdin.on('end', () => { const event = JSON.parse(input); if (event.hook_event_name !== 'InstructionsLoaded') process.exit(1); fs.appendFileSync(process.argv[2], JSON.stringify(event) + '\\n', { mode: 0o600 }); });\n`, { flag: 'wx', mode: 0o600 })
+    instructionHookHash = sha(instructionHook)
+    attempt.writePrivate('instruction-sources-private.json', JSON.stringify({ sources: instructionSources.map((source, index) => ({ ...source, sha256: instructionHashes[index] })),
+      words: instructionWords, excluded: instructionExcluded, rootShared: instructionRootShared, hookSha256: instructionHookHash }, null, 2))
+    project = nested
+    prompt = 'Reply with the synthetic W13 root, import, nested, and shared selection words in that order, one per line, or UNKNOWN where absent. Do not use tools or start helpers.'
+    receipt.nativeInstructionScope = 'owned-fixture-project-relative-import-nested-cwd'
   }
   const skillMarker = `W13_SKILL_SELECTED_${randomUUID()}`, resourceMarker = `W13_RESOURCE_${randomUUID()}`
   const otherSkillMarker = `W13_SKILL_UNSELECTED_${randomUUID()}`, skillArgs = `--label "two words"  --target ${randomUUID()}`
@@ -176,7 +209,9 @@ try {
     receipt.skillInvocation = skillInvocation
     receipt.sameNameSkillCollision = skillCollision
   }
-  writeFileSync(settings, JSON.stringify({ hooks: {}, enabledPlugins: {}, autoMemoryEnabled: memoryEnabled,
+  const shellQuote = (value: string): string => "'" + value.replaceAll("'", "'\\''") + "'"
+  writeFileSync(settings, JSON.stringify({ hooks: instructionProbe ? { InstructionsLoaded: [{ hooks: [{ type: 'command',
+    command: [process.execPath, instructionHook, instructionEvents].map(shellQuote).join(' '), timeout: 5 }] }] } : {}, enabledPlugins: {}, autoMemoryEnabled: memoryEnabled,
     ...(memoryProbe ? { autoMemoryDirectory: join(privateDir, 'selected-memory') } : {}) }), { flag: 'wx', mode: 0o600 })
   writeFileSync(mcp, '{"mcpServers":{}}', { flag: 'wx', mode: 0o600 })
   const sessionId = randomUUID(), initId = randomUUID(), runId = randomUUID()
@@ -235,6 +270,12 @@ try {
       if (finished) return
       try {
         const message = JSON.parse(line)
+        if (instructionProbe && ['assistant', 'user'].includes(message.type)) {
+          assert.equal(message.session_id, sessionId)
+          assert.ok(!message.parent_tool_use_id, 'Unexpected helper in instruction probe')
+          assert.ok(!message.message?.content?.some?.((block: any) => ['tool_use', 'tool_result'].includes(block.type)),
+            'Instruction loading must not be established by model-directed file reads')
+        }
         skillOracle?.record(message)
         if (completionProbe) cycleOracle.observe(message)
         if (message.type === 'control_response') {
@@ -254,6 +295,11 @@ try {
               receipt.bothCollisionCommandsDiscoveredBeforeInput = true
             }
             receipt.skillDiscoveredBeforeInput = true
+          }
+          if (instructionProbe) {
+            instructionSources.forEach((source, index) => assert.equal(sha(source.file), instructionHashes[index]))
+            assert.equal(sha(instructionHook), instructionHookHash)
+            receipt.instructionSourcesBoundBeforeInput = true
           }
           initialized = true
           clearTimeout(initTimer)
@@ -289,6 +335,13 @@ try {
         } else if (message.type === 'result') {
           if (completionProbe) cycleOracle.complete(message)
           else if (skillOracle) receipt.skillObservation = skillOracle.complete(message, output.snapshot().toString('utf8'))
+          else if (instructionProbe) {
+            instructionSources.forEach((source, index) => assert.equal(sha(source.file), instructionHashes[index]))
+            assert.equal(sha(instructionHook), instructionHookHash)
+            const events = readFileSync(instructionEvents, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+            receipt.instructionObservation = assessClaudeInstructions(message, sessionId, instructionSources, events,
+              instructionWords, instructionRootShared, instructionExcluded, prompt, output.snapshot().toString('utf8'))
+          }
           else receipt.memoryObservation = assessClaudeMemoryRecall(message, sessionId, selected, excluded, prompt,
             memoryEnabled, output.snapshot().toString('utf8'))
           stop()
@@ -308,7 +361,7 @@ try {
   }
   receipt.verdict = probeKind === 'completion-second-rejection' ? 'PASS_NATIVE_SECOND_REJECTION_STOP'
     : completionProbe ? 'PASS_NATIVE_PARENT_CYCLE_MECHANISM'
-    : memoryProbe ? 'PASS_NATIVE_CONTROLLED_MEMORY_RECALL' : 'PASS_NATIVE_SELECTED_SKILL_AND_RESOURCE'
+    : memoryProbe ? 'PASS_NATIVE_CONTROLLED_MEMORY_RECALL' : instructionProbe ? 'OBSERVED_NATIVE_PROJECT_IMPORT_NESTED_LOADING' : 'PASS_NATIVE_SELECTED_SKILL_AND_RESOURCE'
 } catch (error) {
   receipt.error = 'Probe stopped; inspect private diagnostics before any retry'
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
@@ -322,6 +375,7 @@ try {
   receipt.finishedAt = new Date().toISOString()
   receipt.limitations = [completionProbe ? 'Parent Stop only; no subagent was started'
     : memoryProbe ? 'Synthetic selected auto-memory overlay only; no real memory copied or native writeback/lifecycle proof'
+      : instructionProbe ? 'Owned fictional root/import/nested instructions only; global/local rules and lifecycle remain open'
       : `Synthetic selected ${skillInvocation} skill and one read-only resource; no real user skill or executable dependency`, 'Mechanism feasibility, not production hook enforcement or cancellation',
     'Default/managed and primary/worktree matrix remains to qualify', 'Callback failure semantics are not claimed fail-closed',
     'No-session-persistence requested; provider-side retention is not controlled by this probe']
