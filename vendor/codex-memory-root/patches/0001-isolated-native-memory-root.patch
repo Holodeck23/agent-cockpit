@@ -583,9 +583,12 @@ index 8bdf6bb..66af2d1 100644
 +            ))
 +        })?;
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 8d062a2..d50a661 100644
+index 8d062a2..b7f16a7 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
+@@ -120 +120 @@ use codex_terminal_detection::TerminalName;
+-    version,
++    version = concat!(env!("CARGO_PKG_VERSION"), "-w13-memory-root.1"),
 @@ -2138 +2138,5 @@ async fn run_debug_clear_memories_command(
 -    clear_memory_roots_contents(&config.codex_home).await?;
 +    clear_memory_roots_contents(&codex_config::memory_root::base(
