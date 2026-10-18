@@ -15,6 +15,7 @@ const cli = process.env.COCKPIT_W13_CLAUDE ?? ''
 const evidence = process.env.COCKPIT_PROOF_DIR ?? ''
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const descriptor = process.env.COCKPIT_PROOF_CONTEXT ?? ''
+const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'synthetic'
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', modelInputs: 0, identityQueries: 0,
   layer: 'direct-cli', accountAlias: 'authorized-managed', protocolBudgetMs: 15_000, launchBudgetMs: 60_000 }
@@ -22,6 +23,9 @@ const output = new ProbeOutput()
 let attempt: ProbeAttempt | undefined, oracle: ParentCompletionOracle | undefined, ownedExited = false
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
+  assert.ok(['synthetic', 'primary', 'worktree'].includes(workspaceKind))
+  const notBefore = Number(process.env.COCKPIT_W13_NOT_BEFORE_MS ?? '0')
+  assert.ok(Number.isSafeInteger(notBefore) && notBefore >= 0 && Date.now() >= notBefore, 'Recorded provider reset has not arrived')
   assert.ok([cli, evidence, privateDir, descriptor].every(isAbsolute))
   const privateRoot = realpathSync(join(process.env.HOME ?? '', 'vault', 'clients')) + sep
   assert.ok(realpathSync(dirname(privateDir)).startsWith(privateRoot), 'Diagnostics must remain in the private vault')
@@ -34,43 +38,55 @@ try {
   const root = dirname(dirname(script))
   receipt.sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
   receipt.sourceIndexTree = execFileSync('git', ['write-tree'], { cwd: root, encoding: 'utf8' }).trim()
-  receipt.workspaceScope = 'isolated-synthetic-project'
+  receipt.workspaceScope = workspaceKind
   receipt.harnessSha256 = sha(script)
   receipt.oracleSha256 = sha(join(dirname(script), 'lib', 'w13-completion-probe.ts'))
   receipt.dependencyLockSha256 = sha(join(root, 'package-lock.json'))
-  const context = JSON.parse(readFileSync(descriptor, 'utf8')) as { accountId: string; literalProfileDir: string; canonicalProfileDir: string }
+  const context = JSON.parse(readFileSync(descriptor, 'utf8')) as { accountId: string; literalProfileDir: string; canonicalProfileDir: string;
+    accountMode?: 'default' | 'managed'; home?: string }
+  assert.ok(context.accountMode === undefined || ['default', 'managed'].includes(context.accountMode))
+  const accountMode = context.accountMode ?? 'managed'
+  receipt.accountAlias = accountMode === 'managed' ? 'authorized-managed' : 'native-default'
   assert.ok(typeof context.accountId === 'string' && context.accountId.length > 0)
   assert.ok(isAbsolute(context.literalProfileDir) && isAbsolute(context.canonicalProfileDir))
   const state = join(process.env.HOME ?? '', '.agent-cockpit')
-  type Account = { id: string; agent: string; mode: string; generation: number; identity?: { state: string; key?: string } }
+  type Account = { id: string; agent: string; mode: string; isolation: string; generation: number; identity?: { state: string; key?: string } }
   const selectedAccount = (): Account => {
     const registry = JSON.parse(readFileSync(join(state, 'accounts.json'), 'utf8')) as { accounts: Account[] }
     const rows = registry.accounts.filter((row) => row.id === context.accountId)
     assert.equal(rows.length, 1)
     const account = rows[0]!
-    assert.ok(account.agent === 'claude' && account.mode === 'managed' && account.identity?.state === 'known')
-    assert.ok(Number.isSafeInteger(account.generation) && account.generation >= 0)
+    assert.ok(account.agent === 'claude' && account.mode === accountMode && account.identity?.state === 'known')
+    assert.equal(account.isolation, accountMode === 'managed' ? 'CLAUDE_CONFIG_DIR' : 'none')
+    assert.ok(Number.isSafeInteger(account.generation) && account.generation >= 1)
     return account
   }
   const account = selectedAccount()
   // Use the literal established credential locator; never derive a substitute from realpath.
-  assert.equal(context.literalProfileDir, join(state, 'account-profiles', context.accountId))
+  if (accountMode === 'managed') assert.equal(context.literalProfileDir, join(state, 'account-profiles', context.accountId))
+  else {
+    assert.equal(context.accountId, 'default-claude')
+    assert.equal(context.home, process.env.HOME)
+    assert.equal(context.literalProfileDir, join(context.home!, '.claude'))
+  }
   assert.equal(realpathSync(context.literalProfileDir), context.canonicalProfileDir)
   const env: NodeJS.ProcessEnv = {}
   for (const name of ['HOME', 'USER', 'LOGNAME', 'PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL']) {
     if (process.env[name] !== undefined) env[name] = process.env[name]
   }
-  env.CLAUDE_CONFIG_DIR = context.literalProfileDir
+  if (accountMode === 'managed') env.CLAUDE_CONFIG_DIR = context.literalProfileDir
   const deadline = Date.now() + 60_000
   receipt.identityQueries = 1
   const identity = claudeIdentityFrom(execFileSync(cli, ['auth', 'status', '--json'],
-    { env, encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL', maxBuffer: 256 * 1024 }))
+    { env, encoding: 'utf8', timeout: 15_000, killSignal: 'SIGKILL', maxBuffer: 256 * 1024 }))
   assert.ok(identity.state === 'known' && identity.key === account.identity?.key, 'Selected account identity did not match')
   receipt.identityMatched = true
   receipt.accountGeneration = account.generation
   receipt.provider = { name: 'claude', version: '2.1.220', executableSha256: sha(cli), runtimeSha256: sha(process.execPath) }
-  const project = join(privateDir, 'project')
-  mkdirSync(project, { mode: 0o700 })
+  const project = workspaceKind === 'primary' ? join(dirname(dirname(root)), 'agent-cockpit')
+    : workspaceKind === 'worktree' ? root : join(privateDir, 'project')
+  if (workspaceKind === 'synthetic') mkdirSync(project, { mode: 0o700 })
+  else assert.equal(realpathSync(project), project)
   const settings = join(privateDir, 'settings.json'), mcp = join(privateDir, 'mcp.json')
   writeFileSync(settings, '{"hooks":{},"enabledPlugins":{},"autoMemoryEnabled":false}', { flag: 'wx', mode: 0o600 })
   writeFileSync(mcp, '{"mcpServers":{}}', { flag: 'wx', mode: 0o600 })
