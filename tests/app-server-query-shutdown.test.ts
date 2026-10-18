@@ -8,16 +8,18 @@ function fixture(answer: boolean) {
   const dir = mkdtempSync(join(tmpdir(), 'cockpit-query-shutdown-'))
   const executable = join(dir, 'codex')
   const pidFile = join(dir, 'pid')
+  const requestFile = join(dir, 'requests')
   writeFileSync(executable, `#!/usr/bin/perl
 use strict; use warnings; $| = 1;
 open(my $f, '>', '${pidFile}'); print $f $$; close $f;
 while (my $line = <STDIN>) {
+  open(my $requests, '>>', '${requestFile}'); print $requests $line; close $requests;
   if ($line =~ /"id":1,/) { print qq({"id":1,"result":{}}\n) }
   elsif ($line =~ /"id":2,/ && ${answer ? '1' : '0'}) { print qq({"id":2,"result":{"ok":true}}\n) }
 }
 `)
   chmodSync(executable, 0o755)
-  return { executable, pidFile }
+  return { executable, pidFile, requestFile }
 }
 
 const dead = (pid: number): boolean => {
@@ -31,6 +33,15 @@ it('does not return a query answer before its helper has exited', async () => {
   const f = fixture(true)
   const answer = await queryAppServer(f.executable, 'account/read', {}, { timeoutMs: 5_000 })
   expect(answer.result).toEqual({ ok: true })
+  expect(dead(Number(readFileSync(f.pidFile, 'utf8')))).toBe(true)
+})
+
+it.each([false, true])('preserves default protocol eligibility and explicitly opts in only when requested (%s)', async (enabled) => {
+  const f = fixture(true)
+  await queryAppServer(f.executable, 'memory/status', {}, { timeoutMs: 5_000, ...(enabled ? { experimentalApi: true } : {}) })
+  const messages = readFileSync(f.requestFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+  expect(messages[0].params.capabilities).toEqual(enabled ? { experimentalApi: true } : null)
+  expect(messages.find((message) => message.id === 2).method).toBe('memory/status')
   expect(dead(Number(readFileSync(f.pidFile, 'utf8')))).toBe(true)
 })
 

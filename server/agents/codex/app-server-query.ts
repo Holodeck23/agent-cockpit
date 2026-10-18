@@ -9,9 +9,9 @@ export interface AppServerAnswer {
   readonly error?: string
 }
 
-export type AppServerQuery = (executable: string, method: string, params: unknown, options: { env?: Readonly<Record<string, string>>; timeoutMs: number; signal?: AbortSignal }) => Promise<AppServerAnswer>
+export type AppServerQuery = (executable: string, method: string, params: unknown, options: { env?: Readonly<Record<string, string>>; timeoutMs: number; signal?: AbortSignal; experimentalApi?: boolean }) => Promise<AppServerAnswer>
 
-export const queryAppServer: AppServerQuery = (executable, method, params, { env, timeoutMs, signal }) =>
+export const queryAppServer: AppServerQuery = (executable, method, params, { env, timeoutMs, signal, experimentalApi }) =>
   new Promise((resolve) => {
     if (signal?.aborted) { resolve({ error: 'Cockpit is shutting down' }); return }
     let settled = false
@@ -52,7 +52,7 @@ export const queryAppServer: AppServerQuery = (executable, method, params, { env
         }
       }
     })
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '1' }, capabilities: null } })}\n`)
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '1' }, capabilities: experimentalApi ? { experimentalApi: true } : null } })}\n`)
   })
 
 /** One server owns its non-generating helpers, including probes still starting during Quit. */
