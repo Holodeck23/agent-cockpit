@@ -15,7 +15,9 @@ from pathlib import Path
 
 os.umask(0o077)
 root = Path(os.environ['COCKPIT_PROOF_PRIVATE_DIR']).resolve()
-context = json.loads((root / 'fixture-context-private.json').read_text())
+context_file = Path(os.environ.get('COCKPIT_PROOF_CONTEXT', str(root / 'fixture-context-private.json'))).resolve()
+assert context_file.parent == root
+context = json.loads(context_file.read_text())
 assert Path(context['project']).parent == root
 assert Path(context['env']['HOME']).parent == root and Path(context['env']['CODEX_HOME']).parent == root
 assert context['manifest']['cli'] == '74c6a6d263f40d65f99c27a815275f5b4ed0bcc2baecc396b4cf3255498bdfc0'
@@ -24,11 +26,15 @@ for key, file in {'cli': context['cli'], 'runtime': context['runtime'], 'callbac
                   'hooks': root / 'codex-home/hooks.json', 'config': root / 'codex-home/config.toml'}.items():
     with Path(file).open('rb') as source:
         assert hashlib.file_digest(source, 'sha256').hexdigest() == context['manifest'][key]
-log = (root / 'native-trust-terminal-private.log').open('xb')
+terminal_name = os.environ.get('COCKPIT_PROOF_TERMINAL_ATTEMPT', 'terminal-01')
+assert re.fullmatch(r'[a-z0-9-]{1,60}', terminal_name)
+terminal = root / terminal_name
+terminal.mkdir(mode=0o700)
+log = (terminal / 'native-trust-terminal-private.log').open('xb')
 pid, fd = pty.fork()
 if pid == 0:
     os.chdir(context['project'])
-    os.execve(context['cli'], [context['cli'], '--no-alt-screen'], context['env'])
+    os.execve(context['cli'], [context['cli'], '--no-daemon', '--no-alt-screen'], context['env'])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 0, 0))
 
 buffer = bytearray()
@@ -70,6 +76,7 @@ try:
                 text = re.sub(r'\x1b\][^\x07]*(?:\x07|\x1b\\)', '', text)
                 text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
                 text = text.replace(str(root), '<fixture>').replace(context['runtime'], '<pinned-node>')
+                text = re.sub(r"/Users/[^\s'\"<>]+", '<private-path>', text)
                 print(json.dumps({'screen': text[-9000:]}), flush=True)
             if command.get('quit'):
                 break
@@ -97,4 +104,4 @@ finally:
                 pass
             os.waitpid(pid, 0)
     log.close()
-    (root / 'native-trust-input-private.json').write_text(json.dumps({'inputs': commands, 'noDesktopControl': True}) + '\n')
+    (terminal / 'native-trust-input-private.json').write_text(json.dumps({'inputs': commands, 'noDesktopControl': True, 'sharedDaemonDisabled': True}) + '\n')
