@@ -97,6 +97,12 @@ function freeze<T>(value: T): Immutable<T> {
   return value as Immutable<T>
 }
 
+export function parseInputBinding(raw: unknown): InputBinding {
+  const parsed = bindingSchema.safeParse(raw)
+  if (!parsed.success) throw new InputEnvelopeError('INVALID_INPUT')
+  return freeze(parsed.data)
+}
+
 /** Parse at the trusted host boundary; parsing alone grants no execution authority. */
 export function parseInputEnvelope(raw: unknown): InputEnvelope {
   const parsed = envelopeSchema.safeParse(raw)
