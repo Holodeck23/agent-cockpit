@@ -22,6 +22,7 @@ const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'synthetic'
 const probeKind = process.env.COCKPIT_W13_PROBE_KIND ?? 'completion-cycles'
 const skillInvocation = process.env.COCKPIT_W13_SKILL_INVOCATION ?? 'namespaced'
 const fixtureCheckout = process.env.COCKPIT_W13_SYNTHETIC_CHECKOUT ?? 'primary'
+const skillCollision = process.env.COCKPIT_W13_SKILL_COLLISION === '1'
 const completionProbe = probeKind.startsWith('completion-')
 const memoryProbe = probeKind.startsWith('memory-')
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
@@ -35,7 +36,7 @@ try {
   assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource'].includes(probeKind))
   assert.ok(['namespaced', 'bare'].includes(skillInvocation))
   assert.ok(['primary', 'worktree'].includes(fixtureCheckout))
-  if (skillInvocation === 'bare') {
+  if (skillInvocation === 'bare' || skillCollision) {
     assert.equal(probeKind, 'skill-resource')
     assert.equal(workspaceKind, 'synthetic', 'Bare discovery must not write into the actual checkout')
   }
@@ -107,7 +108,7 @@ try {
     : workspaceKind === 'worktree' ? root : join(privateDir, 'project')
   if (workspaceKind === 'synthetic') mkdirSync(project, { mode: 0o700 })
   else assert.equal(realpathSync(project), project)
-  if (skillInvocation === 'bare') {
+  if (skillInvocation === 'bare' || skillCollision) {
     const gitHome = join(privateDir, 'git-home')
     mkdirSync(gitHome, { mode: 0o700 })
     const gitEnv = { HOME: gitHome, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
@@ -122,8 +123,8 @@ try {
     project = realpathSync(project)
     receipt.fixtureWorkspaceScope = fixtureCheckout
   }
-  const settingSources = skillInvocation === 'bare' ? 'project' : ''
-  if (skillInvocation === 'bare') receipt.nativeSettingSources = ['owned-fixture-project']
+  const settingSources = skillInvocation === 'bare' || skillCollision ? 'project' : ''
+  if (settingSources) receipt.nativeSettingSources = ['owned-fixture-project']
   const settings = join(privateDir, 'settings.json'), mcp = join(privateDir, 'mcp.json')
   const memoryEnabled = probeKind === 'memory-on'
   const selected = `W13MEM_SELECTED_${randomUUID()}`, excluded = `W13MEM_EXCLUDED_${randomUUID()}`
@@ -139,29 +140,41 @@ try {
   const otherSkillMarker = `W13_SKILL_UNSELECTED_${randomUUID()}`, skillArgs = `--label "two words"  --target ${randomUUID()}`
   let plugin = '', skillSource = '', resourceFile = '', skillSourceHash = '', resourceHash = ''
   if (probeKind === 'skill-resource') {
+    const skillDocument = (marker: string): string => `---\nname: w13-proof-skill\ndescription: Synthetic W13 native argument and resource proof.\n---\n\nUse Read exactly once to read reference.txt in this skill's base directory. Do not read any other file or use another tool.\nReply without code fences, exactly: ${marker}, then a newline, then the word from reference.txt, then a newline, then the exact invocation arguments below, preserving quotes and double spaces.\nInvocation arguments:\n<arguments>\n$ARGUMENTS\n</arguments>\n`
     for (const name of ['selected-plugin', 'unselected-plugin']) {
       const base = join(privateDir, name), skill = join(base, 'skills/w13-proof-skill')
       mkdirSync(join(base, '.claude-plugin'), { recursive: true, mode: 0o700 })
       mkdirSync(skill, { recursive: true, mode: 0o700 })
       writeFileSync(join(base, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'w13-proof-plugin', version: '1.0.0' }), { flag: 'wx', mode: 0o600 })
-      const marker = name === 'selected-plugin' ? skillMarker : otherSkillMarker
-      writeFileSync(join(skill, 'SKILL.md'), `---\nname: w13-proof-skill\ndescription: Synthetic W13 native argument and resource proof.\n---\n\nUse Read exactly once to read reference.txt in this skill's base directory. Do not read any other file or use another tool.\nReply without code fences, exactly: ${marker}, then a newline, then the word from reference.txt, then a newline, then the exact invocation arguments below, preserving quotes and double spaces.\nInvocation arguments:\n<arguments>\n$ARGUMENTS\n</arguments>\n`, { flag: 'wx', mode: 0o600 })
-      writeFileSync(join(skill, 'reference.txt'), (name === 'selected-plugin' ? resourceMarker : otherSkillMarker) + '\n', { flag: 'wx', mode: 0o600 })
+      const marker = name === 'selected-plugin' && !(skillCollision && skillInvocation === 'bare') ? skillMarker : otherSkillMarker
+      writeFileSync(join(skill, 'SKILL.md'), skillDocument(marker), { flag: 'wx', mode: 0o600 })
+      writeFileSync(join(skill, 'reference.txt'), (marker === skillMarker ? resourceMarker : otherSkillMarker) + '\n', { flag: 'wx', mode: 0o600 })
     }
     plugin = realpathSync(join(privateDir, 'selected-plugin'))
     skillSource = join(plugin, 'skills/w13-proof-skill/SKILL.md')
     resourceFile = join(plugin, 'skills/w13-proof-skill/reference.txt')
-    if (skillInvocation === 'bare') {
+    if (skillInvocation === 'bare' || skillCollision) {
       const bareSource = join(project, '.claude/skills/w13-proof-skill')
       mkdirSync(bareSource, { recursive: true, mode: 0o700 })
-      writeFileSync(join(bareSource, 'SKILL.md'), readFileSync(skillSource), { flag: 'wx', mode: 0o600 })
-      writeFileSync(join(bareSource, 'reference.txt'), readFileSync(resourceFile), { flag: 'wx', mode: 0o600 })
-      skillSource = join(bareSource, 'SKILL.md'); resourceFile = join(bareSource, 'reference.txt')
-      plugin = ''
+      writeFileSync(join(bareSource, 'SKILL.md'), skillDocument(skillInvocation === 'bare' ? skillMarker : otherSkillMarker), { flag: 'wx', mode: 0o600 })
+      writeFileSync(join(bareSource, 'reference.txt'), (skillInvocation === 'bare' ? resourceMarker : otherSkillMarker) + '\n', { flag: 'wx', mode: 0o600 })
+      if (skillCollision) {
+        attempt.writePrivate('collision-source-manifest-private.json', JSON.stringify([
+          { kind: 'plugin', file: skillSource, sha256: sha(skillSource), resource: resourceFile, resourceSha256: sha(resourceFile) },
+          { kind: 'bare', file: join(bareSource, 'SKILL.md'), sha256: sha(join(bareSource, 'SKILL.md')),
+            resource: join(bareSource, 'reference.txt'), resourceSha256: sha(join(bareSource, 'reference.txt')) },
+        ], null, 2))
+        receipt.collisionSourcesBoundPrivately = true
+      }
+      if (skillInvocation === 'bare') {
+        skillSource = join(bareSource, 'SKILL.md'); resourceFile = join(bareSource, 'reference.txt')
+        if (!skillCollision) plugin = ''
+      }
     }
     skillSourceHash = sha(skillSource); resourceHash = sha(resourceFile)
     prompt = `${skillInvocation === 'bare' ? '/w13-proof-skill' : '/w13-proof-plugin:w13-proof-skill'} ${skillArgs}`
     receipt.skillInvocation = skillInvocation
+    receipt.sameNameSkillCollision = skillCollision
   }
   writeFileSync(settings, JSON.stringify({ hooks: {}, enabledPlugins: {}, autoMemoryEnabled: memoryEnabled,
     ...(memoryProbe ? { autoMemoryDirectory: join(privateDir, 'selected-memory') } : {}) }), { flag: 'wx', mode: 0o600 })
@@ -235,6 +248,11 @@ try {
             assert.equal(sha(skillSource), skillSourceHash); assert.equal(sha(resourceFile), resourceHash)
             requireNativeSkillCommand(message.response.response?.commands,
               skillInvocation === 'bare' ? 'w13-proof-skill' : 'w13-proof-plugin:w13-proof-skill')
+            if (skillCollision) {
+              requireNativeSkillCommand(message.response.response?.commands, 'w13-proof-skill')
+              requireNativeSkillCommand(message.response.response?.commands, 'w13-proof-plugin:w13-proof-skill')
+              receipt.bothCollisionCommandsDiscoveredBeforeInput = true
+            }
             receipt.skillDiscoveredBeforeInput = true
           }
           initialized = true
