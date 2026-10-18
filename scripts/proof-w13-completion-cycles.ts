@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { createInterface } from 'node:readline'
 import { claudeIdentityFrom } from '../server/agents/accounts/identity.ts'
 import { ParentCompletionOracle, ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
+import { assessClaudeMemoryRecall } from './lib/w13-claude-memory-oracle.ts'
 
 const sha = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const cli = process.env.COCKPIT_W13_CLAUDE ?? ''
@@ -16,6 +17,7 @@ const evidence = process.env.COCKPIT_PROOF_DIR ?? ''
 const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const descriptor = process.env.COCKPIT_PROOF_CONTEXT ?? ''
 const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'synthetic'
+const probeKind = process.env.COCKPIT_W13_PROBE_KIND ?? 'completion-cycles'
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', modelInputs: 0, identityQueries: 0,
   layer: 'direct-cli', accountAlias: 'authorized-managed', protocolBudgetMs: 15_000, launchBudgetMs: 60_000 }
@@ -24,6 +26,9 @@ let attempt: ProbeAttempt | undefined, oracle: ParentCompletionOracle | undefine
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
   assert.ok(['synthetic', 'primary', 'worktree'].includes(workspaceKind))
+  assert.ok(['completion-cycles', 'memory-on', 'memory-off'].includes(probeKind))
+  receipt.scenario = probeKind === 'completion-cycles' ? receipt.scenario : 'native-claude-controlled-memory-recall'
+  receipt.probeKind = probeKind
   const notBefore = Number(process.env.COCKPIT_W13_NOT_BEFORE_MS ?? '0')
   assert.ok(Number.isSafeInteger(notBefore) && notBefore >= 0 && Date.now() >= notBefore, 'Recorded provider reset has not arrived')
   assert.ok([cli, evidence, privateDir, descriptor].every(isAbsolute))
@@ -41,6 +46,7 @@ try {
   receipt.workspaceScope = workspaceKind
   receipt.harnessSha256 = sha(script)
   receipt.oracleSha256 = sha(join(dirname(script), 'lib', 'w13-completion-probe.ts'))
+  if (probeKind !== 'completion-cycles') receipt.memoryOracleSha256 = sha(join(dirname(script), 'lib', 'w13-claude-memory-oracle.ts'))
   receipt.dependencyLockSha256 = sha(join(root, 'package-lock.json'))
   const context = JSON.parse(readFileSync(descriptor, 'utf8')) as { accountId: string; literalProfileDir: string; canonicalProfileDir: string;
     accountMode?: 'default' | 'managed'; home?: string }
@@ -88,13 +94,26 @@ try {
   if (workspaceKind === 'synthetic') mkdirSync(project, { mode: 0o700 })
   else assert.equal(realpathSync(project), project)
   const settings = join(privateDir, 'settings.json'), mcp = join(privateDir, 'mcp.json')
-  writeFileSync(settings, '{"hooks":{},"enabledPlugins":{},"autoMemoryEnabled":false}', { flag: 'wx', mode: 0o600 })
+  const memoryEnabled = probeKind === 'memory-on'
+  const selected = `W13MEM_SELECTED_${randomUUID()}`, excluded = `W13MEM_EXCLUDED_${randomUUID()}`
+  let prompt = 'Reply with READY. Do not use tools or start helpers.'
+  if (probeKind !== 'completion-cycles') {
+    for (const name of ['selected-memory', 'unselected-memory']) mkdirSync(join(privateDir, name), { mode: 0o700 })
+    writeFileSync(join(privateDir, 'selected-memory/MEMORY.md'), `# Synthetic memory\nThe synthetic W13 selection word is ${selected}.\n`, { flag: 'wx', mode: 0o600 })
+    writeFileSync(join(privateDir, 'unselected-memory/MEMORY.md'), `# Unselected memory\nThe other W13 selection word is ${excluded}.\n`, { flag: 'wx', mode: 0o600 })
+    prompt = 'What is the synthetic W13 selection word from auto memory? Reply with only that word, or UNKNOWN if absent. Do not use tools.'
+    receipt.nativeMemorySelection = memoryEnabled ? 'on' : 'off'
+  }
+  writeFileSync(settings, JSON.stringify({ hooks: {}, enabledPlugins: {}, autoMemoryEnabled: memoryEnabled,
+    ...(probeKind !== 'completion-cycles' ? { autoMemoryDirectory: join(privateDir, 'selected-memory') } : {}) }), { flag: 'wx', mode: 0o600 })
   writeFileSync(mcp, '{"mcpServers":{}}', { flag: 'wx', mode: 0o600 })
   const sessionId = randomUUID(), initId = randomUUID(), runId = randomUUID()
   const cycleOracle = new ParentCompletionOracle(sessionId)
-  oracle = cycleOracle
+  if (probeKind === 'completion-cycles') oracle = cycleOracle
   attempt.writePrivate('binding-private.json', JSON.stringify({ ...context, accountGeneration: account.generation,
-    identityKey: identity.key, sessionId, runId, project, lifecycleGeneration: 1 }, null, 2) + '\n')
+    identityKey: identity.key, sessionId, runId, project, lifecycleGeneration: 1, settingsSha256: sha(settings),
+    ...(probeKind !== 'completion-cycles' ? { memorySelection: memoryEnabled, selectedMarker: selected, excludedMarker: excluded,
+      selectedMemorySha256: sha(join(privateDir, 'selected-memory/MEMORY.md')), excludedMemorySha256: sha(join(privateDir, 'unselected-memory/MEMORY.md')) } : {}) }, null, 2) + '\n')
   receipt.bindingRecordedPrivately = true
   await new Promise<void>((resolve, reject) => {
     let finished = false, initialized = false, failure: Error | undefined
@@ -151,24 +170,30 @@ try {
           initialized = true
           clearTimeout(initTimer)
           receipt.modelInputs = 1
-          send({ type: 'user', session_id: sessionId, message: { role: 'user', content: 'Reply with READY. Do not use tools or start helpers.' } })
+          send({ type: 'user', session_id: sessionId, message: { role: 'user', content: prompt } })
         } else if (message.type === 'control_request') {
           assert.equal(initialized, true)
+          assert.equal(probeKind, 'completion-cycles', 'Unexpected native control request in no-tools memory probe')
           const response = cycleOracle.callback(message)
           send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response } })
         } else if (message.type === 'result') {
-          cycleOracle.complete(message)
+          if (probeKind === 'completion-cycles') cycleOracle.complete(message)
+          else receipt.memoryObservation = assessClaudeMemoryRecall(message, sessionId, selected, excluded, prompt,
+            memoryEnabled, output.snapshot().toString('utf8'))
           stop()
         }
       } catch (error) { stop(error instanceof Error ? error : new Error('Unexpected probe failure')) }
     })
     // The pinned initialize schema makes matcher optional. Runtime proof is this attempt only.
     send({ type: 'control_request', request_id: initId,
-      request: { subtype: 'initialize', hooks: { Stop: [{ hookCallbackIds: cycleOracle.callbacks, timeout: 5 }] } } })
+      request: { subtype: 'initialize', hooks: probeKind === 'completion-cycles'
+        ? { Stop: [{ hookCallbackIds: cycleOracle.callbacks, timeout: 5 }] } : null } })
   })
-  receipt.trustedCycleIdSharedAcrossHooks = true
-  receipt.modelTextUsedForCycleIdentity = false
-  receipt.verdict = 'PASS_NATIVE_PARENT_CYCLE_MECHANISM'
+  if (probeKind === 'completion-cycles') {
+    receipt.trustedCycleIdSharedAcrossHooks = true
+    receipt.modelTextUsedForCycleIdentity = false
+  }
+  receipt.verdict = probeKind === 'completion-cycles' ? 'PASS_NATIVE_PARENT_CYCLE_MECHANISM' : 'PASS_NATIVE_CONTROLLED_MEMORY_RECALL'
 } catch (error) {
   receipt.error = 'Probe stopped; inspect private diagnostics before any retry'
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
@@ -180,7 +205,8 @@ try {
   receipt.outputOverflow = output.overflow
   receipt.ownedProviderExited = ownedExited
   receipt.finishedAt = new Date().toISOString()
-  receipt.limitations = ['Parent Stop only; no subagent was started', 'Mechanism feasibility, not production hook enforcement or cancellation',
+  receipt.limitations = [probeKind === 'completion-cycles' ? 'Parent Stop only; no subagent was started'
+    : 'Synthetic selected auto-memory overlay only; no real memory copied or native writeback/lifecycle proof', 'Mechanism feasibility, not production hook enforcement or cancellation',
     'Default/managed and primary/worktree matrix remains to qualify', 'Callback failure semantics are not claimed fail-closed',
     'No-session-persistence requested; provider-side retention is not controlled by this probe']
   attempt?.writeReceipt(receipt)
