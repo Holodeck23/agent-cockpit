@@ -21,3 +21,16 @@ export function assessNativeSkillRequest(body: unknown, selected: string, exclud
   return { selectedLoaded: true, excludedAbsent: true, argumentsPreserved: true,
     resourceInContext: JSON.stringify(input).includes(resource) }
 }
+
+/** Requires a native tool result, not a marker echoed in assistant content or metadata. */
+export function assessNativeSkillResource(body: unknown, callId: string, resource: string, excluded: string): { resourceRead: true; excludedAbsent: true } {
+  assert.ok(resource.length >= 32 && excluded.length >= 32 && resource !== excluded && callId.length > 0)
+  assert.ok(body && typeof body === 'object')
+  const input = (body as { input?: unknown }).input
+  assert.ok(Array.isArray(input))
+  const results = input.filter((item: any) => item?.type === 'function_call_output' && item.call_id === callId)
+  assert.equal(results.length, 1, 'No unique native resource tool result')
+  assert.ok(JSON.stringify(results[0].output).includes(resource), 'Native tool result did not contain the selected resource')
+  assert.ok(!JSON.stringify(input).includes(excluded), 'Native resource request exposed an excluded source')
+  return { resourceRead: true, excludedAbsent: true }
+}

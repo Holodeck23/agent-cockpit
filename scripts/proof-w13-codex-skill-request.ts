@@ -1,5 +1,5 @@
 // One isolated native Codex typed-skill attempt through app-server, observed at loopback.
-// No real account/auth, remote model, tool execution, user memories or memory-generation inputs.
+// No real account/auth, remote model or user memories. Optional resource mode reads one synthetic file.
 import assert from 'node:assert/strict'
 import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
@@ -10,11 +10,13 @@ import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { createInterface } from 'node:readline'
 import { ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
-import { assessNativeSkillRequest } from './lib/w13-skill-request.ts'
+import { assessNativeSkillRequest, assessNativeSkillResource } from './lib/w13-skill-request.ts'
 
 process.umask(0o077)
 const sha = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const cli = process.env.COCKPIT_W13_CODEX ?? '', evidence = process.env.COCKPIT_PROOF_DIR ?? '', privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
+const resourceRead = process.env.COCKPIT_W13_SKILL_RESOURCE === 'read-only'
+const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'primary'
 const receipt: Record<string, unknown> = { scenario: 'native-codex-typed-skill-request', layer: 'direct-cli-synthetic',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', remoteModelRequests: 0, nativeInputs: 0, loopbackRequests: 0,
   accountScope: 'inert-unauthenticated-fixture', workspaceScope: 'isolated-synthetic-project' }
@@ -25,6 +27,8 @@ const server = createServer()
 let timeout: ReturnType<typeof setTimeout> | undefined
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
+  assert.ok(process.env.COCKPIT_W13_SKILL_RESOURCE === undefined || resourceRead)
+  assert.ok(['primary', 'worktree'].includes(workspaceKind))
   assert.ok([cli, evidence, privateDir].every(isAbsolute))
   const root = realpathSync(join(process.env.HOME ?? '', 'vault', 'clients')) + sep
   assert.ok(realpathSync(dirname(privateDir)).startsWith(root))
@@ -41,20 +45,31 @@ try {
   receipt.harnessSha256 = sha(script)
   receipt.provider = { name: 'codex', version: '0.162.1', executableSha256: sha(cli), runtimeSha256: sha(process.execPath) }
   const home = join(privateDir, 'home'), codexHome = join(privateDir, 'codex-home'), project = join(privateDir, 'project')
-  const selectedDir = join(project, '.agents', 'skills', 'w13-shared-skill')
+  let cwd = project
+  mkdirSync(project, { mode: 0o700 }); mkdirSync(home, { mode: 0o700 })
+  const gitEnv = { HOME: home, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
+  execFileSync('/usr/bin/git', ['init', '-q', project], { env: gitEnv, timeout: 10_000 })
+  if (workspaceKind === 'worktree') {
+    execFileSync('/usr/bin/git', ['-C', project, '-c', 'core.hooksPath=/dev/null', '-c', 'user.name=W13 fixture', '-c', 'user.email=w13@example.invalid',
+      'commit', '--allow-empty', '-qm', 'Synthetic worktree baseline'], { env: gitEnv, timeout: 10_000 })
+    cwd = join(privateDir, 'worktree')
+    execFileSync('/usr/bin/git', ['-C', project, '-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '-q', '-b', 'w13-fixture', cwd], { env: gitEnv, timeout: 10_000 })
+  }
+  receipt.fixtureWorkspaceKind = workspaceKind
+  receipt.resourceReadRequested = resourceRead
+  const selectedDir = join(cwd, '.agents', 'skills', 'w13-shared-skill')
   const otherDir = join(home, '.agents', 'skills', 'w13-shared-skill')
   for (const dir of [home, codexHome, project, selectedDir, otherDir]) mkdirSync(dir, { recursive: true, mode: 0o700 })
-  // An empty fixture repository bounds native project discovery to this owned directory.
-  execFileSync('/usr/bin/git', ['init', '-q', project], { timeout: 10_000,
-    env: { HOME: home, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } })
   const selected = `W13_SELECTED_SKILL_${randomUUID()}`, excluded = `W13_OTHER_SKILL_${randomUUID()}`
   const resource = `W13_RESOURCE_${randomUUID()}`
   const selectedFile = join(selectedDir, 'SKILL.md'), otherFile = join(otherDir, 'SKILL.md')
-  const skill = (marker: string): string => `---\nname: w13-shared-skill\ndescription: Inert W13 typed skill source.\n---\n\n${marker}\nDo not execute tools. A supporting file is reference.txt.\n`
+  const skill = (marker: string): string => `---\nname: w13-shared-skill\ndescription: Inert W13 typed skill source.\n---\n\n${marker}\nA supporting file is reference.txt. ${resourceRead ? 'Only the selected reference may be read.' : 'Do not execute tools.'}\n`
   writeFileSync(selectedFile, skill(selected), { flag: 'wx', mode: 0o600 })
   writeFileSync(otherFile, skill(excluded), { flag: 'wx', mode: 0o600 })
   writeFileSync(join(selectedDir, 'reference.txt'), resource, { flag: 'wx', mode: 0o600 })
   const prompt = `  --label "two words"\n--target W13_ARG_${randomUUID()}  `
+  const resourceCallId = 'w13-reviewed-resource-read'
+  let firstBody: unknown
   let acceptRequest!: (body: unknown) => void, rejectRequest!: (error: Error) => void
   const captured = new Promise<unknown>((resolve, reject) => { acceptRequest = resolve; rejectRequest = reject })
   server.on('request', (request, response) => {
@@ -70,15 +85,29 @@ try {
         assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses')
         assert.equal(request.headers.authorization, undefined, 'Unexpected authentication on a fixture request')
         requestCount++
-        assert.equal(requestCount, 1, 'Unexpected extra inference request')
-        attempt!.writePrivate('model-request-wire-private.bin', Buffer.concat(chunks))
+        assert.ok(requestCount <= (resourceRead ? 2 : 1), 'Unexpected extra inference request')
+        attempt!.writePrivate(`model-request-${requestCount}-wire-private.bin`, Buffer.concat(chunks))
         const bytes = request.headers['content-encoding'] === 'gzip'
           ? gunzipSync(Buffer.concat(chunks), { maxOutputLength: 2_000_000 }) : Buffer.concat(chunks)
-        attempt!.writePrivate('model-request-private.json', bytes)
+        attempt!.writePrivate(`model-request-${requestCount}-private.json`, bytes)
         const body: unknown = JSON.parse(bytes.toString('utf8'))
-        // The oracle is the constructed request. No assistant tool call is ever returned.
+        if (resourceRead && requestCount === 1) {
+          firstBody = body
+          assessNativeSkillRequest(body, selected, excluded, prompt, resource)
+          const tools = (body as { tools?: { name?: string; parameters?: any }[] }).tools
+          const tool = tools?.find((item) => item.name === 'exec_command')
+          assert.ok(tool?.parameters?.properties?.cmd && tool.parameters.properties.workdir, 'Reviewed native resource read tool unavailable')
+          const call = { type: 'function_call', id: 'w13-resource-item', call_id: resourceCallId,
+            name: 'exec_command', arguments: JSON.stringify({ cmd: '/bin/cat reference.txt', workdir: selectedDir, login: false, max_output_tokens: 500 }) }
+          response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+          response.end(`data: ${JSON.stringify({ type: 'response.output_item.added', output_index: 0, item: call })}\n\n`
+            + `data: ${JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: call })}\n\n`
+            + `data: ${JSON.stringify({ type: 'response.completed', response: { id: 'w13-local-resource', output: [call], usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } } })}\n\n`)
+          return
+        }
+        // Request-only mode never returns a tool. Resource mode permits one fixed synthetic cat.
         response.writeHead(200, { 'Content-Type': 'text/event-stream' })
-        response.end('data: {"type":"response.completed","response":{"id":"w13-local","output":[],"usage":{"input_tokens":0,"output_tokens":0}}}\n\n')
+        response.end('data: {"type":"response.completed","response":{"id":"w13-local","output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}\n\n')
         acceptRequest(body)
       } catch (error) { response.destroy(); rejectRequest(error instanceof Error ? error : new Error('Invalid loopback request')) }
     })
@@ -86,10 +115,12 @@ try {
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   const address = server.address(); assert.ok(address && typeof address !== 'string')
   const config = `model_provider = "w13fixture"\nmodel = "w13-fixture"\napproval_policy = "never"\nsandbox_mode = "read-only"\ncheck_for_update_on_startup = false\n[features]\nmemories = false\nmulti_agent = false\nhooks = false\napps = false\nplugins = false\nshell_tool = false\n[memories]\ngenerate_memories = false\nuse_memories = false\n[model_providers.w13fixture]\nname = "W13 loopback capture"\nbase_url = "http://127.0.0.1:${address.port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\nrequest_max_retries = 0\nstream_max_retries = 0\n[projects.${JSON.stringify(project)}]\ntrust_level = "trusted"\n`
-  writeFileSync(join(codexHome, 'config.toml'), config, { flag: 'wx', mode: 0o600 })
+  writeFileSync(join(codexHome, 'config.toml'), 'web_search = "disabled"\n' + (resourceRead
+    ? config.replace('shell_tool = false', 'shell_tool = true').replace('[features]\n', '[features]\nunified_exec = true\n') : config)
+    .replace(`[projects.${JSON.stringify(project)}]`, `[projects.${JSON.stringify(cwd)}]`), { flag: 'wx', mode: 0o600 })
   const env: NodeJS.ProcessEnv = { HOME: home, CODEX_HOME: codexHome, TMPDIR: privateDir,
     PATH: '/usr/bin:/bin:/opt/homebrew/bin', USER: process.env.USER, LOGNAME: process.env.LOGNAME, LANG: 'en_US.UTF-8' }
-  child = spawn(cli, ['app-server'], { cwd: project, env, stdio: ['pipe', 'pipe', 'pipe'] })
+  child = spawn(cli, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
   const closed = new Promise<void>((resolve) => {
     child!.once('error', () => { outputError = new Error('Owned native fixture could not start') })
     child!.once('close', () => { ownedExited = true; resolve() })
@@ -122,7 +153,7 @@ try {
         clearTimeout(initTimer)
         send({ method: 'initialized' })
         capabilityTimer = setTimeout(() => rejectRequest(new Error('Skill discovery exceeded 30 seconds')), 30_000)
-        send({ id: 2, method: 'skills/list', params: { cwds: [project], forceReload: true } })
+        send({ id: 2, method: 'skills/list', params: { cwds: [cwd], forceReload: true } })
       } else if (message.id === 2) {
         assert.equal(phase, 'listing'); phase = 'starting'
         clearTimeout(capabilityTimer)
@@ -137,7 +168,7 @@ try {
         assert.ok(chosen && chosen.name === 'w13-shared-skill' && selectedRows[0].enabled === true)
         assert.equal(otherRows[0].name, chosen.name)
         receipt.distinctSameNameSourcesListed = true
-        send({ id: 3, method: 'thread/start', params: { cwd: project, ephemeral: true,
+        send({ id: 3, method: 'thread/start', params: { cwd, ephemeral: true,
           model: 'w13-fixture', modelProvider: 'w13fixture', approvalPolicy: 'never', sandbox: 'read-only' } })
       } else if (message.id === 3) {
         assert.equal(phase, 'starting'); phase = 'turn'
@@ -164,9 +195,10 @@ try {
     })]) } finally { clearTimeout(retirementTimer) }
   }
   assert.equal(outputError, undefined)
-  assert.equal(requestCount, 1)
-  receipt.observation = assessNativeSkillRequest(body, selected, excluded, prompt, resource)
-  receipt.verdict = 'PASS_NATIVE_TYPED_SKILL_REQUEST_CONTEXT'
+  assert.equal(requestCount, resourceRead ? 2 : 1)
+  receipt.observation = assessNativeSkillRequest(resourceRead ? firstBody : body, selected, excluded, prompt, resource)
+  if (resourceRead) receipt.resourceObservation = assessNativeSkillResource(body, resourceCallId, resource, excluded)
+  receipt.verdict = resourceRead ? 'PASS_NATIVE_TYPED_SKILL_AND_RESOURCE_READ' : 'PASS_NATIVE_TYPED_SKILL_REQUEST_CONTEXT'
 } catch (error) {
   receipt.error = 'Native fixture stopped; inspect private diagnostics before any further attempt'
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
@@ -179,7 +211,7 @@ try {
   receipt.ownedProviderExited = ownedExited
   receipt.outputOverflow = raw.overflow
   receipt.finishedAt = new Date().toISOString()
-  receipt.limitations = ['Native typed-skill request construction only; no real model execution or resource tool read',
+  receipt.limitations = [resourceRead ? 'Synthetic selected-resource read; no real model selection or arbitrary skill script execution' : 'Native typed-skill request construction only; no real model execution or resource tool read',
     'Inert synthetic profile; default/managed and primary/worktree matrix remains open',
     'No native policy enforcement, completion-cycle or skill lifecycle proof']
   attempt?.writeReceipt(receipt)
