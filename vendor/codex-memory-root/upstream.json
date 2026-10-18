@@ -1,0 +1,22 @@
+{
+  "upstreamUrl": "https://github.com/openai/codex.git",
+  "upstreamTag": "rust-v0.162.1",
+  "tagObject": "7a078f6bb4ce0dc2a81408b334ce52979d92c603",
+  "sourceCommit": "092d3acd6bec3e3a14bdc7e7a2810ab628ab759d",
+  "licenseSha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+  "noticeSha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915",
+  "lockSha256": "49fe417bcafe3f69f1f6636e23274f90d37e75e388127a76888c39001a4f8117",
+  "toolchainSha256": "570656042681cfd8795403a455baf9a33035331a07db0645e866bbcea89a3d64",
+  "requiredRust": "1.95.0",
+  "installedRust": "1.92.0",
+  "baselineBinarySha256": "74c6a6d263f40d65f99c27a815275f5b4ed0bcc2baecc396b4cf3255498bdfc0",
+  "sourceCommitBytesPresentInBaselineBinary": true,
+  "binaryReproducibilityEstablished": false,
+  "candidateBuilt": false,
+  "installedRuntimeChanged": false,
+  "role": "Source/provenance pin only; candidate implementation and qualification are separate",
+  "patchStatus": "IN_PROGRESS_NOT_ADOPTED",
+  "toolchainInstallAuthorized": true,
+  "installedRustForCandidate": "1.95.0",
+  "globalDefaultRustChanged": false
+}
