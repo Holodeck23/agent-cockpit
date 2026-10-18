@@ -1,5 +1,7 @@
 # Release acceptance
 
+> W13 current authority and ledger: [W13 execution](W13-EXECUTION.md). The release records below are historical and do not qualify W13 or establish current public release state.
+
 ## Current local build — v0.1.8, 13 October 2026
 
 Public prerelease remains **v0.1.7**. The repaired local build was integrated through PRs #67/#69/#70/#71 into main `39e702e` and installed locally; no v0.1.8 tag, public DMG or release was published.
