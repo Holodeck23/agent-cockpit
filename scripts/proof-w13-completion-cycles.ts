@@ -20,6 +20,7 @@ const privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const descriptor = process.env.COCKPIT_PROOF_CONTEXT ?? ''
 const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'synthetic'
 const probeKind = process.env.COCKPIT_W13_PROBE_KIND ?? 'completion-cycles'
+const completionProbe = probeKind.startsWith('completion-')
 const memoryProbe = probeKind.startsWith('memory-')
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', modelInputs: 0, identityQueries: 0,
@@ -29,8 +30,8 @@ let attempt: ProbeAttempt | undefined, oracle: ParentCompletionOracle | undefine
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
   assert.ok(['synthetic', 'primary', 'worktree'].includes(workspaceKind))
-  assert.ok(['completion-cycles', 'memory-on', 'memory-off', 'skill-resource'].includes(probeKind))
-  receipt.scenario = probeKind === 'completion-cycles' ? receipt.scenario : memoryProbe
+  assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource'].includes(probeKind))
+  receipt.scenario = completionProbe ? receipt.scenario : memoryProbe
     ? 'native-claude-controlled-memory-recall' : 'native-claude-selected-skill-resource'
   receipt.probeKind = probeKind
   const notBefore = Number(process.env.COCKPIT_W13_NOT_BEFORE_MS ?? '0')
@@ -132,10 +133,10 @@ try {
     ...(memoryProbe ? { autoMemoryDirectory: join(privateDir, 'selected-memory') } : {}) }), { flag: 'wx', mode: 0o600 })
   writeFileSync(mcp, '{"mcpServers":{}}', { flag: 'wx', mode: 0o600 })
   const sessionId = randomUUID(), initId = randomUUID(), runId = randomUUID()
-  const cycleOracle = new ParentCompletionOracle(sessionId)
+  const cycleOracle = new ParentCompletionOracle(sessionId, probeKind === 'completion-second-rejection')
   const skillOracle = probeKind === 'skill-resource' ? new ClaudeSkillResourceOracle(sessionId, resourceFile,
     skillMarker, resourceMarker, otherSkillMarker, skillArgs) : undefined
-  if (probeKind === 'completion-cycles') oracle = cycleOracle
+  if (completionProbe) oracle = cycleOracle
   attempt.writePrivate('binding-private.json', JSON.stringify({ ...context, accountGeneration: account.generation,
     identityKey: identity.key, sessionId, runId, project, lifecycleGeneration: 1, settingsSha256: sha(settings),
     ...(memoryProbe ? { memorySelection: memoryEnabled, selectedMarker: selected, excludedMarker: excluded,
@@ -188,6 +189,7 @@ try {
       try {
         const message = JSON.parse(line)
         skillOracle?.record(message)
+        if (completionProbe) cycleOracle.observe(message)
         if (message.type === 'control_response') {
           assert.equal(message.response?.request_id, initId)
           assert.equal(message.response.subtype, 'success')
@@ -223,11 +225,11 @@ try {
             else if (request.subtype === 'hook_callback') skillOracle.policyAdmissions++
             return
           }
-          assert.equal(probeKind, 'completion-cycles', 'Unexpected native control request in no-tools memory probe')
+          assert.ok(completionProbe, 'Unexpected native control request in no-tools memory probe')
           const response = cycleOracle.callback(message)
           send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response } })
         } else if (message.type === 'result') {
-          if (probeKind === 'completion-cycles') cycleOracle.complete(message)
+          if (completionProbe) cycleOracle.complete(message)
           else if (skillOracle) receipt.skillObservation = skillOracle.complete(message, output.snapshot().toString('utf8'))
           else receipt.memoryObservation = assessClaudeMemoryRecall(message, sessionId, selected, excluded, prompt,
             memoryEnabled, output.snapshot().toString('utf8'))
@@ -237,15 +239,17 @@ try {
     })
     // The pinned initialize schema makes matcher optional. Runtime proof is this attempt only.
     send({ type: 'control_request', request_id: initId,
-      request: { subtype: 'initialize', hooks: probeKind === 'completion-cycles'
+      request: { subtype: 'initialize', hooks: completionProbe
         ? { Stop: [{ hookCallbackIds: cycleOracle.callbacks, timeout: 5 }] }
         : skillOracle ? { PreToolUse: [{ matcher: 'Read', hookCallbackIds: ['skill-resource-path-policy'], timeout: 5 }] } : null } })
   })
-  if (probeKind === 'completion-cycles') {
+  if (completionProbe) {
     receipt.trustedCycleIdSharedAcrossHooks = true
     receipt.modelTextUsedForCycleIdentity = false
+    if (probeKind === 'completion-second-rejection') receipt.terminalObservation = cycleOracle.terminalObservation()
   }
-  receipt.verdict = probeKind === 'completion-cycles' ? 'PASS_NATIVE_PARENT_CYCLE_MECHANISM'
+  receipt.verdict = probeKind === 'completion-second-rejection' ? 'PASS_NATIVE_SECOND_REJECTION_STOP'
+    : completionProbe ? 'PASS_NATIVE_PARENT_CYCLE_MECHANISM'
     : memoryProbe ? 'PASS_NATIVE_CONTROLLED_MEMORY_RECALL' : 'PASS_NATIVE_SELECTED_SKILL_AND_RESOURCE'
 } catch (error) {
   receipt.error = 'Probe stopped; inspect private diagnostics before any retry'
@@ -258,7 +262,7 @@ try {
   receipt.outputOverflow = output.overflow
   receipt.ownedProviderExited = ownedExited
   receipt.finishedAt = new Date().toISOString()
-  receipt.limitations = [probeKind === 'completion-cycles' ? 'Parent Stop only; no subagent was started'
+  receipt.limitations = [completionProbe ? 'Parent Stop only; no subagent was started'
     : memoryProbe ? 'Synthetic selected auto-memory overlay only; no real memory copied or native writeback/lifecycle proof'
       : 'Synthetic selected plugin skill and one read-only resource; no real user skill or executable dependency', 'Mechanism feasibility, not production hook enforcement or cancellation',
     'Default/managed and primary/worktree matrix remains to qualify', 'Callback failure semantics are not claimed fail-closed',

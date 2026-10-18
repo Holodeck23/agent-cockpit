@@ -11,6 +11,25 @@ const callback = (cycle: string, hook: string, active = false, requestId = `${cy
 const result = { session_id: 'session', is_error: false, subtype: 'success' }
 
 describe('native parent completion probe oracle', () => {
+  it('emits terminal Stop for the second rejection and requires two bound native responses', () => {
+    const oracle = new ParentCompletionOracle('session', true)
+    const assistant = (id: string) => ({ type: 'assistant', session_id: 'session', message: { id, content: [{ type: 'text', text: 'READY' }] } })
+    oracle.observe({ ...assistant('response-1'), message: { id: 'response-1', content: [{ type: 'thinking' }] } })
+    oracle.observe(assistant('response-1'))
+    oracle.callback(callback('c1', 'cycle-observer-a')); oracle.callback(callback('c1', 'cycle-observer-b'))
+    oracle.observe(assistant('response-2'))
+    expect(oracle.callback(callback('c2', 'cycle-observer-a', true))).toMatchObject({ continue: false })
+    oracle.callback(callback('c2', 'cycle-observer-b', true)); oracle.complete(result)
+    expect(oracle.terminalObservation()).toEqual({ secondRejectionIssued: true, nativeAssistantMessages: 2 })
+    expect(() => oracle.observe(assistant('response-3'))).toThrow()
+  })
+  it('does not accept terminal completion without native responses or with an unrelated/tool response', () => {
+    const oracle = new ParentCompletionOracle('session', true)
+    for (const cycle of ['c1', 'c2']) for (const hook of oracle.callbacks) oracle.callback(callback(cycle, hook, cycle === 'c2'))
+    expect(() => oracle.complete(result)).toThrow()
+    expect(() => oracle.observe({ type: 'assistant', session_id: 'other', message: { id: 'x', content: [] } })).toThrow()
+    expect(() => oracle.observe({ type: 'assistant', session_id: 'session', message: { id: 'x', content: [{ type: 'tool_use' }] } })).toThrow()
+  })
   it('counts two provider cycles with two callbacks each and rejects only once regardless of callback order', () => {
     const oracle = new ParentCompletionOracle('session')
     expect(oracle.callback(callback('c1', 'cycle-observer-b'))).toEqual({})

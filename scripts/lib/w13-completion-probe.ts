@@ -40,7 +40,20 @@ export class ParentCompletionOracle {
   readonly callbacks = ['cycle-observer-a', 'cycle-observer-b']
   private cycles = new Map<string, { callbacks: Set<string>; active: boolean }>()
   private requests = new Set<string>()
-  constructor(readonly sessionId: string) {}
+  private assistantMessages = new Set<string>()
+  private terminalIssued = false
+  constructor(readonly sessionId: string, readonly rejectCorrection = false) {}
+  observe(message: any): void {
+    if (!this.rejectCorrection || message.type !== 'assistant') return
+    assert.equal(message.session_id, this.sessionId)
+    assert.ok(!message.parent_tool_use_id, 'Unexpected subagent observation')
+    assert.ok(typeof message.message?.id === 'string' && message.message.id.length > 0)
+    assert.ok(Array.isArray(message.message.content))
+    assert.ok(message.message.content.every((block: any) => ['text', 'thinking', 'redacted_thinking'].includes(block.type)),
+      'No tools permitted in terminal completion probe')
+    this.assistantMessages.add(message.message.id)
+    assert.ok(this.assistantMessages.size <= 2, 'Native provider continued after the correction budget')
+  }
   callback(message: any): Record<string, unknown> {
     const request = message.request
     assert.equal(request?.subtype, 'hook_callback', 'Unexpected provider control request')
@@ -63,6 +76,10 @@ export class ParentCompletionOracle {
     assert.equal(cycle.callbacks.has(request.callback_id), false, 'Duplicate callback in one cycle')
     cycle.callbacks.add(request.callback_id)
     const first = [...this.cycles.keys()][0] === request.tool_use_id
+    if (!first && this.rejectCorrection && request.callback_id === this.callbacks[0]) {
+      this.terminalIssued = true
+      return { continue: false, stopReason: 'Synthetic second rejection: correction budget exhausted.' }
+    }
     return first && request.callback_id === this.callbacks[0]
       ? { decision: 'block', reason: 'Synthetic verification: reply with READY once more.' } : {}
   }
@@ -72,6 +89,13 @@ export class ParentCompletionOracle {
     assert.equal(message.subtype, 'success')
     assert.equal(this.cycles.size, 2)
     assert.ok([...this.cycles.values()].every((cycle) => cycle.callbacks.size === 2), 'Hooks did not share cycle IDs')
+    if (this.rejectCorrection) {
+      assert.equal(this.terminalIssued, true)
+      assert.equal(this.assistantMessages.size, 2, 'Two bound native assistant messages required')
+    }
+  }
+  terminalObservation(): Record<string, unknown> {
+    return { secondRejectionIssued: this.terminalIssued, nativeAssistantMessages: this.assistantMessages.size }
   }
   summary(): unknown[] {
     return [...this.cycles.values()].map((cycle, index) => ({ ordinal: index + 1, callbacks: cycle.callbacks.size, correctionActive: cycle.active }))
