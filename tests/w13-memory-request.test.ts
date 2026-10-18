@@ -13,3 +13,10 @@ it('cannot pass by metadata, source filename, prompt echo, or an unselected-memo
   expect(() => assessNativeMemoryRequest({ input: selected }, selected, excluded, selected)).toThrow()
   expect(() => assessNativeMemoryRequest({ input: [selected, excluded] }, selected, excluded, prompt)).toThrow()
 })
+it('requires disabled memory to stay absent while retaining an actual native model input', () => {
+  expect(assessNativeMemoryRequest({ input: prompt }, selected, excluded, prompt, false)).toMatchObject({ selectedLoaded: false, excludedAbsent: true })
+  for (const input of [selected, excluded, [selected, excluded]]) {
+    expect(() => assessNativeMemoryRequest({ input }, selected, excluded, prompt, false)).toThrow()
+  }
+  expect(() => assessNativeMemoryRequest({ metadata: { disabled: true } }, selected, excluded, prompt, false)).toThrow()
+})
