@@ -1,4 +1,4 @@
-// Prepare a closed synthetic hook bundle; native /hooks trust is a separate, explicit fixture action.
+// Prepare an inert hook bundle; optional batch mode trusts only freshly reviewed fixture hashes via native config API.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -12,10 +12,13 @@ process.umask(0o077)
 const sha = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 const quote = (value: string): string => "'" + value.replaceAll("'", "'\"'\"'") + "'"
 const cli = process.env.COCKPIT_W13_CODEX ?? '', evidence = process.env.COCKPIT_PROOF_DIR ?? '', privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
+const batch = process.env.COCKPIT_W13_HOOK_FIXTURE === 'parent-batch'
 let attempt: ProbeAttempt | undefined
 const receipt: Record<string, unknown> = { scenario: 'native-codex-hook-trust-preparation', verdict: 'BLOCKED', modelInputs: 0, realAccounts: 0 }
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
+  assert.ok(process.env.COCKPIT_W13_HOOK_FIXTURE === undefined || batch)
+  assert.ok(!batch || process.env.COCKPIT_W13_TRUST_REVIEWED_BATCH === '1')
   assert.ok([cli, evidence, privateDir].every(isAbsolute))
   assert.ok(realpathSync(dirname(privateDir)).startsWith(realpathSync(join(process.env.HOME ?? '', 'vault', 'clients')) + sep))
   attempt = new ProbeAttempt(evidence, privateDir); attempt.create()
@@ -29,9 +32,10 @@ try {
   execFileSync('/usr/bin/git', ['init', '-q', project], { timeout: 10_000,
     env: { HOME: home, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } })
   const callback = join(privateDir, 'stop-observer.cjs')
-  writeFileSync(callback, readFileSync(join(repo, 'scripts/fixtures/w13-stop-observer.cjs')), { flag: 'wx', mode: 0o600 })
+  writeFileSync(callback, readFileSync(join(repo, batch ? 'scripts/fixtures/w13-stop-batch.cjs' : 'scripts/fixtures/w13-stop-observer.cjs')), { flag: 'wx', mode: 0o600 })
+  if (batch) mkdirSync(join(privateDir, 'cycles'), { mode: 0o700 })
   const hooks = join(codexHome, 'hooks.json')
-  writeFileSync(hooks, JSON.stringify({ hooks: { Stop: [{ hooks: ['a', 'b'].map((label) => ({ type: 'command',
+  writeFileSync(hooks, JSON.stringify({ hooks: { Stop: [{ hooks: (batch ? ['batch'] : ['a', 'b']).map((label) => ({ type: 'command',
     command: [process.execPath, callback, privateDir, label].map(quote).join(' '), timeout: 5 })) }] } }), { flag: 'wx', mode: 0o600 })
   const config = join(codexHome, 'config.toml')
   writeFileSync(config, `model_provider="w13fixture"\nmodel="w13-fixture"\napproval_policy="never"\nsandbox_mode="read-only"\ncheck_for_update_on_startup=false\n[features]\nhooks=true\nmemories=false\nmulti_agent=false\napps=false\nplugins=false\nshell_tool=false\n[memories]\ngenerate_memories=false\nuse_memories=false\n[model_providers.w13fixture]\nname="W13 local fixture"\nbase_url="http://127.0.0.1:1/v1"\nwire_api="responses"\nrequires_openai_auth=false\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n[projects.${JSON.stringify(project)}]\ntrust_level="trusted"\n`, { flag: 'wx', mode: 0o600 })
@@ -43,15 +47,38 @@ try {
   const answer = await queryAppServer(cli, 'hooks/list', { cwds: [project] }, { env, timeoutMs: 15_000 })
   attempt.writePrivate('hooks-before-trust-private.json', JSON.stringify(answer, null, 2) + '\n')
   assert.equal(answer.error, undefined)
-  const entries = (answer.result as { data: { hooks: { eventName: string; trustStatus: string; enabled: boolean }[] }[] }).data
+  const entries = (answer.result as { data: { hooks: { key: string; currentHash: string; eventName: string; trustStatus: string; enabled: boolean }[] }[] }).data
   const rows = entries.flatMap((entry) => entry.hooks)
-  assert.equal(rows.length, 2)
+  assert.equal(rows.length, batch ? 1 : 2)
   assert.ok(rows.every((row) => row.eventName.toLowerCase() === 'stop' && row.enabled))
   assert.equal(existsSync(join(privateDir, 'stop-observations-private.jsonl')), false)
   receipt.hooks = rows.map((row) => ({ eventName: row.eventName, trustStatus: row.trustStatus, enabled: row.enabled }))
   receipt.sourceParent = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim()
   receipt.sourceIndexTree = execFileSync('git', ['write-tree'], { cwd: repo, encoding: 'utf8' }).trim()
   receipt.verdict = 'PREPARED_NATIVE_TRUST_REQUIRED'
+  if (batch) {
+    // Native generic config API persists the same exact hash representation observed in /hooks.
+    // This path is restricted to this freshly owned, source-reviewed inert batch fixture.
+    assert.ok(rows.every((row) => row.trustStatus === 'untrusted' && typeof row.key === 'string' && typeof row.currentHash === 'string'))
+    const written = await queryAppServer(cli, 'config/value/write', { filePath: config, keyPath: 'hooks.state', mergeStrategy: 'replace',
+      value: Object.fromEntries(rows.map((row) => [row.key, { trusted_hash: row.currentHash }])) }, { env, timeoutMs: 15_000 })
+    attempt.writePrivate('native-trust-config-write-private.json', JSON.stringify(written))
+    assert.equal(written.error, undefined)
+    const after = await queryAppServer(cli, 'hooks/list', { cwds: [project] }, { env, timeoutMs: 15_000 })
+    attempt.writePrivate('hooks-after-trust-private.json', JSON.stringify(after))
+    assert.equal(after.error, undefined)
+    const trusted = (after.result as typeof answer.result & { data: typeof entries }).data.flatMap((entry) => entry.hooks)
+    assert.equal(trusted.length, 1)
+    assert.ok(trusted.every((row, index) => row.enabled && row.trustStatus === 'trusted'
+      && row.key === rows[index]!.key && row.currentHash === rows[index]!.currentHash))
+    const original = JSON.parse(readFileSync(join(privateDir, 'fixture-context-private.json'), 'utf8'))
+    assert.equal(sha(callback), original.manifest.callback); assert.equal(sha(hooks), original.manifest.hooks)
+    attempt.writePrivate('fixture-trusted-context-private.json', JSON.stringify({ ...original,
+      manifest: { ...original.manifest, config: sha(config) } }, null, 2))
+    receipt.verdict = 'PASS_NATIVE_REVIEWED_BATCH_TRUST'
+    receipt.trustMethod = 'native config/value/write; exact reviewed hook key/currentHash; fresh inert fixture only'
+    receipt.trustedHooks = 1
+  }
 } catch (error) {
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
   process.exitCode = 1

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { dirname, isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +15,7 @@ process.umask(0o077)
 const sha = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const evidence = process.env.COCKPIT_PROOF_DIR ?? '', privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const contextFile = process.env.COCKPIT_PROOF_CONTEXT ?? ''
+const batch = process.env.COCKPIT_W13_HOOK_FIXTURE === 'parent-batch'
 const receipt: Record<string, unknown> = { scenario: 'native-codex-parent-stop-correction', verdict: 'BLOCKED',
   layer: 'direct-cli-synthetic', remoteModelRequests: 0, realAccounts: 0, nativeInputs: 0 }
 let attempt: ProbeAttempt | undefined, child: ChildProcessWithoutNullStreams | undefined
@@ -24,6 +25,7 @@ const output = new ProbeOutput(), notifications: any[] = []
 const server = createServer()
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
+  assert.ok(process.env.COCKPIT_W13_HOOK_FIXTURE === undefined || batch)
   assert.ok([evidence, privateDir, contextFile].every(isAbsolute))
   const privateRoot = realpathSync(join(process.env.HOME ?? '', 'vault', 'clients')) + sep
   assert.ok(realpathSync(dirname(privateDir)).startsWith(privateRoot))
@@ -40,8 +42,12 @@ try {
     hooks: join(fixture, 'codex-home/hooks.json'), config: join(fixture, 'codex-home/config.toml') })) {
     assert.equal(sha(file), context.manifest[key])
   }
-  assert.equal(sha(join(fixture, 'stop-observer.cjs')), sha(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/w13-stop-observer.cjs')))
+  assert.equal(sha(join(fixture, 'stop-observer.cjs')), sha(join(dirname(fileURLToPath(import.meta.url)), batch ? 'fixtures/w13-stop-batch.cjs' : 'fixtures/w13-stop-observer.cjs')))
   for (const file of ['stop-observations-private.jsonl', 'first-rejection-private']) assert.equal(existsSync(join(fixture, file)), false)
+  if (batch) {
+    assert.deepEqual(readdirSync(join(fixture, 'cycles')), [])
+    assert.equal(existsSync(join(fixture, 'expected-binding-private.json')), false)
+  }
   assert.ok(!['/etc/codex/config.toml', '/etc/codex/managed_config.toml', '/etc/codex/requirements.toml',
     '/Library/Managed Preferences/com.openai.codex.plist',
     join('/Library/Managed Preferences', process.env.USER ?? '', 'com.openai.codex.plist')].some(existsSync))
@@ -61,6 +67,10 @@ try {
         assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses')
         assert.equal(request.headers.authorization, undefined)
         requests++; assert.ok(requests <= 2, 'More than one correction inference')
+        if (batch && requests === 1) {
+          assert.ok(threadId && turnId, 'Native turn binding unavailable before model response')
+          writeFileSync(join(fixture, 'expected-binding-private.json'), JSON.stringify({ sessionId: threadId, turnId }), { flag: 'wx', mode: 0o600 })
+        }
         const wire = Buffer.concat(chunks)
         const body = request.headers['content-encoding'] === 'gzip' ? gunzipSync(wire, { maxOutputLength: 2_000_000 }) : wire
         JSON.parse(body.toString('utf8'))
@@ -142,7 +152,7 @@ try {
     const listed = await rpc('hooks/list', { cwds: [context.project] })
     attempt!.writePrivate('hooks-execution-private.json', JSON.stringify(listed))
     const hooks = listed.data.flatMap((entry: any) => entry.hooks)
-    assert.equal(hooks.length, 2)
+    assert.equal(hooks.length, batch ? 1 : 2)
     assert.ok(hooks.every((row: any) => row.eventName === 'stop' && row.enabled && row.trustStatus === 'trusted'))
     const reviewed = JSON.parse(readFileSync(join(fixture, 'hooks-after-trust-private.json'), 'utf8')).result.data
       .flatMap((entry: any) => entry.hooks)
@@ -169,15 +179,37 @@ try {
     })]) } finally { clearTimeout(retirement) }
   }
   assert.equal(output.overflow, false)
-  const records = readFileSync(join(fixture, 'stop-observations-private.jsonl'), 'utf8')
-  attempt.writePrivate('stop-observations-private.jsonl', records)
-  const parsed = records.trim().split('\n').map((line) => JSON.parse(line))
-  receipt.callbackRecords = assessCodexStopRecords(parsed, threadId, turnId)
-  receipt.hookEvents = assessCodexHookEvents(notifications, threadId, turnId)
   attempt.writePrivate('binding-private.json', JSON.stringify({ threadId, turnId }))
   assert.equal(requests, 2)
-  // This observation intentionally does not invent cycle IDs from hook-run IDs or model text.
-  receipt.verdict = 'OBSERVED_NATIVE_CORRECTION_CYCLE_ID_UNPROVED'
+  if (batch) {
+    assert.deepEqual(readdirSync(join(fixture, 'cycles')).sort(), ['1', '2'])
+    const journals = ['1', '2'].map((ordinal) => ({ start: JSON.parse(readFileSync(join(fixture, 'cycles', ordinal, 'start-private.json'), 'utf8')),
+      decision: JSON.parse(readFileSync(join(fixture, 'cycles', ordinal, 'decision-private.json'), 'utf8')) }))
+    attempt.writePrivate('batch-journals-private.json', JSON.stringify(journals))
+    assert.notEqual(journals[0]!.start.cycleId, journals[1]!.start.cycleId)
+    for (const [index, journal] of journals.entries()) {
+      assert.equal(journal.start.sessionId, threadId); assert.equal(journal.start.turnId, turnId)
+      assert.equal(journal.start.ordinal, index + 1); assert.equal(journal.start.stopHookActive, index === 1)
+      assert.equal(journal.start.cycleId, journal.decision.cycleId)
+      assert.equal(journal.decision.disposition, index === 0 ? 'one-correction' : 'block')
+      assert.deepEqual(journal.decision.checks, ['a', 'b'].map((hookId) => ({ cycleId: journal.start.cycleId, hookId, outcome: 'reject' })))
+    }
+    const events = notifications.filter((message) => message.method === 'hook/completed')
+    assert.equal(events.length, 2)
+    assert.ok(events.every((message) => message.params.threadId === threadId && message.params.turnId === turnId))
+    assert.deepEqual(events.map((message) => message.params.run.status), ['blocked', 'stopped'])
+    receipt.batchObservation = { persistedInvocations: 2, checksPerInvocation: 2, distinctHostCycleIds: true,
+      sessionBound: true, turnBound: true, nativeHookStatuses: ['blocked', 'stopped'], hostDisposition: 'block', noThirdInference: true }
+    receipt.verdict = 'PASS_NATIVE_HOST_BATCH_AND_CORRECTION_LIMIT'
+  } else {
+    const records = readFileSync(join(fixture, 'stop-observations-private.jsonl'), 'utf8')
+    attempt.writePrivate('stop-observations-private.jsonl', records)
+    const parsed = records.trim().split('\n').map((line) => JSON.parse(line))
+    receipt.callbackRecords = assessCodexStopRecords(parsed, threadId, turnId)
+    receipt.hookEvents = assessCodexHookEvents(notifications, threadId, turnId)
+    // This observation intentionally does not invent cycle IDs from hook-run IDs or model text.
+    receipt.verdict = 'OBSERVED_NATIVE_CORRECTION_CYCLE_ID_UNPROVED'
+  }
 } catch (error) {
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
   process.exitCode = 1
@@ -187,8 +219,9 @@ try {
   attempt?.writePrivate('native-output-private.txt', output.snapshot())
   attempt?.writePrivate('notifications-private.json', JSON.stringify(notifications, null, 2))
   receipt.loopbackRequests = requests; receipt.ownedProviderExited = exited; receipt.outputOverflow = output.overflow
-  receipt.limitations = ['Synthetic native correction only; real account/workspace matrix open',
-    'Cycle grouping and host-owned enforcement are not established', 'No SubagentStop execution']
+  receipt.limitations = batch ? ['Synthetic reviewed checks only; no production adapter or host authentication boundary',
+    'Real account/workspace matrix, restart integration and SubagentStop remain open'] : ['Synthetic native correction only; real account/workspace matrix open',
+      'Cycle grouping and host-owned enforcement are not established', 'No SubagentStop execution']
   attempt?.writeReceipt(receipt)
   console.log(JSON.stringify({ verdict: receipt.verdict, loopbackRequests: requests, ownedProviderExited: exited }))
 }
