@@ -28,7 +28,7 @@ try {
   attempt = new ProbeAttempt(evidence, privateDir); attempt.create()
   const script = fileURLToPath(import.meta.url), worktree = dirname(dirname(script)), primary = join(dirname(dirname(worktree)), 'agent-cockpit')
   const manifest = join(worktree, 'vendor/codex-memory-root/upstream.json'), pin = JSON.parse(readFileSync(manifest, 'utf8'))
-  assert.equal(pin.candidateBuilt, true); assert.equal(pin.candidateSourceCommit, 'eeb03f10101987bf8140701f9ad30276e6427e9b')
+  assert.equal(pin.candidateBuilt, true); assert.equal(pin.candidateSourceCommit, '9e8562bd9e4785ffa855d33b6b112c9ba22910a6')
   assert.equal(sha(cli), pin.providerExecutableSha256)
   assert.equal(sha(process.execPath), '68f4d07ca49e0500cc135c7e0a445093e228e42e126ac22306d045f0a8c2636b')
   receipt.sourceParent = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktree, encoding: 'utf8' }).trim()
@@ -55,14 +55,18 @@ try {
       assert.equal(saved.canonicalProfile, canonicalProfile); env.CODEX_HOME = literalProfile
     } else { assert.equal(current.isolation, 'none'); assert.equal(saved.env.CODEX_HOME, undefined) }
     const memoryBase = join(privateDir, `${label}-memory`), sqliteHome = nativeStateIdentityOnly ? undefined : join(privateDir, `${label}-state`)
+    const backfillRoot = nativeStateIdentityOnly ? undefined : join(privateDir, `${label}-history`)
     mkdirSync(memoryBase, { mode: 0o700 }); if (sqliteHome) mkdirSync(sqliteHome, { mode: 0o700 })
+    if (backfillRoot) mkdirSync(backfillRoot, { mode: 0o700 })
     const config = [`memories.root=${JSON.stringify(memoryBase)}`, ...(sqliteHome ? [`sqlite_home=${JSON.stringify(sqliteHome)}`] : []),
+      ...(backfillRoot ? [`sqlite_backfill_root=${JSON.stringify(backfillRoot)}`] : []),
       'memories.generate_memories=false', 'memories.use_memories=false', 'features.memories=false', 'features.multi_agent=false',
       'features.hooks=false', 'features.apps=false', 'features.plugins=false', 'features.shell_tool=false',
+      'features.background_paginated_rollout_migration=false', 'features.local_thread_store_compression=false',
       'web_search="disabled"', 'check_for_update_on_startup=false']
     assert.equal(sha(registry), registryHash); assert.equal(sha(cli), pin.providerExecutableSha256)
     attempt.writePrivate(`${label}-prelaunch-private.json`, JSON.stringify({ current, env, literalProfile, canonicalProfile,
-      cwd, memoryBase, sqliteHome, config, authMetadataBefore: before }, null, 2))
+      cwd, memoryBase, sqliteHome, backfillRoot, config, authMetadataBefore: before }, null, 2))
     const output = new ProbeOutput()
     let value: unknown
     try {
@@ -122,12 +126,13 @@ try {
     }
     const identity = codexIdentityFrom(value)
     attempt.writePrivate(`${label}-binding-private.json`, JSON.stringify({ current, env, literalProfile, canonicalProfile, cwd,
-      memoryBase, sqliteHome, config, accountResponse: value, identity, authMetadataBefore: before, authMetadataAfter: authMetadata(literalProfile) }, null, 2))
+      memoryBase, sqliteHome, backfillRoot, config, accountResponse: value, identity, authMetadataBefore: before, authMetadataAfter: authMetadata(literalProfile) }, null, 2))
     assert.ok(identity.state === 'known' && identity.key === current.identity.key, 'Candidate principal mismatch/unknown; stop without refresh or fallback')
     assert.equal(realpathSync(literalProfile), canonicalProfile); assert.deepEqual(authMetadata(literalProfile), before)
     assert.equal(sha(registry), registryHash)
     ;(receipt.rows as unknown[]).push({ accountMode: mode, workspaceScope: scope, accountGeneration: current.generation,
       identityMatched: true, credentialLocatorRetained: true, authFileMetadataUnchanged: true, nativeStateIdentityOnly,
+      isolatedSqliteConfigured: Boolean(sqliteHome), selectedBackfillConfigured: Boolean(backfillRoot),
       modelInputs: 0, memoryEffectQualification: false })
   }
   if (!diagnostic) receipt.verdict = 'PASS_CANDIDATE_FOUR_CONTEXT_IDENTITY_WITH_MEMORY_ROOT_OVERRIDE'

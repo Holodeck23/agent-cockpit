@@ -7,21 +7,26 @@ index dbcd863..5e07426 100644
 +/target.noindex/
 diff --git a/PROVENANCE-W13.md b/PROVENANCE-W13.md
 new file mode 100644
-index 0000000..bc16f1e
+index 0000000..35383c8
 --- /dev/null
 +++ b/PROVENANCE-W13.md
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,16 @@
 +# W13 native Codex memory-root candidate
 +
 +Upstream reference: https://github.com/openai/codex.git, annotated tag rust-v0.162.1 (7a078f6bb4ce0dc2a81408b334ce52979d92c603), peeled source commit092d3acd6bec3e3a14bdc7e7a2810ab628ab759d. Tag is not claimed cryptographically verified. Original LICENSE (Apache-2.0) and NOTICE are retained without alteration. Upstream reference lives at third-party/codex-upstream-w13-0.162.1 and remains source-clean; this declared candidate checkout is tools/codex-w13-memory-root, branch codex/w13-memory-root. Both are under the shared repos root. This baseline/candidate pair is intentional.
 +
 +Source classes: unmodified upstream files are verbatim adoption; changes recorded after this file are adapted implementation for the W13 contract. David delegated the scope choice on19October2026 (“your call”); the execution owner chose a separate native extension. No installation/replacement/publication or auth relocation is authorized by this candidate. Upstream push URL is disabled; completed patches and provenance are checkpointed on the already-authorized owned Cockpit branch. No new GitHub fork or remote is created.
 +
-+Build source pin: codex-rs/rust-toolchain.toml specifies Rust1.95.0 with clippy/rustfmt/rust-src. Rust1.95.0 was installed with David's explicit approval for this build; default stable1.92.0 was retained. Initial locked build found release-local package versions0.0.0 in Cargo.lock versus0.162.1 in the manifest. Offline workspace-only resolution corrected161 local entries; all external package records/checksums/revisions are byte-equivalent as parsed data. All369 configuration tests and6 focused consumer regressions pass. The latter cover actual native-tool note writes, cached namespace/revocation, versioned read isolation, reset sentinels, account-home preservation, consolidation config without spawning a worker, and import-destination discovery. Full CLI build and end-to-end native proof remain open. The pinned official binary remains the comparison baseline; its matching version alone is not a reproducible-build proof.
++Historical first-source checkpoint (before native build): codex-rs/rust-toolchain.toml specifies Rust1.95.0 with clippy/rustfmt/rust-src. Rust1.95.0 was installed with David's explicit approval for this build; default stable1.92.0 was retained. Initial locked build found release-local package versions0.0.0 in Cargo.lock versus0.162.1 in the manifest. Offline workspace-only resolution corrected161 local entries; all external package records/checksums/revisions are byte-equivalent as parsed data. All369 configuration tests and6 focused consumer regressions pass. The latter cover actual native-tool note writes, cached namespace/revocation, versioned read isolation, reset sentinels, account-home preservation, consolidation config without spawning a worker, and import-destination discovery. Full CLI build and end-to-end native proof were still open at that first source checkpoint. The pinned official binary remains the comparison baseline; its matching version alone is not a reproducible-build proof.
 +
-+Planned change: optional memories.root selects a separate base directory containing the existing version-specific memories/ and memories_v2/ trees, with memories_extensions/ cleanup confined to that base. This explicit version nesting preserves dual-write and reset behavior while leaving native credential discovery at the original HOME/CODEX_HOME locator. Omitted root preserves existing paths. Root must be explicitly absolute; no relative or tilde expansion for this setting. One resolver must supply read context, native memory tools, readable sandbox roots, startup/consolidation, status/reset and applicable import destinations. Thread-local cached memory namespace must not switch mid-session. Config path is consistency/selection, not a same-user filesystem security sandbox.
++Implemented in v1: optional memories.root selects a separate base directory containing the existing version-specific memories/ and memories_v2/ trees, with memories_extensions/ cleanup confined to that base. This explicit version nesting preserves dual-write and reset behavior while leaving native credential discovery at the original HOME/CODEX_HOME locator. Omitted root preserves existing paths. Root must be explicitly absolute; no relative or tilde expansion for this setting. One resolver must supply read context, native memory tools, readable sandbox roots, startup/consolidation, status/reset and applicable import destinations. Thread-local cached memory namespace must not switch mid-session. Config path is consistency/selection, not a same-user filesystem security sandbox.
 +
 +Before adoption: parser/default/version/concurrency/negative-root tests, actual native read/write/next-session recall, unchanged native principal/credential locator, package hashes and all W13 required gates. Keep native generation off in probes until any controlled native-worker exception is explicitly authorized. No automatic helper/subagent, installer, application launch or provider call was started by source acquisition.
++
++
++19 October 2026 continuation: the labelled v1 candidate was built and passed four fictional-context native memory note-write/restart/read cases. Its cached principal matched all four real account/checkout contexts with existing native state. Fresh private SQLite startup instead hit the 15-second initialize budget; an owned-process stack sample and upstream source identify account-wide rollout backfill before transport readiness.
++
++The v2 candidate adds optional explicit absolute `sqlite_backfill_root` as a startup metadata source selector. Omission preserves native account-wide backfill. Selection requires a resolved SQLite home separate from the credential home. Normal backfill still runs and marks completion only after processing selected sessions/ and archived_sessions/; no completion state is fabricated. The SQLite config carries source identity through clones/equality. Credential discovery, native transcript write destinations and readiness budgets are unchanged. This setting alone does not scope every native history lookup or background migration/compression task; the controlled proof disables those background filesystem tasks, automatic memory generation and helpers. Production adoption requires the remaining lifecycle/history-source audit. Labelled v1 bytes remain preserved under target.noindex/preserved/eeb03f1-labelled-v1/codex at their recorded SHA-256. Neither version replaces the installed CLI.
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index 1cee117..b30500b 100644
 --- a/codex-rs/Cargo.lock
@@ -583,12 +588,12 @@ index 8bdf6bb..66af2d1 100644
 +            ))
 +        })?;
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 8d062a2..b7f16a7 100644
+index 8d062a2..dbc9d89 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -120 +120 @@ use codex_terminal_detection::TerminalName;
 -    version,
-+    version = concat!(env!("CARGO_PKG_VERSION"), "-w13-memory-root.1"),
++    version = concat!(env!("CARGO_PKG_VERSION"), "-w13-memory-root.2"),
 @@ -2138 +2138,5 @@ async fn run_debug_clear_memories_command(
 -    clear_memory_roots_contents(&config.codex_home).await?;
 +    clear_memory_roots_contents(&codex_config::memory_root::base(
@@ -599,6 +604,19 @@ index 8d062a2..b7f16a7 100644
 @@ -2147 +2151 @@ async fn run_debug_clear_memories_command(
 -        config.codex_home.display()
 +        codex_config::memory_root::base(&config.memories, &config.codex_home).display()
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 3e5cc07..07d0ef8 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -372,0 +373,8 @@ pub struct ConfigToml {
++    /// Optional history source for startup SQLite backfill. Defaults to CODEX_HOME.
++    /// Requires a separate sqlite_home; does not change credentials or transcript writes.
++    #[serde(
++        default,
++        deserialize_with = "crate::memory_root::deserialize_backfill_root"
++    )]
++    pub sqlite_backfill_root: Option<AbsolutePathBuf>,
++
 diff --git a/codex-rs/config/src/lib.rs b/codex-rs/config/src/lib.rs
 index b51ad2f..42470cd 100644
 --- a/codex-rs/config/src/lib.rs
@@ -607,10 +625,10 @@ index b51ad2f..42470cd 100644
 +pub mod memory_root;
 diff --git a/codex-rs/config/src/memory_root.rs b/codex-rs/config/src/memory_root.rs
 new file mode 100644
-index 0000000..e5e9d11
+index 0000000..81a35d1
 --- /dev/null
 +++ b/codex-rs/config/src/memory_root.rs
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,120 @@
 +//! Versioned native memory storage, independent of the account credential locator.
 +
 +use crate::types::MemoriesConfig;
@@ -637,12 +655,31 @@ index 0000000..e5e9d11
 +where
 +    D: Deserializer<'de>,
 +{
++    deserialize_absolute_root(deserializer, "memories.root")
++}
++
++pub(crate) fn deserialize_backfill_root<'de, D>(
++    deserializer: D,
++) -> Result<Option<AbsolutePathBuf>, D::Error>
++where
++    D: Deserializer<'de>,
++{
++    deserialize_absolute_root(deserializer, "sqlite_backfill_root")
++}
++
++fn deserialize_absolute_root<'de, D>(
++    deserializer: D,
++    field: &str,
++) -> Result<Option<AbsolutePathBuf>, D::Error>
++where
++    D: Deserializer<'de>,
++{
 +    Option::<PathBuf>::deserialize(deserializer)?
 +        .map(|path| {
 +            if !path.is_absolute() {
-+                return Err(D::Error::custom(
-+                    "memories.root must be an explicit absolute path",
-+                ));
++                return Err(D::Error::custom(format!(
++                    "{field} must be an explicit absolute path"
++                )));
 +            }
 +            AbsolutePathBuf::from_absolute_path_checked(path).map_err(D::Error::custom)
 +        })
@@ -682,6 +719,25 @@ index 0000000..e5e9d11
 +    }
 +
 +    #[test]
++    fn w13_backfill_root_requires_explicit_absolute_path() {
++        use crate::config_toml::ConfigToml;
++        let dir = tempfile::tempdir().unwrap();
++        let _guard = codex_utils_absolute_path::AbsolutePathBufGuard::new(dir.path());
++        for path in ["relative", "../other", "~/history", ""] {
++            assert!(
++                toml::from_str::<ConfigToml>(&format!("sqlite_backfill_root = {path:?}")).is_err()
++            );
++        }
++        let parsed: ConfigToml = toml::from_str(&format!(
++            "sqlite_backfill_root = {:?}",
++            dir.path().display().to_string()
++        ))
++        .unwrap();
++        assert_eq!(parsed.sqlite_backfill_root, Some(dir.path().abs()));
++        assert_eq!(ConfigToml::default().sqlite_backfill_root, None);
++    }
++
++    #[test]
 +    fn rejects_relative_or_home_expanded_root_even_with_a_deserialization_base() {
 +        let dir = tempfile::tempdir().unwrap();
 +        let _guard = codex_utils_absolute_path::AbsolutePathBufGuard::new(dir.path());
@@ -708,7 +764,7 @@ index fab6fb2..ff80fca 100644
 @@ -397,0 +403 @@ impl From<MemoriesToml> for MemoriesConfig {
 +            root: toml.root,
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 5864a5d..cfdd1fa 100644
+index 5864a5d..932914a 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -2607,0 +2608,9 @@
@@ -721,11 +777,64 @@ index 5864a5d..cfdd1fa 100644
 +          "default": null,
 +          "description": "Optional absolute base for versioned memory directories; does not relocate credentials."
 +        },
+@@ -7899,0 +7909,9 @@
++    "sqlite_backfill_root": {
++      "allOf": [
++        {
++          "$ref": "#/definitions/AbsolutePathBuf"
++        }
++      ],
++      "default": null,
++      "description": "Optional history source for startup SQLite backfill. Defaults to CODEX_HOME. Requires a separate sqlite_home; does not change credentials or transcript writes."
++    },
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 806bd80..186ccf6 100644
+index 806bd80..1e49172 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -53,0 +54,36 @@ use codex_config::types::MemoriesToml;
+@@ -53,0 +54,79 @@ use codex_config::types::MemoriesToml;
++
++#[tokio::test]
++async fn w13_backfill_root_retains_credentials_and_requires_separate_state() {
++    let home = tempdir().unwrap();
++    let cwd = tempdir().unwrap();
++    let selected = tempdir().unwrap();
++    let state = tempdir().unwrap();
++    for sqlite_home in [None, Some(home.path().abs()), Some(state.path().abs())] {
++        let allowed = sqlite_home
++            .as_ref()
++            .is_some_and(|path| path != &home.path().abs());
++        let result = Config::load_from_base_config_with_overrides(
++            ConfigToml {
++                sqlite_home,
++                sqlite_backfill_root: Some(selected.path().abs()),
++                ..Default::default()
++            },
++            ConfigOverrides {
++                cwd: Some(cwd.path().to_path_buf()),
++                ..Default::default()
++            },
++            home.path().abs(),
++        )
++        .await;
++        if allowed {
++            let config = result.unwrap();
++            assert_eq!(config.codex_home, home.path().abs());
++            assert_eq!(config.sqlite_config().home(), state.path());
++            assert_eq!(
++                config.sqlite_config().backfill_root(),
++                Some(selected.path())
++            );
++            assert_eq!(config.memories.root, None);
++        } else {
++            assert!(
++                result
++                    .unwrap_err()
++                    .to_string()
++                    .contains("requires sqlite_home separate")
++            );
++        }
++    }
++}
 +
 +#[tokio::test]
 +async fn w13_memory_root_explicit_memory_base_retains_account_home_and_selected_version() {
@@ -762,12 +871,12 @@ index 806bd80..186ccf6 100644
 +    assert!(!isolated.path().join("memories_v2").exists());
 +    assert!(!home.path().join("memories_v2").exists());
 +}
-@@ -340,0 +377 @@ consolidation_model = "gpt-5.2"
+@@ -340,0 +420 @@ consolidation_model = "gpt-5.2"
 +            root: None,
-@@ -368,0 +406 @@ consolidation_model = "gpt-5.2"
+@@ -368,0 +449 @@ consolidation_model = "gpt-5.2"
 +            root: None,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 1eb2cdf..e1958f1 100644
+index 1eb2cdf..dd78bac 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -37,0 +38 @@ use codex_config::loader::project_trust_key;
@@ -775,6 +884,17 @@ index 1eb2cdf..e1958f1 100644
 @@ -3527 +3528 @@ impl Config {
 -        let memories_root = codex_home.join(memories_config.version.directory_name());
 +        let memories_root = codex_config::memory_root::for_version(&memories_config, &codex_home, memories_config.version);
+@@ -4124,0 +4126,6 @@ impl Config {
++        if cfg.sqlite_backfill_root.is_some() && sqlite_home == codex_home {
++            return Err(std::io::Error::new(
++                ErrorKind::InvalidInput,
++                "sqlite_backfill_root requires sqlite_home separate from CODEX_HOME",
++            ));
++        }
+@@ -4417 +4424,2 @@ impl Config {
+-            sqlite: codex_state::SqliteConfig::from_sqlite_home(sqlite_home),
++            sqlite: codex_state::SqliteConfig::from_sqlite_home(sqlite_home)
++                .with_backfill_root(cfg.sqlite_backfill_root.clone()),
 diff --git a/codex-rs/ext/memories/src/extension.rs b/codex-rs/ext/memories/src/extension.rs
 index 3db27e4..a5bcae9 100644
 --- a/codex-rs/ext/memories/src/extension.rs
@@ -1190,3 +1310,98 @@ index ebd0b99..ac229f4 100644
 +                &config.codex_home,
 +                config.memories.version,
 +            );
+diff --git a/codex-rs/rollout/src/recorder_tests.rs b/codex-rs/rollout/src/recorder_tests.rs
+index cb80a56..4dfcc01 100644
+--- a/codex-rs/rollout/src/recorder_tests.rs
++++ b/codex-rs/rollout/src/recorder_tests.rs
+@@ -177,3 +177 @@ async fn opening_existing_rollout_preserves_modified_time() -> std::io::Result<(
+-#[tokio::test]
+-async fn state_db_init_backfills_before_returning() -> anyhow::Result<()> {
+-    let home = TempDir::new().expect("temp dir");
++fn w13_write_backfill_fixture(home: &Path) -> anyhow::Result<(ThreadId, PathBuf)> {
+@@ -182 +180 @@ async fn state_db_init_backfills_before_returning() -> anyhow::Result<()> {
+-    let rollout_path = home.path().join(format!(
++    let rollout_path = home.join(format!(
+@@ -200 +198 @@ async fn state_db_init_backfills_before_returning() -> anyhow::Result<()> {
+-            cwd: home.path().to_path_buf(),
++            cwd: home.to_path_buf(),
+@@ -247,0 +246,47 @@ async fn state_db_init_backfills_before_returning() -> anyhow::Result<()> {
++    Ok((thread_id, rollout_path))
++}
++
++#[tokio::test]
++async fn w13_backfill_root_imports_only_selected_history_and_preserves_default()
++-> anyhow::Result<()> {
++    let account = TempDir::new()?;
++    let selected = TempDir::new()?;
++    let isolated_state = TempDir::new()?;
++    let (account_id, account_path) = w13_write_backfill_fixture(account.path())?;
++    let (selected_id, selected_path) = w13_write_backfill_fixture(selected.path())?;
++    let (archived_id, archive_source) = w13_write_backfill_fixture(selected.path())?;
++    let archive_dir = selected.path().join("archived_sessions");
++    fs::create_dir_all(&archive_dir)?;
++    let archive_path = archive_dir.join(archive_source.file_name().unwrap());
++    fs::rename(archive_source, &archive_path)?;
++    let original_bytes = fs::read(&account_path)?;
++    let mut config = test_config(account.path());
++    config.sqlite = codex_state::SqliteConfig::new_for_testing(isolated_state.path().abs())
++        .with_backfill_root(Some(selected.path().abs()));
++    let runtime = crate::state_db::try_init(&config).await?;
++    assert_eq!(runtime.get_thread(account_id).await?, None);
++    assert_eq!(
++        runtime.get_thread(selected_id).await?.unwrap().rollout_path,
++        selected_path
++    );
++    let archived = runtime.get_thread(archived_id).await?.unwrap();
++    assert_eq!(archived.rollout_path, archive_path);
++    assert!(archived.archived_at.is_some());
++    assert_eq!(
++        runtime.get_backfill_state().await?.status,
++        codex_state::BackfillStatus::Complete
++    );
++    assert_eq!(fs::read(&account_path)?, original_bytes);
++    runtime.close().await;
++    let default_runtime = crate::state_db::try_init(&test_config(account.path())).await?;
++    assert!(default_runtime.get_thread(account_id).await?.is_some());
++    assert_eq!(default_runtime.get_thread(selected_id).await?, None);
++    default_runtime.close().await;
++    Ok(())
++}
++
++#[tokio::test]
++async fn state_db_init_backfills_before_returning() -> anyhow::Result<()> {
++    let home = TempDir::new().expect("temp dir");
++    let (thread_id, rollout_path) = w13_write_backfill_fixture(home.path())?;
++
+diff --git a/codex-rs/rollout/src/state_db.rs b/codex-rs/rollout/src/state_db.rs
+index 439a1e6..c97d696 100644
+--- a/codex-rs/rollout/src/state_db.rs
++++ b/codex-rs/rollout/src/state_db.rs
+@@ -110,0 +111 @@ async fn try_init_with_roots_inner(
++    let backfill_root = sqlite.backfill_root().unwrap_or(codex_home.as_path());
+@@ -113 +114 @@ async fn try_init_with_roots_inner(
+-        codex_home.as_path(),
++        backfill_root,
+diff --git a/codex-rs/state/src/sqlite.rs b/codex-rs/state/src/sqlite.rs
+index e35a074..a673e4f 100644
+--- a/codex-rs/state/src/sqlite.rs
++++ b/codex-rs/state/src/sqlite.rs
+@@ -155,0 +156 @@ pub struct SqliteConfig {
++    backfill_root: Option<AbsolutePathBuf>,
+@@ -162 +163 @@ impl PartialEq for SqliteConfig {
+-        self.sqlite_home == other.sqlite_home
++        self.sqlite_home == other.sqlite_home && self.backfill_root == other.backfill_root
+@@ -171,0 +173 @@ impl SqliteConfig {
++            backfill_root: None,
+@@ -183,0 +186,11 @@ impl SqliteConfig {
++    /// Select only this history base for startup metadata backfill.
++    /// The account credential locator and rollout write destination are unchanged.
++    pub fn with_backfill_root(mut self, root: Option<AbsolutePathBuf>) -> Self {
++        self.backfill_root = root;
++        self
++    }
++
++    pub fn backfill_root(&self) -> Option<&Path> {
++        self.backfill_root.as_deref()
++    }
++

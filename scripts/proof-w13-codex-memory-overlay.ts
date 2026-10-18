@@ -32,7 +32,7 @@ try {
   const manifest = join(repo, 'vendor/codex-memory-root/upstream.json')
   const pin = JSON.parse(readFileSync(manifest, 'utf8'))
   assert.equal(pin.candidateBuilt, true, 'Candidate build must be verified and pinned before this probe')
-  assert.equal(pin.candidateSourceCommit, 'eeb03f10101987bf8140701f9ad30276e6427e9b')
+  assert.equal(pin.candidateSourceCommit, '9e8562bd9e4785ffa855d33b6b112c9ba22910a6')
   assert.match(pin.providerExecutableSha256, /^[a-f0-9]{64}$/)
   assert.equal(sha(cli), pin.providerExecutableSha256)
   assert.equal(sha(process.execPath), '68f4d07ca49e0500cc135c7e0a445093e228e42e126ac22306d045f0a8c2636b')
@@ -46,7 +46,8 @@ try {
   receipt.memoryVersion = version; receipt.fixtureWorkspaceScope = scope
   const home = join(privateDir, 'home'), credentialHome = join(privateDir, 'credential-home'), memoryBase = join(privateDir, 'selected-base')
   const sqliteHome = join(privateDir, 'selected-state'), otherBase = join(privateDir, 'unselected-base'), project = join(privateDir, 'project')
-  for (const path of [home, credentialHome, memoryBase, sqliteHome, otherBase, project]) mkdirSync(path, { mode: 0o700 })
+  const backfillRoot = join(privateDir, 'selected-history')
+  for (const path of [home, credentialHome, memoryBase, sqliteHome, backfillRoot, otherBase, project]) mkdirSync(path, { mode: 0o700 })
   const gitEnv = { HOME: home, PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
   execFileSync('/usr/bin/git', ['init', '-q', project], { env: gitEnv, timeout: 10_000 })
   let cwd = project
@@ -117,10 +118,10 @@ try {
   })
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   const address = server.address(); assert.ok(address && typeof address !== 'string')
-  const config = `model_provider="w13fixture"\nmodel="w13-fixture"\napproval_policy="never"\nsandbox_mode="read-only"\nweb_search="disabled"\ncheck_for_update_on_startup=false\nsqlite_home=${JSON.stringify(sqliteHome)}\n[features]\nmemories=true\nmulti_agent=false\nhooks=false\napps=false\nplugins=false\nshell_tool=false\n[memories]\nroot=${JSON.stringify(memoryBase)}\nversion=${JSON.stringify(version)}\ndual_write=false\ngenerate_memories=false\nuse_memories=true\ndedicated_tools=true\n[model_providers.w13fixture]\nname="Owned loopback fixture"\nbase_url="http://127.0.0.1:${address.port}/v1"\nwire_api="responses"\nrequires_openai_auth=false\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n[projects.${JSON.stringify(cwd)}]\ntrust_level="trusted"\n`
+  const config = `model_provider="w13fixture"\nmodel="w13-fixture"\napproval_policy="never"\nsandbox_mode="read-only"\nweb_search="disabled"\ncheck_for_update_on_startup=false\nsqlite_home=${JSON.stringify(sqliteHome)}\nsqlite_backfill_root=${JSON.stringify(backfillRoot)}\n[features]\nmemories=true\nmulti_agent=false\nhooks=false\napps=false\nplugins=false\nshell_tool=false\nbackground_paginated_rollout_migration=false\nlocal_thread_store_compression=false\n[memories]\nroot=${JSON.stringify(memoryBase)}\nversion=${JSON.stringify(version)}\ndual_write=false\ngenerate_memories=false\nuse_memories=true\ndedicated_tools=true\n[model_providers.w13fixture]\nname="Owned loopback fixture"\nbase_url="http://127.0.0.1:${address.port}/v1"\nwire_api="responses"\nrequires_openai_auth=false\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n[projects.${JSON.stringify(cwd)}]\ntrust_level="trusted"\n`
   const configFile = join(credentialHome, 'config.toml'); writeFileSync(configFile, config, { flag: 'wx', mode: 0o600 }); guards.set(configFile, sha(configFile))
   const env = { HOME: home, CODEX_HOME: credentialHome, TMPDIR: privateDir, PATH: '/usr/bin:/bin:/opt/homebrew/bin', USER: process.env.USER, LOGNAME: process.env.LOGNAME, LANG: 'en_US.UTF-8' }
-  attempt.writePrivate('binding-private.json', JSON.stringify({ env, cwd, memoryBase, sqliteHome, directory, selected, note, negatives, noteFile,
+  attempt.writePrivate('binding-private.json', JSON.stringify({ env, cwd, memoryBase, sqliteHome, backfillRoot, directory, selected, note, negatives, noteFile,
     guardHashes: Object.fromEntries(guards), negativeTrees, candidateSourceCommit: pin.candidateSourceCommit, providerSha256: sha(cli), runId: randomUUID() }, null, 2))
   for (const next of ['write', 'read'] as const) {
     phase = next; requestCount = 0
