@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { createInterface } from 'node:readline'
 import { ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
-import { assessNativeMemoryRequest, assessNativeMemoryRootControl } from './lib/w13-memory-request.ts'
+import { assessNativeMemoryRequest, assessNativeMemoryRootControl, observeNativeV2MemoryRoots } from './lib/w13-memory-request.ts'
 
 process.umask(0o077)
 const sha = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -19,6 +19,8 @@ const transport = process.env.COCKPIT_W13_NATIVE_TRANSPORT ?? 'exec'
 const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'primary'
 const memorySelection = process.env.COCKPIT_W13_MEMORY_SELECTION ?? 'on'
 const sqliteRootControl = process.env.COCKPIT_W13_SQLITE_ROOT_CONTROL === '1'
+const memoryVersion = process.env.COCKPIT_W13_MEMORY_VERSION
+const v2PathCandidates = process.env.COCKPIT_W13_V2_PATH_CANDIDATES === '1'
 const receipt: Record<string, unknown> = { scenario: 'native-codex-memory-request', layer: 'direct-cli-synthetic',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', remoteModelRequests: 0, nativeInputs: 0, loopbackRequests: 0,
   accountScope: 'inert-unauthenticated-fixture', workspaceScope: 'isolated-synthetic-project' }
@@ -32,6 +34,9 @@ try {
   assert.ok(['exec', 'app-server'].includes(transport))
   assert.ok(['primary', 'worktree'].includes(workspaceKind))
   assert.ok(['on', 'off'].includes(memorySelection))
+  assert.ok(memoryVersion === undefined || memoryVersion === 'v2')
+  if (memoryVersion) assert.equal(sqliteRootControl, true, 'Experimental v2 discovery requires the inert strict-config root control')
+  if (v2PathCandidates) assert.equal(memoryVersion, 'v2')
   if (sqliteRootControl) {
     assert.equal(memorySelection, 'on', 'Root control requires an enabled native memory loader')
     assert.equal(transport, 'app-server', 'Root control uses strict native app-server config validation')
@@ -71,10 +76,27 @@ try {
   receipt.fixtureWorkspaceKind = workspaceKind
   receipt.memorySelection = memorySelection
   receipt.sqliteRootControl = sqliteRootControl
+  if (memoryVersion) receipt.nativeMemoryVersion = memoryVersion
   const selected = `W13_SELECTED_MEMORY_${randomUUID()}`, excluded = `W13_EXCLUDED_MEMORY_${randomUUID()}`
   writeFileSync(join(memory, 'memory_summary.md'), `# Synthetic native memory\n\n${selected}\n`, { flag: 'wx', mode: 0o600 })
   writeFileSync(join(excludedMemory, 'memory_summary.md'), `# Unselected fixture memory\n\n${excluded}\n`, { flag: 'wx', mode: 0o600 })
   const prompt = 'Without tools, reply with the synthetic memory canary if available, otherwise READY.'
+  const additionalRoots: Record<string, string> = {}
+  if (v2PathCandidates) {
+    const manifest: Record<string, unknown>[] = []
+    for (const [homeAlias, base] of [['credential', codexHome], ['sqlite', dirname(excludedMemory)]] as const) {
+      for (const suffix of ['direct', 'nested'] as const) {
+        const directory = suffix === 'direct' ? join(base, 'memories_v2') : join(base, 'memories_v2/memories')
+        mkdirSync(directory, { recursive: true, mode: 0o700 })
+        const marker = `W13_V2_${randomUUID()}`, file = join(directory, 'memory_summary.md'), alias = `${homeAlias}-v2-${suffix}`
+        writeFileSync(file, `v2\n# Synthetic memory\n${marker}\n`, { flag: 'wx', mode: 0o600 })
+        additionalRoots[alias] = marker
+        manifest.push({ alias, file, marker, sha256: sha(file) })
+      }
+    }
+    attempt.writePrivate('v2-source-manifest-private.json', JSON.stringify(manifest, null, 2))
+    receipt.v2PathCandidateCount = manifest.length
+  }
   let acceptRequest!: (body: unknown) => void, rejectRequest!: (error: Error) => void
   const captured = new Promise<unknown>((resolve, reject) => { acceptRequest = resolve; rejectRequest = reject })
   server.on('request', (request, response) => {
@@ -108,6 +130,7 @@ try {
   const config = `model_provider = "w13fixture"\nmodel = "w13-fixture"\napproval_policy = "never"\nsandbox_mode = "read-only"\ncheck_for_update_on_startup = false\n[features]\nmemories = true\nmulti_agent = false\nhooks = false\napps = false\nplugins = false\nshell_tool = false\n[memories]\ngenerate_memories = false\nuse_memories = true\n[model_providers.w13fixture]\nname = "W13 loopback capture"\nbase_url = "http://127.0.0.1:${address.port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\nrequest_max_retries = 0\nstream_max_retries = 0\n`
   writeFileSync(join(codexHome, 'config.toml'), (sqliteRootControl ? `sqlite_home = ${JSON.stringify(dirname(excludedMemory))}\n` : '')
     + (memorySelection === 'on' ? config : config.replace('use_memories = true', 'use_memories = false'))
+      .replace('[memories]\n', memoryVersion ? '[memories]\nversion = "v2"\ndual_write = false\n' : '[memories]\n')
     + `[projects.${JSON.stringify(cwd)}]\ntrust_level="trusted"\n`, { flag: 'wx', mode: 0o600 })
   const env: NodeJS.ProcessEnv = { HOME: home, CODEX_HOME: codexHome, TMPDIR: privateDir,
     PATH: '/usr/bin:/bin:/opt/homebrew/bin', USER: process.env.USER, LOGNAME: process.env.LOGNAME, LANG: 'en_US.UTF-8' }
@@ -132,6 +155,7 @@ try {
   if (transport === 'exec') child.stdin.end()
   else {
     const send = (message: unknown): void => { child!.stdin.write(JSON.stringify(message) + '\n') }
+    let v2ThreadId = ''
     protocolTimer = setTimeout(() => rejectRequest(new Error('Native initialize exceeded 15 seconds')), 15_000)
     createInterface({ input: child.stdout }).on('line', (line) => {
       try {
@@ -148,8 +172,21 @@ try {
           const threadId = message.result?.thread?.id
           assert.ok(typeof threadId === 'string' && threadId.length > 0)
           attempt!.writePrivate('native-binding-private.json', JSON.stringify({ threadId, cwd }))
+          if (memoryVersion) {
+            v2ThreadId = threadId
+            protocolTimer = setTimeout(() => rejectRequest(new Error('Native memory status exceeded 30 seconds')), 30_000)
+            send({ id: 4, method: 'memory/status', params: {} })
+          } else {
+            receipt.nativeInputs = 1
+            send({ id: 3, method: 'turn/start', params: { threadId, input: [{ type: 'text', text: prompt }] } })
+          }
+        } else if (message.id === 4 && memoryVersion) {
+          clearTimeout(protocolTimer)
+          assert.equal(typeof message.result?.v2Ready, 'boolean')
+          assert.ok(Number.isSafeInteger(message.result?.v2ConsolidatedThreads) && message.result.v2ConsolidatedThreads >= 0)
+          receipt.nativeV2Status = { ready: message.result.v2Ready, consolidatedThreads: message.result.v2ConsolidatedThreads }
           receipt.nativeInputs = 1
-          send({ id: 3, method: 'turn/start', params: { threadId, input: [{ type: 'text', text: prompt }] } })
+          send({ id: 3, method: 'turn/start', params: { threadId: v2ThreadId, input: [{ type: 'text', text: prompt }] } })
         } else if (message.id !== undefined) assert.equal(message.id, 3)
       } catch (error) { rejectRequest(error instanceof Error ? error : new Error('Native protocol malformed')) }
     })
@@ -173,9 +210,11 @@ try {
     receipt.sqliteStateRedirectObserved = readdirSync(dirname(excludedMemory)).some((name) => /^state(?:_\d+)?\.sqlite(?:-wal|-shm)?$/.test(name))
     assert.equal(receipt.sqliteStateRedirectObserved, true, 'SQLite state redirection was not observed')
   }
-  receipt.observation = sqliteRootControl ? assessNativeMemoryRootControl(body, selected, excluded, prompt)
+  receipt.observation = memoryVersion ? observeNativeV2MemoryRoots(body, selected, excluded, prompt, additionalRoots)
+    : sqliteRootControl ? assessNativeMemoryRootControl(body, selected, excluded, prompt)
     : assessNativeMemoryRequest(body, selected, excluded, prompt, memorySelection === 'on')
-  receipt.verdict = sqliteRootControl ? 'OBSERVED_NATIVE_SQLITE_ROOT_CONTROL' : 'PASS_NATIVE_MEMORY_REQUEST_CONTEXT'
+  receipt.verdict = memoryVersion ? 'OBSERVED_NATIVE_V2_MEMORY_CONTEXT'
+    : sqliteRootControl ? 'OBSERVED_NATIVE_SQLITE_ROOT_CONTROL' : 'PASS_NATIVE_MEMORY_REQUEST_CONTEXT'
 } catch (error) {
   receipt.error = 'Native fixture stopped; inspect private diagnostics before any further attempt'
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')

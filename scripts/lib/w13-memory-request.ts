@@ -29,3 +29,24 @@ export function assessNativeMemoryRootControl(request: unknown, credentialHomeMa
   assert.notEqual(credentialLoaded, sqliteLoaded, 'Expected exactly one native memory root in the control')
   return { memorySource: sqliteLoaded ? 'sqlite-home' : 'credential-home', isolatedMemoryRootObserved: sqliteLoaded }
 }
+
+/** An empty v2 context is an observation, never a successful memory-loading proof. */
+export function observeNativeV2MemoryRoots(request: unknown, credentialHomeMarker: string, sqliteHomeMarker: string, prompt: string,
+  additionalRoots: Record<string, string> = {}): {
+  credentialHomeLoaded: boolean; sqliteHomeLoaded: boolean; memoryLoadingDemonstrated: boolean; loadedRoots: string[]
+} {
+  assert.ok(credentialHomeMarker.length >= 32 && sqliteHomeMarker.length >= 32 && credentialHomeMarker !== sqliteHomeMarker)
+  assert.ok(!prompt.includes(credentialHomeMarker) && !prompt.includes(sqliteHomeMarker), 'Prompt contains a memory canary')
+  assert.ok(request && typeof request === 'object' && !Array.isArray(request))
+  const body = request as { input?: unknown; instructions?: unknown }
+  assert.ok(Array.isArray(body.input) || typeof body.input === 'string')
+  const context = JSON.stringify({ input: body.input, instructions: body.instructions })
+  const credentialHomeLoaded = context.includes(credentialHomeMarker), sqliteHomeLoaded = context.includes(sqliteHomeMarker)
+  const roots = { 'credential-v1': credentialHomeMarker, 'sqlite-v1': sqliteHomeMarker, ...additionalRoots }
+  assert.equal(Object.keys(roots).length, Object.keys(additionalRoots).length + 2, 'Reserved root alias reused')
+  assert.ok(Object.values(roots).every((marker) => marker.length >= 32 && !prompt.includes(marker)))
+  assert.equal(new Set(Object.values(roots)).size, Object.keys(roots).length)
+  const loadedRoots = Object.entries(roots).filter(([, marker]) => context.includes(marker)).map(([alias]) => alias)
+  assert.ok(loadedRoots.length <= 1, 'Multiple memory roots appeared')
+  return { credentialHomeLoaded, sqliteHomeLoaded, memoryLoadingDemonstrated: loadedRoots.length === 1, loadedRoots }
+}
