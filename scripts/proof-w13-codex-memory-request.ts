@@ -3,14 +3,14 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { dirname, isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { createInterface } from 'node:readline'
 import { ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
-import { assessNativeMemoryRequest } from './lib/w13-memory-request.ts'
+import { assessNativeMemoryRequest, assessNativeMemoryRootControl } from './lib/w13-memory-request.ts'
 
 process.umask(0o077)
 const sha = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -18,6 +18,7 @@ const cli = process.env.COCKPIT_W13_CODEX ?? '', evidence = process.env.COCKPIT_
 const transport = process.env.COCKPIT_W13_NATIVE_TRANSPORT ?? 'exec'
 const workspaceKind = process.env.COCKPIT_W13_FIXTURE_WORKSPACE ?? 'primary'
 const memorySelection = process.env.COCKPIT_W13_MEMORY_SELECTION ?? 'on'
+const sqliteRootControl = process.env.COCKPIT_W13_SQLITE_ROOT_CONTROL === '1'
 const receipt: Record<string, unknown> = { scenario: 'native-codex-memory-request', layer: 'direct-cli-synthetic',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', remoteModelRequests: 0, nativeInputs: 0, loopbackRequests: 0,
   accountScope: 'inert-unauthenticated-fixture', workspaceScope: 'isolated-synthetic-project' }
@@ -31,6 +32,10 @@ try {
   assert.ok(['exec', 'app-server'].includes(transport))
   assert.ok(['primary', 'worktree'].includes(workspaceKind))
   assert.ok(['on', 'off'].includes(memorySelection))
+  if (sqliteRootControl) {
+    assert.equal(memorySelection, 'on', 'Root control requires an enabled native memory loader')
+    assert.equal(transport, 'app-server', 'Root control uses strict native app-server config validation')
+  }
   assert.ok([cli, evidence, privateDir].every(isAbsolute))
   const root = realpathSync(join(process.env.HOME ?? '', 'vault', 'clients')) + sep
   assert.ok(realpathSync(dirname(privateDir)).startsWith(root))
@@ -45,6 +50,7 @@ try {
   receipt.sourceParent = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim()
   receipt.sourceIndexTree = execFileSync('git', ['write-tree'], { cwd: repo, encoding: 'utf8' }).trim()
   receipt.harnessSha256 = sha(script)
+  receipt.oracleSha256 = sha(join(repo, 'scripts/lib/w13-memory-request.ts'))
   receipt.provider = { name: 'codex', version: '0.162.1', executableSha256: sha(cli), runtimeSha256: sha(process.execPath) }
   const home = join(privateDir, 'home'), codexHome = join(privateDir, 'codex-home'), project = join(privateDir, 'project')
   const memory = join(codexHome, 'memories'), excludedMemory = join(privateDir, 'unselected-profile', 'memories')
@@ -64,6 +70,7 @@ try {
   receipt.nativeTransport = transport
   receipt.fixtureWorkspaceKind = workspaceKind
   receipt.memorySelection = memorySelection
+  receipt.sqliteRootControl = sqliteRootControl
   const selected = `W13_SELECTED_MEMORY_${randomUUID()}`, excluded = `W13_EXCLUDED_MEMORY_${randomUUID()}`
   writeFileSync(join(memory, 'memory_summary.md'), `# Synthetic native memory\n\n${selected}\n`, { flag: 'wx', mode: 0o600 })
   writeFileSync(join(excludedMemory, 'memory_summary.md'), `# Unselected fixture memory\n\n${excluded}\n`, { flag: 'wx', mode: 0o600 })
@@ -99,11 +106,13 @@ try {
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   const address = server.address(); assert.ok(address && typeof address !== 'string')
   const config = `model_provider = "w13fixture"\nmodel = "w13-fixture"\napproval_policy = "never"\nsandbox_mode = "read-only"\ncheck_for_update_on_startup = false\n[features]\nmemories = true\nmulti_agent = false\nhooks = false\napps = false\nplugins = false\nshell_tool = false\n[memories]\ngenerate_memories = false\nuse_memories = true\n[model_providers.w13fixture]\nname = "W13 loopback capture"\nbase_url = "http://127.0.0.1:${address.port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\nrequest_max_retries = 0\nstream_max_retries = 0\n`
-  writeFileSync(join(codexHome, 'config.toml'), (memorySelection === 'on' ? config : config.replace('use_memories = true', 'use_memories = false'))
+  writeFileSync(join(codexHome, 'config.toml'), (sqliteRootControl ? `sqlite_home = ${JSON.stringify(dirname(excludedMemory))}\n` : '')
+    + (memorySelection === 'on' ? config : config.replace('use_memories = true', 'use_memories = false'))
     + `[projects.${JSON.stringify(cwd)}]\ntrust_level="trusted"\n`, { flag: 'wx', mode: 0o600 })
   const env: NodeJS.ProcessEnv = { HOME: home, CODEX_HOME: codexHome, TMPDIR: privateDir,
     PATH: '/usr/bin:/bin:/opt/homebrew/bin', USER: process.env.USER, LOGNAME: process.env.LOGNAME, LANG: 'en_US.UTF-8' }
-  child = spawn(cli, transport === 'exec' ? ['exec', '--json', '--skip-git-repo-check', '--ephemeral', prompt] : ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+  child = spawn(cli, transport === 'exec' ? ['exec', '--json', '--skip-git-repo-check', '--ephemeral', prompt]
+    : ['app-server', ...(sqliteRootControl ? ['--strict-config'] : [])], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
   receipt.nativeInputs = transport === 'exec' ? 1 : 0
   const closed = new Promise<void>((resolve) => {
     child!.once('error', () => { outputError = new Error('Owned native fixture could not start') })
@@ -160,8 +169,13 @@ try {
   }
   assert.equal(outputError, undefined)
   assert.equal(requestCount, 1)
-  receipt.observation = assessNativeMemoryRequest(body, selected, excluded, prompt, memorySelection === 'on')
-  receipt.verdict = 'PASS_NATIVE_MEMORY_REQUEST_CONTEXT'
+  if (sqliteRootControl) {
+    receipt.sqliteStateRedirectObserved = readdirSync(dirname(excludedMemory)).some((name) => /^state(?:_\d+)?\.sqlite(?:-wal|-shm)?$/.test(name))
+    assert.equal(receipt.sqliteStateRedirectObserved, true, 'SQLite state redirection was not observed')
+  }
+  receipt.observation = sqliteRootControl ? assessNativeMemoryRootControl(body, selected, excluded, prompt)
+    : assessNativeMemoryRequest(body, selected, excluded, prompt, memorySelection === 'on')
+  receipt.verdict = sqliteRootControl ? 'OBSERVED_NATIVE_SQLITE_ROOT_CONTROL' : 'PASS_NATIVE_MEMORY_REQUEST_CONTEXT'
 } catch (error) {
   receipt.error = 'Native fixture stopped; inspect private diagnostics before any further attempt'
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
