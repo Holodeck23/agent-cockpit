@@ -150,6 +150,8 @@ export const defaultLaunchers: Record<AgentId, Launcher> = {
       onEvent,
       {
         configArgs: codexConfigArgs(req),
+        ...(req.cockpit?.ready ? { hostReady: req.cockpit.ready } : {}),
+        ...(req.validateSources ? { validateSources: req.validateSources } : {}),
         ...(req.cockpit || req.accountEnv ? { env: { ...req.cockpit?.secretEnv, ...req.accountEnv } } : {}),
       },
     )
@@ -478,6 +480,10 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       return
     }
     const owner = workspaceId === undefined ? undefined : entryIn(threadId, workspaceId)
+    if (incoming.kind === 'user_undelivered' && owner) {
+      owner.waiting.delete(incoming.id)
+      owner.queuedRuns.delete(incoming.id)
+    }
     // Taken signals matter only for messages that waited; the rest would just fill the log.
     if (incoming.kind === 'user_taken') {
       const waiting = owner?.waiting
@@ -1013,9 +1019,9 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
       const end = after.findIndex((e) => !(e.event.kind === 'image' && e.event.from === 'you'))
       const images = (end < 0 ? after : after.slice(0, end)).flatMap(({ event }) =>
         event.kind === 'image' ? [{ file: event.file, ...(event.name ? { name: event.name } : {}) }] : [])
-      // The turn already ended and only this message kept it working: it is done now. Before
-      // recording, so the update carries the new status.
-      if (entry.afterResult && entry.waiting.size === 0) {
+      // No delivered turn remains after its last waiting input is removed, either after a result
+      // or while startup still holds every message. Settle before recording the status update.
+      if ((entry.afterResult || entry.session.preparing?.()) && entry.waiting.size === 0) {
         entry.afterResult = false
         entry.turnRunning = false
         entry.stopRequested = false

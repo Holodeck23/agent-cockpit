@@ -94,6 +94,14 @@ export interface CodexLaunchDeps {
   configArgs?: readonly string[]
   /** Added to the app-server's environment. */
   env?: Readonly<Record<string, string>>
+  /** The intended Cockpit bridge has authenticated this session's scoped grant. */
+  hostReady?: () => Promise<void>
+  /** Recheck the selected setup before native thread creation and each input. */
+  validateSources?: () => void
+  /** Shortened only by startup tests; production retains 15/30/60-second budgets. */
+  initializeTimeoutMs?: number
+  capabilityTimeoutMs?: number
+  startupTimeoutMs?: number
 }
 
 export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: CodexLaunchDeps = {}): AgentSession {
@@ -104,6 +112,30 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     env: { ...inheritedEnv(), ...deps.env },
   })
   let exited = false
+  let exitReported = false
+  let ready = false
+  let startupFailed = false
+  let closing = false
+  const startup = new AbortController()
+  const deadline = performance.now() + (deps.startupTimeoutMs ?? 60_000)
+  let retirement: Promise<void> | undefined
+  const retire = (): Promise<void> => retirement ??= stopChild(child, () => !exited)
+  const waitForStartup = <T>(promise: Promise<T>, budget: number, message: string): Promise<T> =>
+    new Promise((resolve, reject) => {
+      let settled = false
+      const abort = (): void => finish(false, new Error('Codex startup was cancelled'))
+      const finish = (ok: boolean, value: unknown): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        startup.signal.removeEventListener('abort', abort)
+        if (ok) resolve(value as T); else reject(value)
+      }
+      const timer = setTimeout(() => finish(false, new Error(message)), Math.max(0, Math.min(budget, deadline - performance.now())))
+      startup.signal.addEventListener('abort', abort, { once: true })
+      promise.then((value) => finish(true, value), (error: unknown) => finish(false, error))
+      if (startup.signal.aborted) abort()
+    })
   let threadId: string | undefined
   let currentTurnId: string | undefined
   // Stop pressed after turn/start went out but before Codex named the turn: interrupt it on arrival.
@@ -114,7 +146,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   const stream = createCodexStreamState()
   // Helper threads' running turns, so Stop stops the helpers too (J7).
   const childTurns = new Map<string, string>()
-  const queued: Array<{ readonly text: string; readonly images?: readonly OutgoingImage[] }> = []
+  const queued: Array<{ readonly text: string; readonly queuedId?: string; readonly images?: readonly OutgoingImage[] }> = []
   // Approval request id (as a string) -> JSON-RPC id to reply to.
   const approvalIds = new Map<string, number | string>()
   // Which pending approvals are MCP elicitations: they take a different reply shape.
@@ -138,20 +170,21 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
         // Main turn stays reserved until terminal cancellation is confirmed.
       }
       const deliver = (errors: readonly string[] = []): void => {
-        if (exited) return
+        if (exited || closing || startupFailed) return
         if (method === 'turn/completed' && !helper) currentTurnId = undefined
         for (const event of parseCodexNotification(method, params, stream)) onEvent(event)
         // Keep a failed cancellation visible after the model's stopped result.
         for (const message of errors) onEvent({ kind: 'error', message })
         if (method === 'turn/completed' && !helper) {
           stopping = false
-          for (const turn of queued.splice(0)) startTurn(turn.text, turn.images)
+          for (const turn of queued.splice(0)) startTurn(turn.text, turn.images, turn.queuedId)
         }
       }
       if (method === 'turn/completed' && typeof p?.threadId === 'string' && p.turn?.id) stops.finish(p.threadId, p.turn.id, deliver)
       else deliver()
     },
     onServerRequest(request) {
+      if (closing || startupFailed) { rpc.respond(request.id, { decision: 'decline' }); return }
       const questions = request.method === QUESTION_METHOD ? codexQuestions(request.params) : undefined
       if (questions) {
         const requestId = String(request.id)
@@ -176,9 +209,22 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
 
   const stops = createCodexStop(rpc, (message) => { if (!exited) onEvent({ kind: 'error', message }) })
 
-  const startTurn = (text: string, images?: readonly OutgoingImage[]): void => {
-    if (!threadId || stopping) {
-      queued.push({ text, ...(images ? { images } : {}) })
+  const failStartup = (message: string): void => {
+    if (exited || closing || startupFailed) return
+    startupFailed = true
+    queued.splice(0)
+    startup.abort()
+    onEvent({ kind: 'error', message })
+    onEvent({ kind: 'result', ok: false })
+    // End the logical session and revoke its host grant immediately; process cleanup follows.
+    exitReported = true
+    onEvent({ kind: 'exit', code: null })
+    void retire().catch(() => onEvent({ kind: 'error', message: 'Codex could not be closed after the refused start' }))
+  }
+  const startTurn = (text: string, images?: readonly OutgoingImage[], queuedId?: string): void => {
+    if (exited || closing || startupFailed) return
+    if (!threadId || !ready || stopping) {
+      queued.push({ text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) })
       return
     }
     const input = codexInput(text, images)
@@ -191,52 +237,70 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       turnStarting = false
       interruptOnStart = false
       stopping = false
-      if (exited) return
+      if (exited || closing || startupFailed) return
       onEvent({ kind: 'error', message: error instanceof Error ? error.message : String(error) })
       if (!currentTurnId) {
         onEvent({ kind: 'result', ok: false })
-        for (const turn of queued.splice(0)) startTurn(turn.text, turn.images)
+        for (const turn of queued.splice(0)) startTurn(turn.text, turn.images, turn.queuedId)
       }
     }
     const start = (): Promise<unknown> => {
       // A late steering failure must not restart work canceled by Stop or session close.
-      if (exited || generation !== stopGeneration) return Promise.resolve()
+      if (exited || closing || startupFailed || generation !== stopGeneration) return Promise.resolve()
+      try { deps.validateSources?.() }
+      catch { failStartup('Codex setup changed before input; review Project Settings. Your message was not delivered.'); return Promise.resolve() }
       turnStarting = true
+      if (queuedId) onEvent({ kind: 'user_taken', text, id: queuedId })
       return rpc.request('turn/start', { threadId, input, ...(effort ? { effort } : {}) })
     }
     // Mid-turn, steer the running turn (J1 spike: folded cleanly; a second turn/start left a
     // phantom turn). If that turn ended in the meantime, start a new one instead.
     const running = currentTurnId
-    if (running) rpc.request('turn/steer', { threadId, input, expectedTurnId: running }).catch(() => start().catch(fail))
+    if (running) {
+      try { deps.validateSources?.() }
+      catch { failStartup('Codex setup changed before input; review Project Settings. Your message was not delivered.'); return }
+      if (queuedId) onEvent({ kind: 'user_taken', text, id: queuedId })
+      rpc.request('turn/steer', { threadId, input, expectedTurnId: running }).catch(() => start().catch(fail))
+    }
     else start().catch(fail)
   }
 
   const policy = codexPolicy(opts.permissionMode)
   void (async () => {
     try {
-      await rpc.request('initialize', { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '0.1.0' }, capabilities: { experimentalApi: true } })
+      await waitForStartup(rpc.request('initialize', { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '0.1.0' }, capabilities: { experimentalApi: true } }),
+        deps.initializeTimeoutMs ?? 15_000, 'Codex did not initialize in time. Your message was not delivered.')
+      if (exited || closing || startupFailed) return
+      try { deps.validateSources?.() }
+      catch { throw new Error('Codex setup changed before startup; review Project Settings. Your message was not delivered.') }
       rpc.notify('initialized')
       const common = { cwd: opts.cwd, ...policy, ...(opts.model ? { model: opts.model } : {}) }
-      const response = opts.resume
-        ? await rpc.request<{ thread: { id: string } }>('thread/resume', {
+      const response = await waitForStartup(opts.resume
+        ? rpc.request<{ thread: { id: string } }>('thread/resume', {
             threadId: opts.resume,
             ...common,
             // Resume takes them too (ThreadResumeParams), so edited project instructions reach a resumed thread.
             ...(opts.developerInstructions ? { developerInstructions: opts.developerInstructions } : {}),
           })
-        : await rpc.request<{ thread: { id: string } }>('thread/start', {
+        : rpc.request<{ thread: { id: string } }>('thread/start', {
             ...common,
             ...(opts.developerInstructions ? { developerInstructions: opts.developerInstructions } : {}),
-          })
+          }), deps.capabilityTimeoutMs ?? 30_000, 'Codex did not prepare the conversation in time. Your message was not delivered.')
       threadId = response.thread.id
       stream.mainThreadId = threadId
+      if (deps.hostReady) {
+        try { await waitForStartup(Promise.resolve().then(deps.hostReady), deps.capabilityTimeoutMs ?? 30_000,
+          'Cockpit’s bridge did not authenticate in time. Your message was not delivered.') }
+        catch { if (!closing && !exited) failStartup('Codex could not authenticate Cockpit’s bridge. Your message was not delivered.'); return }
+      }
+      if (exited || closing || startupFailed) return
+      try { deps.validateSources?.() }
+      catch { throw new Error('Codex setup changed before input; review Project Settings. Your message was not delivered.') }
+      ready = true
       onEvent({ kind: 'session', sessionId: threadId })
-      for (const turn of queued.splice(0)) startTurn(turn.text, turn.images)
+      for (const turn of queued.splice(0)) startTurn(turn.text, turn.images, turn.queuedId)
     } catch (error: unknown) {
-      if (exited) return
-      onEvent({ kind: 'error', message: `Codex failed to start: ${error instanceof Error ? error.message : String(error)}` })
-      onEvent({ kind: 'result', ok: false })
-      child.stdin.end()
+      failStartup(`Codex failed to start: ${error instanceof Error ? error.message : 'Startup failed'}`)
     }
   })()
 
@@ -246,19 +310,29 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
     if (!child.pid && !exited) {
       exited = true
       onEvent({ kind: 'result', ok: false })
+      exitReported = true
       onEvent({ kind: 'exit', code: null })
     }
   })
   child.on('exit', (code) => {
     if (exited) return
     exited = true
-    onEvent({ kind: 'exit', code })
+    startup.abort()
+    if (!exitReported) { exitReported = true; onEvent({ kind: 'exit', code }) }
   })
 
   return {
     agent: 'codex',
-    send(text, _queuedId, images) {
-      startTurn(text, images)
+    send(text, queuedId, images) {
+      startTurn(text, images, queuedId)
+    },
+    preparing: () => !ready && !startupFailed && !closing && !exited,
+    queues: () => !ready && !startupFailed && !closing && !exited,
+    cancelQueued(queuedId) {
+      const index = queued.findIndex((item) => item.queuedId === queuedId)
+      if (index < 0) return Promise.resolve(false)
+      queued.splice(index, 1)
+      return Promise.resolve(true)
     },
     respondApproval(approval: PendingApproval, behavior: ApprovalBehavior) {
       const rpcId = approvalIds.get(approval.requestId)
@@ -291,7 +365,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
         interruptOnStart = true
       } else if (queued.length > 0) {
         // Still starting up: the messages never reach Codex, and the turn ends here as stopped.
-        queued.splice(0)
+        for (const item of queued.splice(0)) if (item.queuedId) onEvent({ kind: 'user_undelivered', id: item.queuedId })
         onEvent({ kind: 'result', ok: false, stopped: true })
       }
       for (const [helper, turnId] of childTurns) {
@@ -299,9 +373,11 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       }
     },
     close() {
+      closing = true
       stopGeneration++
-      return stopChild(child, () => !exited)
+      startup.abort()
+      return retire()
     },
-    alive: () => !exited,
+    alive: () => !exited && !startupFailed,
   }
 }

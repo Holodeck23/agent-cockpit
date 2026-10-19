@@ -75,7 +75,7 @@ export interface McpCommand {
  */
 export interface CockpitMcpLaunch extends McpCommand {
   readonly secretEnv: Readonly<Record<string, string>>
-  /** Required by Claude before the first user message crosses stdin. */
+  /** Required by Claude and Codex before the first user message crosses the provider boundary. */
   readonly ready?: () => Promise<void>
 }
 
