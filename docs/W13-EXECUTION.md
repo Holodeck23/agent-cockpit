@@ -6,6 +6,12 @@ Live checkpoint ledger: the canonical project document `2026-10-18-w13-acceptanc
 
 Domino 1 preserved the unique pre-repair proof under `release.noindex/preserved/w13-pre-domino-1-779b5163df92`. Its receipts remain historical; no qualification transfers. Main's landing changes were reconciled through `fe7274c`; do not repeat that merge. Historical U0/U1 continuation instructions and release-acceptance status describe their original builds only.
 
+## Compatibility implementation checkpoint — 19 October 2026
+
+`de4a7cc` implements stock Codex authenticated first-input readiness and recoverable startup input, including final-withdrawal working-state cleanup. Full source verification passed2208 tests/347 files and both builds. The new development proof passed three background synthetic scenarios: authenticated dispatch, missing-bridge restore-to-draft, Stop with late authentication and no replay. No real provider/model call was used.
+
+The latest exclusive proof is `release.noindex/w13-compatibility-20261019/attempt-02/proof/mac-arm64/Cockpit.app`, asar `37b85ade57feb679a41c60bcc65493a11de02da6cb2eb36294b47abfa261974d`. It also corrects the bridge-error heading and repeats all three packaged scenarios with an explicit title assertion. Its four backend bundles are byte-equal to the first proof; the changed UI/error classifier passed52 focused error/transcript checks, typecheck and web build. Evidence is in canonical vault output `agent-cockpit/2026-10-19-w13-compatibility-release/`. These are development observations, not release qualification; C1 remains open for inherited native executable startup. C2-C8 also remain open.
+
 ## Historical full-contract mechanism reconciliation — 19 October 2026
 
 [Three remaining families and the finite enforcement design gate](W13-D2-MECHANISMS.md): instruction precedence/inventory; policy/completion/Stop; complete production input/recovery. The original contract still applies. Broad production wiring remains held until the native pre-action enforcement boundary is demonstrated or the human explicitly revises the contract. Another wrapper around a failing-open native hook path is insufficient.
@@ -32,6 +38,6 @@ This is one development checkpoint, not the frozen cumulative release gate or fu
 
 ## Resume
 
-Read the active canonical project `HANDOVER.md`, the new compatibility contract and fixed C1–C8 blockers. Continue authorized production integration without requesting another architecture decision. Next: Codex authenticated first-input bridge readiness/refusal, followed by retained executable-startup controls. Preserve completed native memory/skill proofs and the separate Codex extension; do not rebuild or rerun them simply to resume. Any change to runtime or qualifying inputs invalidates affected evidence.
+Read the active canonical project `HANDOVER.md`, the compatibility contract and fixed C1–C8 blockers. Continue authorized production integration without requesting another architecture decision. Next: retained Codex executable-startup controls and source review/refusal. Do not rerun the completed readiness/classification unit simply to resume. Preserve completed native memory/skill proofs and the separate Codex extension. Any change to runtime or qualifying inputs invalidates affected evidence.
 
 Use the existing W13 worktree; one owner/unit, no automatic agents. Preserve concurrent work. Request installation approval for concrete qualified bytes. No publication, deployment or EA submission. Local binaries and private evidence do not travel with the public branch; use local continuation.

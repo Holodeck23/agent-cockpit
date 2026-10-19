@@ -67,6 +67,7 @@ try {
         assert.equal(existsSync(join(markers, 'input-read')), false, 'Refused or stopped input reached the provider')
         assert.equal((await events()).filter((event) => event.kind === 'user_undelivered').length, 1)
         await page.locator('.card').filter({ hasText: text }).click()
+        if (scenario === 'missing') await page.getByText('Cockpit tools could not connect', { exact: true }).waitFor()
         await page.getByRole('button', { name: 'Restore to draft', exact: true }).click()
         assert.equal(await page.locator('textarea').inputValue(), text, 'Original input did not return to the composer')
       }

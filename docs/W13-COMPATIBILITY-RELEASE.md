@@ -10,7 +10,7 @@ Retained: credential locators/privacy, principal binding, strict/trusted startup
 
 | Blocker | Required result |
 | --- | --- |
-| C1 — startup/readiness | No unreviewed MCP/hook/plugin startup; intended authenticated bridge and required capabilities ready before input. Codex currently lacks equivalent configuration review and bridge readiness. |
+| C1 — startup/readiness | No unreviewed MCP/hook/plugin startup; intended authenticated bridge and required capabilities ready before input. Codex first-input bridge readiness/recovery is implemented; equivalent inherited configuration review remains open. |
 | C2 — supported setup | Accurate on/off/inheritance, named unavailable sources, native hook-error limits and memory write ownership. |
 | C3 — input/recovery | Exact native skill/source/arguments/resources through acceptance, idempotency, queues, steering, withdrawal and draft/restart recovery. |
 | C4 — binding/races | Selected account/workspace/setup only; revoked grants, stale approvals and late events cannot regain authority. |
@@ -19,4 +19,4 @@ Retained: credential locators/privacy, principal binding, strict/trusted startup
 | C7 — packaged workflows | Complete Claude and Codex task/skill/resource/connector/approval/Stop/restart flow, then required default/managed × primary/worktree/lifecycle comparisons. |
 | C8 — qualify/install | Frozen unchanged candidate, retained 36 suites plus compatibility coverage ×3, shipping/installer identity and applicable source checks; then concrete installation approval and retained human/device/independent checks. |
 
-All blockers are open at approval. Existing proofs retain their exact scope; test counts and packages do not imply completion. The next bounded unit is C1: stock Codex first-input bridge readiness and refusal behavior, while its inherited executable-startup review remains separately open. Do not expand the provider fork or repeat the stopped full-contract interface audit. One owner/unit, no automatic agents or monitors; checkpoint and push each completed unit.
+All blockers were open at approval; no whole blocker has closed. Source `de4a7cc` adds Codex authenticated first-input readiness, draft restoration and startup-queue settlement: 2208 tests/347 files and three background packaged synthetic scenarios pass. A follow-up corrects the bridge error heading so it does not imply provider sign-in; real provider sign-in errors retain their own classification. Native account/model qualification is separate. The next bounded unit is C1 inherited executable-startup control/review, with C3 complete typed input and C5 retirement/deadline hardening still open. Do not expand the provider fork or repeat the stopped full-contract interface audit. One owner/unit, no automatic agents or monitors; checkpoint and push each completed unit.
