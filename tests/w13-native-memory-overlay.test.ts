@@ -1,5 +1,18 @@
 import { expect, it } from 'vitest'
-import { nativeMemoryCall, nativeMemoryResult } from '../scripts/lib/w13-native-memory-overlay.ts'
+import { isolatedMemoryThreadConfig, nativeMemoryCall, nativeMemoryResult } from '../scripts/lib/w13-native-memory-overlay.ts'
+
+it('disables all resolved MCP names without copying their transports or secrets', () => {
+  const result = isolatedMemoryThreadConfig({ config: { mcp_servers: { 'server.with.dots': { command: 'unreviewed', env: { SECRET: 'private' } } } },
+    layers: [{ name: { type: 'user', file: '/fixture/config.toml' } }, { name: { type: 'project', dot_codex_folder: '/fixture/repo/.codex' } }, { name: { type: 'sessionFlags' } }] })
+  expect(result).toEqual({ config: { mcp_servers: { 'server.with.dots': { enabled: false } } }, sourceFiles: ['/fixture/config.toml', '/fixture/repo/.codex/config.toml'] })
+})
+it('fails closed on unknown, dynamic or malformed effective configuration sources', () => {
+  for (const response of [{}, { config: {}, layers: [{ name: { type: 'enterpriseManaged' } }] },
+    { config: {}, layers: [{ name: { type: 'user', file: 'relative.toml' } }] }, { config: { mcp_servers: [] }, layers: [] },
+    { config: { mcpServers: {} }, layers: [] }, { config: { mcp_servers: { bad: null } }, layers: [] }]) {
+    expect(() => isolatedMemoryThreadConfig(response)).toThrow()
+  }
+})
 
 const tool = { type: 'namespace', name: 'memories', tools: [{ type: 'function', name: 'read', parameters: { properties: { path: {} } } }] }
 it('selects the exact native namespace and binds the generated call', () => {
