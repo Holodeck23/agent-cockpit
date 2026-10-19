@@ -52,13 +52,17 @@
   "codeModeHost": {
     "filename": "codex-code-mode-host",
     "sourceCommit": "9e8562bd9e4785ffa855d33b6b112c9ba22910a6",
-    "status": "BUILD_BLOCKED_PINNED_V8_ARCHIVE_HTTP_404",
+    "status": "SOURCE_BUILD_BLOCKED_FULL_XCODE_REQUIRED",
     "requiredFor": "model-owned code_mode_only runtime; discovered by first real-provider probe",
     "executableSha256": null,
     "buildAuthorized": true,
     "buildAttempted": true,
     "buildSucceeded": false,
-    "blockedDependency": "v8 150.4.0 prebuilt aarch64-apple-darwin archive"
+    "blockedDependency": "Full Xcode required by V8 macOS SDK detection; active developer directory is CommandLineTools",
+    "sourceBuildAuthorized": true,
+    "sourceBuildAttempted": true,
+    "sourceBuildSucceeded": false,
+    "sourceBuildExit": 101
   },
   "candidateBuildCompleteness": "CLI_BUILT_CODE_MODE_COMPANION_MISSING",
   "candidateLockSha256": "765110795bf3385d734bf1acfcae77660d29a6c678d5b77015d7ffe49f26e69f",
