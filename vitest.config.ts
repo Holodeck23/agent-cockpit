@@ -9,9 +9,10 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     globalSetup: ['tests/setup/global-temp.ts'],
-    // The suite itself launches many CLI stand-ins. Capping file workers prevents those child
-    // processes from starving one another and crossing their explicit 5 s protocol deadlines.
-    maxWorkers: 4,
+    // Integration files launch several CLI stand-ins and policy runners of their own. Run files
+    // serially so competing workers do not consume their real 2–5 s startup/timeout budgets.
+    // Keep the assertions and provider deadlines intact; CLI callers can opt into more workers.
+    maxWorkers: 1,
     // Several integration tests launch real child processes. Under the full 295-file run, host
     // scheduling can consume most of Vitest's 5 s default even though the same tests finish when
     // isolated. Keep hangs bounded, but leave enough room for a loaded release machine.
