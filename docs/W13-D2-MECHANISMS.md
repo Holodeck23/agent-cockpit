@@ -1,5 +1,7 @@
 # W13 remaining mechanism decisions
 
+> Historical stronger-contract audit. On 19 October the human approved the smaller compatibility release. [Its active boundary and C1–C8 blockers](W13-COMPATIBILITY-RELEASE.md) supersede the pending native-boundary scope question and broad integration hold below. Preserve the failure evidence; do not implement the proposed provider fork. Original A1–A16 remain non-PASS.
+
 19 October 2026. Reconciliation from the delivery checkpoint at `51c3071`. The canonical reviewed domino handoff, revision-6 contract and live acceptance ledger in the vault remain authoritative. The narrower delivery proposal has not been approved. A1–A16 remain non-PASS.
 
 ## Three remaining families
