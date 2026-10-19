@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -11,16 +11,20 @@ import { ProbeAttempt, ProbeOutput } from './lib/w13-completion-probe.ts'
 import { isolatedMemoryThreadConfig, nativeMemorySnapshot } from './lib/w13-native-memory-overlay.ts'
 
 import { nativeSkillProgram, nativeSkillTrace } from './lib/w13-live-skill.ts'
+import { linkedSkillTemplate, nativeLinkedSkillTrace } from './lib/w13-linked-skill.ts'
 
 process.umask(0o077)
 const cli = process.env.COCKPIT_W13_CODEX ?? '', evidence = process.env.COCKPIT_PROOF_DIR ?? '', privateDir = process.env.COCKPIT_PROOF_PRIVATE_DIR ?? ''
 const profileBinding = process.env.COCKPIT_PROOF_PROFILE_BINDING ?? ''
+const pathMode = process.env.COCKPIT_W13_SKILL_PATH_MODE ?? 'direct'
 const sha = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const receipt: Record<string, unknown> = { scenario: 'real-provider-native-typed-skill-resource', verdict: 'BLOCKED',
   startedAt: new Date().toISOString(), nativeInputs: 0, ownedProviderExits: 0, layer: 'uninstalled-source-candidate-real-provider', phases: [] }
 let attempt: ProbeAttempt | undefined, finalGuard: (() => void) | undefined
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
+  assert.ok(['direct', 'linked'].includes(pathMode))
+  if (pathMode === 'linked') receipt.scenario = 'real-provider-linked-skill-canonical-discovery-resource'
   assert.ok([cli, evidence, privateDir, profileBinding].every(isAbsolute))
   const privateRoot = realpathSync(join(process.env.HOME!, 'vault/clients')) + sep
   assert.ok(realpathSync(dirname(privateDir)).startsWith(privateRoot) && realpathSync(profileBinding).startsWith(privateRoot))
@@ -43,13 +47,19 @@ try {
   const memory = join(privateDir, 'memory'), sqlite = join(privateDir, 'state'), history = join(privateDir, 'history')
   for (const path of [memory, sqlite, history]) mkdirSync(path, { mode: 0o700 })
   const roots = [join(privateDir, 'selected-skills'), join(privateDir, 'excluded-skills')]
-  const selectedDir = join(roots[0]!, 'w13-live-resource'), excludedDir = join(roots[1]!, 'w13-live-resource')
+  const selectedDir = join(pathMode === 'linked' ? join(privateDir, 'canonical-skills') : roots[0]!, 'w13-live-resource'), excludedDir = join(roots[1]!, 'w13-live-resource')
   for (const path of [selectedDir, excludedDir]) mkdirSync(path, { recursive: true, mode: 0o700 })
+  const discoveryDir = join(roots[0]!, 'w13-live-resource'), discoveryFile = join(discoveryDir, 'SKILL.md')
+  if (pathMode === 'linked') { mkdirSync(roots[0]!, { mode: 0o700 }); symlinkSync(selectedDir, discoveryDir, 'dir') }
   const selected = `W13_SKILL_SELECTED_${randomUUID()}`, excluded = `W13_SKILL_EXCLUDED_${randomUUID()}`, resource = `W13_SKILL_RESOURCE_${randomUUID()}`
   const args = `  --label "two  words"\n--target W13_ARG_${randomUUID()}  `
   const selectedFile = join(selectedDir, 'SKILL.md'), excludedFile = join(excludedDir, 'SKILL.md')
   const header = '---\nname: w13-live-resource\ndescription: Owned W13 synthetic resource verification, explicit selection only.\n---\n'
-  writeFileSync(selectedFile, header + `This selected skill identity is ${selected}.\nFor this skill, use the native exec tool exactly once with this exact JavaScript source:\n${nativeSkillProgram(selectedDir)}\nThen reply with a single JSON object, without Markdown: selected is this identity string; arguments is the exact string between BEGIN_ARGUMENTS and END_ARGUMENTS in user input (no delimiters or boundary newlines, preserve all other whitespace and quotes); resource is the content returned by the native read. Do not perform other tool calls or spawn helpers.\n`, { flag: 'wx', mode: 0o600 })
+  const programInstruction = pathMode === 'linked'
+    ? `Resolve reference.txt relative to the directory of this skill's native <path> wrapper. In the following JavaScript replace only /W13_NATIVE_SKILL_DIRECTORY with that directory; preserve every other character. The host did not provide the resource root in this skill body.\n${linkedSkillTemplate()}`
+    : nativeSkillProgram(selectedDir)
+  writeFileSync(selectedFile, header + `This selected skill identity is ${selected}.\nFor this skill, use the native exec tool exactly once with this exact JavaScript source:\n${programInstruction}\nThen reply with a single JSON object, without Markdown: selected is this identity string; arguments is the exact string between BEGIN_ARGUMENTS and END_ARGUMENTS in user input (no delimiters or boundary newlines, preserve all other whitespace and quotes); resource is the content returned by the native read. Do not perform other tool calls or spawn helpers.\n`, { flag: 'wx', mode: 0o600 })
+  if (pathMode === 'linked') assert.ok(!readFileSync(selectedFile, 'utf8').includes(selectedDir))
   writeFileSync(excludedFile, header + `This excluded same-name skill body is ${excluded}.\n`, { flag: 'wx', mode: 0o600 })
   writeFileSync(join(selectedDir, 'reference.txt'), resource, { flag: 'wx', mode: 0o600 })
   writeFileSync(join(excludedDir, 'reference.txt'), excluded, { flag: 'wx', mode: 0o600 })
@@ -68,6 +78,10 @@ try {
     assert.equal(realpathSync(profile), saved.canonicalProfile)
     assert.equal(sha(cli), pin.providerExecutableSha256); assert.equal(sha(manifest), receipt.manifestSha256)
     assert.equal(sha(codeModeHost), pin.codeModeHost.executableSha256)
+    if (pathMode === 'linked') {
+      assert.ok(lstatSync(discoveryDir).isSymbolicLink()); assert.equal(readlinkSync(discoveryDir), selectedDir)
+      assert.equal(realpathSync(discoveryFile), selectedFile)
+    }
     for (const tree of originalTrees) assert.deepEqual(nativeMemorySnapshot(tree.path), tree.snapshot)
     for (const [path, state] of sourceGuards) assert.equal(sourceState(path), state)
   }
@@ -76,6 +90,8 @@ try {
   receipt.harnessSha256 = sha(fileURLToPath(import.meta.url)); receipt.oracleSha256 = sha(join(worktree, 'scripts/lib/w13-live-skill.ts'))
   receipt.manifestSha256 = sha(manifest); receipt.candidateSource = pin.candidateSourceCommit; receipt.executableSha256 = sha(cli)
   receipt.codeModeHostSha256 = pin.codeModeHost.executableSha256
+  receipt.skillPathMode = pathMode
+  if (pathMode === 'linked') receipt.linkedOracleSha256 = sha(join(worktree, 'scripts/lib/w13-linked-skill.ts'))
   receipt.accountMode = current.mode; receipt.accountGeneration = current.generation
   receipt.workspaceScope = cwd === worktree ? 'worktree' : 'primary'; finalGuard = guard
   const env: Record<string, string> = { HOME: process.env.HOME!, TMPDIR: privateDir, PATH: '/usr/bin:/bin:/opt/homebrew/bin', LANG: 'en_US.UTF-8' }
@@ -88,10 +104,11 @@ try {
     'features.multi_agent=false', 'features.multi_agent_v2=false', 'features.code_mode=true', 'approvals_reviewer="user"',
     'features.background_paginated_rollout_migration=false', 'features.local_thread_store_compression=false',
     'web_search="disabled"', 'check_for_update_on_startup=false']
-  attempt.writePrivate('binding-private.json', JSON.stringify({ current, cwd, env, profile, memory, sqlite, history, roots, selectedDir, selected, excluded, resource, args,
+  attempt.writePrivate('binding-private.json', JSON.stringify({ current, cwd, env, profile, memory, sqlite, history, roots, selectedDir, discoveryDir, discoveryFile, selected, excluded, resource, args,
     originalTrees, authBefore, overrides, profileBinding, bindingHash }, null, 2))
   let selectedModel: any
-  for (const phase of ['skill'] as const) {
+  const nativeThreads = new Set<string>()
+  for (const phase of pathMode === 'linked' ? ['canonical', 'discovery'] : ['skill']) {
     guard(); const output = new ProbeOutput(), raw: any[] = []
     const child = spawn(cli, [...overrides.flatMap((value) => ['-c', value]), 'app-server', '--strict-config'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
     let finished = false, exited = false, sequence = 0, failure: Error | undefined
@@ -170,23 +187,32 @@ try {
       // Only these two synthetic sources stay enabled for this thread. Keep the collision visible.
       isolated.config.skills = { config: skills.filter((row: any) => ![selectedFile, excludedFile].includes(pathOf(row.path)))
         .map((row: any) => ({ path: pathOf(row.path), enabled: false })) }
-      for (const path of [selectedFile, excludedFile, join(selectedDir, 'reference.txt'), join(excludedDir, 'reference.txt')]) sourceGuards.set(path, sourceState(path))
-      attempt.writePrivate('skill-catalog-private.json', JSON.stringify({ catalog, threadConfig: isolated.config }))
+      for (const path of [selectedFile, excludedFile, join(selectedDir, 'reference.txt'), join(excludedDir, 'reference.txt')]) {
+        const state = sourceState(path)
+        if (sourceGuards.has(path)) assert.equal(state, sourceGuards.get(path), 'Linked fixture changed between phases')
+        else sourceGuards.set(path, state)
+      }
+      attempt.writePrivate(`${phase}-skill-catalog-private.json`, JSON.stringify({ catalog, threadConfig: isolated.config }))
       guard(); await principal()
       const thread = await query('thread/start', { cwd, ephemeral: true, model: selectedModel.model, approvalPolicy: 'never', sandbox: 'read-only', config: isolated.config, experimentalRawEvents: true })
       const threadId = thread.thread?.id; assert.ok(typeof threadId === 'string' && threadId)
+      assert.ok(!nativeThreads.has(threadId), 'Each path phase requires a fresh native thread'); nativeThreads.add(threadId)
       const prompt = `This is an authorized bounded synthetic skill test. Apply the explicitly selected skill. No helper agents.\nBEGIN_ARGUMENTS\n${args}\nEND_ARGUMENTS`
       for (const marker of [selected, excluded, resource]) assert.ok(!prompt.includes(marker))
-      attempt.writePrivate('native-input-private.json', JSON.stringify({ threadId, prompt, chosen }))
+      const typedPath = pathMode === 'linked' ? (phase === 'discovery' ? discoveryFile : selectedFile) : chosen.path
+      attempt.writePrivate(`${phase}-native-input-private.json`, JSON.stringify({ threadId, prompt, chosen, typedPath }))
       receipt.nativeInputs = Number(receipt.nativeInputs) + 1
-      const turn = await query('turn/start', { threadId, input: [{ type: 'skill', name: chosen.name, path: chosen.path }, { type: 'text', text: prompt }], effort })
+      const turn = await query('turn/start', { threadId, input: [{ type: 'skill', name: chosen.name, path: typedPath }, { type: 'text', text: prompt }], effort })
       const end = await Promise.race([completed, failed]); assert.equal(end.threadId, threadId); assert.equal(end.turn?.id, turn.turn?.id)
       assert.equal(end.turn.status, 'completed', 'Native live turn did not complete successfully')
       const events = raw.filter((event) => event.turnId === turn.turn.id)
-      attempt.writePrivate('skill-raw-items-private.json', JSON.stringify({ threadId, turnId: turn.turn.id, raw }))
-      const observation = nativeSkillTrace(events, threadId, turn.turn.id, { selectedDir, selected, excluded, resource, args })
+      attempt.writePrivate(`${phase}-raw-items-private.json`, JSON.stringify({ threadId, turnId: turn.turn.id, raw }))
+      const expected = { selectedDir, selected, excluded, resource, args, discoveryFile }
+      const observation = pathMode === 'linked' ? nativeLinkedSkillTrace(events, threadId, turn.turn.id, expected)
+        : nativeSkillTrace(events, threadId, turn.turn.id, expected)
       assert.equal(readFileSync(join(selectedDir, 'reference.txt'), 'utf8'), resource); await principal(); guard()
       ;(receipt.phases as unknown[]).push({ phase, typedSelectionLoadedInNativeInput: true, exactArgumentsInNativeInputAndBehavior: true,
+        ...(pathMode === 'linked' ? { nativeCanonicalPathObserved: true, resourceRootDerivedFromNativePath: true, linkedAliasGuardPassed: true } : {}),
         exactNativeResourceCallAndResult: true, excludedSourceCanaryAbsent: true, distinctSameNameSourcesDiscovered: true,
         activePrincipalMatchedBeforeAndAfter: true, nativeRawItems: observation.itemCount })
     } finally {
@@ -200,13 +226,14 @@ try {
     }
   }
   attempt.writePrivate('auth-metadata-after-private.json', JSON.stringify({ before: authBefore, after: authMetadata(), nativeTokenRefreshPermittedOnlyWithSameObservedPrincipal: true }))
-  receipt.verdict = 'PASS_ONE_REAL_PROVIDER_NATIVE_TYPED_SKILL_RESOURCE'
+  receipt.verdict = pathMode === 'linked' ? 'PASS_REAL_PROVIDER_LINKED_SKILL_CANONICAL_AND_DISCOVERY_PATHS' : 'PASS_ONE_REAL_PROVIDER_NATIVE_TYPED_SKILL_RESOURCE'
 } catch (error) {
   process.exitCode = 1; attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown live failure')
 } finally {
   try { finalGuard?.() } catch (error) { process.exitCode = 1; receipt.verdict = 'BLOCKED'; attempt?.writePrivate('guard-error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Guard failed') }
   receipt.limitations = ['Uninstalled native source candidate; not packaged/installed/production qualification',
-    'One account/workspace initial-turn case with two process-local synthetic roots; no linked-skill or precedence/lifecycle matrix qualification',
+    pathMode === 'linked' ? 'One account/workspace canonical/discovery pair with owned linked synthetic source; no full catalog, instruction-precedence or lifecycle qualification'
+      : 'One account/workspace initial-turn case with two process-local synthetic roots; no linked-skill or precedence/lifecycle matrix qualification',
     'Owned provider exit is counted; code-mode companion descendant retirement and cancellation remain unqualified',
     'Normal native token rotation may occur at the original locator, but active principal must match before and after each phase; host never reads auth.json payloads',
     'Original-memory symlink targets are not traversed by snapshot guards']
