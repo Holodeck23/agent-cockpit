@@ -52,13 +52,12 @@
   "codeModeHost": {
     "filename": "codex-code-mode-host",
     "sourceCommit": "9e8562bd9e4785ffa855d33b6b112c9ba22910a6",
-    "status": "SOURCE_BUILD_BLOCKED_INCOMPLETE_V8_CRATE_INPUTS",
+    "status": "SOURCE_INPUTS_VERIFIED_COMPANION_BUILD_RUNNING",
     "requiredFor": "model-owned code_mode_only runtime; discovered by first real-provider probe",
     "executableSha256": null,
     "buildAuthorized": true,
     "buildAttempted": true,
     "buildSucceeded": false,
-    "blockedDependency": "v8 150.4.0 crate omits ICU common/icudtl.dat and 812 Rust vendor inputs from the generated Ninja graph",
     "sourceBuildAuthorized": true,
     "sourceBuildAttempted": true,
     "sourceBuildSucceeded": false,
@@ -68,9 +67,16 @@
     "sourceBuildWithXcodeAttempted": true,
     "sourceBuildWithXcodeExit": 101,
     "missingDeclaredV8SourceInputs": 813,
-    "globalCargoSourceCacheChanged": false
+    "globalCargoSourceCacheChanged": false,
+    "sourceInputsRestored": true,
+    "isolatedCargoCache": true,
+    "preparedInputManifestSha256": "b278423b68c8e485205444f6392e167ea0dbd67f2ca58c7d7f0bf9d685a67806",
+    "verifiedInputManifestSha256": "e451809046edbf5fa3e7ca32409cd97f433335e45699c34d1e93691af61c06ed",
+    "restoredDeclaredInputs": 813,
+    "restoredFiles": 1764,
+    "verifiedRustCrateGitTrees": 45
   },
-  "candidateBuildCompleteness": "CLI_BUILT_CODE_MODE_COMPANION_MISSING",
+  "candidateBuildCompleteness": "CLI_BUILT_COMPANION_BUILD_RUNNING",
   "candidateLockSha256": "765110795bf3385d734bf1acfcae77660d29a6c678d5b77015d7ffe49f26e69f",
   "lockSha256Role": "pristine upstream Cargo.lock; candidate normalized local package versions are separately pinned"
 }
