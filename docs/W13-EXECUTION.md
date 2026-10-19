@@ -6,6 +6,12 @@ Live checkpoint ledger: the canonical project document `2026-10-18-w13-acceptanc
 
 Domino 1 preserved the unique pre-repair proof under `release.noindex/preserved/w13-pre-domino-1-779b5163df92`. Its receipts remain historical; no qualification transfers. Main's landing changes were reconciled through `fe7274c`; do not repeat that merge. Historical U0/U1 continuation instructions and release-acceptance status describe their original builds only.
 
+## Remaining mechanism reconciliation — 19 October 2026
+
+[Three remaining families and the finite enforcement design gate](W13-D2-MECHANISMS.md): instruction precedence/inventory; policy/completion/Stop; complete production input/recovery. The original contract still applies. Broad production wiring remains held until the native pre-action enforcement boundary is demonstrated or the human explicitly revises the contract. Another wrapper around a failing-open native hook path is insufficient.
+
+New bounded direct-native evidence: all four default/managed Claude × owned primary/linked-worktree cases observed root/import/nested instructions and both unconditional project-rule files, matched five source-only words, excluded the sibling canary and exited. Both managed cases reported both conflicting values; neither the harness nor the report claims deterministic collision precedence. 46 focused tests pass. This extends the earlier loading proof; global/local/path-conditional rules, Codex instruction precedence and production lifecycle still remain open. Evidence is in the canonical vault's existing W13 evidence tree under `domino-2-claude-project-rules`; raw account/provider records stay private. No production runtime or app bytes changed and no acceptance row closes.
+
 ## Packaged delivery checkpoint — 19 October 2026
 
 Runtime source `2be1defdb2a7bcd4ef7627bf1dafd79101aa5756` is pushed to `codex/w13-catchup`. The only new verification change serializes test files; assertions, test selection and provider deadlines are unchanged. The original four-worker run failed 10 tests; all 74 tests in its seven failing files passed serially. Full verification then passed all 2192 tests in 346 files, TypeScript, public paths, and web/Electron builds.

@@ -26,7 +26,8 @@ const fixtureCheckout = process.env.COCKPIT_W13_SYNTHETIC_CHECKOUT ?? 'primary'
 const skillCollision = process.env.COCKPIT_W13_SKILL_COLLISION === '1'
 const completionProbe = probeKind.startsWith('completion-')
 const memoryProbe = probeKind.startsWith('memory-')
-const instructionProbe = probeKind === 'instruction-precedence'
+const instructionRules = probeKind === 'instruction-project-rules'
+const instructionProbe = probeKind === 'instruction-precedence' || instructionRules
 const receipt: Record<string, unknown> = { scenario: 'native-claude-completion-cycle-callbacks',
   startedAt: new Date().toISOString(), verdict: 'BLOCKED', modelInputs: 0, identityQueries: 0,
   layer: 'direct-cli', accountAlias: 'authorized-managed', protocolBudgetMs: 15_000, launchBudgetMs: 60_000 }
@@ -35,7 +36,7 @@ let attempt: ProbeAttempt | undefined, oracle: ParentCompletionOracle | undefine
 try {
   assert.equal(process.env.COCKPIT_PROOF_BACKGROUND, '1')
   assert.ok(['synthetic', 'primary', 'worktree'].includes(workspaceKind))
-  assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource', 'instruction-precedence'].includes(probeKind))
+  assert.ok(['completion-cycles', 'completion-second-rejection', 'memory-on', 'memory-off', 'skill-resource', 'instruction-precedence', 'instruction-project-rules'].includes(probeKind))
   assert.ok(['namespaced', 'bare'].includes(skillInvocation))
   assert.ok(['primary', 'worktree'].includes(fixtureCheckout))
   if (skillInvocation === 'bare' || skillCollision) {
@@ -65,6 +66,7 @@ try {
   receipt.oracleSha256 = sha(join(dirname(script), 'lib', 'w13-completion-probe.ts'))
   if (memoryProbe) receipt.memoryOracleSha256 = sha(join(dirname(script), 'lib', 'w13-claude-memory-oracle.ts'))
   if (probeKind === 'skill-resource') receipt.skillOracleSha256 = sha(join(dirname(script), 'lib', 'w13-claude-skill-oracle.ts'))
+  if (instructionProbe) receipt.instructionOracleSha256 = sha(join(dirname(script), 'lib', 'w13-claude-instruction-oracle.ts'))
   receipt.dependencyLockSha256 = sha(join(root, 'package-lock.json'))
   const context = JSON.parse(readFileSync(descriptor, 'utf8')) as { accountId: string; literalProfileDir: string; canonicalProfileDir: string;
     accountMode?: 'default' | 'managed'; home?: string }
@@ -156,6 +158,17 @@ try {
     ]
     instructionSources.forEach((source, index) => writeFileSync(source.file, contents[index]!, { flag: 'wx', mode: 0o600 }))
     writeFileSync(join(sibling, 'CLAUDE.md'), `The synthetic W13 sibling word is ${instructionExcluded}.\n`, { flag: 'wx', mode: 0o600 })
+    if (instructionRules) {
+      instructionWords.push(...['ROOT_RULE', 'NESTED_RULE'].map((name) => `W13_INSTRUCTION_${name}_${randomUUID()}`))
+      for (const [index, directory] of [base, nested, sibling].entries()) {
+        const rules = join(directory, '.claude', 'rules')
+        mkdirSync(rules, { recursive: true, mode: 0o700 })
+        const file = join(rules, 'w13-synthetic.md')
+        const label = ['root rule', 'nested rule', 'sibling'][index]!
+        writeFileSync(file, `# Synthetic W13 rule\nThe synthetic W13 ${label} word is ${index === 2 ? instructionExcluded : instructionWords[4 + index]}.\n`, { flag: 'wx', mode: 0o600 })
+        if (index < 2) instructionSources.push({ file })
+      }
+    }
     instructionHashes = instructionSources.map((source) => sha(source.file))
     instructionEvents = join(privateDir, 'instruction-events-private.jsonl')
     writeFileSync(instructionEvents, '', { flag: 'wx', mode: 0o600 })
@@ -166,8 +179,10 @@ try {
     attempt.writePrivate('instruction-sources-private.json', JSON.stringify({ sources: instructionSources.map((source, index) => ({ ...source, sha256: instructionHashes[index] })),
       words: instructionWords, excluded: instructionExcluded, rootShared: instructionRootShared, hookSha256: instructionHookHash }, null, 2))
     project = nested
-    prompt = 'Reply with the synthetic W13 root, import, nested, and shared selection words in that order, one per line, or UNKNOWN where absent. Do not use tools or start helpers.'
-    receipt.nativeInstructionScope = 'owned-fixture-project-relative-import-nested-cwd'
+    prompt = instructionRules
+      ? 'Reply with the synthetic W13 root, import, nested, root rule, nested rule, and shared selection words in that order, one per line, or UNKNOWN where absent. Do not use tools or start helpers.'
+      : 'Reply with the synthetic W13 root, import, nested, and shared selection words in that order, one per line, or UNKNOWN where absent. Do not use tools or start helpers.'
+    receipt.nativeInstructionScope = instructionRules ? 'owned-fixture-project-root-and-nested-rules' : 'owned-fixture-project-relative-import-nested-cwd'
   }
   const skillMarker = `W13_SKILL_SELECTED_${randomUUID()}`, resourceMarker = `W13_RESOURCE_${randomUUID()}`
   const otherSkillMarker = `W13_SKILL_UNSELECTED_${randomUUID()}`, skillArgs = `--label "two words"  --target ${randomUUID()}`
@@ -361,7 +376,8 @@ try {
   }
   receipt.verdict = probeKind === 'completion-second-rejection' ? 'PASS_NATIVE_SECOND_REJECTION_STOP'
     : completionProbe ? 'PASS_NATIVE_PARENT_CYCLE_MECHANISM'
-    : memoryProbe ? 'PASS_NATIVE_CONTROLLED_MEMORY_RECALL' : instructionProbe ? 'OBSERVED_NATIVE_PROJECT_IMPORT_NESTED_LOADING' : 'PASS_NATIVE_SELECTED_SKILL_AND_RESOURCE'
+    : memoryProbe ? 'PASS_NATIVE_CONTROLLED_MEMORY_RECALL' : instructionRules ? 'OBSERVED_NATIVE_PROJECT_RULE_LOADING'
+      : instructionProbe ? 'OBSERVED_NATIVE_PROJECT_IMPORT_NESTED_LOADING' : 'PASS_NATIVE_SELECTED_SKILL_AND_RESOURCE'
 } catch (error) {
   receipt.error = 'Probe stopped; inspect private diagnostics before any retry'
   attempt?.writePrivate('error-private.txt', error instanceof Error ? error.stack ?? error.message : 'Unknown failure')
@@ -375,7 +391,7 @@ try {
   receipt.finishedAt = new Date().toISOString()
   receipt.limitations = [completionProbe ? 'Parent Stop only; no subagent was started'
     : memoryProbe ? 'Synthetic selected auto-memory overlay only; no real memory copied or native writeback/lifecycle proof'
-      : instructionProbe ? 'Owned fictional root/import/nested instructions only; global/local rules and lifecycle remain open'
+      : instructionProbe ? `Owned fictional root/import/nested instructions${instructionRules ? ' and unconditional project rules' : ''} only; global/local/path-conditional rules and lifecycle remain open`
       : `Synthetic selected ${skillInvocation} skill and one read-only resource; no real user skill or executable dependency`, 'Mechanism feasibility, not production hook enforcement or cancellation',
     'Default/managed and primary/worktree matrix remains to qualify', 'Callback failure semantics are not claimed fail-closed',
     'No-session-persistence requested; provider-side retention is not controlled by this probe']

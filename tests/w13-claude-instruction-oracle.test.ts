@@ -35,3 +35,17 @@ it('retains a root selection or both conflicting values without claiming determi
   expect(assess({ ...done, result: [...words.slice(0, 3), rootShared].join('\n') })).toMatchObject({ sharedSelection: 'ROOT_VALUE_REPORTED', deterministicCollisionPrecedenceEstablished: false })
   expect(assess({ ...done, result: [...words.slice(0, 3), rootShared, words[3]].join('\n') })).toMatchObject({ sharedSelection: 'CONFLICT_BOTH_REPORTED', deterministicCollisionPrecedenceEstablished: false })
 })
+
+it('requires both project rule words and their native loaded-source events', () => {
+  const ruleWords = ['root-rule-', 'nested-rule-'].map((name) => name + 'd'.repeat(32))
+  const ruleSources = [...sources, { file: '/owned/.claude/rules/test.md' }, { file: '/owned/nested/.claude/rules/test.md' }]
+  const ruleEvents = [...events, ...ruleSources.slice(3).map((source) => ({ ...events[0], file_path: source.file }))]
+  const result = { ...done, result: [...words.slice(0, 3), ...ruleWords, words[3]].join('\n') }
+  const assessRules = (loaded = ruleEvents, answer = result) => assessClaudeInstructions(answer, 'session', ruleSources,
+    loaded, [...words, ...ruleWords], rootShared, excluded, prompt, '')
+  expect(assessRules()).toMatchObject({ expectedNativeSourcesObserved: 5, projectRuleWordsMatched: true,
+    deterministicCollisionPrecedenceEstablished: false })
+  expect(() => assessRules(ruleEvents.slice(0, -1))).toThrow()
+  expect(() => assessRules(ruleEvents, { ...result, result: words.join('\n') })).toThrow()
+  expect(() => assessRules(ruleEvents.map((event, index) => index === 4 ? { ...event, memory_type: 'User' } : event))).toThrow()
+})

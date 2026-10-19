@@ -6,14 +6,16 @@ export type InstructionSource = { file: string; parent?: string }
 export function assessClaudeInstructions(message: any, sessionId: string, sources: InstructionSource[],
   events: any[], words: string[], rootShared: string, excluded: string, prompt: string, nativeOutput: string): Record<string, unknown> {
   assert.ok(sources.length >= 3 && new Set(sources.map((source) => source.file)).size === sources.length)
-  assert.equal(words.length, 4)
+  assert.ok(words.length === 4 || words.length === 6)
+  assert.equal(sources.length, words.length === 6 ? 5 : 3)
   assert.ok([...words, rootShared, excluded].every((word) => word.length >= 24 && !prompt.includes(word)))
-  assert.equal(new Set([...words, rootShared, excluded]).size, 6)
+  assert.equal(new Set([...words, rootShared, excluded]).size, words.length + 2)
   assert.equal(message.session_id, sessionId); assert.equal(message.subtype, 'success'); assert.equal(message.is_error, false)
   assert.equal(typeof message.result, 'string')
   const lines = message.result.trim().split('\n')
-  assert.deepEqual(lines.slice(0, 3), words.slice(0, 3), 'Native root/import/nested words did not match')
-  const shared = lines.slice(3)
+  const expected = [...words.slice(0, 3), ...words.slice(4)]
+  assert.deepEqual(lines.slice(0, expected.length), expected, 'Native instruction source words did not match')
+  const shared = lines.slice(expected.length)
   assert.ok(shared.length >= 1 && shared.length <= 2 && new Set(shared).size === shared.length
     && shared.every((word: string) => [rootShared, words[3]].includes(word)), 'Unrecognized shared-selection result')
   assert.ok(!nativeOutput.includes(excluded), 'Sibling instruction canary appeared')
@@ -26,6 +28,7 @@ export function assessClaudeInstructions(message: any, sessionId: string, source
         : ['session_start', 'nested_traversal'].includes(event.load_reason))), 'Loaded instruction provenance differs')
   }
   return { expectedNativeSourcesObserved: sources.length, relativeImportParentObserved: true,
+    projectRuleWordsMatched: words.length === 6,
     rootAndImportAndNestedWordsMatched: true, siblingCanaryAbsent: true,
     sharedSelection: shared.length === 2 ? 'CONFLICT_BOTH_REPORTED' : shared[0] === words[3] ? 'NESTED_VALUE_REPORTED' : 'ROOT_VALUE_REPORTED',
     deterministicCollisionPrecedenceEstablished: false }
