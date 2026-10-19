@@ -52,15 +52,15 @@
   "codeModeHost": {
     "filename": "codex-code-mode-host",
     "sourceCommit": "9e8562bd9e4785ffa855d33b6b112c9ba22910a6",
-    "status": "SOURCE_INPUTS_VERIFIED_COMPANION_BUILD_RUNNING",
+    "status": "BUILT_UNINSTALLED_SOURCE_INPUTS_VERIFIED",
     "requiredFor": "model-owned code_mode_only runtime; discovered by first real-provider probe",
-    "executableSha256": null,
+    "executableSha256": "64f1706b505203995891d7c290a743a3aee04a82b04a6a257a28963d53290b51",
     "buildAuthorized": true,
     "buildAttempted": true,
-    "buildSucceeded": false,
+    "buildSucceeded": true,
     "sourceBuildAuthorized": true,
     "sourceBuildAttempted": true,
-    "sourceBuildSucceeded": false,
+    "sourceBuildSucceeded": true,
     "sourceBuildExit": 101,
     "xcodePrerequisiteResolved": true,
     "xcodeVersion": "26.6 (17F113)",
@@ -74,9 +74,11 @@
     "verifiedInputManifestSha256": "e451809046edbf5fa3e7ca32409cd97f433335e45699c34d1e93691af61c06ed",
     "restoredDeclaredInputs": 813,
     "restoredFiles": 1764,
-    "verifiedRustCrateGitTrees": 45
+    "verifiedRustCrateGitTrees": 45,
+    "helpExit": 0,
+    "successfulBuildResultSha256": "7759c47329bc1c8b82ee30e706d17c1bc337d408fce836f27c4d5e730313c463"
   },
-  "candidateBuildCompleteness": "CLI_BUILT_COMPANION_BUILD_RUNNING",
+  "candidateBuildCompleteness": "CLI_AND_CODE_MODE_COMPANION_BUILT_UNADOPTED",
   "candidateLockSha256": "765110795bf3385d734bf1acfcae77660d29a6c678d5b77015d7ffe49f26e69f",
   "lockSha256Role": "pristine upstream Cargo.lock; candidate normalized local package versions are separately pinned"
 }
