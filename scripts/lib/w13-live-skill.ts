@@ -19,7 +19,13 @@ export function nativeSkillTrace(events: any[], threadId: string, turnId: string
   const call = calls[0]
   assert.ok(call.type === 'custom_tool_call' && call.name === 'exec' && !call.namespace && typeof call.call_id === 'string' && call.call_id)
   assert.equal(call.input?.trim().replace(/;$/, ''), nativeSkillProgram(expected.selectedDir), 'Unexpected program or resource path')
-  const initial = items.slice(0, items.indexOf(call)).filter((item) => item.type === 'message' && item.role === 'user')
+  const initial = items.slice(0, items.indexOf(call)).filter((item) => item.type === 'message' && item.role === 'user').map((item) => {
+    assert.ok(Array.isArray(item.content))
+    return { role: 'user', content: item.content.map((block: any) => {
+      assert.ok(block.type === 'input_text' && typeof block.text === 'string')
+      return { type: 'input_text', text: block.text }
+    }) }
+  })
   const context = assessNativeSkillRequest({ input: initial }, expected.selected, expected.excluded, expected.args, expected.resource)
   assert.equal(context.resourceInContext, false, 'Resource was attached as context')
   assert.ok(!JSON.stringify(items.slice(0, items.indexOf(call) + 1)).includes(expected.resource), 'Resource leaked before the read')
