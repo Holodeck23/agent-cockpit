@@ -10,6 +10,7 @@ import { createCodexStreamState, parseCodexNotification } from './parse.ts'
 import { createRpcClient, type ServerRequest } from './rpc.ts'
 import { inheritedEnv } from '../inherited-env.ts'
 import { createCodexStop } from './stop.ts'
+import { codexStartupConfigArgs } from './startup-config.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -106,7 +107,8 @@ export interface CodexLaunchDeps {
 
 export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: CodexLaunchDeps = {}): AgentSession {
   const opts = codexLaunchSchema.parse(input)
-  const child = spawn(deps.executable ?? 'codex', ['app-server', ...(deps.configArgs ?? [])], {
+  // Keep these after earlier launch options; ordinary user/project config has lower precedence.
+  const child = spawn(deps.executable ?? 'codex', ['app-server', ...(deps.configArgs ?? []), ...codexStartupConfigArgs()], {
     cwd: opts.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
     env: { ...inheritedEnv(), ...deps.env },

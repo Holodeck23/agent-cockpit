@@ -2,6 +2,7 @@
 // non-generating checks (model/list, account/read). Bounded by a timeout; the process is killed
 // when the answer arrives or the time is up.
 import { spawn } from 'node:child_process'
+import { codexStartupConfigArgs } from './startup-config.ts'
 
 export interface AppServerAnswer {
   readonly result?: unknown
@@ -16,7 +17,7 @@ export const queryAppServer: AppServerQuery = (executable, method, params, { env
     if (signal?.aborted) { resolve({ error: 'Cockpit is shutting down' }); return }
     let settled = false
     let answer: AppServerAnswer | undefined
-    const child = spawn(executable, ['app-server'], { env: { ...(env ?? process.env) }, stdio: ['pipe', 'pipe', 'ignore'] })
+    const child = spawn(executable, ['app-server', ...codexStartupConfigArgs()], { env: { ...(env ?? process.env) }, stdio: ['pipe', 'pipe', 'ignore'] })
     const done = (result: AppServerAnswer): void => {
       if (settled) return
       settled = true
