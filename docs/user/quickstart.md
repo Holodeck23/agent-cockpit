@@ -1,35 +1,52 @@
-# First-Run Quick Start
+# First run: Claude, Codex and an explicit handoff
 
-> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
+Updated 22 October 2026. This guide describes the installed local build qualified on 21 October, with its archive identity rechecked on 22 October. The public download is v0.1.8, but it is a different build. The live results below do not qualify that download.
 
-Welcome to Agent Cockpit! This guide will take you from launching the app to seeing your first result.
+## Before you start
 
-## The Welcome Screen
+Use a macOS Apple-silicon Mac with Claude Code and Codex installed and signed in to your own accounts, with available usage. Cockpit runs those CLIs; it does not supply inference or a subscription. The live check used Claude Code 2.1.306 (Sonnet) and codex-cli 0.162.1 (gpt-6.1-sol); other versions and models were not established by this check. An installed-CLI badge alone does not prove login or quota.
 
-When you first launch Cockpit with no saved projects or conversations and without a saved Skip choice, you will see the **First-run director**. Here you have two main paths:
+For a new installation, follow the [installation guide](index.md) and [public v0.1.8 release](https://github.com/Holodeck23/agent-cockpit/releases/tag/v0.1.8). Installing the public release does not reproduce the qualified local build. It is an early beta, ad hoc signed and not notarized; review its beta terms before installing.
 
-1.  **Open a project:** Choose a folder on your Mac. Cockpit finds recent conversations and shows the latest task, agent, time, current branch and changed files. Choose **Resume and show me the app** to continue the same session with safe defaults, start the documented server with approval, and open and inspect its preview. Use the conversation or agent selector for an alternative, or **Start fresh**. With no recent session, choose **Explore this project**. Selecting a folder does not launch an agent.
-2.  **Try a 90-second sample:** This starts a genuine local sample app (a dependency-free project) stored in Cockpit's own sample folder. It will guide you through a real conversation, an approval prompt, running a process, and opening a preview in Cockpit's preview pane. This uses a plain-language request and requires Claude Code, Codex, or OpenCode to be installed.
+## Launch and start a conversation
 
-### Automatic Agent Defaults
+1. Open **Applications → Cockpit**, using `/Applications/Cockpit.app`. Keep one installed copy. Check **Get Info** for the path and version; matching version numbers alone do not establish build identity.
+2. Use **Open a project**, or **Projects → Open folder…**, to select an existing folder. Selecting it does not start an agent. With existing state, Cockpit opens the saved workspace; **Skip for now** leaves the first-run introduction.
+3. In **Conversations**, click **New conversation** (**+**). Open **Agent settings**, choose Claude Code, and check the account and model. Choose manual permissions / **Ask before acting**. Settings are remembered separately for each agent, so check again when choosing Codex; a remembered draft can use bypass permissions.
+4. Send a small request. For example: “Remember this fictional code word for this conversation: LANTERN-4729. Reply with the word and ready. Do not use tools or change files.” Wait for the reply and **Ready**. Starting and Working indicate activity, not completion.
 
-During your first run, Cockpit automatically chooses an installed supported agent, leaving the model and effort settings at their CLI defaults. It uses manual permissions where the CLI can hand approval requests to Cockpit. Antigravity instead uses its own headless permission policy.
+To start directly with Codex, choose Codex in step 3. Yesterday's live test started with Claude and reached Codex through the handoff below; a fresh Codex conversation was not separately retested.
 
-### Skip For Now
+## Resume after closing Cockpit
 
-If you are an existing user or want to dive straight in, you can click **Skip for now**. This persists your choice, and you will enter the normal Cockpit workspace where your existing projects and conversations reside.
+Wait until the turn is Ready, quit Cockpit normally, then open the same installed app. Select the same project and the saved conversation in its list. Send “What fictional code word did I ask you to remember? Do not use tools or change files.” The tested Claude conversation recalled it after a full app restart; Codex also recalled it after the handoff and another restart.
 
-## Your First Conversation
+Opening a project can also offer recent-session recovery. That separate import/recovery path and **Resume and show me the app** were not tested in this qualification. Use the saved Cockpit conversation for the verified route. If it is missing, check the project and data location before creating a replacement or deleting anything.
 
-1. **Start a Conversation:** Once you are in a project (or the sample), type a request in the composer and press Enter. This sends your request through the selected agent's CLI adapter. MCP separately exposes Cockpit tools to compatible agents.
-2. **Understand Approvals:** Actions that require approval show **Allow** and **Deny**. Which native agent actions require approval depends on the provider and permission setting; manual mode does not promise a card for every file edit. Cockpit process and workflow mutations have their own approval gate. *(Note: Google Antigravity uses a different headless permission model without host approval cards—see the Agent Compatibility page for details.)*
-3. **See the Result:** After approving the necessary steps, the agent completes the work.
+## Review and send the handoff
 
-## Working with Processes and Previews
+1. Wait for the current turn to finish. Open **Agent settings**, choose Codex, check its account/model and **Ask before acting**, then choose **Switch…**.
+2. Read **What Codex receives**. Check the actual text, character count and whether it says **the whole conversation** or lists earlier messages left out. Add any missing goal or decision to the conversation, then review again. **Back** cancels the switch.
+3. Choose **Start handoff** only when the briefing is right. If Cockpit says the conversation changed since review, reopen the review before trying again.
+4. Send the code-word question above, without repeating the word. In the live check Codex answered correctly after reviewing a 770-character handoff, and retained it after a full quit/reopen.
 
-When an agent needs to start a development server or run an app:
-1.  **Start an app:** The agent will use a tool (like `start_process`) to run a command. You must allow this.
-2.  **Inspect the preview:** Once running, the agent can use `open_preview` to open the local web page inside Cockpit's preview pane.
-3.  **Stop the process:** When finished, the agent can stop the process, or you can manually stop it from the conversation's process controls.
+The target gets a fresh provider session with a textual briefing; provider-side history and hidden reasoning do not transfer. Source inspection shows tool-use notes and image-file references rather than complete tool results or embedded image contents. The handoff budget is 400,000 characters; longer histories can omit earlier messages. A short code-word check does not prove long-task or long-context completeness. Automatic failover on a usage limit is not established: the verified route is an explicit user-reviewed switch.
 
-*Note: While the sample aims for a 90-second loop, actual completion times depend on the live provider's speed. Calls to live providers consume your agent subscription allowance. Running local processes and rendering the UI is entirely local.*
+## Where your data lives
+
+Cockpit normally stores state outside your project in `~/.agent-cockpit/` (`COCKPIT_HOME` can override it). Each conversation has `threads/<id>/meta.json`, `events.jsonl` and a readable `messages.md`; attachments and other state are also under the Cockpit data root. Project edits stay in the selected project folder. The CLIs keep their own credentials and session stores separately, normally under `~/.claude/` and `~/.codex/`, or a selected account profile. Cockpit's cross-conversation memory is separate from its transcript and from native CLI memory.
+
+With Cockpit closed, securely back up the data root before repair or migration. Replacing the app does not replace that folder. Deleting a conversation removes its Cockpit history and is not a backup method. Never publish the data root or account profiles as proof.
+
+Local storage does not mean offline inference: your prompts and content read by an agent go through its CLI to its provider. Production beta builds also send crash/error reports and start/stop telemetry under the [beta terms](../../BETA-TERMS.md); error text can name project files. See [data and privacy](guide.md#data-backup-and-privacy).
+
+## What this qualifies—and what remains open
+
+The 21 October assistant-operated, same-Mac check passed installed launch, both CLI detections, Claude start/resume, explicit Claude-to-Codex handoff and Codex resume. Four real replies completed with Ready and zero changed paths reported. The 22 October work checked identity and instructions; it did not rerun those provider tests or establish independent-user acceptance.
+
+| Artifact | Identity and boundary |
+| --- | --- |
+| Qualified installed v0.1.8 | Source `5ed194a9524759abbe528509ff1e2bc532b5c806`; `app.asar` SHA-256 `7d2762130c155ce4c5bb9a7e4a6c9106128ce5c29124c4cd4a41347ab3969189`. |
+| Saved public-release v0.1.8 package | Source `791deeae8553c6a002a0ea286155f504c5a04342`; `app.asar` SHA-256 `f2be60feabf6116267bd0a270c3eb371917171863e6184689503c89b22f1159e`. Different artifact; no fresh download/install or equivalent live flow was tested on 21–22 October. |
+
+Windows, Linux and Intel Macs are unsupported. Full inheritance of native memory, hooks, skills and connectors (W13) remains unfinished and is not qualified here. Simultaneous conversations, approval execution, Stop, dev servers/previews and usage-limit handling were not retested in this bounded check. Antigravity, OpenCode/OpenRouter and physical-phone notifications are outside it; see [compatibility](compatibility.md) for their separate limitations. Another-Mac installation, independent-person usability and arbitrary-task continuity remain open.

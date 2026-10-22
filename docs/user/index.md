@@ -1,6 +1,6 @@
 # Installation and Updating Guide
 
-> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
+> **Release boundary — 22 October 2026:** The public download is **v0.1.8**. These broader reference pages describe source behavior; they are not a record of live acceptance for every feature. See the [qualified local first-run guide](quickstart.md) for the tested workflow, exact installed-build identity and remaining public-installer checks. The locally tested app and saved public-release package share a version but have different archive hashes. For release-pinned reference, see the [v0.1.8 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.8/docs/user/guide.md).
 
 
 
@@ -16,7 +16,7 @@ The quickest way, and the one macOS does not block, is one line in Terminal:
 curl -fsSL https://raw.githubusercontent.com/Holodeck23/agent-cockpit/main/install.sh | sh
 ```
 
-The installer downloads the latest published prerelease, currently v0.1.7; a local v0.1.8 build is not offered by it. It shows the [beta terms](../../BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
+The installer downloads the latest published prerelease, currently v0.1.8. It does not offer the separately qualified local build described in the [first-run guide](quickstart.md). It shows the [beta terms](../../BETA-TERMS.md) and installs only after you type `agree`. Then it downloads the newest release, checks it against the release's `SHA256SUMS` and puts Cockpit in Applications. A download made with `curl` is not marked as coming from the internet, so Gatekeeper does not stop the first launch. To update later, quit Cockpit and run the same line again.
 
 Or install the DMG by hand:
 

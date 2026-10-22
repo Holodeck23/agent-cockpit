@@ -1,6 +1,6 @@
 # User Guide
 
-> **Current main / local build: v0.1.8 (13 October 2026). Public download: v0.1.7.** This page describes current source behavior. For the downloadable prerelease, use the [v0.1.7 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.7/docs/user/guide.md). The repaired local build has not been publicly released.
+> **Release boundary — 22 October 2026:** The public download is **v0.1.8**. These broader reference pages describe source behavior; they are not a record of live acceptance for every feature. See the [qualified local first-run guide](quickstart.md) for the tested workflow, exact installed-build identity and remaining public-installer checks. The locally tested app and saved public-release package share a version but have different archive hashes. For release-pinned reference, see the [v0.1.8 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.8/docs/user/guide.md).
 
 This guide covers all user-facing features in Agent Cockpit, organized by task.
 
