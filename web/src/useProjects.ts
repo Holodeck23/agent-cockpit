@@ -27,6 +27,9 @@ export interface Projects {
   /** Registers (or reopens) a folder, pins it and makes it active. */
   open(path: string): Promise<void>
   togglePin(project: Project): Promise<void>
+  /** New order of the pinned tabs (every pinned path), from a drag or ⌥⇧←/→; shown at once, then saved. */
+  reorder(paths: readonly string[]): Promise<void>
+  setColor(project: Project, color: Project['color']): Promise<void>
   /** Saves a project's instructions; rejects with the server's message so the editor can show it. */
   saveInstructions(project: Project, instructions: string): Promise<Project>
   /** Saves name, tint and instructions together; rejects with the server's message. */
@@ -108,6 +111,26 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     }
   }
 
+  const reorder = async (paths: readonly string[]): Promise<void> => {
+    const order = new Map(paths.map((path, i) => [path, i + 1]))
+    setAll((current) => current.map((p) => (order.has(p.path) ? { ...p, pinOrder: order.get(p.path) } : p)))
+    try {
+      await api.reorderTabs(paths)
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : String(e))
+    }
+    await refresh()
+  }
+
+  const setColor = async (project: Project, color: Project['color']): Promise<void> => {
+    try {
+      await api.openProject(project.path, { color })
+      await refresh()
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const saveInstructions = async (project: Project, instructions: string): Promise<Project> => {
     const saved = await api.openProject(project.path, { instructions })
     await refresh()
@@ -156,6 +179,8 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     reportError: onError,
     open,
     togglePin,
+    reorder,
+    setColor,
     saveInstructions,
     saveSettings,
     setImage,

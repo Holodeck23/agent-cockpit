@@ -70,6 +70,11 @@ export interface ProjectStore {
   setPinnedFiles(path: string, files: readonly string[]): Project
   /** Records or clears the Antigravity tools plugin Cockpit owns in this project; doesn't count as opening it. */
   setAntigravityMcp(path: string, owned: AgyMcpOwnership | undefined): Project
+  /**
+   * Puts the pinned tabs in this order (pinOrder 1..n); pinned projects not named keep their order
+   * after them. Only pinOrder changes; doesn't count as opening anything.
+   */
+  reorderPins(paths: readonly string[]): Project[]
 }
 
 /** A pinned file must be a plain path inside the project: no absolute paths, no "..". */
@@ -181,6 +186,18 @@ export function createProjectStore(root: string): ProjectStore {
       const next = projectSchema.parse({ ...existing, antigravityMcp: owned })
       write(current.map((p) => (p.path === path ? next : p)))
       return next
+    },
+    reorderPins(paths) {
+      const current = read()
+      const pinned = current.filter((p) => p.pinned && !p.hidden)
+      const unknown = paths.find((path) => !pinned.some((p) => p.path === path))
+      if (unknown !== undefined) throw new Error('Only pinned projects can be reordered')
+      const named = [...new Set(paths)]
+      const rest = pinned.filter((p) => !named.includes(p.path)).sort((a, b) => (a.pinOrder ?? 0) - (b.pinOrder ?? 0)).map((p) => p.path)
+      const order = new Map([...named, ...rest].map((path, i) => [path, i + 1]))
+      const next = current.map((p) => (order.has(p.path) ? { ...p, pinOrder: order.get(p.path) } : p))
+      write(next)
+      return next.filter((p) => order.has(p.path)).sort((a, b) => (a.pinOrder ?? 0) - (b.pinOrder ?? 0))
     },
     hide(path) {
       const current = read()

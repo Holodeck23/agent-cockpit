@@ -25,6 +25,19 @@ describe('buildAntigravityArgs', () => {
 })
 
 describe('parseAntigravityLine', () => {
+  it('a turn its permission policy ended (agy 1.3.3, captured live): no reply, success, and the refused step named', () => {
+    const refused = '{"event":"result","result":{"conversation_id":"5b0d2c1e-7a44-4c1e-9d0b-2f6a1c3e8b90","status":"SUCCESS","response":"","duration_seconds":4.657146,"num_turns":1,'
+      + '"usage":{"input_tokens":12887,"output_tokens":311,"thinking_tokens":193,"cache_read_tokens":0,"total_tokens":13198},"denied_actions":[{"action":"command","display_name":"RunCommand"}]}}'
+    const events = parseAntigravityLine(refused)
+    expect(events.some((e) => e.kind === 'assistant_text')).toBe(false)
+    expect(events.at(-1)).toEqual({ kind: 'result', ok: true, text: '', durationMs: 4657, denied: [{ action: 'command', label: 'RunCommand' }] })
+  })
+
+  it('leaves `denied` off a result with no refusals', () => {
+    const plain = '{"event":"result","result":{"conversation_id":"c","status":"SUCCESS","response":"ok","denied_actions":[]}}'
+    expect(parseAntigravityLine(plain).at(-1)).not.toHaveProperty('denied')
+  })
+
   it('shows a subagent hand-off (agy 1.3.1 image request, captured live) as a step', () => {
     const base = { conversation_id: '10ffd1da-3c48-4cdb-ab97-d2cfa4ab1c0b', step_index: 2, step_type: 'subagent', tool_name: 'invoke_subagent' }
     const sub = { type_name: 'image-generator', role: 'Image Generator', initial_prompt: 'Generate an image of a small blue square.' }

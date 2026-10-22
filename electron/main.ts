@@ -2,6 +2,8 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nati
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { startServer, type RunningServer } from '../server/start.ts'
+import { createNavigationStore } from '../server/projects/navigation.ts'
+import { privateRootsOf } from '../server/projects/privacy.ts'
 import { defaultRoot } from '../server/threads/store.ts'
 import { readAppPort, writeAppPort } from './app-port.ts'
 import { createDockActivity, parseActivity } from './dock-activity.ts'
@@ -73,7 +75,9 @@ if (process.env.COCKPIT_HOME) app.setPath('userData', join(process.env.COCKPIT_H
 // Crash and error reports (electron/telemetry.ts), a condition of the beta: started before the app
 // is ready, after the crash guard and the profile path; nothing is sent until the terms are accepted.
 const telemetry = startTelemetry({ dsn: reportingDsn(IS_RELEASE_BUILD, process.env), termsFile: join(defaultRoot(), 'beta-terms.json'),
-  version: app.getVersion(), releaseBuild: IS_RELEASE_BUILD })
+  version: app.getVersion(), releaseBuild: IS_RELEASE_BUILD,
+  // Mac-only folders become <private>: from the running server, and from navigation.json before it is up.
+  privateRoots: () => [...privateRootsOf(createNavigationStore(defaultRoot()).read()), ...(running?.privacy.roots() ?? [])] })
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()

@@ -137,6 +137,7 @@ export function ThreadView({ initialDraft, onDraftLoaded, onBrowseFiles, detail,
     effort: meta.settings.effort ?? '',
     permissionMode: meta.settings.permissionMode,
     ...(meta.settings.useChrome ? { chrome: true } : {}),
+    ...(meta.settings.reportBlocked === false ? { reportBlocked: false } : {}),
   }
 
   return (

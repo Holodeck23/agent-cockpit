@@ -57,6 +57,8 @@ export interface McpRouteDeps {
   /** The desktop app: inspect_preview captures the calling conversation's own page at that local address (W9-11). */
   readonly inspectPreview?: (preview: PreviewOpen) => Promise<PreviewCapture>
   readonly memory?: MemoryStore
+  /** Mac only: memories from such a project are kept to it, never "everywhere". */
+  readonly macOnly?: (projectPath: string) => boolean
   /** Whether the project lets agents update and schedule workflows (Project settings). */
   readonly agentWorkflows?: (projectPath: string) => boolean
   /** Cockpit's own listening ports, which a preview may never open. */
@@ -160,8 +162,11 @@ export async function handleMcpRoute(
     if (!memory) throw new HttpError(503, 'Memory unavailable')
     if (method === 'GET') return sendJson(res, 200, { data: { text: recallText(memory.search(projectPath, (url.searchParams.get('q') ?? '').slice(0, 200))) } })
     if (method === 'POST') {
-      const body = parseBody(z.object({ text: z.string().trim().min(1).max(MAX_MEMORY_CHARS), scope: memoryScope.default('project') }), await readJson(req))
-      const where = body.scope === 'everywhere' ? 'for every project: agents in all your projects will read it' : 'for this project'
+      const asked = parseBody(z.object({ text: z.string().trim().min(1).max(MAX_MEMORY_CHARS), scope: memoryScope.default('project') }), await readJson(req))
+      const kept = asked.scope === 'everywhere' && deps.macOnly?.(projectPath) === true
+      const body = kept ? { ...asked, scope: 'project' as const } : asked
+      const where = kept ? 'for this project only: it is Mac only, so its memories stay out of your other projects'
+        : body.scope === 'everywhere' ? 'for every project: agents in all your projects will read it' : 'for this project'
       const entry = await approved(deps, grant, res, 'remember', { text: body.text, scope: body.scope },
         { description: `Remember this ${where}.` }, () => memory.add({ ...body, projectPath, source: { kind: 'conversation', threadId: grant.threadId } }))
       return sendJson(res, 201, { data: entry })

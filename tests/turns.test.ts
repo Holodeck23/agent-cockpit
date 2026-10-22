@@ -69,8 +69,8 @@ describe('conclusions', () => {
 })
 
 describe('guidance', () => {
-  it('asks every Cockpit session for the turn shape and the two markers', () => {
-    expect(COCKPIT_GUIDANCE).toContain(TURN_GUIDANCE)
+  it('asks for the turn shape and the two markers apart from the tool guidance, which every launch gets separately', () => {
+    expect(COCKPIT_GUIDANCE).not.toContain(TURN_GUIDANCE)
     expect(TURN_GUIDANCE).toMatch(/"Question:"/)
     expect(TURN_GUIDANCE).toMatch(/"Blocked:"/)
   })
