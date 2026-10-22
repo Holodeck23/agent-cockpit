@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release checklist · AMBER-2841</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafaf7;
+    --fg: #1c1b18;
+    --muted: #5c5a52;
+    --line: #d8d5c8;
+    --card: #ffffff;
+    --accent: #9a5b00;
+    --focus: #0b57d0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17160f;
+      --fg: #f1efe6;
+      --muted: #b4b09e;
+      --line: #3a382c;
+      --card: #201f16;
+      --accent: #f0b04a;
+      --focus: #8ab4f8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main {
+    max-width: 30rem;
+    margin: 0 auto;
+  }
+  h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+  .ref {
+    margin: 0 0 1.5rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  fieldset {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--card);
+  }
+  legend {
+    padding: 0 0.5rem;
+    font-weight: 600;
+  }
+  .item + .item { border-top: 1px solid var(--line); }
+  .item label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+    padding: 0.25rem 0;
+    cursor: pointer;
+  }
+  .item input {
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .item input:checked + span {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+  input:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+  .count {
+    margin: 1rem 0 0;
+    font-weight: 600;
+  }
+  .count[data-done="true"] { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Release checklist</h1>
+  <p class="ref">AMBER-2841</p>
+
+  <form id="checklist" onsubmit="return false">
+    <fieldset>
+      <legend>Steps</legend>
+      <div class="item">
+        <label><input type="checkbox" name="step" value="install"><span>Install</span></label>
+      </div>
+      <div class="item">
+        <label><input type="checkbox" name="step" value="resume"><span>Resume</span></label>
+      </div>
+      <div class="item">
+        <label><input type="checkbox" name="step" value="handoff"><span>Handoff</span></label>
+      </div>
+    </fieldset>
+  </form>
+
+  <p class="count" id="count" role="status" aria-live="polite" aria-atomic="true">0 of 3 completed</p>
+</main>
+
+<script>
+  (function () {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('#checklist input[type="checkbox"]'));
+    var count = document.getElementById('count');
+    var storageKey = 'release-checklist:AMBER-2841:v1';
+
+    function load() {
+      try {
+        var raw = window.localStorage.getItem(storageKey);
+        if (raw === null) return;
+        var saved = JSON.parse(raw);
+        if (!saved || Array.isArray(saved) || typeof saved !== 'object' ||
+            !boxes.every(function (box) {
+              return Object.prototype.hasOwnProperty.call(saved, box.value) &&
+                typeof saved[box.value] === 'boolean';
+            })) return;
+        boxes.forEach(function (box) { box.checked = saved[box.value]; });
+      } catch (error) {
+        // Storage may be blocked or contain invalid JSON; the checklist still works.
+      }
+    }
+
+    function save() {
+      try {
+        var saved = {};
+        boxes.forEach(function (box) { saved[box.value] = box.checked; });
+        window.localStorage.setItem(storageKey, JSON.stringify(saved));
+      } catch (error) {
+        // Keep the current in-memory state when storage is unavailable or full.
+      }
+    }
+
+    function update() {
+      var done = boxes.filter(function (box) { return box.checked; }).length;
+      count.textContent = done + ' of ' + boxes.length + ' completed';
+      count.dataset.done = String(done === boxes.length);
+    }
+
+    boxes.forEach(function (box) {
+      box.addEventListener('change', function () { update(); save(); });
+    });
+    window.addEventListener('pageshow', function () { load(); update(); });
+    load();
+    update();
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-22",
+  "release": "v0.1.8",
+  "source": "791deeae8553c6a002a0ea286155f504c5a04342",
+  "download": {
+    "downloadedAt": "2026-10-22T21:27:36.208342+02:00",
+    "dmgSha256": "ca428d8b45b862c259cb8c1433ac6e60cfaf4dd7fa378499450ff346e7a27b96",
+    "publishedChecksum": "ca428d8b45b862c259cb8c1433ac6e60cfaf4dd7fa378499450ff346e7a27b96",
+    "githubDigest": "ca428d8b45b862c259cb8c1433ac6e60cfaf4dd7fa378499450ff346e7a27b96",
+    "bytes": 129966453,
+    "match": true
+  },
+  "appAsarSha256": "f2be60feabf6116267bd0a270c3eb371917171863e6184689503c89b22f1159e",
+  "installedFileAndLinkEntries": 280,
+  "allEntriesMatchMountedDownload": true,
+  "signature": "PASS",
+  "agents": {
+    "claude": "2.1.308 / Sonnet",
+    "codex": "0.162.1 / gpt-6.1-sol"
+  },
+  "permissionMode": "manual",
+  "handoffCharacters": 5038,
+  "handoffOmittedMessages": 0,
+  "approvalDecisions": {
+    "deny": 3,
+    "allow": 3
+  },
+  "ownerConfirmation": "Both ticks remain; 2 of 3 completed",
+  "finalMessages": 14,
+  "checks": {
+    "nativeLaunch": "PASS",
+    "claudeCreate": "PASS",
+    "claudeResumeAfterQuit": "PASS",
+    "reviewedHandoff": "PASS",
+    "codexContinuation": "PASS",
+    "approvedProcessStart": "PASS",
+    "processLogRead": "PASS",
+    "previewOpenAndInspect": "PASS",
+    "ownerInteractionAndReload": "PASS",
+    "codexResumeAfterQuit": "PASS",
+    "testServerPortClosedOnQuit": "PASS"
+  },
+  "limits": [
+    "one Mac",
+    "assistant-operated except owner preview check",
+    "no independent-person acceptance",
+    "no W13 parity claim",
+    "no long-context completeness claim"
+  ]
+}

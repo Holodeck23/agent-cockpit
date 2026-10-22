@@ -1,6 +1,6 @@
 # Agent Compatibility and Limitations
 
-> **Release boundary — 22 October 2026:** The public download is **v0.1.8**. These broader reference pages describe source behavior; they are not a record of live acceptance for every feature. See the [qualified local first-run guide](quickstart.md) for the tested workflow, exact installed-build identity and remaining public-installer checks. The locally tested app and saved public-release package share a version but have different archive hashes. For release-pinned reference, see the [v0.1.8 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.8/docs/user/guide.md).
+> **Release boundary — 22 October 2026:** The public download is **v0.1.8**. Its exact downloaded artifact passed a [live two-agent walkthrough and owner preview check](public-release-qualification.md). See the [first-run guide](quickstart.md) for launch, resume, handoff, data storage and remaining limits. These broader reference pages describe source behavior; the walkthrough does not establish every feature. For release-pinned reference, see the [v0.1.8 user guide](https://github.com/Holodeck23/agent-cockpit/blob/v0.1.8/docs/user/guide.md).
 
 Agent Cockpit provides a unified interface across different AI coding agents. However, each agent has specific requirements, capabilities, and limitations based on its CLI implementation and API provider.
 
