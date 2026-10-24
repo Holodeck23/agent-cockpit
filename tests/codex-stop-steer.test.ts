@@ -1,3 +1,4 @@
+import reviewedConfig from './fixtures/codex-reviewed-config.json' with { type: 'json' }
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { createInterface } from 'node:readline'
@@ -29,7 +30,7 @@ async function runningSession(exitOnEnd = true) {
     requests.push(request)
     // Hold steering replies so each test controls the race, through the real RPC client.
     if (request.method === 'turn/steer') return
-    reply({ id: request.id, result: request.method === 'thread/start' ? { thread: { id: 'thread-1' } } : {} })
+    reply({ id: request.id, result: request.method === 'config/read' ? reviewedConfig : request.method === 'thread/start' ? { thread: { id: 'thread-1' } } : {} })
   })
   const exit = () => { child.emit('exit', 0); child.emit('close', 0) }
   child.stdin.on('end', () => { if (exitOnEnd) exit() })

@@ -34,6 +34,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const request = JSON.parse(line)
   fs.appendFileSync(${JSON.stringify(log)}, line + '\\n')
   if (request.method === 'initialize' && !${answerInitialize}) return
+  if (request.method === 'config/read') { process.stdout.write(JSON.stringify({ id: request.id, result: {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]} }) + '\\n'); return }
   if (request.id !== undefined) process.stdout.write(JSON.stringify({ id: request.id, result:
     request.method === 'thread/start' || request.method === 'thread/resume' ? { thread: { id: 'native-thread' } } : {} }) + '\\n')
 })

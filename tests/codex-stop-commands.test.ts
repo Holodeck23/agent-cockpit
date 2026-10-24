@@ -1,3 +1,4 @@
+import reviewedConfig from './fixtures/codex-reviewed-config.json' with { type: 'json' }
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { createInterface } from 'node:readline'
@@ -29,7 +30,7 @@ async function harness(holdStart = false) {
     requests.push(r)
     if (holdStart && r.method === 'turn/start') return
     if (r.method === 'thread/backgroundTerminals/terminate') return // Test controls confirmation.
-    reply({ id: r.id, result: r.method === 'thread/start' ? { thread: { id: 'main' } } : {} })
+    reply({ id: r.id, result: r.method === 'config/read' ? reviewedConfig : r.method === 'thread/start' ? { thread: { id: 'main' } } : {} })
   })
   child.stdin.on('end', () => { child.emit('exit', 0); child.emit('close', 0) })
   vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>)

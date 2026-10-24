@@ -3,7 +3,7 @@
  * override executable features, not the account's credential or memory location.
  *
  * An empty mcp_servers table would merge with inherited servers. These controls
- * do NOT suppress those servers; their source review/refusal is a separate gate.
+ * do NOT suppress those servers; startup-review.ts supplies per-thread MCP controls.
  * Higher-precedence legacy managed config also needs refusal/qualification before
  * the compatibility release can claim trusted startup.
  */

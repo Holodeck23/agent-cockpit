@@ -11,6 +11,7 @@ import { createRpcClient, type ServerRequest } from './rpc.ts'
 import { inheritedEnv } from '../inherited-env.ts'
 import { createCodexStop } from './stop.ts'
 import { codexStartupConfigArgs } from './startup-config.ts'
+import { codexReviewedThreadConfig } from './startup-review.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -276,7 +277,14 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
       try { deps.validateSources?.() }
       catch { throw new Error('Codex setup changed before startup; review Project Settings. Your message was not delivered.') }
       rpc.notify('initialized')
-      const common = { cwd: opts.cwd, ...policy, ...(opts.model ? { model: opts.model } : {}) }
+      const effective = await waitForStartup(rpc.request('config/read', { cwd: opts.cwd, includeLayers: true }),
+        deps.capabilityTimeoutMs ?? 30_000, 'Codex setup review did not finish in time. Your message was not delivered.')
+      if (exited || closing || startupFailed) return
+      const config = codexReviewedThreadConfig(effective,
+        deps.configArgs?.some(arg => arg.startsWith('mcp_servers.cockpit.command=')) === true)
+      try { deps.validateSources?.() }
+      catch { throw new Error('Codex setup changed before startup; review Project Settings. Your message was not delivered.') }
+      const common = { cwd: opts.cwd, ...policy, config, ...(opts.model ? { model: opts.model } : {}) }
       const response = await waitForStartup(opts.resume
         ? rpc.request<{ thread: { id: string } }>('thread/resume', {
             threadId: opts.resume,

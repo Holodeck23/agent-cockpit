@@ -40,6 +40,7 @@ process.stdin.on('data', (d) => {
     const m = JSON.parse(line)
     if (m.method) fs.appendFileSync(${JSON.stringify(log)}, line + '\\n')
     if (m.method === 'initialize') send({ id: m.id, result: {} })
+    if (m.method === 'config/read') send({ id: m.id, result: {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]} })
     if (m.method === 'thread/start') send({ id: m.id, result: { thread: { id: 'th1' } } })
   }
 })

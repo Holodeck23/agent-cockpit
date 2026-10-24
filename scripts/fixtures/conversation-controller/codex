@@ -10,6 +10,7 @@ while (my $line = <STDIN>) {
   my ($id) = $line =~ /"id":\s*(\d+)/;
   next unless defined $method && defined $id;
   if ($method eq 'initialize') { print qq({"id":$id,"result":{"userAgent":"fixture"}}\n) }
+  elsif ($method eq 'config/read') { print qq({"id":$id,"result":{"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]}}\n) }
   elsif ($method eq 'thread/resume' || $method eq 'thread/start') {
     print qq({"id":$id,"result":{"thread":{"id":"$thread"}}}\n);
     print qq({"method":"thread/started","params":{"thread":{"id":"$thread"}}}\n);

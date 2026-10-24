@@ -52,6 +52,7 @@ while (my $line = <STDIN>) {
   elsif ($method eq 'account/read') {
     reply({ id => $id, result => { account => ($email ? { type => 'chatgpt', email => $email, planType => 'plus' } : undef), requiresOpenaiAuth => JSON::PP::true } });
   }
+  elsif ($method eq 'config/read') { reply({ id => $id, result => $json->decode('{"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]}') }) }
   elsif ($method eq 'thread/start' || $method eq 'thread/resume') {
     my $resume = $method eq 'thread/resume' ? $message->{params}{threadId} : '-';
     $thread = $resume if $resume ne '-';

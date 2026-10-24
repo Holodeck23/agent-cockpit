@@ -33,6 +33,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line), id = message.id
   if (id === undefined || !message.method) return
   if (message.method === 'initialize') reply(id, {})
+  else if (message.method === 'config/read') reply(id, {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]})
   else if (message.method === 'account/read') reply(id, {
     account: { type: 'chatgpt', email: 'w13-readiness@example.invalid', planType: 'plus' }, requiresOpenaiAuth: true,
   })

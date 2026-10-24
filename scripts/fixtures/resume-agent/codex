@@ -12,6 +12,7 @@ while (my $line = <STDIN>) {
   next unless defined $method && defined $id;
   if ($method eq 'initialize') { print qq({"id":$id,"result":{"userAgent":"fixture"}}\n) }
   elsif ($method eq 'thread/resume') { ($thread) = $line =~ /"threadId":\s*"([^"]+)"/; $resumed = 1; print qq({"id":$id,"result":{"thread":{"id":"$thread"}}}\n) }
+  elsif ($method eq 'config/read') { reply({ id => $id, result => $json->decode('{"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]}') }) }
   elsif ($method eq 'thread/start') { $thread = 'fixture-thread'; print qq({"id":$id,"result":{"thread":{"id":"$thread"}}}\n); print qq({"method":"thread/started","params":{"thread":{"id":"$thread"}}}\n) }
   elsif ($method eq 'turn/start') {
     $turn++;

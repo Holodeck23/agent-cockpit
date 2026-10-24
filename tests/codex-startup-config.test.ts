@@ -14,6 +14,7 @@ const fs = require('node:fs')
 fs.writeFileSync(${JSON.stringify(context)}, JSON.stringify({ args: process.argv.slice(2), home: process.env.CODEX_HOME }))
 require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
   const r = JSON.parse(line)
+  if (r.method === 'config/read') { process.stdout.write(JSON.stringify({ id: r.id, result: {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]} }) + '\\n'); return }
   if (r.id !== undefined) process.stdout.write(JSON.stringify({ id: r.id, result:
     r.method === 'thread/start' || r.method === 'thread/resume' ? { thread: { id: 'fixture-thread' } } : { ok: true } }) + '\\n')
 })

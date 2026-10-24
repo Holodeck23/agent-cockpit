@@ -1,0 +1,21 @@
+{
+  "config": {
+    "features": {
+      "hooks": false,
+      "plugins": false,
+      "apps": false,
+      "enable_mcp_apps": false,
+      "skill_mcp_dependency_install": false
+    },
+    "notify": [],
+    "mcp_servers": {}
+  },
+  "layers": [
+    {
+      "name": {
+        "type": "sessionFlags"
+      },
+      "config": {}
+    }
+  ]
+}
