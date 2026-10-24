@@ -9,6 +9,8 @@ import { launchCodex } from '../server/agents/codex/launch.ts'
 import type { AgentSession, NormalizedEvent } from '../server/agents/types.ts'
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }))
+// This RPC harness owns a synthetic provider; preflight has separate integration coverage.
+vi.mock('../server/agents/codex/startup-preflight.ts', () => ({ codexStartupPreflight: async () => {} }))
 
 const sessions: AgentSession[] = []
 afterEach(async () => {

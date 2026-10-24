@@ -12,6 +12,7 @@ import { inheritedEnv } from '../inherited-env.ts'
 import { createCodexStop } from './stop.ts'
 import { codexStartupConfigArgs } from './startup-config.ts'
 import { codexReviewedThreadConfig } from './startup-review.ts'
+import { codexStartupPreflight } from './startup-preflight.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -108,11 +109,75 @@ export interface CodexLaunchDeps {
 
 export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: CodexLaunchDeps = {}): AgentSession {
   const opts = codexLaunchSchema.parse(input)
+  const env = { ...inheritedEnv(), ...deps.env }
+  const controller = new AbortController()
+  const deadline = performance.now() + (deps.startupTimeoutMs ?? 60_000)
+  let session: AgentSession | undefined, ended = false
+  const pending: Array<{ text: string; queuedId?: string; images?: readonly OutgoingImage[] }> = []
+  const finish = (error?: unknown, stopped = false): void => {
+    if (ended) return
+    ended = true
+    controller.abort()
+    pending.splice(0)
+    if (error) onEvent({ kind: 'error', message: error instanceof Error ? error.message : 'Codex startup could not be checked. Your message was not delivered.' })
+    onEvent({ kind: 'result', ok: false, ...(stopped ? { stopped: true } : {}) })
+    onEvent({ kind: 'exit', code: null })
+  }
+  const checked = Promise.resolve().then(async () => {
+    if (ended) return
+    await codexStartupPreflight(env, controller.signal)
+    if (ended) return
+    try { deps.validateSources?.() }
+    catch { throw new Error('Codex setup changed before startup; review Project Settings. Your message was not delivered.') }
+    const remaining = deadline - performance.now()
+    if (remaining <= 0) throw new Error('Codex startup review did not finish in time. Your message was not delivered.')
+    session = spawnCodex(opts, event => { if (!ended) onEvent(event) }, { ...deps, startupTimeoutMs: remaining }, env)
+    for (const message of pending.splice(0)) session.send(message.text, message.queuedId, message.images)
+  }).catch(error => finish(error))
+  return {
+    agent: 'codex',
+    send(text, queuedId, images) {
+      if (ended) return
+      if (session) session.send(text, queuedId, images)
+      else pending.push({ text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) })
+    },
+    preparing: () => !ended && (session?.preparing?.() ?? !session),
+    queues: () => !ended && (session?.queues?.() ?? !session),
+    cancelQueued(queuedId) {
+      if (session) return session.cancelQueued?.(queuedId) ?? Promise.resolve(false)
+      const index = pending.findIndex(message => message.queuedId === queuedId)
+      if (index < 0) return Promise.resolve(false)
+      pending.splice(index, 1)
+      return Promise.resolve(true)
+    },
+    respondApproval: (approval, behavior) => { if (!ended) session?.respondApproval(approval, behavior) },
+    respondQuestion: (question, answers) => { if (!ended) session?.respondQuestion?.(question, answers) },
+    interrupt() {
+      if (ended) return
+      if (session) session.interrupt()
+      else {
+        for (const message of pending) if (message.queuedId) onEvent({ kind: 'user_undelivered', id: message.queuedId })
+        finish(undefined, true)
+      }
+    },
+    async close() {
+      ended = true; controller.abort(); pending.splice(0)
+      // Fence an existing provider synchronously, before yielding to late RPCs.
+      const closing = session?.close()
+      await checked
+      await closing
+    },
+    alive: () => session?.alive() ?? !ended,
+  }
+}
+
+/** Called only after the cancellable local source preflight completes. */
+function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink, deps: CodexLaunchDeps, env: NodeJS.ProcessEnv): AgentSession {
   // Keep these after earlier launch options; ordinary user/project config has lower precedence.
   const child = spawn(deps.executable ?? 'codex', ['app-server', ...(deps.configArgs ?? []), ...codexStartupConfigArgs()], {
     cwd: opts.cwd,
     stdio: ['pipe', 'pipe', 'pipe'], ...AGENT_SPAWN,
-    env: { ...inheritedEnv(), ...deps.env },
+    env,
   })
   let exited = false
   let exitReported = false

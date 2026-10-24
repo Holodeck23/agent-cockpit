@@ -10,6 +10,10 @@ import { threadSettingsSchema } from '../server/threads/types.ts'
 import { isBusy } from '../server/threads/status.ts'
 import { buildTranscript } from '../web/src/transcript.ts'
 
+// Keep RPC/bridge timing assertions independent of OS preference-query startup.
+// The preflight suite exercises pending checks, cancellation and input recovery.
+vi.mock('../server/agents/codex/startup-preflight.ts', () => ({ codexStartupPreflight: async () => {} }))
+
 const roots: string[] = [], sessions: AgentSession[] = []
 afterEach(async () => {
   await Promise.all(sessions.splice(0).map((session) => session.close()))

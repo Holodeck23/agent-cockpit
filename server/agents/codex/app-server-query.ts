@@ -3,6 +3,7 @@
 // when the answer arrives or the time is up.
 import { spawn } from 'node:child_process'
 import { codexStartupConfigArgs } from './startup-config.ts'
+import { codexStartupPreflight } from './startup-preflight.ts'
 
 export interface AppServerAnswer {
   readonly result?: unknown
@@ -12,12 +13,19 @@ export interface AppServerAnswer {
 
 export type AppServerQuery = (executable: string, method: string, params: unknown, options: { env?: Readonly<Record<string, string>>; timeoutMs: number; signal?: AbortSignal; experimentalApi?: boolean }) => Promise<AppServerAnswer>
 
-export const queryAppServer: AppServerQuery = (executable, method, params, { env, timeoutMs, signal, experimentalApi }) =>
-  new Promise((resolve) => {
-    if (signal?.aborted) { resolve({ error: 'Cockpit is shutting down' }); return }
+export const queryAppServer: AppServerQuery = async (executable, method, params, { env, timeoutMs, signal, experimentalApi }) => {
+  const began = performance.now()
+  if (signal?.aborted) return { error: 'Cockpit is shutting down' }
+  const launchEnv = { ...(env ?? process.env) }
+  try { await codexStartupPreflight(launchEnv, signal) }
+  catch (error) { return { error: signal?.aborted ? 'Cockpit is shutting down' : error instanceof Error ? error.message : 'Codex startup sources could not be checked' } }
+  if (signal?.aborted) return { error: 'Cockpit is shutting down' }
+  const remaining = timeoutMs - (performance.now() - began)
+  if (remaining <= 0) return { error: 'Codex startup sources could not be checked in time' }
+  return new Promise((resolve) => {
     let settled = false
     let answer: AppServerAnswer | undefined
-    const child = spawn(executable, ['app-server', ...codexStartupConfigArgs()], { env: { ...(env ?? process.env) }, stdio: ['pipe', 'pipe', 'ignore'] })
+    const child = spawn(executable, ['app-server', ...codexStartupConfigArgs()], { env: launchEnv, stdio: ['pipe', 'pipe', 'ignore'] })
     const done = (result: AppServerAnswer): void => {
       if (settled) return
       settled = true
@@ -28,7 +36,7 @@ export const queryAppServer: AppServerQuery = (executable, method, params, { env
       if (child.pid && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
     }
     const abort = (): void => done({ error: 'Cockpit is shutting down' })
-    const timer = setTimeout(() => done({ error: `codex app-server did not answer ${method} within ${Math.round(timeoutMs / 1000)} s` }), timeoutMs)
+    const timer = setTimeout(() => done({ error: `codex app-server did not answer ${method} within ${Math.round(timeoutMs / 1000)} s` }), remaining)
     signal?.addEventListener('abort', abort, { once: true })
     child.on('error', (error) => done({ error: `codex app-server could not start (${(error as NodeJS.ErrnoException).code ?? error.message})` }))
     child.on('exit', () => done({ error: `codex app-server ended before answering ${method}` }))
@@ -55,6 +63,7 @@ export const queryAppServer: AppServerQuery = (executable, method, params, { env
     })
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'agent-cockpit', title: 'Agent Cockpit', version: '1' }, capabilities: experimentalApi ? { experimentalApi: true } : null } })}\n`)
   })
+}
 
 /** One server owns its non-generating helpers, including probes still starting during Quit. */
 export function createAppServerQueryScope(): { query: AppServerQuery; close(): Promise<void> } {

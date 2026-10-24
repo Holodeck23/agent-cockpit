@@ -45,6 +45,9 @@ describe('Stop while an agent is starting (Day 10)', () => {
     const events: NormalizedEvent[] = []
     const session = launchCodex({ cwd: process.cwd() }, (e) => events.push(e), { executable })
     session.send('hello')
+    // Exercise the native-startup boundary after local preflight. The separate
+    // preflight tests cover Stop before a provider process exists.
+    await expect.poll(() => requests(log).includes('thread/start'), { timeout: 5000 }).toBe(true)
     session.interrupt()
     expect(events).toContainEqual({ kind: 'result', ok: false, stopped: true })
     // The stand-in is a fresh node process; under a full parallel run it can take over a second to answer.
