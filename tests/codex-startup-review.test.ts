@@ -80,7 +80,7 @@ it('refuses an inherited contribution to the reserved bridge even when the host 
   expect(() => codexReviewedThreadConfig(response, true)).toThrow('not delivered')
 })
 
-function fixture(first: unknown, subsequent: unknown[] = [], holdRead = 0, rejectRead = 0) {
+function fixture(first: unknown, subsequent: unknown[] = [], holdRead = 0, rejectRead = 0, notifyTurns = false) {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-startup-review-')); roots.push(root)
   const executable = join(root, 'codex'), log = join(root, 'requests.jsonl'), marker = join(root, 'unreviewed-started')
   const responses = [first, ...subsequent].map((value: any) => ({ ...value, layers: value.layers.map((layer: any) => ({
@@ -104,6 +104,7 @@ function fixture(first: unknown, subsequent: unknown[] = [], holdRead = 0, rejec
       reply.notify('thread/started', { thread: { id: 'reviewed-thread' } })
       reply(r.id, { thread: { id: 'reviewed-thread' } }); return
     }
+    if (r.method === 'turn/start' && notifyTurns) reply.notify('turn/started', { threadId: 'reviewed-thread', turn: { id: 'running-turn' } })
     reply(r.id, {})
   })
   return { root, executable, marker, release: () => release?.(), requests: (): any[] => {
@@ -231,6 +232,111 @@ it('refuses a failed native recheck without exposing parser payloads', async () 
   expect(JSON.stringify(events)).not.toContain('private-native-parser-payload')
   expect(events.some(e => e.kind === 'error' && e.message.includes('could not be rechecked'))).toBe(true)
   expect(f.requests().some(r => r.method === 'thread/start')).toBe(false)
+})
+
+it.each(['idle', 'later', 'steer'])('refuses a newly discovered native source before %s input', async phase => {
+  const initial = base(), changed = base()
+  changed.layers.push({ name: { type: 'project', dotCodexFolder: '/fictional/new/.codex' }, config: { mcp_servers: { late: { command: 'private-new-command' } } } })
+  changed.config.mcp_servers = { late: { command: 'private-new-command' } }
+  const history = phase === 'idle' ? [initial, initial, changed] : [initial, initial, initial, changed]
+  const f = fixture(initial, history, 0, 0, phase === 'steer'), events: NormalizedEvent[] = []
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), { executable: f.executable })
+  sessions.push(session)
+  await expect.poll(() => events.some(e => e.kind === 'session')).toBe(true)
+  if (phase !== 'idle') {
+    session.send('first delivered input', 'first')
+    await expect.poll(() => f.requests().filter(r => r.method === 'turn/start').length).toBe(1)
+  }
+  session.send('held after source discovery', 'later')
+  await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  expect(f.requests().filter(r => r.method === 'turn/start')).toHaveLength(phase === 'idle' ? 0 : 1)
+  expect(f.requests().some(r => r.method === 'turn/steer')).toBe(false)
+  expect(events.some(e => e.kind === 'user_taken' && e.id === 'later')).toBe(false)
+  expect(JSON.stringify(events)).not.toContain('private-new-command')
+})
+
+it.each(['withdraw', 'stop', 'close', 'timeout', 'revoke'])('keeps idle input pending during revalidation and supports %s', async action => {
+  const initial = base(), f = fixture(initial, [], 4), events: NormalizedEvent[] = []
+  let revoked = false
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), { executable: f.executable,
+    capabilityTimeoutMs: action === 'timeout' ? 50 : 5000,
+    validateSources: () => { if (revoked) throw new Error('private-revocation') },
+  })
+  sessions.push(session)
+  await expect.poll(() => events.some(e => e.kind === 'session')).toBe(true)
+  session.send('exact waiting text', 'waiting', [{ path: '/fictional/image.png', mediaType: 'image/png', data: 'original' }])
+  await expect.poll(() => f.requests().filter(r => r.method === 'config/read').length).toBe(4)
+  expect(events.some(e => e.kind === 'user_taken')).toBe(false)
+  if (action === 'withdraw') { expect(await session.cancelQueued?.('waiting')).toBe(true); f.release() }
+  if (action === 'stop') { session.interrupt(); f.release(); expect(events).toContainEqual({ kind: 'user_undelivered', id: 'waiting' }) }
+  if (action === 'close') { await session.close(); f.release() }
+  if (action === 'timeout') await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  if (action === 'revoke') { revoked = true; f.release(); await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true) }
+  if (action === 'withdraw' || action === 'stop') {
+    session.send('new deliberate input', 'replacement')
+    await expect.poll(() => f.requests().filter(r => r.method === 'turn/start').length).toBe(1)
+    expect(f.requests().find(r => r.method === 'turn/start').params.input[0].text).toBe('new deliberate input')
+  } else expect(f.requests().some(r => r.method === 'turn/start' || r.method === 'turn/steer')).toBe(false)
+  expect(events.some(e => e.kind === 'user_taken' && e.id === 'waiting')).toBe(false)
+  expect(JSON.stringify(events)).not.toContain('private-revocation')
+})
+
+it('gives later input its bounded review budget after the startup deadline has elapsed', async () => {
+  const f = fixture(base()), events: NormalizedEvent[] = []
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), { executable: f.executable, startupTimeoutMs: 1000 })
+  sessions.push(session)
+  await expect.poll(() => events.some(e => e.kind === 'session')).toBe(true)
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 61_000)
+  try {
+    session.send('later idle input', 'later')
+    await expect.poll(() => f.requests().some(r => r.method === 'turn/start')).toBe(true)
+    expect(events.some(e => e.kind === 'error')).toBe(false)
+  } finally { clock.mockRestore() }
+})
+
+it('keeps the total startup deadline for the first input review', async () => {
+  const f = fixture(base(), [], 4), events: NormalizedEvent[] = []
+  let clock: ReturnType<typeof vi.spyOn> | undefined
+  const session = launchCodex({ cwd: f.root }, e => {
+    events.push(e)
+    if (e.kind === 'session') clock = vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 61_000)
+  }, { executable: f.executable, startupTimeoutMs: 1000 })
+  sessions.push(session)
+  try {
+    session.send('initial input', 'initial')
+    await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+    expect(f.requests().some(r => r.method === 'turn/start')).toBe(false)
+  } finally { clock?.mockRestore() }
+})
+
+it('persists a later refused idle message with exact images for restart recovery', async () => {
+  const initial = base(), changed = base()
+  changed.layers.push({ name: { type: 'project', dotCodexFolder: '/fictional/new/.codex' }, config: {} })
+  const f = fixture(initial, [initial, initial, initial, changed]), state = join(f.root, 'state'), store = createThreadStore(state)
+  let emit!: (event: NormalizedEvent) => void
+  const manager = createThreadManager(store, { launchers: { codex: (request, onEvent) => {
+    emit = onEvent
+    const session = launchCodex({ cwd: request.cwd }, onEvent, { executable: f.executable }); sessions.push(session); return session
+  } } })
+  try {
+    const thread = manager.create({ projectPath: f.root, text: 'initial input', settings: threadSettingsSchema.parse({ agent: 'codex' }) })
+    await expect.poll(() => f.requests().filter(r => r.method === 'turn/start').length).toBe(1)
+    const firstRun = store.events(thread.id).find(({ event }) => event.kind === 'user_text')!.event
+    if (firstRun.kind !== 'user_text') throw new Error('Missing original input')
+    emit({ kind: 'result', ok: true })
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3foAAAAASUVORK5CYII=', 'base64')
+    manager.send(thread.id, 'later exact input', undefined, undefined, undefined, [{ bytes: png, name: 'later.png' }])
+    await expect.poll(() => store.events(thread.id).some(({ event }) => event.kind === 'user_undelivered')).toBe(true)
+    const persisted = createThreadStore(state).events(thread.id)
+    const message = persisted.find(({ event }) => event.kind === 'user_text' && event.text === 'later exact input')?.event
+    expect(message).toMatchObject({ kind: 'user_text', queuedId: expect.any(String) })
+    expect(persisted.filter(({ event }) => event.kind === 'result' && event.runId === firstRun.runId).map(({ event }) => event))
+      .toEqual([expect.objectContaining({ kind: 'result', ok: true })])
+    const attachment = persisted.find(({ event }) => event.kind === 'image')?.event
+    expect(attachment?.kind).toBe('image')
+    if (attachment?.kind === 'image') expect(createImageStore(state).read(thread.id, attachment.file)?.bytes).toEqual(png)
+    expect(f.requests().filter(r => r.method === 'turn/start')).toHaveLength(1)
+  } finally { await manager.shutdown() }
 })
 
 it('refuses unsupported setup before any native thread and keeps the first message recoverable in the store', async () => {

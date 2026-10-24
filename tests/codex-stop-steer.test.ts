@@ -24,6 +24,7 @@ async function runningSession(exitOnEnd = true) {
   })
   const requests: Array<{ id: number; method: string; params: { input?: unknown } }> = []
   const events: NormalizedEvent[] = []
+  let config: any = structuredClone(reviewedConfig)
   const reply = (message: unknown) => child.stdout.write(JSON.stringify(message) + '\n')
   const notify = (method: string, params: unknown) => reply({ method, params })
   createInterface({ input: child.stdin }).on('line', (line) => {
@@ -32,9 +33,10 @@ async function runningSession(exitOnEnd = true) {
     requests.push(request)
     // Hold steering replies so each test controls the race, through the real RPC client.
     if (request.method === 'turn/steer') return
-    reply({ id: request.id, result: request.method === 'config/read' ? reviewedConfig : request.method === 'thread/start' ? { thread: { id: 'thread-1' } } : {} })
+    reply({ id: request.id, result: request.method === 'config/read' ? config : request.method === 'thread/start' ? { thread: { id: 'thread-1' } } : {} })
   })
   const exit = () => { child.emit('exit', 0); child.emit('close', 0) }
+  Object.assign(child, { kill: () => { exit(); return true } })
   child.stdin.on('end', () => { if (exitOnEnd) exit() })
   vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>)
   const session = launchCodex({ cwd: process.cwd() }, (event) => events.push(event))
@@ -43,10 +45,12 @@ async function runningSession(exitOnEnd = true) {
   await vi.waitFor(() => expect(requests.filter((r) => r.method === 'turn/start')).toHaveLength(1))
   notify('turn/started', { threadId: 'thread-1', turn: { id: 'turn-1' } })
   session.send('pending follow-up')
+  await vi.waitFor(() => expect(requests.some(r => r.method === 'turn/steer')).toBe(true))
   const steer = requests.find((r) => r.method === 'turn/steer')!
   expect(steer).toBeDefined()
   return {
     session, requests, events, exit,
+    addSource() { config.layers.push({ name: { type: 'project', dotCodexFolder: '/fictional/new/.codex' }, version: `sha256:${'a'.repeat(64)}`, config: {} }) },
     starts: () => requests.filter((r) => r.method === 'turn/start'),
     finish: (status: string) => notify('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', status } }),
     async rejectSteer() {
@@ -57,6 +61,13 @@ async function runningSession(exitOnEnd = true) {
 }
 
 describe('Codex steering reply after Stop', () => {
+  it('refuses a new source before falling back from steering to a new turn', async () => {
+    const h = await runningSession()
+    h.finish('completed'); h.addSource()
+    await h.rejectSteer()
+    expect(h.starts()).toHaveLength(1)
+    expect(h.events.some(e => e.kind === 'error' && e.message.includes('setup changed'))).toBe(true)
+  })
   it('starts the follow-up when the original turn ended naturally', async () => {
     const h = await runningSession()
     h.finish('completed')

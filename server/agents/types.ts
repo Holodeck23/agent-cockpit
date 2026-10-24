@@ -81,7 +81,7 @@ export type NormalizedEvent =
   /** Cockpit-internal and never stored: the conversation was deleted. */
   | { kind: 'thread_deleted' }
   | { kind: 'session'; sessionId: string; model?: string; cwd?: string }
-  /** `queuedId` is set when you sent it while the agent was working and the agent queues it (J1). */
+  /** `queuedId` retains input while provider readiness, source review or its queue is pending. */
   | {
       kind: 'user_text'; text: string; fromConversation?: { id: string; title: string }; workflows?: readonly WorkflowSnapshot[]; queuedId?: string
       /** The run this request opens; legacy events derive one (threads/identity.ts). */
@@ -157,6 +157,8 @@ export interface OutgoingImage {
 
 export interface AgentSession {
   readonly agent: AgentId
+  /** Every input waits for review; keep a queue receipt until user_taken, even while idle. */
+  readonly reviewsInput?: boolean
   /** Delivers a turn to the agent. The thread manager records the user's own message. */
   send(text: string, queuedId?: string, images?: readonly OutgoingImage[]): void
   /** True when a message sent mid-turn waits in the agent's own queue and can be taken back (J1). */

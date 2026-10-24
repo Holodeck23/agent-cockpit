@@ -914,11 +914,16 @@ export function createThreadManager(store: ThreadStore, options: ManagerOptions 
     const toAgent = deliverCatchUp ? `${launched.catchUp}\n\n${agentText}` : agentText
     if (launched.catchUp && (deliverCatchUp || !launched.sessionStarted)) store.update(threadId, { catchUp: undefined })
     // Mid-turn, a message waits in the agent's queue where it can still be taken back (J1).
-    const queuedId = ((entry.turnRunning && entry.session.queues?.()) || entry.session.preparing?.()) ? randomUUID() : undefined
+    const queuedId = (entry.session.reviewsInput || (entry.turnRunning && entry.session.queues?.()) || entry.session.preparing?.()) ? randomUUID() : undefined
     const runId = randomUUID()
     const bound = requireMeta(threadId)
     const binding = queuedId ? { bindingId: bindingIdOf(bound), ...(bound.workspaceId ? { workspaceId: bound.workspaceId } : {}), agent: bound.settings.agent, generation: entry.generation } : undefined
-    if (queuedId) { entry.waiting.add(queuedId); entry.queuedRuns.set(queuedId, runId) }
+    if (queuedId) {
+      entry.waiting.add(queuedId); entry.queuedRuns.set(queuedId, runId)
+      // An idle reviewed send owns its new run while the host holds it. A refusal
+      // must never attach a failed result to the previously completed run.
+      if (entry.session.reviewsInput && !entry.turnRunning) { entry.afterResult = false; entry.runId = runId }
+    }
     else { entry.afterResult = false; entry.runId = runId }
     entry.turnRunning = true
     if (meta.completed) {

@@ -14,6 +14,7 @@ import { codexStartupConfigArgs } from './startup-config.ts'
 import { codexReviewedThreadConfig } from './startup-review.ts'
 import { codexStartupPreflight } from './startup-preflight.ts'
 import { bindCodexStartup } from './startup-binding.ts'
+import { createCodexInputReview } from './input-review.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -137,6 +138,7 @@ export function launchCodex(input: CodexLaunchInput, onEvent: EventSink, deps: C
   }).catch(error => finish(error))
   return {
     agent: 'codex',
+    reviewsInput: true,
     send(text, queuedId, images) {
       if (ended) return
       if (session) session.send(text, queuedId, images)
@@ -189,7 +191,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
   const deadline = performance.now() + (deps.startupTimeoutMs ?? 60_000)
   let retirement: Promise<void> | undefined
   const retire = (): Promise<void> => retirement ??= stopChild(child, () => !exited)
-  const waitForStartup = <T>(promise: Promise<T>, budget: number, message: string): Promise<T> =>
+  const waitForStartup = <T>(promise: Promise<T>, budget: number, message: string, withinStartup = true): Promise<T> =>
     new Promise((resolve, reject) => {
       let settled = false
       const abort = (): void => finish(false, new Error('Codex startup was cancelled'))
@@ -200,13 +202,14 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
         startup.signal.removeEventListener('abort', abort)
         if (ok) resolve(value as T); else reject(value)
       }
-      const timer = setTimeout(() => finish(false, new Error(message)), Math.max(0, Math.min(budget, deadline - performance.now())))
+      const timer = setTimeout(() => finish(false, new Error(message)), Math.max(0, Math.min(budget, withinStartup ? deadline - performance.now() : budget)))
       startup.signal.addEventListener('abort', abort, { once: true })
       promise.then((value) => finish(true, value), (error: unknown) => finish(false, error))
       if (startup.signal.aborted) abort()
     })
   let threadId: string | undefined
   let nativeBinding: ReturnType<typeof bindCodexStartup> | undefined
+  let recheckNative: ((withinStartup?: boolean) => Promise<void>) | undefined
   let currentTurnId: string | undefined
   // Stop pressed after turn/start went out but before Codex named the turn: interrupt it on arrival.
   let interruptOnStart = false
@@ -287,20 +290,28 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
     if (exited || closing || startupFailed) return
     startupFailed = true
     queued.splice(0)
+    inputReview.clear()
     startup.abort()
     onEvent({ kind: 'error', message })
-    onEvent({ kind: 'result', ok: false })
+    // No provider turn exists for an idle input still held by review. Exit lets
+    // the manager settle its receipt without rewriting a prior completed run.
+    if (!ready || currentTurnId || turnStarting) onEvent({ kind: 'result', ok: false })
     // End the logical session and revoke its host grant immediately; process cleanup follows.
     exitReported = true
     onEvent({ kind: 'exit', code: null })
     void retire().catch(() => onEvent({ kind: 'error', message: 'Codex could not be closed after the refused start' }))
   }
-  const startTurn = (text: string, images?: readonly OutgoingImage[], queuedId?: string): void => {
+  const startTurn = (text: string, images?: readonly OutgoingImage[], queuedId?: string, startupInput = false): void => {
     if (exited || closing || startupFailed) return
     if (!threadId || !ready || stopping) {
       queued.push({ text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) })
       return
     }
+    inputReview.enqueue({ text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}), ...(startupInput ? { startupInput } : {}) })
+  }
+  const dispatchReviewed = (text: string, images?: readonly OutgoingImage[], queuedId?: string): void => {
+    if (exited || closing || startupFailed) return
+    if (stopping) { queued.push({ text, ...(queuedId ? { queuedId } : {}), ...(images ? { images } : {}) }); return }
     const input = codexInput(text, images)
     const generation = stopGeneration
     // A level the model does not have (a saved Ultra on a model without it) becomes its highest (R7).
@@ -334,10 +345,31 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
       try { deps.validateSources?.(); nativeBinding?.checkFiles() }
       catch { failStartup('Codex setup changed before input; review Project Settings. Your message was not delivered.'); return }
       if (queuedId) onEvent({ kind: 'user_taken', text, id: queuedId })
-      rpc.request('turn/steer', { threadId, input, expectedTurnId: running }).catch(() => start().catch(fail))
+      rpc.request('turn/steer', { threadId, input, expectedTurnId: running }).catch(async () => {
+        if (exited || closing || startupFailed || generation !== stopGeneration) return
+        try { await recheckNative!(false) }
+        catch (error) {
+          if (!exited && !closing && !startupFailed && generation === stopGeneration) {
+            failStartup(error instanceof Error ? error.message : 'Codex setup could not be rechecked. Your message was not delivered.')
+          }
+          return
+        }
+        await start().catch(fail)
+      })
     }
     else start().catch(fail)
   }
+
+  const inputReview = createCodexInputReview({
+    live: () => !exited && !closing && !startupFailed,
+    check: async input => {
+      try { deps.validateSources?.() }
+      catch { throw new Error('Codex setup changed before input; review Project Settings. Your message was not delivered.') }
+      await recheckNative!(input.startupInput === true)
+    },
+    dispatch: input => dispatchReviewed(input.text, input.images, input.queuedId),
+    failed: error => failStartup(error instanceof Error ? error.message : 'Codex setup could not be rechecked. Your message was not delivered.'),
+  })
 
   const policy = codexPolicy(opts.permissionMode)
   void (async () => {
@@ -354,11 +386,11 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
       const hostBridge = deps.configArgs?.some(arg => arg.startsWith('mcp_servers.cockpit.command=')) === true
       const config = codexReviewedThreadConfig(effective, hostBridge)
       nativeBinding = bindCodexStartup(effective, hostBridge)
-      const recheckNative = async (): Promise<void> => {
+      recheckNative = async (withinStartup = true): Promise<void> => {
         let current: unknown
         try {
           current = await waitForStartup(rpc.request('config/read', { cwd: opts.cwd, includeLayers: true }),
-            deps.capabilityTimeoutMs ?? 30_000, 'Codex setup recheck did not finish in time. Your message was not delivered.')
+            deps.capabilityTimeoutMs ?? 30_000, 'Codex setup recheck did not finish in time. Your message was not delivered.', withinStartup)
         } catch {
           // Native parser errors may include private config contents or paths.
           throw new Error('Codex setup could not be rechecked; review Project Settings. Your message was not delivered.')
@@ -396,7 +428,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
       nativeBinding.checkFiles()
       ready = true
       onEvent({ kind: 'session', sessionId: threadId })
-      for (const turn of queued.splice(0)) startTurn(turn.text, turn.images, turn.queuedId)
+      for (const turn of queued.splice(0)) startTurn(turn.text, turn.images, turn.queuedId, true)
     } catch (error: unknown) {
       failStartup(`Codex failed to start: ${error instanceof Error ? error.message : 'Startup failed'}`)
     }
@@ -421,12 +453,14 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
 
   return {
     agent: 'codex',
+    reviewsInput: true,
     send(text, queuedId, images) {
       startTurn(text, images, queuedId)
     },
     preparing: () => !ready && !startupFailed && !closing && !exited,
     queues: () => !ready && !startupFailed && !closing && !exited,
     cancelQueued(queuedId) {
+      if (inputReview.cancel(queuedId)) return Promise.resolve(true)
       const index = queued.findIndex((item) => item.queuedId === queuedId)
       if (index < 0) return Promise.resolve(false)
       queued.splice(index, 1)
@@ -453,6 +487,8 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
     },
     interrupt() {
       stopGeneration++
+      const reviewing = inputReview.has()
+      for (const id of inputReview.clear()) onEvent({ kind: 'user_undelivered', id })
       if (threadId && currentTurnId) {
         stopping = true
         queued.splice(0)
@@ -461,7 +497,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
         queued.splice(0)
         stopping = true
         interruptOnStart = true
-      } else if (queued.length > 0) {
+      } else if (queued.length > 0 || reviewing) {
         // Still starting up: the messages never reach Codex, and the turn ends here as stopped.
         for (const item of queued.splice(0)) if (item.queuedId) onEvent({ kind: 'user_undelivered', id: item.queuedId })
         onEvent({ kind: 'result', ok: false, stopped: true })
@@ -472,6 +508,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
     },
     close() {
       closing = true
+      inputReview.clear()
       stopGeneration++
       startup.abort()
       return retire()
