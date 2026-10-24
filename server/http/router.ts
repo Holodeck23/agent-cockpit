@@ -9,7 +9,7 @@ import { statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { ProcessConflictError, type ProcessRunner } from '../processes/runner.ts'
-import { projectPatchSchema, type Project, type ProjectStore } from '../projects/store.ts'
+import { projectTabPatchSchema, projectPatchSchema, type Project, type ProjectStore } from '../projects/store.ts'
 import type { WorkspaceStore } from '../projects/workspaces.ts'
 import { createWorkspaceScope } from './workspace-scope.ts'
 import { isRefusal, workspaceFolder } from '../projects/resolve.ts'
@@ -552,6 +552,13 @@ export function createApiHandler({ manager, store, projects, workspaces, worktre
         // Its phone previews end with it (W11.2: workspace removal invalidates sessions).
         await phonePreviews?.retireProject(path)
         sendJson(res, 200, { data: { project, pausedSchedules: scheduled.length } })
+        return true
+      }
+      if (parts[1] === 'projects' && parts[2] === 'tab' && parts.length === 3 && method === 'POST') {
+        const { path, ...patch } = parseBody(projectTabPatchSchema.safeExtend({ path: z.string().min(1).max(1000) }), await readJson(req))
+        const checked = parseBody(projectTabPatchSchema, patch)
+        if (!projects.list().some((p) => p.path === path)) throw new HttpError(404, 'Unknown project')
+        sendJson(res, 200, { data: projects.updateTab(path, checked) })
         return true
       }
       if (parts[1] === 'projects' && parts.length === 2) {

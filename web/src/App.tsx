@@ -259,7 +259,7 @@ export function App({ page = { mode: 'local' } }: { page?: PageMode }) {
     else setFreshStart(undefined)
     cockpit.select(id)
   }
-  const projectThreads = activePath && !phone ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : cockpit.threads
+  const projectThreads = phone ? cockpit.threads : activePath ? cockpit.threads.filter((t) => t.meta.projectPath === activePath) : []
   // Once the project has a worktree the list follows the selected workspace; a conversation that ran in several shows under each.
   const primaryId = projects.active?.workspaceId
   const filtering = !phone && (workspaces.worktrees.length > 0 || selection.kind !== 'primary')

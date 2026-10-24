@@ -212,6 +212,8 @@ export const api = {
   selectAccount: (projectId: string, agent: AgentId, accountId: string) =>
     request<{ selection: Record<AgentId, string> }>(`/api/projects/${projectId}/accounts/${agent}`, { method: 'POST', body: { accountId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
+  updateProjectTab: (path: string, patch: { pinned?: boolean; color?: Project['color']; before?: string | null; after?: string }) =>
+    request<Project>('/api/projects/tab', { method: 'POST', body: { path, ...patch } }),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
   setPinnedFiles: (path: string, files: readonly string[]) => request<Project>('/api/projects/pins', { method: 'POST', body: { path, files } }),

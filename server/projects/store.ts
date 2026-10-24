@@ -55,6 +55,18 @@ export const projectPatchSchema = z.object({
 })
 export type ProjectPatch = z.output<typeof projectPatchSchema>
 
+/** Tab controls never reopen a project or change its agent setup. `before: null` moves to the end. */
+export const projectTabPatchSchema = z.object({
+  pinned: z.boolean().optional(),
+  color: z.enum(PROJECT_COLORS).optional(),
+  before: z.string().min(1).max(1000).nullable().optional(),
+  after: z.string().min(1).max(1000).optional(),
+}).strict().refine((patch) => Object.values(patch).some((value) => value !== undefined), 'Choose a tab change')
+  .refine((patch) => !(patch.pinned === false && (patch.before !== undefined || patch.after !== undefined)), 'Cannot move a closed tab')
+  .refine((patch) => !(patch.before !== undefined && patch.after !== undefined), 'Choose one position')
+export type ProjectTabPatch = z.output<typeof projectTabPatchSchema>
+
+
 export interface ProjectStore {
   /** Most recently opened first. Removed projects only with `includeHidden`. */
   list(options?: { includeHidden?: boolean }): Project[]
@@ -62,6 +74,8 @@ export interface ProjectStore {
   ensure(seen: ReadonlyArray<{ path: string; at: string }>): void
   /** Creates or updates a project and marks it opened now. */
   open(path: string, patch?: ProjectPatch): Project
+  /** Changes tab visibility, colour or position without opening the project. */
+  updateTab(path: string, patch: ProjectTabPatch): Project
   /** Sets or clears the picture's file name; the caller stores the file. */
   setImage(path: string, image: string | undefined): Project
   /** Takes a project off the tabs and the menu. Never touches the folder. */
@@ -155,6 +169,32 @@ export function createProjectStore(root: string): ProjectStore {
       // Opening a removed project on purpose brings it back.
       const next: Project = { ...existing, ...rest, hidden: undefined, lastOpenedAt: now, ...instructionsChange(existing, rawInstructions), ...pinChange(current, existing, rest.pinned) }
       write([...current.filter((p) => p.path !== path), next])
+      return next
+    },
+    updateTab(path, rawPatch) {
+      const patch = projectTabPatchSchema.parse(rawPatch)
+      const current = read()
+      const existing = current.find((p) => p.path === path && !p.hidden)
+      if (!existing) throw new Error('Unknown project')
+      let next = { ...existing, ...(patch.color ? { color: patch.color } : {}),
+        ...(patch.pinned !== undefined ? { pinned: patch.pinned, ...pinChange(current, existing, patch.pinned) } : {}) }
+      if (patch.before !== undefined || patch.after !== undefined) {
+        const anchor = patch.after ?? patch.before
+        const target = anchor == null ? undefined : current.find((p) => p.path === anchor && !p.hidden)
+        if (anchor != null && !target) throw new Error('That tab has closed. Try moving the project again.')
+        if (anchor !== path) {
+          const pinned = current.filter((p) => (p.pinned || p.path === anchor) && !p.hidden).sort((a, b) =>
+            Number(!a.pinned) - Number(!b.pinned) || (a.pinOrder ?? 0) - (b.pinOrder ?? 0)
+              || a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
+          const order = pinned.filter((p) => p.path !== path).map((p) => p.path)
+          order.splice(anchor == null ? order.length : order.indexOf(anchor) + (patch.after !== undefined ? 1 : 0), 0, path)
+          next = { ...next, pinned: true, pinOrder: order.indexOf(path) + 1 }
+          write(current.map((p) => p.path === path ? next : order.includes(p.path)
+            ? { ...p, pinned: true, pinOrder: order.indexOf(p.path) + 1 } : p))
+          return next
+        }
+      }
+      write(current.map((p) => p.path === path ? next : p))
       return next
     },
     setImage(path, image) {
