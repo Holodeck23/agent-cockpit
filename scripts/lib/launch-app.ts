@@ -29,6 +29,8 @@ export async function launchPackagedApp(extraEnv: Readonly<Record<string, string
       SHELL: process.env.SHELL ?? '/bin/zsh',
       TMPDIR: process.env.TMPDIR ?? '/tmp',
       PATH: LAUNCHD_PATH,
+      COCKPIT_FIXTURE_NODE: process.execPath,
+      ...(process.env.COCKPIT_PROOF_BACKGROUND === '1' ? { COCKPIT_PROOF_BACKGROUND: '1' } : {}),
       COCKPIT_HOME: mkdtempSync(join(tmpdir(), 'cockpit-app-state-')),
       ...extraEnv,
     },

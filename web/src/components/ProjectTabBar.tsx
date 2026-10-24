@@ -52,7 +52,7 @@ function Tab({ project, active, projects, hint, busy, run, onSettings, onDragSta
         if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') { event.preventDefault(); if (!busy) showMenu() }
       }} onDragOver={onDragOver} onDrop={onDrop}>
       <button type="button" role="tab" aria-selected={active} className="tab-main" draggable={!busy}
-        title={`${project.path}${hint ? `  (${hint})` : ''}\nDrag to reorder · Right-click for project controls`}
+        title={`${project.path}\nDrag to reorder · Right-click for project controls${hint ? `  (${hint})` : ''}`}
         onClick={() => projects.select(project.path)} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <ProjectAvatar project={project} solid={active} />
         <span className="tab-name">{project.name}</span>

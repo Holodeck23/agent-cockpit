@@ -43,6 +43,16 @@ const CANVAS = { light: '#fafaf9', dark: '#202020' }
 const SHUTDOWN_GRACE_MS = 5000
 const WINDOW = { width: 1360, height: 860, minWidth: 980, minHeight: 640 }
 const isDev = !app.isPackaged
+// Isolate physical input before any proof window exists; production ignores this switch.
+const proofBackground = !IS_RELEASE_BUILD && process.env.COCKPIT_PROOF_BACKGROUND === '1'
+if (proofBackground) {
+  if (process.platform === 'darwin') app.setActivationPolicy('accessory')
+  app.on('browser-window-created', (_event, window) => {
+    window.setFocusable(false)
+    window.setIgnoreMouseEvents(true)
+    window.setOpacity(0)
+  })
+}
 
 let running: RunningServer | undefined
 let mainWindow: BrowserWindow | undefined
@@ -376,6 +386,7 @@ function createWindow(url: string): BrowserWindow {
   win.webContents.on('did-finish-load', sendFullScreen)
   saveWindowPlace = saveState
   win.once('ready-to-show', () => {
+    if (proofBackground) { win.showInactive(); return }
     if (place.maximized) win.maximize()
     win.show()
   })
