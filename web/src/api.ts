@@ -267,6 +267,8 @@ export const api = {
   revokeRepoSkills: (projectId: string, selectionId: string) =>
     request<{ revoked: boolean }>(`/api/projects/${projectId}/project-skills/revoke`, { method: 'POST', body: { selectionId } }),
   listThreads: () => request<ThreadSummary[]>('/api/threads'),
+  updateProjectTab: (path: string, patch: { pinned?: boolean; color?: Project['color']; before?: string | null; after?: string }) =>
+    request<Project>('/api/projects/tab', { method: 'POST', body: { path, ...patch } }),
   listProjects: () => request<Project[]>('/api/projects'),
   setProjectImage: (path: string, image: string | null) => request<Project>('/api/projects/image', { method: 'POST', body: { path, image } }),
   setPinnedFiles: (path: string, files: readonly string[]) => request<Project>('/api/projects/pins', { method: 'POST', body: { path, files } }),

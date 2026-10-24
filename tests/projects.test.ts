@@ -110,3 +110,45 @@ describe('pinned project files', () => {
     expect(() => store.setPinnedFiles('/work/nowhere', ['a.ts'])).toThrow(/Unknown project/)
   })
 })
+
+describe('direct project tab controls', () => {
+  it('persists ordering across reloads and preserves project metadata and hidden entries', () => {
+    const root = newRoot()
+    const store = createProjectStore(root)
+    const a = store.open('/work/a', { pinned: true, instructions: 'Keep this', codexNetwork: true })
+    store.open('/work/b', { pinned: true })
+    store.open('/work/c', { pinned: true })
+    store.open('/work/hidden', { pinned: true }); store.hide('/work/hidden')
+    const hidden = store.list({ includeHidden: true }).find((p) => p.hidden)
+    store.updateTab('/work/c', { before: '/work/a' })
+    expect(tabOrder(createProjectStore(root).list(), undefined).map((p) => p.path)).toEqual(['/work/c', '/work/a', '/work/b'])
+    store.updateTab('/work/c', { after: '/work/b' })
+    expect(tabOrder(store.list(), undefined).map((p) => p.path)).toEqual(['/work/a', '/work/b', '/work/c'])
+    store.updateTab('/work/a', { color: 'purple', pinned: false })
+    expect(store.list().find((p) => p.path === a.path)).toEqual({ ...a, color: 'purple', pinned: false, pinOrder: undefined })
+    expect(store.list({ includeHidden: true }).find((p) => p.hidden)).toEqual(hidden)
+  })
+  it('allows the active unpinned project to be moved, and an unpinned anchor to take its chosen position', () => {
+    const store = createProjectStore(newRoot())
+    store.open('/work/a', { pinned: true }); store.open('/work/b', { pinned: true }); store.open('/work/loose')
+    store.updateTab('/work/loose', { before: '/work/b' })
+    expect(tabOrder(store.list(), undefined).map((p) => p.name)).toEqual(['a', 'loose', 'b'])
+    store.updateTab('/work/loose', { pinned: false })
+    store.updateTab('/work/a', { after: '/work/loose' })
+    expect(tabOrder(store.list(), undefined).map((p) => p.name)).toEqual(['b', 'loose', 'a'])
+  })
+  it('refuses unknown, hidden, malformed and ambiguous changes without writing', () => {
+    const root = newRoot(), store = createProjectStore(root)
+    store.open('/work/a', { pinned: true }); store.open('/work/hidden'); store.hide('/work/hidden')
+    const before = readFileSync(join(root, 'projects.json'), 'utf8')
+    for (const [path, patch] of [
+      ['/work/missing', { pinned: true }], ['/work/hidden', { color: 'blue' }],
+      ['/work/a', { before: '/work/hidden' }], ['/work/a', { before: '/work/missing' }],
+      ['/work/a', { before: null, after: '/work/a' }], ['/work/a', { before: null, pinned: false }],
+      ['/work/a', { color: 'invalid' }], ['/work/a', {}], ['/work/a', { instructions: 'overwrite' }],
+    ] as const) {
+      expect(() => store.updateTab(path, patch as never)).toThrow()
+      expect(readFileSync(join(root, 'projects.json'), 'utf8')).toBe(before)
+    }
+  })
+})

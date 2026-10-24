@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Project, type ThreadSummary } from './api.ts'
 import { isWorking, needsYou } from './conversation-meta.ts'
 import { tabOrder } from './project-tabs.ts'
@@ -27,6 +27,10 @@ export interface Projects {
   /** Registers (or reopens) a folder, pins it and makes it active. */
   open(path: string): Promise<void>
   togglePin(project: Project): Promise<void>
+  /** Closes only the tab, selecting its neighbour; projects and running conversations stay saved. */
+  closeTab(project: Project): Promise<void>
+  moveTab(project: Project, relativeTo: string | null, after?: boolean): Promise<void>
+  setColor(project: Project, color: Project['color']): Promise<void>
   /** Saves a project's instructions; rejects with the server's message so the editor can show it. */
   saveInstructions(project: Project, instructions: string): Promise<Project>
   /** Saves name, tint and instructions together; rejects with the server's message. */
@@ -50,6 +54,7 @@ function loadActive(): string | undefined {
 export function useProjects(threads: readonly ThreadSummary[], onError: (message: string) => void): Projects {
   const [all, setAll] = useState<Project[]>([])
   const [activePath, setActivePath] = useState<string | undefined>(loadActive)
+  const selectedPath = useRef<string | undefined>(activePath)
   const projectPaths = useMemo(() => [...new Set(threads.map((t) => t.meta.projectPath))].sort().join('\n'), [threads])
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -66,6 +71,7 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
   }, [refresh, projectPaths])
 
   const select = useCallback((path: string): void => {
+    selectedPath.current = path
     setActivePath(path)
     try {
       localStorage.setItem(ACTIVE_KEY, path)
@@ -74,7 +80,8 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     }
   }, [])
 
-  const active = all.find((p) => p.path === activePath) ?? all[0]
+  const active = activePath === '' ? undefined : all.find((p) => p.path === activePath) ?? all[0]
+  selectedPath.current = active?.path
   const tabs = tabOrder(all, active?.path)
 
   const counts = useMemo(() => {
@@ -101,11 +108,30 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
 
   const togglePin = async (project: Project): Promise<void> => {
     try {
-      await api.openProject(project.path, { pinned: !project.pinned })
+      await api.updateProjectTab(project.path, { pinned: !project.pinned })
       await refresh()
     } catch (e: unknown) {
       onError(e instanceof Error ? e.message : String(e))
     }
+  }
+
+  const closeTab = async (project: Project): Promise<void> => {
+    await api.updateProjectTab(project.path, { pinned: false })
+    if (selectedPath.current === project.path) {
+      const index = tabs.findIndex((p) => p.path === project.path)
+      select(tabs[index + 1]?.path ?? tabs[index - 1]?.path ?? '')
+    }
+    await refresh()
+  }
+
+  const moveTab = async (project: Project, relativeTo: string | null, after = false): Promise<void> => {
+    await api.updateProjectTab(project.path, after && relativeTo ? { after: relativeTo } : { before: relativeTo })
+    await refresh()
+  }
+
+  const setColor = async (project: Project, color: Project['color']): Promise<void> => {
+    await api.updateProjectTab(project.path, { color })
+    await refresh()
   }
 
   const saveInstructions = async (project: Project, instructions: string): Promise<Project> => {
@@ -156,6 +182,9 @@ export function useProjects(threads: readonly ThreadSummary[], onError: (message
     reportError: onError,
     open,
     togglePin,
+    closeTab,
+    moveTab,
+    setColor,
     saveInstructions,
     saveSettings,
     setImage,

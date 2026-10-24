@@ -174,3 +174,32 @@ button:focus-visible, [role='tab']:focus-visible { outline: 2px solid var(--blue
 .release-notes-body ul { margin: 0 0 10px; padding-left: 20px; }
 .release-notes-body li { margin: 3px 0; }
 .release-notes-body code { font: 12.5px var(--mono); padding: 1px 4px; border-radius: 4px; background: var(--field); }
+
+/* Project controls stay directly reachable; overflow scrolls instead of hiding tabs. */
+.tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; -webkit-app-region: no-drag; }
+.tab { position: relative; flex: 0 0 auto; max-width: 290px; }
+.tab-main[draggable='true'] { cursor: grab; }
+.tab-main:active { cursor: grabbing; }
+.tab-control {
+  display: grid; place-items: center; flex: none; width: 24px; height: 26px; padding: 0;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: default;
+}
+.tab-control .icon { width: 14px; height: 14px; }
+.tab-control:hover, .tab-control[aria-expanded='true'] { background: var(--field); color: var(--strong); }
+.tab-control:disabled { opacity: .45; }
+.tab.drop-before::before, .tab.drop-after::after {
+  content: ''; position: absolute; top: 5px; bottom: 5px; width: 3px; border-radius: 2px;
+  background: var(--blue); pointer-events: none;
+}
+.tab.drop-before::before { left: 0; }
+.tab.drop-after::after { right: 0; }
+.tab-menu { position: fixed; right: auto; width: min(240px, calc(100vw - 16px)); max-height: calc(100dvh - 64px); z-index: 30; -webkit-app-region: no-drag; }
+.tab-colours { display: flex; justify-content: space-between; padding: 8px 10px 12px; gap: 6px; }
+.tab-colours .tint-swatch { width: 25px; height: 25px; flex: none; cursor: pointer; }
+@media (max-width: 700px) {
+  .tabbar { padding-right: 6px; gap: 4px; }
+  .tabbar-mark { display: none; }
+  .tab { max-width: 220px; }
+  .tab-name { max-width: 105px; }
+  .projects-button { padding: 0 8px; gap: 4px; }
+}
