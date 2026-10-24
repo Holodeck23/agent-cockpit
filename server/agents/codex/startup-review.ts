@@ -9,7 +9,8 @@ const MANAGED = 'This managed Codex setup is not supported by Cockpit yet. Your 
  * Review the native effective configuration before creating or resuming a thread.
  * Empty tables merge: disable each inherited MCP server by its resolved name.
  * The host's bridge is retained only when no lower layer contributes to its name.
- * This does not qualify pre-app-server managed startup or later source changes.
+ * startup-binding.ts rechecks native identities. Neither qualifies atomic loader
+ * isolation or pre-app-server cloud-managed startup.
  */
 export function codexReviewedThreadConfig(response: unknown, hostBridge: boolean): Record<string, unknown> {
   const refuse = (): never => { throw new Error(REFUSED) }

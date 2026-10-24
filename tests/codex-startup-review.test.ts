@@ -1,7 +1,9 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { clearCodexRpcFixtures, registerCodexRpcFixture } from './fixtures/codex-rpc-child.ts'
+import { createHash } from 'node:crypto'
 import reviewed from './fixtures/codex-reviewed-config.json' with { type: 'json' }
 import { codexReviewedThreadConfig } from '../server/agents/codex/startup-review.ts'
 import { launchCodex } from '../server/agents/codex/launch.ts'
@@ -9,10 +11,19 @@ import type { AgentSession, NormalizedEvent } from '../server/agents/types.ts'
 import { createThreadManager } from '../server/threads/manager.ts'
 import { createThreadStore } from '../server/threads/store.ts'
 import { threadSettingsSchema } from '../server/threads/types.ts'
+import { createImageStore } from '../server/threads/images.ts'
+
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  const { spawnCodexRpcFixture } = await import('./fixtures/codex-rpc-child.ts')
+  return { ...actual, spawn: (command: string, ...args: any[]) => spawnCodexRpcFixture(command, args[1]?.env) ?? actual.spawn(command, ...args as [any, any]) }
+})
 
 const roots: string[] = [], sessions: AgentSession[] = []
+vi.mock('../server/agents/codex/startup-preflight.ts', () => ({ codexStartupPreflight: async () => {} }))
 afterEach(async () => {
   await Promise.all(sessions.splice(0).map(session => session.close()))
+  clearCodexRpcFixtures()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 const base = (): any => structuredClone(reviewed)
@@ -69,28 +80,33 @@ it('refuses an inherited contribution to the reserved bridge even when the host 
   expect(() => codexReviewedThreadConfig(response, true)).toThrow('not delivered')
 })
 
-function fixture(response: unknown) {
+function fixture(first: unknown, subsequent: unknown[] = [], holdRead = 0, rejectRead = 0) {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-startup-review-')); roots.push(root)
   const executable = join(root, 'codex'), log = join(root, 'requests.jsonl'), marker = join(root, 'unreviewed-started')
-  writeFileSync(executable, `#!/usr/bin/env node
-const fs = require('node:fs')
-const response = ${JSON.stringify(response)}
-const send = (id, result) => process.stdout.write(JSON.stringify({ id, result }) + '\\n')
-fs.writeFileSync(${JSON.stringify(join(root, 'account.txt'))}, process.env.CODEX_HOME || '')
-require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
- const r = JSON.parse(line); fs.appendFileSync(${JSON.stringify(log)}, line + '\\n')
- if (r.method === 'config/read') { send(r.id, response); return }
- if (r.method === 'thread/start' || r.method === 'thread/resume') {
-  for (const name of Object.keys(response.config.mcp_servers || {})) {
-   if (name !== 'cockpit' && r.params.config?.mcp_servers?.[name]?.enabled !== false) fs.writeFileSync(${JSON.stringify(marker)}, name)
-  }
-  send(r.id, { thread: { id: 'reviewed-thread' } }); return
- }
- if (r.id !== undefined) send(r.id, {})
-})
-`)
-  chmodSync(executable, 0o755)
-  return { root, executable, marker, requests: (): any[] => {
+  const responses = [first, ...subsequent].map((value: any) => ({ ...value, layers: value.layers.map((layer: any) => ({
+    ...layer, version: layer.version ?? `sha256:${createHash('sha256').update(JSON.stringify(layer.config)).digest('hex')}`,
+  })) }))
+  let reads = 0, response: any = responses[0], release: (() => void) | undefined
+  registerCodexRpcFixture(executable, (r, reply, env) => {
+    appendFileSync(log, JSON.stringify(r) + '\n')
+    if (r.method === 'initialize') writeFileSync(join(root, 'account.txt'), env?.CODEX_HOME ?? '')
+    if (r.method === 'config/read') {
+      reads++; response = responses[Math.min(reads - 1, responses.length - 1)]
+      if (reads === rejectRead) { reply.fail(r.id, 'private-native-parser-payload'); return }
+      if (reads === holdRead) release = () => reply(r.id, response)
+      else reply(r.id, response)
+      return
+    }
+    if (r.method === 'thread/start' || r.method === 'thread/resume') {
+      for (const name of Object.keys(response.config.mcp_servers || {})) {
+        if (name !== 'cockpit' && r.params.config?.mcp_servers?.[name]?.enabled !== false) writeFileSync(marker, name)
+      }
+      reply.notify('thread/started', { thread: { id: 'reviewed-thread' } })
+      reply(r.id, { thread: { id: 'reviewed-thread' } }); return
+    }
+    reply(r.id, {})
+  })
+  return { root, executable, marker, release: () => release?.(), requests: (): any[] => {
     try { return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) } catch { return [] }
   } }
 }
@@ -102,7 +118,7 @@ it.each([false, true])('reviews before new/resumed thread creation and prevents 
   const session = launchCodex({ cwd: f.root, ...(resume ? { resume: 'existing-thread' } : {}) }, e => events.push(e), {
     executable: f.executable, env: { CODEX_HOME: home }, configArgs: ['-c', 'mcp_servers.cockpit.command="bridge"'],
   }); sessions.push(session); session.send('exact first message', 'queued')
-  await expect.poll(() => f.requests().some(r => r.method === 'turn/start')).toBe(true)
+  await expect.poll(() => ({ started: f.requests().some(r => r.method === 'turn/start'), methods: f.requests().map(r => r.method), events })).toMatchObject({ started: true })
   const requests = f.requests(), threadMethod = resume ? 'thread/resume' : 'thread/start'
   expect(requests.findIndex(r => r.method === 'config/read')).toBeLessThan(requests.findIndex(r => r.method === threadMethod))
   expect(requests.find(r => r.method === threadMethod).params.config).toEqual({ mcp_servers: { unreviewed: { enabled: false }, cockpit: { command: 'bridge' } } })
@@ -110,6 +126,111 @@ it.each([false, true])('reviews before new/resumed thread creation and prevents 
   expect(readFileSync(join(f.root, 'account.txt'), 'utf8')).toBe(home)
   expect(requests.filter(r => r.method === 'turn/start')).toHaveLength(1)
   expect(requests.find(r => r.method === 'turn/start').params.input[0].text).toBe('exact first message')
+})
+
+it.each([false, true])('refuses a new inherited MCP source discovered on the pre-thread recheck (%s)', async resume => {
+  const initial = base(), changed = base()
+  changed.config.mcp_servers = { late: { command: 'side-effect' } }
+  changed.layers.push({ name: { type: 'project', dotCodexFolder: '/fictional/late/.codex' }, config: { mcp_servers: changed.config.mcp_servers } })
+  const f = fixture(initial, [changed]), events: NormalizedEvent[] = []
+  const session = launchCodex({ cwd: f.root, ...(resume ? { resume: 'existing' } : {}) }, e => events.push(e), { executable: f.executable })
+  sessions.push(session); session.send('recover exact text', 'queued', [{ path: '/fictional/picture.png', mediaType: 'image/png', data: 'unused' }])
+  await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  expect(f.requests().filter(r => r.method === 'config/read')).toHaveLength(2)
+  expect(f.requests().some(r => ['thread/start', 'thread/resume', 'turn/start'].includes(r.method))).toBe(false)
+  expect(events.some(e => e.kind === 'user_taken')).toBe(false)
+  expect(existsSync(f.marker)).toBe(false)
+})
+
+it('refuses an inherited command version change while bridge readiness is pending', async () => {
+  const initial = base(), changed = base()
+  initial.layers.push({ name: { type: 'user', file: '/fictional/config.toml' }, config: { mcp_servers: { inherited: { command: 'old' } } } })
+  initial.config.mcp_servers = { inherited: { command: 'old' } }
+  Object.assign(changed, structuredClone(initial))
+  changed.layers[1].config.mcp_servers.inherited.command = 'new-private-command'
+  const f = fixture(initial, [initial, changed]), events: NormalizedEvent[] = []
+  let release!: () => void
+  const bridge = new Promise<void>(resolve => { release = resolve })
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), { executable: f.executable, hostReady: () => bridge })
+  sessions.push(session); session.send('held at bridge', 'queued')
+  await expect.poll(() => f.requests().some(r => r.method === 'thread/start')).toBe(true)
+  release()
+  await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  expect(f.requests().filter(r => r.method === 'config/read')).toHaveLength(3)
+  expect(f.requests().some(r => r.method === 'turn/start')).toBe(false)
+  expect(events.some(e => e.kind === 'session')).toBe(false)
+  expect(JSON.stringify(events)).not.toContain('new-private-command')
+})
+
+it('keeps text and images recoverable through a native source refusal in the manager', async () => {
+  const initial = base(), changed = base()
+  changed.layers[0].version = `sha256:${'1'.repeat(64)}`
+  const f = fixture(initial, [changed]), state = join(f.root, 'state'), store = createThreadStore(state)
+  const manager = createThreadManager(store, { launchers: { codex: (request, onEvent) => {
+    const session = launchCodex({ cwd: request.cwd }, onEvent, { executable: f.executable }); sessions.push(session); return session
+  } } })
+  try {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3foAAAAASUVORK5CYII=', 'base64')
+    const thread = manager.create({ projectPath: f.root, text: 'restore original', images: [{ bytes: png, name: 'draft.png' }], settings: threadSettingsSchema.parse({ agent: 'codex' }) })
+    await expect.poll(() => store.events(thread.id).some(({ event }) => event.kind === 'user_undelivered')).toBe(true)
+    const persisted = createThreadStore(state).events(thread.id)
+    expect(persisted.some(({ event }) => event.kind === 'user_text' && event.text === 'restore original')).toBe(true)
+    const attachment = persisted.find(({ event }) => event.kind === 'image')?.event
+    expect(attachment?.kind).toBe('image')
+    if (attachment?.kind === 'image') expect(createImageStore(state).read(thread.id, attachment.file)?.bytes).toEqual(png)
+    expect(f.requests().some(r => r.method === 'turn/start')).toBe(false)
+  } finally { await manager.shutdown() }
+})
+
+it.each(['withdraw', 'stop', 'close', 'timeout'])('holds input during a native recheck and supports %s', async action => {
+  const response = base(), f = fixture(response, [], 2), events: NormalizedEvent[] = []
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), {
+    executable: f.executable, ...(action === 'timeout' ? { capabilityTimeoutMs: 300 } : {}),
+  })
+  sessions.push(session); session.send('waiting text', 'queued')
+  await expect.poll(() => f.requests().filter(r => r.method === 'config/read').length).toBe(2)
+  if (action === 'withdraw') { expect(await session.cancelQueued?.('queued')).toBe(true); f.release() }
+  else if (action === 'stop') { session.interrupt(); f.release() }
+  else if (action === 'close') { await session.close(); f.release() }
+  else await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  if (action === 'withdraw' || action === 'stop') await expect.poll(() => events.some(e => e.kind === 'session')).toBe(true)
+  expect(f.requests().some(r => r.method === 'turn/start')).toBe(false)
+  expect(events.some(e => e.kind === 'user_taken')).toBe(false)
+  if (action === 'close' || action === 'timeout') expect(f.requests().some(r => r.method === 'thread/start')).toBe(false)
+})
+
+it.each(['before-thread', 'later-input'])('refuses a known config-file change at %s without taking pending input', async phase => {
+  const source = mkdtempSync(join(tmpdir(), 'cockpit-native-source-')); roots.push(source)
+  const file = join(source, 'config.toml'); writeFileSync(file, 'original')
+  const response = base()
+  response.layers.push({ name: { type: 'user', file }, config: {} })
+  const f = fixture(response), events: NormalizedEvent[] = []
+  let checks = 0
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), { executable: f.executable,
+    validateSources: () => { if (++checks === 3 && phase === 'before-thread') writeFileSync(file, 'changed') },
+  })
+  sessions.push(session)
+  if (phase === 'later-input') {
+    await expect.poll(() => events.some(e => e.kind === 'session')).toBe(true)
+    session.send('initial task', 'initial')
+    await expect.poll(() => f.requests().filter(r => r.method === 'turn/start').length).toBe(1)
+    writeFileSync(file, 'changed')
+  }
+  session.send('recover this pending input', 'pending', [{ path: '/fictional/image.png', mediaType: 'image/png', data: 'unused' }])
+  await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  expect(events.some(e => e.kind === 'user_taken' && e.id === 'pending')).toBe(false)
+  expect(f.requests().filter(r => r.method === 'turn/start')).toHaveLength(phase === 'later-input' ? 1 : 0)
+  if (phase === 'before-thread') expect(f.requests().some(r => r.method === 'thread/start')).toBe(false)
+})
+
+it('refuses a failed native recheck without exposing parser payloads', async () => {
+  const f = fixture(base(), [], 0, 2), events: NormalizedEvent[] = []
+  const session = launchCodex({ cwd: f.root }, e => events.push(e), { executable: f.executable })
+  sessions.push(session); session.send('keep my draft', 'queued')
+  await expect.poll(() => events.some(e => e.kind === 'exit')).toBe(true)
+  expect(JSON.stringify(events)).not.toContain('private-native-parser-payload')
+  expect(events.some(e => e.kind === 'error' && e.message.includes('could not be rechecked'))).toBe(true)
+  expect(f.requests().some(r => r.method === 'thread/start')).toBe(false)
 })
 
 it('refuses unsupported setup before any native thread and keeps the first message recoverable in the store', async () => {

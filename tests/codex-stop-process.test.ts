@@ -22,7 +22,7 @@ let command, turn = 0
 createInterface({ input: process.stdin }).on('line', (line) => {
  const m = JSON.parse(line)
  if (m.method === 'initialize') send({ id: m.id, result: {} })
- if (m.method === 'config/read') send({ id: m.id, result: {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]} })
+ if (m.method === 'config/read') send({ id: m.id, result: {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"version":"sha256:0000000000000000000000000000000000000000000000000000000000000000","config":{}}]} })
  if (m.method === 'thread/start') send({ id: m.id, result: { thread: { id: 'thread' } } })
  if (m.method === 'turn/start') {
   turn++

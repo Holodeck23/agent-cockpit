@@ -1,7 +1,9 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import reviewed from './fixtures/codex-reviewed-config.json' with { type: 'json' }
+import { clearCodexRpcFixtures, registerCodexRpcFixture } from './fixtures/codex-rpc-child.ts'
 import { launchCodex } from '../server/agents/codex/launch.ts'
 import type { AgentSession, NormalizedEvent } from '../server/agents/types.ts'
 import { createThreadManager, defaultLaunchers } from '../server/threads/manager.ts'
@@ -14,11 +16,18 @@ import { buildTranscript } from '../web/src/transcript.ts'
 // The preflight suite exercises pending checks, cancellation and input recovery.
 vi.mock('../server/agents/codex/startup-preflight.ts', () => ({ codexStartupPreflight: async () => {} }))
 
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  const { spawnCodexRpcFixture } = await import('./fixtures/codex-rpc-child.ts')
+  return { ...actual, spawn: (command: string, ...args: any[]) => spawnCodexRpcFixture(command, args[1]?.env) ?? actual.spawn(command, ...args as [any, any]) }
+})
+
 const roots: string[] = [], sessions: AgentSession[] = []
 afterEach(async () => {
   await Promise.all(sessions.splice(0).map((session) => session.close()))
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
   vi.unstubAllEnvs()
+  clearCodexRpcFixtures()
 })
 
 function deferred() {
@@ -31,19 +40,14 @@ function fixture(answerInitialize = true) {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-codex-readiness-'))
   roots.push(root)
   const executable = join(root, 'codex'), log = join(root, 'requests.jsonl')
-  writeFileSync(executable, `#!/usr/bin/env node
-const fs = require('node:fs')
-const { createInterface } = require('node:readline')
-createInterface({ input: process.stdin }).on('line', (line) => {
-  const request = JSON.parse(line)
-  fs.appendFileSync(${JSON.stringify(log)}, line + '\\n')
-  if (request.method === 'initialize' && !${answerInitialize}) return
-  if (request.method === 'config/read') { process.stdout.write(JSON.stringify({ id: request.id, result: {"config":{"features":{"hooks":false,"plugins":false,"apps":false,"enable_mcp_apps":false,"skill_mcp_dependency_install":false},"notify":[],"mcp_servers":{}},"layers":[{"name":{"type":"sessionFlags"},"config":{}}]} }) + '\\n'); return }
-  if (request.id !== undefined) process.stdout.write(JSON.stringify({ id: request.id, result:
-    request.method === 'thread/start' || request.method === 'thread/resume' ? { thread: { id: 'native-thread' } } : {} }) + '\\n')
-})
-`)
-  chmodSync(executable, 0o755)
+  const handle = (request: any, reply: (id: number | undefined, result: unknown) => void) => {
+    appendFileSync(log, JSON.stringify(request) + '\n')
+    if (request.method === 'initialize' && !answerInitialize) return
+    reply(request.id, request.method === 'config/read' ? reviewed :
+      request.method === 'thread/start' || request.method === 'thread/resume' ? { thread: { id: 'native-thread' } } : {})
+  }
+  registerCodexRpcFixture(executable, handle)
+  registerCodexRpcFixture('codex', handle)
   const requests = (): Array<{ method: string; params?: any }> => {
     try { return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) }
     catch { return [] }

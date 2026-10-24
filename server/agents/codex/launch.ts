@@ -13,6 +13,7 @@ import { createCodexStop } from './stop.ts'
 import { codexStartupConfigArgs } from './startup-config.ts'
 import { codexReviewedThreadConfig } from './startup-review.ts'
 import { codexStartupPreflight } from './startup-preflight.ts'
+import { bindCodexStartup } from './startup-binding.ts'
 
 export const codexLaunchSchema = z.object({
   cwd: z.string().min(1),
@@ -205,6 +206,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
       if (startup.signal.aborted) abort()
     })
   let threadId: string | undefined
+  let nativeBinding: ReturnType<typeof bindCodexStartup> | undefined
   let currentTurnId: string | undefined
   // Stop pressed after turn/start went out but before Codex named the turn: interrupt it on arrival.
   let interruptOnStart = false
@@ -240,7 +242,11 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
       const deliver = (errors: readonly string[] = []): void => {
         if (exited || closing || startupFailed) return
         if (method === 'turn/completed' && !helper) currentTurnId = undefined
-        for (const event of parseCodexNotification(method, params, stream)) onEvent(event)
+        for (const event of parseCodexNotification(method, params, stream)) {
+          // Stock announces thread/started before the final source/bridge checks.
+          // Publish the session only after startup qualifies below.
+          if (event.kind !== 'session' || ready) onEvent(event)
+        }
         // Keep a failed cancellation visible after the model's stopped result.
         for (const message of errors) onEvent({ kind: 'error', message })
         if (method === 'turn/completed' && !helper) {
@@ -315,7 +321,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
     const start = (): Promise<unknown> => {
       // A late steering failure must not restart work canceled by Stop or session close.
       if (exited || closing || startupFailed || generation !== stopGeneration) return Promise.resolve()
-      try { deps.validateSources?.() }
+      try { deps.validateSources?.(); nativeBinding?.checkFiles() }
       catch { failStartup('Codex setup changed before input; review Project Settings. Your message was not delivered.'); return Promise.resolve() }
       turnStarting = true
       if (queuedId) onEvent({ kind: 'user_taken', text, id: queuedId })
@@ -325,7 +331,7 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
     // phantom turn). If that turn ended in the meantime, start a new one instead.
     const running = currentTurnId
     if (running) {
-      try { deps.validateSources?.() }
+      try { deps.validateSources?.(); nativeBinding?.checkFiles() }
       catch { failStartup('Codex setup changed before input; review Project Settings. Your message was not delivered.'); return }
       if (queuedId) onEvent({ kind: 'user_taken', text, id: queuedId })
       rpc.request('turn/steer', { threadId, input, expectedTurnId: running }).catch(() => start().catch(fail))
@@ -345,10 +351,25 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
       const effective = await waitForStartup(rpc.request('config/read', { cwd: opts.cwd, includeLayers: true }),
         deps.capabilityTimeoutMs ?? 30_000, 'Codex setup review did not finish in time. Your message was not delivered.')
       if (exited || closing || startupFailed) return
-      const config = codexReviewedThreadConfig(effective,
-        deps.configArgs?.some(arg => arg.startsWith('mcp_servers.cockpit.command=')) === true)
+      const hostBridge = deps.configArgs?.some(arg => arg.startsWith('mcp_servers.cockpit.command=')) === true
+      const config = codexReviewedThreadConfig(effective, hostBridge)
+      nativeBinding = bindCodexStartup(effective, hostBridge)
+      const recheckNative = async (): Promise<void> => {
+        let current: unknown
+        try {
+          current = await waitForStartup(rpc.request('config/read', { cwd: opts.cwd, includeLayers: true }),
+            deps.capabilityTimeoutMs ?? 30_000, 'Codex setup recheck did not finish in time. Your message was not delivered.')
+        } catch {
+          // Native parser errors may include private config contents or paths.
+          throw new Error('Codex setup could not be rechecked; review Project Settings. Your message was not delivered.')
+        }
+        if (exited || closing || startupFailed) throw new Error('Codex startup was cancelled')
+        nativeBinding!.recheck(current)
+      }
+      await recheckNative()
       try { deps.validateSources?.() }
       catch { throw new Error('Codex setup changed before startup; review Project Settings. Your message was not delivered.') }
+      nativeBinding.checkFiles()
       const common = { cwd: opts.cwd, ...policy, config, ...(opts.model ? { model: opts.model } : {}) }
       const response = await waitForStartup(opts.resume
         ? rpc.request<{ thread: { id: string } }>('thread/resume', {
@@ -369,8 +390,10 @@ function spawnCodex(opts: z.output<typeof codexLaunchSchema>, onEvent: EventSink
         catch { if (!closing && !exited) failStartup('Codex could not authenticate Cockpit’s bridge. Your message was not delivered.'); return }
       }
       if (exited || closing || startupFailed) return
+      await recheckNative()
       try { deps.validateSources?.() }
       catch { throw new Error('Codex setup changed before input; review Project Settings. Your message was not delivered.') }
+      nativeBinding.checkFiles()
       ready = true
       onEvent({ kind: 'session', sessionId: threadId })
       for (const turn of queued.splice(0)) startTurn(turn.text, turn.images, turn.queuedId)
